@@ -2,7 +2,7 @@
 // Every view that sets `cameraPosition` should use these presets
 // instead of constructing TrackCamera(...) inline.
 // Usage:
-//     cameraPosition = MapCameraPresets.center(on: coord, is3D: is3DMode)
+//     cameraPosition = MapCameraPresets.center(on: coord, is3D: false)
 //     cameraPosition = MapCameraPresets.fitWalkingPath(
 //         user: userCoord, stop: stopCoord, is3D: true
 //     )

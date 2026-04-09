@@ -38,26 +38,16 @@ struct ServiceAlertsPage: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // MARK: - Header
             header
 
-            Divider()
-                .opacity(0.4)
-
-            // MARK: - Content
             if alerts.isEmpty {
                 emptyOrOfflineState
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 16) {
-                        // Date + last-updated row
-                        dateBanner
-                            .padding(.top, 12)
+                    VStack(spacing: 16) {
+                        statusBar
+                            .padding(.top, 8)
 
-                        // Quick severity summary
-                        severitySummaryStrip
-
-                        // Grouped alerts by mode
                         ForEach(groupedAlerts, id: \.mode) { group in
                             ServiceAlertModeGroup(
                                 mode: group.mode,
@@ -66,6 +56,8 @@ struct ServiceAlertsPage: View {
                                 alerts: group.alerts
                             )
                         }
+
+                        disclaimerFooter
                     }
                     .padding(.bottom, 32)
                 }
@@ -77,110 +69,148 @@ struct ServiceAlertsPage: View {
     // MARK: - Header
 
     private var header: some View {
-        ZStack {
-            // Centered title
-            Text("Service Alerts")
-                .font(.custom("Helvetica-Bold", size: 17))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-
-            HStack {
-                // Back button
-                Button {
-                    sheetNavigator.goBack()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text("Back")
-                            .font(.custom("Helvetica", size: 15))
-                    }
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+        VStack(spacing: 0) {
+            ZStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "bell.badge.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(severityGradient)
+                    Text("Service Alerts")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
                 }
+
+                HStack {
+                    Button {
+                        sheetNavigator.goBack()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Back")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.Colors.mtaBlue.opacity(0.1))
+                        )
+                    }
+
+                    Spacer()
+
+                    if !alerts.isEmpty {
+                        Text("\(alerts.count)")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule().fill(severityColor)
+                            )
+                    }
+                }
+            }
+            .padding(.horizontal, AppTheme.Layout.margin)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
+
+            Rectangle()
+                .fill(AppTheme.Colors.borderSubtle.opacity(0.5))
+                .frame(height: 1)
+        }
+    }
+
+    // MARK: - Status Bar
+
+    private var statusBar: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+
+                Text(Date(), format: .dateTime.weekday(.wide).month(.abbreviated).day())
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
 
                 Spacer()
 
-                // Alert count badge
-                if !alerts.isEmpty {
-                    Text("\(alerts.count)")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule().fill(severityColor)
-                        )
+                if let lastUpdated {
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(AppTheme.Colors.successGreen)
+                            .frame(width: 5, height: 5)
+                        Text("Updated \(lastUpdated, style: .time)")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundColor(AppTheme.Colors.textTertiary)
                 }
             }
-        }
-        .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.vertical, 14)
-        .background(AppTheme.Gradients.floating)
-    }
 
-    // MARK: - Severity Summary Strip
-
-    /// Compact chips showing severe / warning counts at a glance.
-    private var severitySummaryStrip: some View {
-        HStack(spacing: 10) {
-            if severeCount > 0 {
-                HStack(spacing: 5) {
-                    Image(systemName: "exclamationmark.octagon.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("\(severeCount) Severe")
-                        .font(.custom("Helvetica-Bold", size: 12))
+            HStack(spacing: 8) {
+                if severeCount > 0 {
+                    severityPill(
+                        icon: "exclamationmark.octagon.fill",
+                        count: severeCount,
+                        label: "Severe",
+                        color: AppTheme.Colors.alertRed
+                    )
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule().fill(AppTheme.Colors.alertRed)
-                )
-            }
 
-            if warningCount > 0 {
-                HStack(spacing: 5) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                    Text("\(warningCount) Advisory")
-                        .font(.custom("Helvetica-Bold", size: 12))
+                if warningCount > 0 {
+                    severityPill(
+                        icon: "exclamationmark.triangle.fill",
+                        count: warningCount,
+                        label: "Advisory",
+                        color: AppTheme.Colors.warningYellow
+                    )
                 }
-                .foregroundColor(.black.opacity(0.8))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule().fill(AppTheme.Colors.warningYellow)
-                )
-            }
 
-            Spacer()
+                Spacer()
+            }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
-    // MARK: - Date Banner
-
-    private var dateBanner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "calendar")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-
-            Text("Today — \(Date(), format: .dateTime.weekday(.wide).month(.wide).day())")
-                .font(.custom("Helvetica", size: 13))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-
-            Spacer()
-
-            if let lastUpdated {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10, weight: .semibold))
-                    Text(lastUpdated, style: .time)
-                        .font(.custom("Helvetica", size: 11))
-                }
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-            }
+    private func severityPill(
+        icon: String, count: Int, label: String, color: Color
+    ) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+            Text("\(count)")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+            Text(label)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
         }
+        .foregroundColor(color)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(color.opacity(0.10))
+                .overlay(
+                    Capsule()
+                        .stroke(color.opacity(0.18), lineWidth: 1)
+                )
+        )
+    }
+
+    // MARK: - Disclaimer Footer
+
+    private var disclaimerFooter: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 10, weight: .semibold))
+            Text("Alert data sourced from MTA GTFS-RT feeds. May be delayed.")
+                .font(.system(size: 11, weight: .medium))
+        }
+        .foregroundColor(AppTheme.Colors.textTertiary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 
@@ -207,41 +237,55 @@ struct ServiceAlertsPage: View {
 
     /// All clear — no alerts and the device is online.
     private var onlineEmptyState: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 18) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Gradients.tintWash(
-                        AppTheme.Colors.successGreen,
-                        intensity: 0.18))
-                    .frame(width: 96, height: 96)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                AppTheme.Colors.successGreen.opacity(0.14),
+                                AppTheme.Colors.successGreen.opacity(0.04),
+                                Color.clear,
+                            ],
+                            center: .center, startRadius: 20, endRadius: 56
+                        )
+                    )
+                    .frame(width: 100, height: 100)
 
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 44, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.successGreen)
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 42, weight: .medium))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                AppTheme.Colors.successGreen,
+                                AppTheme.Colors.successGreen.opacity(0.7),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
             }
 
-            VStack(spacing: 8) {
-                Text("All Clear!")
-                    .font(.custom("Helvetica-Bold", size: 22))
+            VStack(spacing: 6) {
+                Text("All Clear")
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
 
-                Text("No active service alerts right now.\nAll MTA services are running normally.")
-                    .font(.custom("Helvetica", size: 15))
+                Text("No active service alerts.\nAll MTA services are running normally.")
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
 
-            // Last checked timestamp
             if let lastUpdated {
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     Image(systemName: "clock")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10, weight: .semibold))
                     Text("Checked at \(lastUpdated, style: .time)")
-                        .font(.custom("Helvetica", size: 12))
+                        .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                .padding(.top, 4)
+                .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
         .padding(.horizontal, 40)
@@ -249,44 +293,48 @@ struct ServiceAlertsPage: View {
 
     /// Offline — can't fetch alerts because there's no network.
     private var offlineEmptyState: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 18) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Gradients.tintWash(
-                        AppTheme.Colors.textSecondary,
-                        intensity: 0.12))
-                    .frame(width: 96, height: 96)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                AppTheme.Colors.textTertiary.opacity(0.10),
+                                Color.clear,
+                            ],
+                            center: .center, startRadius: 16, endRadius: 52
+                        )
+                    )
+                    .frame(width: 100, height: 100)
 
                 Image(systemName: "wifi.slash")
-                    .font(.system(size: 40, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+                    .font(.system(size: 38, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
             }
 
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Text("No Connection")
-                    .font(.custom("Helvetica-Bold", size: 22))
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
 
                 Text(
                     "Service alerts require an internet connection."
-                    + "\nPlease check your Wi-Fi or cellular signal."
+                    + "\nCheck your Wi-Fi or cellular signal."
                 )
-                    .font(.custom("Helvetica", size: 15))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
 
-            // Last checked timestamp (if we had a previous fetch)
             if let lastUpdated {
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     Image(systemName: "clock")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10, weight: .semibold))
                     Text("Last checked \(lastUpdated, style: .relative) ago")
-                        .font(.custom("Helvetica", size: 12))
+                        .font(.system(size: 12, weight: .medium))
                 }
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                .padding(.top, 4)
+                .foregroundColor(AppTheme.Colors.textTertiary)
             }
         }
         .padding(.horizontal, 40)
@@ -297,6 +345,14 @@ struct ServiceAlertsPage: View {
         alerts.contains(where: { $0.severity == "severe" })
             ? AppTheme.Colors.alertRed
             : AppTheme.Colors.warningYellow
+    }
+
+    /// Gradient for the header bell icon based on severity mix.
+    private var severityGradient: LinearGradient {
+        let colors: [Color] = severeCount > 0
+            ? [AppTheme.Colors.alertRed, AppTheme.Colors.warningYellow]
+            : [AppTheme.Colors.warningYellow, AppTheme.Colors.warningYellow.opacity(0.7)]
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 

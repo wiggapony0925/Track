@@ -147,7 +147,7 @@ struct ErrorStateCard: View {
         /// A "Retry / Try Again" button that fires a closure.
         case retry(() -> Void)
         /// An "Explore" button that moves the camera to the NYC overview.
-        case explore(cameraPosition: Binding<TrackCameraPosition>, is3DMode: Binding<Bool>)
+        case explore(cameraPosition: Binding<TrackCameraPosition>)
     }
 
     // MARK: - Properties
@@ -254,12 +254,12 @@ struct ErrorStateCard: View {
             }
             .padding(.top, 4)
 
-        case .explore(let cameraPosition, let is3DMode):
+        case .explore(let cameraPosition):
             Button {
                 withAnimation(.easeInOut(duration: 1.0)) {
                     cameraPosition.wrappedValue =
                         MapCameraPresets.explorer(
-                            is3D: is3DMode.wrappedValue
+                            is3D: false
                         )
                 }
             } label: {

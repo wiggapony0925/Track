@@ -14,7 +14,6 @@ struct DashboardView: View {
     let sheetNavigator: SheetNavigator
     @Binding var lastUpdated: Date?
     @Binding var cameraPosition: TrackCameraPosition
-    @Binding var is3DMode: Bool
     @Binding var sheetDetent: PresentationDetent
 
     @ObservedObject private var favoritesManager = FavoritesManager.shared
@@ -122,8 +121,7 @@ struct DashboardView: View {
                                     locationManager: locationManager,
                                     sheetNavigator: sheetNavigator,
                                     lastUpdated: lastUpdated,
-                                    cameraPosition: $cameraPosition,
-                                    is3DMode: $is3DMode
+                                    cameraPosition: $cameraPosition
                                 )
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
                             case .subway:
@@ -225,7 +223,6 @@ struct DashboardView: View {
 #Preview {
     @Previewable @State var lastUpdated: Date? = Date()
     @Previewable @State var cameraPosition: TrackCameraPosition = .automatic
-    @Previewable @State var is3DMode: Bool = false
     @Previewable @State var detent: PresentationDetent = SheetConstants.defaultDetent
     let vm: HomeViewModel = HomeViewModel()
     let lm: LocationManager = LocationManager()
@@ -237,7 +234,6 @@ struct DashboardView: View {
         sheetNavigator: sn,
         lastUpdated: $lastUpdated,
         cameraPosition: $cameraPosition,
-        is3DMode: $is3DMode,
         sheetDetent: $detent
     )
 }

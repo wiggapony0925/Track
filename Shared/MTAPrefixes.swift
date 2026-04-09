@@ -16,7 +16,7 @@ import Foundation
 
 /// All known MTA agency prefixes, ordered from longest to shortest
 /// so that "MTA NYCT_" is tested before "MTA_" (which would match too early).
-let mtaAgencyPrefixes: [(prefix: String, length: Int)] = [
+nonisolated let mtaAgencyPrefixes: [(prefix: String, length: Int)] = [
     ("MTA NYCT_", 9),
     ("MTA BUS_",  8),
     ("MTABC_",    6),

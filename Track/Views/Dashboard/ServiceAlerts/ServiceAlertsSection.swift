@@ -144,17 +144,26 @@ struct ServiceAlertModeGroup: View {
             // Mode header bar
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(width: 28, height: 28)
-                    .background(Circle().fill(modeColor))
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [modeColor, modeColor.opacity(0.8)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
                 
                 Text(label)
-                    .font(.custom("Helvetica-Bold", size: 15))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 
                 Text("(\(alerts.count))")
-                    .font(.custom("Helvetica", size: 13))
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                 
                 Spacer()
@@ -167,7 +176,7 @@ struct ServiceAlertModeGroup: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text(isExpanded ? "Show Less" : "Show All")
-                                .font(.custom("Helvetica", size: 12))
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
                             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                                 .font(.system(size: 10, weight: .semibold))
                         }
@@ -178,7 +187,9 @@ struct ServiceAlertModeGroup: View {
             .padding(.horizontal, AppTheme.Layout.cardPadding)
             .padding(.vertical, 10)
             
-            Divider()
+            Rectangle()
+                .fill(AppTheme.Colors.borderSubtle.opacity(0.5))
+                .frame(height: 1)
                 .padding(.leading, AppTheme.Layout.cardPadding)
             
             // Content: borough sub-groups or flat list
@@ -254,7 +265,7 @@ struct BoroughAlertSubGroup: View {
                         .frame(width: 22, height: 22)
                     
                     Text(borough)
-                        .font(.custom("Helvetica-Bold", size: 13))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                     
                     // Alert count with severity color
@@ -429,7 +440,7 @@ struct ServiceAlertRow: View {
                     // Title
                     AlertRichText(
                         text: alert.title,
-                        font: .custom("Helvetica-Bold", size: 13),
+                        font: .system(size: 13, weight: .bold, design: .rounded),
                         color: AppTheme.Colors.textPrimary,
                         alertMode: mode,
                         lineLimit: showFullDescription ? nil : 2
@@ -439,7 +450,7 @@ struct ServiceAlertRow: View {
                     if !alert.description.isEmpty {
                         AlertRichText(
                             text: alert.description,
-                            font: .custom("Helvetica", size: 12),
+                            font: .system(size: 12, weight: .regular),
                             color: AppTheme.Colors.textSecondary,
                             alertMode: mode,
                             lineLimit: showFullDescription ? nil : 2
@@ -454,7 +465,7 @@ struct ServiceAlertRow: View {
                                 .frame(width: 6, height: 6)
                             
                             Text(alert.severity == "severe" ? "Severe" : "Warning")
-                                .font(.custom("Helvetica", size: 11))
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundColor(severityColor)
                         }
                         
@@ -469,7 +480,7 @@ struct ServiceAlertRow: View {
                                 )
                                 Text(" ago")
                             }
-                            .font(.custom("Helvetica", size: 10))
+                            .font(.system(size: 10, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
                         }
 
@@ -482,7 +493,7 @@ struct ServiceAlertRow: View {
                                     Text("Expires")
                                     Text(expiry, style: .relative)
                                 }
-                                .font(.custom("Helvetica", size: 10))
+                                .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.55))
                             }
                         }

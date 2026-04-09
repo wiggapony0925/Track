@@ -144,6 +144,10 @@ struct MapLibreTrackMapView: View {
                 reroutedRouteIDs: viewModel.mapSystem.reroutedRouteIDs,
                 isDarkMode: colorScheme == .dark,
                 selectedMode: viewModel.selectedMode,
+                showSearchRadius: showSearchRadius,
+                searchRadiusNear: nearYouRadius,
+                searchRadiusFarther: fartherAwayRadius,
+                searchRadiusMuch: muchFartherAwayRadius,
                 onMapViewReady: { mapView in
                     self.mapViewRef = mapView
                 },

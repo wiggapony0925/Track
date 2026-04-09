@@ -1,31 +1,41 @@
-// Floating overlay controls for the map including 3D toggle,
-// recenter button, search pin banner, and selected route banner.
+// Floating overlay controls for the map including alert indicator,
+// recenter button, and selected route banner.
+// Redesigned with iOS 18 conventions: symbol effects, smooth
+// spring animations, and a compact glassmorphic control island.
 
 import CoreLocation
 import SwiftUI
 
 /// Floating controls overlay displayed above the map.
-/// Contains 3D/2D toggle, recenter button, and context banners.
+/// Contains alert indicator, recenter button, and route banner.
 struct MapControlsOverlay: View {
     // MARK: - Dependencies
-    
+
     let viewModel: HomeViewModel
     let locationManager: LocationManager
     @Binding var cameraPosition: TrackCameraPosition
-    @Binding var is3DMode: Bool
     @Binding var sheetDetent: PresentationDetent
     let currentMapCenter: CLLocationCoordinate2D?
     let currentMapDistance: Double?
-    
+
     /// Called when the user taps the recenter button — HomeView uses this
     /// to dismiss drag-to-search and snap back to the real GPS location.
     var onRecenter: (() -> Void)?
-    
+
     /// Called when the user taps the alert bell — HomeView navigates to alerts page.
     var onAlertsTapped: (() -> Void)?
-    
+
+    // MARK: - Internal State
+
+    /// Tracks whether the recenter button was just tapped for the
+    /// symbol bounce effect.
+    @State private var recenterBounce = false
+
+    /// Pulsing alert badge animation.
+    @State private var alertPulse = false
+
     var body: some View {
-        GeometryReader { geometry in
+        GeometryReader { _ in
             ZStack {
                 // MARK: - Route Banner (top-left, below safe area)
                 if viewModel.selectedRouteId != nil {
@@ -37,99 +47,157 @@ struct MapControlsOverlay: View {
                         Spacer()
                     }
                 }
-                
-                // MARK: - Map Control Cluster (top-right, below compass)
-                // Hidden when route detail sheet is open — the sheet's own
-                // action rail provides close, 3D, recenter, and favorite buttons.
+
+                // MARK: - Map Control Island (top-right, below compass)
+                // Hidden when route detail sheet is fully open — the sheet
+                // provides its own close, 3D, recenter, and favorite buttons.
                 if sheetDetent != .large && !viewModel.isRouteDetailPresented {
                     VStack {
                         HStack {
                             Spacer()
-                            mapControlCluster
+                            mapControlIsland
                         }
                         .padding(.trailing, 12)
                         .padding(.top, 52) // Clear the MapLibre compass
                         Spacer()
                     }
+                    .transition(.opacity.combined(with: .scale(scale: 0.85, anchor: .topTrailing)))
                 }
             }
         }
     }
-    
-    // MARK: - Map Control Cluster
-    
-    /// Unified control pill: alert indicator, 3D toggle, and recenter
-    /// grouped inside a single frosted-glass capsule for a clean look.
-    private var mapControlCluster: some View {
-        VStack(spacing: 8) {
-            mapControlButton(
-                icon: "exclamationmark.triangle.fill",
-                foregroundColor: viewModel.serviceAlerts.isEmpty
-                    ? AppTheme.Colors.textPrimary
-                    : AppTheme.Colors.warningYellow,
-                accessibilityLabel: "Service alerts, \(viewModel.serviceAlerts.count) active"
+
+    // MARK: - Map Control Island
+
+    /// Compact glassmorphic pill with alert and recenter controls.
+    /// Uses SF Symbol effects and spring animations for polished feel.
+    private var mapControlIsland: some View {
+        VStack(spacing: 0) {
+            // ── Alert Button ──
+            controlButton(
+                icon: alertIcon,
+                tint: alertButtonTint,
+                a11y: "Service alerts, \(viewModel.serviceAlerts.count) active"
             ) {
                 onAlertsTapped?()
                 HapticManager.impact(.medium)
             }
 
-            mapControlButton(
-                icon: is3DMode ? "view.2d" : "view.3d",
-                // Color logic matches since background is gone
-                foregroundColor: AppTheme.Colors.textPrimary,
-                accessibilityLabel: is3DMode ? "Switch to 2D" : "Switch to 3D"
-            ) {
-                toggle3DMode()
-            }
+            controlDivider
 
-            mapControlButton(
+            // ── Recenter Button ──
+            controlButton(
                 icon: "location.fill",
-                foregroundColor: AppTheme.Colors.mtaBlue,
-                accessibilityLabel: "Recenter on my location"
+                tint: AppTheme.Colors.mtaBlue,
+                a11y: "Recenter on my location"
             ) {
                 centerMap()
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 6)
-        .trackTintedChrome(tint: AppTheme.Colors.mtaBlue, cornerRadius: 18)
-        // Badge rendered OUTSIDE the clip shape so it's fully visible
-        .overlay(alignment: .topTrailing) {
-            if !viewModel.serviceAlerts.isEmpty {
-                Text("\(min(viewModel.serviceAlerts.count, 99))")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(minWidth: 20, minHeight: 20)
-                    .background(
-                        Circle().fill(
-                            viewModel.serviceAlerts.contains(where: { $0.severity == "severe" })
-                                ? AppTheme.Colors.alertRed
-                                : AppTheme.Colors.warningYellow
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AppTheme.Colors.cardBackground.opacity(0.35))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(
+                            .white.opacity(0.16),
+                            lineWidth: 0.5
                         )
-                    )
-                    .offset(x: 6, y: -6)
-            }
+                }
+        }
+        .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 4)
+        .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
+        // Alert badge — rendered outside the clipped shape.
+        .overlay(alignment: .topTrailing) {
+            alertBadge
         }
     }
 
-    private func mapControlButton(
+    /// A single control button within the island.
+    private func controlButton(
         icon: String,
-        foregroundColor: Color,
-        accessibilityLabel: String,
+        tint: Color,
+        a11y: String,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button {
+            action()
+        } label: {
             Image(systemName: icon)
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(foregroundColor)
-                .frame(width: 44, height: 44)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 44, height: 40)
+                .contentShape(Rectangle())
+                .contentTransition(.symbolEffect(.replace))
         }
-        .accessibilityLabel(accessibilityLabel)
+        .buttonStyle(IslandButtonStyle())
+        .accessibilityLabel(a11y)
     }
-    
+
+    /// Hairline divider between island controls.
+    private var controlDivider: some View {
+        Rectangle()
+            .fill(.quaternary)
+            .frame(width: 28, height: 0.5)
+    }
+
+    // MARK: - Alert Badge
+
+    /// The SF Symbol name for the alert button — filled when alerts exist.
+    private var alertIcon: String {
+        viewModel.serviceAlerts.isEmpty
+            ? "bell"
+            : "bell.badge.fill"
+    }
+
+    /// Alert button tint — neutral when empty, colored when active.
+    private var alertButtonTint: Color {
+        if viewModel.serviceAlerts.isEmpty {
+            return AppTheme.Colors.textSecondary
+        }
+        return hasSevereAlerts
+            ? AppTheme.Colors.alertRed
+            : AppTheme.Colors.warningYellow
+    }
+
+    /// Whether any service alert is severe.
+    private var hasSevereAlerts: Bool {
+        viewModel.serviceAlerts.contains { $0.severity == "severe" }
+    }
+
+    /// Floating count badge for active service alerts.
+    @ViewBuilder
+    private var alertBadge: some View {
+        if !viewModel.serviceAlerts.isEmpty {
+            let count = min(viewModel.serviceAlerts.count, 99)
+            Text("\(count)")
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.horizontal, count > 9 ? 5 : 0)
+                .frame(minWidth: 18, minHeight: 18)
+                .background {
+                    Capsule()
+                        .fill(hasSevereAlerts
+                              ? AppTheme.Colors.alertRed
+                              : AppTheme.Colors.warningYellow)
+                        .shadow(color: (hasSevereAlerts
+                                        ? AppTheme.Colors.alertRed
+                                        : AppTheme.Colors.warningYellow).opacity(0.4),
+                                radius: 4, x: 0, y: 2)
+                }
+                .offset(x: 6, y: -6)
+                .transition(.scale.combined(with: .opacity))
+                .animation(.spring(response: 0.35, dampingFraction: 0.7), value: viewModel.serviceAlerts.count)
+        }
+    }
+
     // MARK: - Computed Properties
-    
-    /// Color of the currently selected route
+
+    /// Color of the currently selected route.
     private var selectedRouteColor: Color {
         if let group = viewModel.selectedGroupedRoute, let hex = group.colorHex {
             return Color(hex: hex)
@@ -141,56 +209,43 @@ struct MapControlsOverlay: View {
         }
         return AppTheme.Colors.mtaBlue
     }
-    
+
     // MARK: - Actions
-    
-    private func toggle3DMode() {
-        withAnimation(MapCameraPresets.smoothAnimation) {
-            is3DMode.toggle()
-            
-            let center = currentMapCenter
-                ?? locationManager.currentLocation?.coordinate
-                ?? AppTheme.MapConfig.nycCenter
-            let distance = currentMapDistance ?? MapCameraPresets.defaultDistance
-            
-            cameraPosition = MapCameraPresets.center(on: center, distance: distance, is3D: is3DMode)
-        }
-    }
-    
+
     private func centerMap() {
-        // Dismiss drag-to-search and restore real location data
+        // Dismiss drag-to-search and restore real location data.
         onRecenter?()
-        
-        // Collapse the sheet to half-height to reveal the map
-        withAnimation(MapCameraPresets.snapAnimation) {
+
+        // Collapse the sheet to reveal the map.
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
             sheetDetent = SheetConstants.defaultDetent
         }
 
-        // If a route is currently selected, re-invoke the fit algorithm
-        // that shows both the user's location and the nearest stop — this
-        // is the same camera that was applied on route-open.
+        // Determine the target camera — route-fit or user location.
+        let targetCamera: TrackCameraPosition
         if viewModel.selectedRouteId != nil,
            let fitCamera = viewModel.cameraPositionFittingRoute(
                userLocation: locationManager.currentLocation,
-               is3D: is3DMode
+               is3D: false
            ) {
-            withAnimation(MapCameraPresets.flyAnimation) {
-                cameraPosition = fitCamera
-            }
+            targetCamera = fitCamera
         } else {
-            let userLocation = locationManager.currentLocation?.coordinate
-            let finalTarget = userLocation ?? AppTheme.MapConfig.nycCenter
-            
-            withAnimation(MapCameraPresets.flyAnimation) {
-                cameraPosition = MapCameraPresets.center(on: finalTarget, is3D: is3DMode)
-            }
+            let userCoord = locationManager.currentLocation?.coordinate
+            let finalTarget = userCoord ?? AppTheme.MapConfig.nycCenter
+            targetCamera = MapCameraPresets.center(on: finalTarget, is3D: false)
         }
-        
+
+        // Apply camera with a single decisive animation — no competing
+        // withAnimation blocks that could cause jitter.
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
+            cameraPosition = targetCamera
+        }
+
         HapticManager.impact(.light)
     }
-    
+
     // MARK: - Selected Route Banner
-    
+
     /// Live vehicle count for the currently filtered direction.
     private var bannerLiveCount: Int {
         if viewModel.selectedGroupedRoute?.isBus == true {
@@ -215,7 +270,6 @@ struct MapControlsOverlay: View {
 
     /// Terminal pair from direction headsigns (or first/last stops fallback).
     private var bannerTerminalPair: (String, String)? {
-        // Try direction headsigns first (always reliable)
         if let shape = viewModel.routeShape, shape.directions.count >= 2 {
             let a = shape.directions[0].headsign
             let b = shape.directions[1].headsign
@@ -223,7 +277,6 @@ struct MapControlsOverlay: View {
                 return (a, b)
             }
         }
-        // Fallback to first/last stop in the combined stops list
         if let first = viewModel.routeShape?.stops.first?.name,
            let last = viewModel.routeShape?.stops.last?.name,
            first != last {
@@ -231,8 +284,6 @@ struct MapControlsOverlay: View {
         }
         return nil
     }
-
-
 
     /// Route alerts matching the selected route.
     private var bannerRouteAlerts: [TransitAlert] {
@@ -243,16 +294,18 @@ struct MapControlsOverlay: View {
         return (byId + byName).filter { seen.insert($0.id).inserted }
     }
 
-    /// Severity color for the most urgent alert.
+    /// Severity color for the most urgent route alert.
     private var bannerAlertColor: Color {
-        bannerRouteAlerts.contains(where: { $0.severity == "severe" })
+        bannerRouteAlerts.contains { $0.severity == "severe" }
             ? AppTheme.Colors.alertRed
             : AppTheme.Colors.warningYellow
     }
 
+    // MARK: - Route Banner View
+
     private var selectedRouteBanner: some View {
         VStack(spacing: 0) {
-            // ── Compact route pill ──
+            // ── Route header ──
             HStack(spacing: 8) {
                 if let group = viewModel.selectedGroupedRoute {
                     RouteBadge(
@@ -266,59 +319,49 @@ struct MapControlsOverlay: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    // Mode label
                     Text(bannerModeLabel)
                         .font(.system(size: 10, weight: .heavy, design: .rounded))
-                        .foregroundColor(selectedRouteColor)
+                        .foregroundStyle(selectedRouteColor)
                         .tracking(0.5)
 
-                    // Terminal names — arrow separator
                     if let pair = bannerTerminalPair {
                         HStack(spacing: 3) {
                             Text(pair.0)
                                 .lineLimit(1)
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundColor(AppTheme.Colors.textTertiary)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 6, weight: .bold))
+                                .foregroundStyle(AppTheme.Colors.textTertiary)
                             Text(pair.1)
                                 .lineLimit(1)
                         }
                         .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
                     } else if viewModel.routeShape == nil {
                         Text("Loading…")
                             .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textTertiary)
+                            .foregroundStyle(AppTheme.Colors.textTertiary)
                     }
                 }
 
                 Spacer(minLength: 4)
 
-                // Live count — trailing
+                // Live vehicle indicator
                 if bannerLiveCount > 0 {
-                    HStack(spacing: 3) {
-                        Circle()
-                            .fill(AppTheme.Colors.successGreen)
-                            .frame(width: 5, height: 5)
-                        Text("\(bannerLiveCount) live")
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.successGreen)
-                    }
+                    liveIndicator
                 }
-
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
 
             // ── Alert strip ──
             if let topAlert = bannerRouteAlerts.first {
-                alertStripContent(
+                alertStrip(
                     title: topAlert.title,
                     color: bannerAlertColor,
                     extraCount: bannerRouteAlerts.count - 1
                 )
             } else if let inlineAlert = viewModel.selectedGroupedRoute?.alerts.first {
-                alertStripContent(
+                alertStrip(
                     title: inlineAlert.title,
                     color: AppTheme.Colors.warningYellow,
                     extraCount: 0
@@ -327,7 +370,7 @@ struct MapControlsOverlay: View {
         }
         .trackOverlayGlass(
             tint: selectedRouteColor,
-            cornerRadius: 18,
+            cornerRadius: 16,
             tintOpacity: 0.04
         )
         .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 3)
@@ -337,60 +380,89 @@ struct MapControlsOverlay: View {
         ))
     }
 
-    /// Reusable alert strip row for the banner footer.
-    private func alertStripContent(title: String, color: Color, extraCount: Int) -> some View {
+    /// Pulsing live-vehicle count with recording dot.
+    private var liveIndicator: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(AppTheme.Colors.successGreen)
+                .frame(width: 5, height: 5)
+                .shadow(color: AppTheme.Colors.successGreen.opacity(0.5), radius: 3)
+            Text("\(bannerLiveCount)")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.successGreen)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background {
+            Capsule()
+                .fill(AppTheme.Colors.successGreen.opacity(0.12))
+        }
+    }
+
+    /// Alert strip shown at the bottom of the route banner.
+    private func alertStrip(title: String, color: Color, extraCount: Int) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(.white)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white)
 
             Text(title)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
                 .lineLimit(1)
 
             Spacer(minLength: 0)
 
             if extraCount > 0 {
                 Text("+\(extraCount)")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(color)
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .foregroundStyle(color)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(.white.opacity(0.9)))
+                    .background {
+                        Capsule().fill(.white.opacity(0.9))
+                    }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(color.opacity(0.9))
-        )
-        .padding(.horizontal, 6)
-        .padding(.bottom, 6)
+                .fill(color.gradient)
+        }
+        .padding(.horizontal, 4)
+        .padding(.bottom, 4)
     }
 }
 
+// MARK: - Island Button Style
+
+/// Press-down spring button style for the control island.
+/// Provides a subtle scale-down + opacity shift on press.
+private struct IslandButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.88 : 1.0)
+            .opacity(configuration.isPressed ? 0.6 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Preview
+
 #Preview {
-    let vm: HomeViewModel = HomeViewModel()
-    let lm: LocationManager = LocationManager()
-    let camPos: TrackCameraPosition = .userLocation
-    let cameraBinding: Binding<TrackCameraPosition> = .constant(camPos)
-    let is3DBinding: Binding<Bool> = .constant(false)
-    let fraction: PresentationDetent = SheetConstants.defaultDetent
-    let detentBinding: Binding<PresentationDetent> = .constant(fraction)
-    let alertsClosure: () -> Void = {}
+    let vm = HomeViewModel()
+    let lm = LocationManager()
     ZStack {
-        Color.gray.opacity(0.3)
+        Color.gray.opacity(0.3).ignoresSafeArea()
         MapControlsOverlay(
             viewModel: vm,
             locationManager: lm,
-            cameraPosition: cameraBinding,
-            is3DMode: is3DBinding,
-            sheetDetent: detentBinding,
+            cameraPosition: .constant(.userLocation),
+            sheetDetent: .constant(SheetConstants.defaultDetent),
             currentMapCenter: nil,
             currentMapDistance: nil,
-            onAlertsTapped: alertsClosure
+            onAlertsTapped: {}
         )
     }
 }

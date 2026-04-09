@@ -14,7 +14,6 @@ struct NearbyDashboard: View {
     let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
     @Binding var cameraPosition: TrackCameraPosition
-    @Binding var is3DMode: Bool
 
     // MARK: - Computed Properties
 
@@ -142,7 +141,7 @@ struct NearbyDashboard: View {
                         onCenter: { coordinate in
                             withAnimation(.easeInOut(duration: 0.6)) {
                                 cameraPosition = MapCameraPresets.center(
-                                    on: coordinate, is3D: is3DMode)
+                                    on: coordinate, is3D: false)
                             }
                         }
                     )
@@ -165,12 +164,12 @@ struct NearbyDashboard: View {
                 } else if viewModel.isOutsideServiceArea {
                     ErrorStateCard(
                         .outsideServiceArea,
-                        action: .explore(cameraPosition: $cameraPosition, is3DMode: $is3DMode)
+                        action: .explore(cameraPosition: $cameraPosition)
                     )
                 } else {
                     ErrorStateCard(
                         .noNearbyArrivals,
-                        action: .explore(cameraPosition: $cameraPosition, is3DMode: $is3DMode)
+                        action: .explore(cameraPosition: $cameraPosition)
                     )
                 }
             }
@@ -484,7 +483,6 @@ struct FlatTransitList: View {
         locationManager: LocationManager(),
         sheetNavigator: SheetNavigator(),
         lastUpdated: Date(),
-        cameraPosition: .constant(.automatic),
-        is3DMode: .constant(false)
+        cameraPosition: .constant(.automatic)
     )
 }

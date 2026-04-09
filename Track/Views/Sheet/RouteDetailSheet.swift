@@ -52,7 +52,6 @@ struct RouteDetailSheet: View {
 
     // Map controls (shown in header when sheet is expanded)
     var isSheetExpanded: Bool = false
-    @Binding var is3DMode: Bool
     @Binding var cameraPosition: TrackCameraPosition
     var currentLocation: CLLocationCoordinate2D?
     /// When the user has dragged the search pin, this is the pin's coordinate.
@@ -256,7 +255,6 @@ struct RouteDetailSheet: View {
         weatherSnapshot: WeatherSnapshot? = nil,
         initialTab: RouteDetailTab? = nil,
         isSheetExpanded: Bool = false,
-        is3DMode: Binding<Bool> = .constant(false),
         cameraPosition: Binding<TrackCameraPosition> = .constant(.automatic),
         currentLocation: CLLocationCoordinate2D? = nil,
         searchCenter: CLLocationCoordinate2D? = nil,
@@ -301,7 +299,6 @@ struct RouteDetailSheet: View {
         self.onRecenter = onRecenter
         self.onStopDetailRequested = onStopDetailRequested
         self.isSheetExpanded = isSheetExpanded
-        self._is3DMode = is3DMode
         self._cameraPosition = cameraPosition
         self.currentLocation = currentLocation
         self.searchCenter = searchCenter
@@ -1181,26 +1178,6 @@ struct RouteDetailSheet: View {
                 recenterRouteButton
             }
         }
-    }
-
-    private var perspectiveRouteButton: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.5)) {
-                is3DMode.toggle()
-                if let loc = currentLocation {
-                    cameraPosition = MapCameraPresets.center(on: loc, is3D: is3DMode)
-                }
-            }
-        } label: {
-            actionCircle(
-                icon: is3DMode ? "view.2d" : "view.3d",
-                iconColor: AppTheme.Colors.textSecondary,
-                fill: AnyShapeStyle(AppTheme.Gradients.controlSurface),
-                borderColor: AppTheme.Colors.borderSubtle,
-                size: 42
-            )
-        }
-        .accessibilityLabel(is3DMode ? "Switch to 2D" : "Switch to 3D")
     }
 
     private var recenterRouteButton: some View {
@@ -2563,11 +2540,11 @@ struct RouteDetailSheet: View {
         HStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Colors.textSecondary.opacity(0.06))
+                    .fill(Color.indigo.opacity(0.10))
                     .frame(width: 48, height: 48)
                 Image(systemName: "moon.zzz.fill")
                     .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.45))
+                    .foregroundStyle(Color.indigo.opacity(0.55))
             }
 
             VStack(alignment: .leading, spacing: 3) {

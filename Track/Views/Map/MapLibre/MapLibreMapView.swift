@@ -78,9 +78,13 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         let routeCntEq: Bool = lhs.routePolylines.count == rhs.routePolylines.count
         let xferCntEq: Bool = lhs.transferConnectors.count == rhs.transferConnectors.count
         let bakedEq: Bool = lhs.bakedTileSet?.isValid == rhs.bakedTileSet?.isValid
+        let radiusEq: Bool = lhs.showSearchRadius == rhs.showSearchRadius
+            && lhs.searchRadiusNear == rhs.searchRadiusNear
+            && lhs.searchRadiusFarther == rhs.searchRadiusFarther
+            && lhs.searchRadiusMuch == rhs.searchRadiusMuch
 
         guard subwayEq, commuterEq, stationCntEq, busCntEq, trainCntEq, routeCntEq,
-              xferCntEq, bakedEq else {
+              xferCntEq, bakedEq, radiusEq else {
             return false
         }
 
@@ -167,6 +171,15 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     
     /// Global transport mode filter (dims polylines that don't match the dashboard mode).
     var selectedMode: TransportMode
+
+    /// Whether search radius rings should be drawn on the map.
+    var showSearchRadius: Bool = false
+    /// Near-you tier radius in meters.
+    var searchRadiusNear: Double = 2414
+    /// A-bit-farther tier radius in meters.
+    var searchRadiusFarther: Double = 4023
+    /// Much-farther tier radius in meters.
+    var searchRadiusMuch: Double = 8047
 
     /// Callback to pass the MLNMapView reference back to the parent
     /// so SwiftUI overlays can project coordinates → screen points.
@@ -352,6 +365,13 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             let needsUpdate: Bool = zoomDiff > 0.1 || latDiff > 1e-5 || lonDiff > 1e-5
 
             if needsUpdate {
+                // Cancel any stale pending camera sync work items so they
+                // can't overwrite the new programmatic target. This fixes
+                // the "tap center twice" race where a gesture-end sync
+                // fires between the SwiftUI state write and this point.
+                coordinator.pendingCameraSync?.cancel()
+                coordinator.pendingCameraSync = nil
+
                 // Mark programmatic animation in flight so syncCameraToBinding
                 // doesn't overwrite cameraPosition with intermediate frames.
                 coordinator.programmaticCameraInFlight = true
@@ -418,7 +438,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // Writing 4 @Binding values per frame floods SwiftUI's attribute
         // graph and triggers "setting value during update" crashes.
         // Throttle to at most one sync per display frame (~16ms).
-        private var pendingCameraSync: DispatchWorkItem?
+        /// Pending camera sync work item — `fileprivate` so `updateUIView`
+        /// can cancel stale syncs before applying a new programmatic camera.
+        fileprivate var pendingCameraSync: DispatchWorkItem?
         /// Timestamp of the last actually-executed camera sync write.
         /// Used to prevent multiple binding updates in a single run-loop
         /// pass (which causes "action tried to update multiple times per
@@ -438,6 +460,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private var lastRouteHash: Int = -1
         private var lastWalkingHash: Int = -1
         private var lastTransferHash: Int = -1
+        private var lastRadiusHash: Int = -1
         private var lastDarkMode: Bool?
 
         /// Route-colour tint tracking — detects when the tint should
@@ -530,6 +553,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             lastRouteHash = -1
             lastWalkingHash = -1
             lastTransferHash = -1
+            lastRadiusHash = -1
             lastDarkMode = nil
             lastRouteTintActive = false
             lastRouteTintColor = nil
@@ -571,10 +595,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             }
 
             // During code-driven animations (fly-to-center, fit-route, etc.)
-            // skip binding writes so intermediate frames don't overwrite the
-            // requested destination. We still read visible state for station
-            // visibility etc. but DON'T touch cameraPosition.
-            let isCodeDriven = programmaticCameraInFlight
+            // the work item checks programmaticCameraInFlight at execution
+            // time to skip binding writes. See the DispatchWorkItem below.
 
             let center = mapView.centerCoordinate
             let zoom = mapView.zoomLevel
@@ -594,11 +616,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 self.parent.currentMapCenter = center
                 self.parent.currentMapDistance = distance
 
-                // Only update the camera binding when the user is physically
-                // interacting with the map (gestures). Programmatic camera
-                // animations write intermediate positions that fight the
-                // target, causing "tap center 3 times" bugs.
-                if !isCodeDriven {
+                // Check programmaticCameraInFlight at EXECUTION time, not
+                // capture time. This prevents stale work items created just
+                // before a programmatic camera change from overwriting the
+                // new target. Combined with the cancel in updateUIView, this
+                // eliminates the "tap center twice" race condition.
+                if !self.programmaticCameraInFlight {
                     let state = MapLibreCameraState(
                         center: center,
                         zoom: zoom,
@@ -663,6 +686,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             )
             updateWalkingIfNeeded(style: style, representable: representable)
             updateTransferIfNeeded(style: style, representable: representable)
+            updateSearchRadiusIfNeeded(
+                mapView: mapView, style: style, representable: representable
+            )
         }
 
         // MARK: - Hash-gated layer update helpers
@@ -768,6 +794,34 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 updateTransferConnectors(style: style, representable: representable)
                 lastTransferHash = transferHash
             }
+        }
+
+        private func updateSearchRadiusIfNeeded(
+            mapView: MLNMapView,
+            style: MLNStyle,
+            representable: MapLibreMapView
+        ) {
+            // Center on user location; fall back to map center.
+            let center = mapView.userLocation?.coordinate ?? mapView.centerCoordinate
+            // Coarse center hash (~100m granularity) so rings reposition
+            // only when the user moves meaningfully, not every frame.
+            let cHash = Int(center.latitude * 1000) ^ (Int(center.longitude * 1000) << 16)
+            let hash = (representable.showSearchRadius ? 1 : 0)
+                ^ Int(representable.searchRadiusNear) &* 31
+                ^ Int(representable.searchRadiusFarther) &* 127
+                ^ Int(representable.searchRadiusMuch) &* 8191
+                ^ cHash
+            guard hash != lastRadiusHash else { return }
+            lastRadiusHash = hash
+
+            MapLibreSearchRadiusManager.update(
+                style: style,
+                center: center,
+                nearRadius: representable.searchRadiusNear,
+                fartherRadius: representable.searchRadiusFarther,
+                muchFartherRadius: representable.searchRadiusMuch,
+                visible: representable.showSearchRadius
+            )
         }
 
         // MARK: - System Map Layers (Subway + Commuter + Elevated)

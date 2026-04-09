@@ -10,7 +10,7 @@ import Foundation
 enum BranchNames {
 
     /// LIRR numeric route ID → human-readable branch name
-    static let lirr: [String: String] = [
+    nonisolated static let lirr: [String: String] = [
         "1": "Babylon Branch",
         "2": "Hempstead Branch",
         "3": "Oyster Bay Branch",
@@ -27,7 +27,7 @@ enum BranchNames {
     ]
 
     /// Metro-North numeric route ID → human-readable line name
-    static let mnr: [String: String] = [
+    nonisolated static let mnr: [String: String] = [
         "1": "Hudson Line",
         "2": "Harlem Line",
         "3": "New Haven Line",

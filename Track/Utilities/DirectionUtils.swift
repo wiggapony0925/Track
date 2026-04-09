@@ -13,7 +13,7 @@ enum DirectionConstants {
     // MARK: Code → Long Label
 
     /// Compass code → human-readable label (matches backend `_DIRECTION_LABELS`).
-    static let labels: [String: String] = [
+    nonisolated static let labels: [String: String] = [
         "N": "Northbound",
         "S": "Southbound",
         "E": "Eastbound",
@@ -27,7 +27,7 @@ enum DirectionConstants {
     ]
 
     /// Short arrow-prefixed labels for compact UI (tab chips, badges).
-    static let shortLabels: [String: String] = [
+    nonisolated static let shortLabels: [String: String] = [
         "N": "↑ North",
         "S": "↓ South",
         "E": "→ East",

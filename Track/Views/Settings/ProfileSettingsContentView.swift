@@ -39,14 +39,15 @@ struct ProfileSettingsContentView: View {
             header
 
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: 20) {
+                    avatarHero
                     profileSection
                     saveButton
                     saveMessageView
                     Spacer()
                         .frame(height: 40)
                 }
-                .padding(.top, 12)
+                .padding(.top, 4)
             }
         }
         .background(AppTheme.Gradients.screen)
@@ -57,45 +58,88 @@ struct ProfileSettingsContentView: View {
 
     // MARK: - Profile Section (extracted to reduce body type-check)
 
+    // MARK: - Avatar Hero
+
+    private var avatarHero: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .stroke(
+                        AngularGradient(
+                            colors: [
+                                AppTheme.Colors.mtaBlue,
+                                AppTheme.Colors.mtaBlue.opacity(0.4),
+                                AppTheme.Colors.accentSecondary,
+                                AppTheme.Colors.mtaBlue,
+                            ],
+                            center: .center
+                        ),
+                        lineWidth: 2.5
+                    )
+                    .frame(width: 64, height: 64)
+
+                Circle()
+                    .fill(
+                        AppTheme.Gradients.tintWash(
+                            AppTheme.Colors.mtaBlue, intensity: 0.15
+                        )
+                    )
+                    .frame(width: 56, height: 56)
+
+                Text(String(fallbackDisplayName.prefix(1)).uppercased())
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.mtaBlue)
+            }
+
+            VStack(spacing: 3) {
+                Text(fallbackDisplayName)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+
+                if let email = currentProfile?.email {
+                    Text(email)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+    }
+
+    // MARK: - Profile Fields
+
     private var profileSection: some View {
-        section(title: "Profile", icon: "person.fill", iconColor: AppTheme.Colors.mtaBlue) {
-                        VStack(spacing: 0) {
-                            row(icon: "hand.wave.fill", iconColor: .orange, title: "Welcome") {
-                                Text(fallbackDisplayName)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
-                            }
+        section(title: "Edit Details", icon: "pencil.line", iconColor: .purple) {
+            VStack(spacing: 0) {
+                editableField(
+                    icon: "textformat",
+                    iconColor: .purple,
+                    title: "Full Name",
+                    text: $fullNameDraft,
+                    placeholder: "Add your full name"
+                )
 
-                            divider
+                divider
 
-                            editableField(
-                                icon: "textformat",
-                                iconColor: .purple,
-                                title: "Full Name",
-                                text: $fullNameDraft,
-                                placeholder: "Add your full name"
-                            )
+                editableField(
+                    icon: "at",
+                    iconColor: .indigo,
+                    title: "Username",
+                    text: $usernameDraft,
+                    placeholder: "Optional display username"
+                )
 
-                            divider
+                divider
 
-                            editableField(
-                                icon: "at",
-                                iconColor: .indigo,
-                                title: "Username",
-                                text: $usernameDraft,
-                                placeholder: "Optional display username"
-                            )
-
-                            divider
-
-                            row(icon: "envelope.fill", iconColor: .mint, title: "Email") {
-                                Text(currentProfile?.email ?? "Not available")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(AppTheme.Colors.textSecondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
+                row(icon: "envelope.fill", iconColor: .mint, title: "Email") {
+                    Text(currentProfile?.email ?? "Not available")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+        }
     }
 
     private var saveButton: some View {
@@ -175,38 +219,54 @@ struct ProfileSettingsContentView: View {
     }
 
     private var header: some View {
-        ZStack {
-            Text("Profile")
-                .font(.custom("Helvetica-Bold", size: 18))
-                .foregroundColor(AppTheme.Colors.textPrimary)
+        VStack(spacing: 0) {
+            ZStack {
+                Text("Profile")
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
 
-            HStack {
-                Button {
-                    sheetNavigator.goBack()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text("Settings")
-                            .font(.custom("Helvetica", size: 16))
+                HStack {
+                    Button {
+                        sheetNavigator.goBack()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Settings")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.Colors.mtaBlue.opacity(0.1))
+                        )
                     }
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
-                }
 
-                Spacer()
+                    Spacer()
 
-                Button {
-                    sheetNavigator.popToRoot()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+                    Button {
+                        sheetNavigator.popToRoot()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 26))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(
+                                AppTheme.Colors.textTertiary.opacity(0.7),
+                                AppTheme.Colors.textTertiary.opacity(0.12)
+                            )
+                    }
                 }
             }
+            .padding(.horizontal, AppTheme.Layout.margin)
+            .padding(.top, 10)
+            .padding(.bottom, 12)
+
+            Rectangle()
+                .fill(AppTheme.Colors.borderSubtle.opacity(0.5))
+                .frame(height: 1)
         }
-        .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.vertical, 16)
-        .background(AppTheme.Gradients.floating)
     }
 
     private var divider: some View {
@@ -220,16 +280,16 @@ struct ProfileSettingsContentView: View {
         title: String,
         @ViewBuilder trailing: () -> Trailing
     ) -> some View {
-        HStack {
-            iconView(icon, color: iconColor)
+        HStack(spacing: 10) {
+            iconBadge(icon, color: iconColor)
             Text(title)
-                .font(.custom("Helvetica", size: 15))
+                .font(.system(size: 15, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textPrimary)
             Spacer()
             trailing()
         }
         .padding(.horizontal, AppTheme.Layout.cardPadding)
-        .padding(.vertical, 12)
+        .padding(.vertical, 13)
     }
 
     private func editableField(
@@ -239,31 +299,31 @@ struct ProfileSettingsContentView: View {
         text: Binding<String>,
         placeholder: String
     ) -> some View {
-        HStack {
-            iconView(icon, color: iconColor)
+        HStack(spacing: 10) {
+            iconBadge(icon, color: iconColor)
             Text(title)
-                .font(.custom("Helvetica", size: 15))
+                .font(.system(size: 15, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textPrimary)
             Spacer()
             TextField(placeholder, text: text)
                 .multilineTextAlignment(.trailing)
-                .font(.system(size: 14))
+                .font(.system(size: 14, weight: .regular))
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .textInputAutocapitalization(.words)
                 .disableAutocorrection(true)
                 .frame(maxWidth: 180)
         }
         .padding(.horizontal, AppTheme.Layout.cardPadding)
-        .padding(.vertical, 12)
+        .padding(.vertical, 13)
     }
 
-    private func iconView(_ name: String, color: Color) -> some View {
+    private func iconBadge(_ name: String, color: Color) -> some View {
         Image(systemName: name)
-            .font(.system(size: 14, weight: .semibold))
+            .font(.system(size: 13, weight: .semibold))
             .foregroundColor(.white)
             .frame(width: 28, height: 28)
             .background(color.gradient)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
     private func section<Content: View>(
@@ -272,17 +332,17 @@ struct ProfileSettingsContentView: View {
         iconColor: Color,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(iconColor.opacity(0.7))
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(iconColor.opacity(0.6))
                 Text(title.uppercased())
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                    .tracking(0.5)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                    .tracking(0.6)
             }
-            .padding(.horizontal, AppTheme.Layout.margin)
+            .padding(.horizontal, AppTheme.Layout.margin + 4)
 
             content()
                 .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
