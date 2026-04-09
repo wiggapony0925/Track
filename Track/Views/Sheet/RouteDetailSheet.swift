@@ -235,7 +235,6 @@ struct RouteDetailSheet: View {
     enum RouteDetailTab: String, CaseIterable {
         case stops = "Stops"
         case departures = "Departures"
-        case alerts = "Alerts"
     }
 
     init(
@@ -375,54 +374,7 @@ struct RouteDetailSheet: View {
         return group.directions[idx]
     }
 
-    private var routeAlerts: [TransitAlert] {
-        let byId = serviceAlerts.matching(routeId: group.routeId, mode: group.mode)
-        let byName = serviceAlerts.matching(routeId: group.displayName, mode: group.mode)
-        
-        var seen = Set<String>()
-        var result: [TransitAlert] = []
-        
-        // 1. Gather full alerts from the global serviceAlerts feed
-        for alert in byId + byName {
-            if seen.insert(alert.id).inserted {
-                result.append(alert)
-            }
-        }
-        
-        // 2. Synthesize and append any inline alerts attached directly by the backend response
-        // Deduplicate by title to prevent showing the exact same alert twice.
-        let existingTitles = Set(result.map { $0.title })
-        for inline in group.alerts {
-            if !existingTitles.contains(inline.title) {
-                let synthetic = TransitAlert(
-                    routeId: group.routeId,
-                    title: inline.title,
-                    description: "", // Inline alerts don't provide a full body
-                    severity: inline.severity,
-                    mode: group.mode,
-                    affectedRoutes: inline.affectedRoutes,
-                    alertType: inline.alertType,
-                    sortOrder: inline.sortOrder
-                )
-                result.append(synthetic)
-            }
-        }
-        
-        return result.sortedBySeverityAndTime()
-    }
-
     // MARK: - Body Sub-Views (broken out for type-checker)
-
-    @ViewBuilder
-    private var alertBannerContent: some View {
-        if let topAlert = routeAlerts.first {
-            routeAlertBanner(topAlert)
-        } else if let inlineAlert = group.alerts.first {
-            inlineAlertBanner(inlineAlert)
-        } else if isLoadingArrivals {
-            alertBannerSkeleton
-        }
-    }
 
     @ViewBuilder
     private var directionPickerContent: some View {
@@ -441,12 +393,6 @@ struct RouteDetailSheet: View {
             lostAndFoundPrompt
         case .departures:
             arrivalsList
-        case .alerts:
-            if !routeAlerts.isEmpty {
-                routeAlertsSection
-            } else {
-                noAlertsEmptyState
-            }
         }
     }
 
@@ -3072,7 +3018,7 @@ struct RouteDetailSheet: View {
 
     // MARK: - Content Tab Picker
 
-    /// Horizontal pill-style picker for Stops / Departures / Alerts tabs.
+    /// Horizontal pill-style picker for Stops / Departures tabs.
     private var contentTabPicker: some View {
         let tabs = RouteDetailTab.allCases.map { tab -> PillTab in
             let badge: Int = {
@@ -3084,8 +3030,6 @@ struct RouteDetailSheet: View {
                     ).count ?? 0
                 case .departures:
                     return cachedDepartureCount
-                case .alerts:
-                    return routeAlerts.count
                 }
             }()
             return PillTab(
@@ -3111,7 +3055,6 @@ struct RouteDetailSheet: View {
         switch tab {
         case .stops: return "mappin.and.ellipse"
         case .departures: return "arrow.up.right.circle.fill"
-        case .alerts: return "exclamationmark.triangle.fill"
         }
     }
 
@@ -3453,38 +3396,10 @@ struct RouteDetailSheet: View {
         }
     }
 
-    // MARK: - No Alerts Empty State
-
-    /// Shown on the Alerts tab when there are no active alerts for this route.
-    private var noAlertsEmptyState: some View {
-        NoAlertsEmptyState(routeDisplayName: group.displayName)
-    }
-
-    // MARK: - Alert Banner (top of sheet)
-    // MARK: - Alert Banner Adapters
-
-    private func routeAlertBanner(_ alert: TransitAlert) -> some View {
-        RouteAlertBanner(alert: alert, totalAlertCount: routeAlerts.count)
-    }
-
-    private func inlineAlertBanner(_ alert: InlineAlertResponse) -> some View {
-        InlineAlertBannerView(alert: alert, totalAlertCount: group.alerts.count, mode: group.mode)
-    }
-
-    // MARK: - Route Alerts Section
-
     // MARK: - Loading Skeletons
-
-    private var alertBannerSkeleton: some View {
-        AlertBannerSkeleton()
-    }
 
     private var directionPickerSkeleton: some View {
         DirectionPickerSkeleton()
-    }
-
-    private var routeAlertsSection: some View {
-        RouteAlertsSection(alerts: routeAlerts)
     }
 
     // MARK: - Route Info Footer

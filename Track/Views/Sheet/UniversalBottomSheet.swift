@@ -27,6 +27,25 @@ enum SheetConstants {
     static let defaultFraction: CGFloat = 0.45
     /// Convenience detent value for the default resting position.
     static let defaultDetent: PresentationDetent = .fraction(defaultFraction)
+
+    /// Builds the peek detent from the measured navbar height.
+    /// Adds a small buffer for the drag indicator + corner radius.
+    static func peekDetent(navbarHeight: CGFloat) -> PresentationDetent {
+        .height(navbarHeight) // exact fit — no extra content visible
+    }
+}
+
+// MARK: - Navbar Height Preference Key
+
+/// Bubbles the measured pixel height of the dashboard's fixed navbar
+/// (header + search + mode tabs) up to `UniversalBottomSheet` so it
+/// can build a content-derived peek detent.
+struct NavbarHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > value { value = next }
+    }
 }
 
 // MARK: - Sheet Height Observer
@@ -115,6 +134,10 @@ struct UniversalBottomSheet<Content: View>: View {
     /// Content builder that maps SheetPage to actual views
     let content: (SheetPage) -> Content
 
+    /// Measured height of the dashboard navbar (header + search + tabs).
+    /// Drives the peek detent so it adapts to content changes automatically.
+    @State private var navbarHeight: CGFloat = 150 // sensible default until measured
+
     /// Brief dimming overlay for smooth dark ↔ light transition.
     @State private var themeTransitionOpacity: Double = 0
 
@@ -139,7 +162,16 @@ struct UniversalBottomSheet<Content: View>: View {
                   insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal: .move(edge: .leading).combined(with: .opacity)
             ))
-            .presentationDetents([.fraction(SheetConstants.defaultFraction), .large], selection: $sheetDetent)
+            .presentationDetents(
+                [SheetConstants.peekDetent(navbarHeight: navbarHeight),
+                 .fraction(SheetConstants.defaultFraction),
+                 .large],
+                selection: $sheetDetent
+            )
+            .onPreferenceChange(NavbarHeightKey.self) { height in
+                guard height > 0 else { return }
+                navbarHeight = height
+            }
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled)
             .presentationBackground {

@@ -14,6 +14,13 @@ struct BusDashboard: View {
     let locationManager: LocationManager
     let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
+
+    // MARK: - Section Collapse State
+
+    @State private var isNearYouCollapsed = false
+    @State private var isFartherCollapsed = false
+    @State private var isMuchFartherCollapsed = false
+    @State private var isInactiveCollapsed = true
     
     // MARK: - Distance Settings
     
@@ -38,6 +45,33 @@ struct BusDashboard: View {
             } else if !viewModel.isLoading {
                 busEmptyState
             }
+
+            // Inactive bus lines — outside the active/empty conditional
+            let inactiveBusTotal = viewModel.ghostBusRoutes.count
+                + viewModel.inactiveBusRoutes.count
+            if inactiveBusTotal > 0 {
+                InactiveLinesSectionHeader(
+                    count: inactiveBusTotal,
+                    isCollapsed: $isInactiveCollapsed
+                )
+                if !isInactiveCollapsed {
+                    if !viewModel.ghostBusRoutes.isEmpty {
+                        GroupedRouteList(
+                            groups: viewModel.ghostBusRoutes,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
+                    if !viewModel.inactiveBusRoutes.isEmpty {
+                        InactiveRouteList(
+                            routes: viewModel.inactiveBusRoutes,
+                            sheetNavigator: sheetNavigator
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -56,45 +90,77 @@ struct BusDashboard: View {
                 let muchFarther: [GroupedNearbyTransitResponse] = buckets.2
                 
                 if !nearYou.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    GroupedRouteList(
-                        groups: nearYou,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        sheetNavigator: sheetNavigator,
-                        referenceLocation: refLocation
+                    NearYouSectionHeader(
+                        radiusMeters: nearYouRadius,
+                        updated: lastUpdated,
+                        isCollapsed: $isNearYouCollapsed
                     )
+                    if !isNearYouCollapsed {
+                        GroupedRouteList(
+                            groups: nearYou,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
                 } else if viewModel.searchText.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    EmptyTierHint()
+                    NearYouSectionHeader(
+                        radiusMeters: nearYouRadius,
+                        updated: lastUpdated,
+                        isCollapsed: $isNearYouCollapsed
+                    )
+                    if !isNearYouCollapsed {
+                        EmptyTierHint()
+                    }
                 }
                 
                 if !fartherAway.isEmpty {
-                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
-                    GroupedRouteList(
-                        groups: fartherAway,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        sheetNavigator: sheetNavigator,
-                        referenceLocation: refLocation
+                    FartherAwaySectionHeader(
+                        radiusMeters: fartherAwayRadius,
+                        isCollapsed: $isFartherCollapsed
                     )
+                    if !isFartherCollapsed {
+                        GroupedRouteList(
+                            groups: fartherAway,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
                 } else if viewModel.searchText.isEmpty {
-                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
-                    EmptyTierHint()
+                    FartherAwaySectionHeader(
+                        radiusMeters: fartherAwayRadius,
+                        isCollapsed: $isFartherCollapsed
+                    )
+                    if !isFartherCollapsed {
+                        EmptyTierHint()
+                    }
                 }
                 
                 if !muchFarther.isEmpty {
-                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
-                    GroupedRouteList(
-                        groups: muchFarther,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        sheetNavigator: sheetNavigator,
-                        referenceLocation: refLocation
+                    MuchFartherAwaySectionHeader(
+                        radiusMeters: muchFartherAwayRadius,
+                        isCollapsed: $isMuchFartherCollapsed
                     )
+                    if !isMuchFartherCollapsed {
+                        GroupedRouteList(
+                            groups: muchFarther,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
                 } else if viewModel.searchText.isEmpty {
-                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
-                    EmptyTierHint()
+                    MuchFartherAwaySectionHeader(
+                        radiusMeters: muchFartherAwayRadius,
+                        isCollapsed: $isMuchFartherCollapsed
+                    )
+                    if !isMuchFartherCollapsed {
+                        EmptyTierHint()
+                    }
                 }
                 
                 if nearYou.isEmpty && fartherAway.isEmpty
@@ -105,6 +171,7 @@ struct BusDashboard: View {
                         message: "No bus results for \"\(viewModel.searchText)\""
                     )
                 }
+
     }
 
     @ViewBuilder

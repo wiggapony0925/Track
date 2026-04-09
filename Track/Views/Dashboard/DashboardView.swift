@@ -18,9 +18,11 @@ struct DashboardView: View {
 
     @ObservedObject private var favoritesManager = FavoritesManager.shared
 
-    /// Whether the sheet is at its smallest resting position.
+    /// Whether the sheet is at a non-expanded resting position
+    /// (default half-height or the dynamic peek position).
+    /// Any detent that isn't `.large` is treated as collapsed.
     private var isCollapsed: Bool {
-        sheetDetent == SheetConstants.defaultDetent
+        sheetDetent != .large
     }
 
     private var searchTextBinding: Binding<String> {
@@ -46,6 +48,12 @@ struct DashboardView: View {
                 locationName: viewModel.currentLocationName,
                 isDragSearchActive: viewModel.isSearchPinActive
             )
+            .background {
+                GeometryReader { proxy in
+                    Color.clear
+                        .preference(key: NavbarHeightKey.self, value: proxy.size.height)
+                }
+            }
             
             // MARK: - Scrollable Content
             scrollableContent
@@ -54,10 +62,14 @@ struct DashboardView: View {
                     isCollapsed
                         ? DragGesture(minimumDistance: 12)
                             .onEnded { value in
-                                // Upward swipe → expand the sheet
+                                // Upward swipe → step up through detents
                                 if value.translation.height < -20 {
                                     withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
-                                        sheetDetent = .large
+                                        if sheetDetent != SheetConstants.defaultDetent {
+                                            sheetDetent = SheetConstants.defaultDetent
+                                        } else {
+                                            sheetDetent = .large
+                                        }
                                     }
                                 }
                             }
@@ -161,14 +173,6 @@ struct DashboardView: View {
                         .animation(
                             .spring(response: 0.4, dampingFraction: 0.7),
                             value: viewModel.selectedMode
-                        )
-                    }
-
-                    // ── Service alerts, errors, outages ───────────────────────
-                    if !viewModel.isLoading || hasTransitData {
-                        ServiceAlertsSection(
-                            alerts: viewModel.serviceAlerts.filtered(for: viewModel.selectedMode),
-                            lastUpdated: viewModel.alertsLastUpdated
                         )
                     }
 

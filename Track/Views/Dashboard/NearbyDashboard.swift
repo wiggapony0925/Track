@@ -15,6 +15,13 @@ struct NearbyDashboard: View {
     let lastUpdated: Date?
     @Binding var cameraPosition: TrackCameraPosition
 
+    // MARK: - Section Collapse State
+
+    @State private var isNearYouCollapsed = false
+    @State private var isFartherCollapsed = false
+    @State private var isMuchFartherCollapsed = false
+    @State private var isInactiveCollapsed = true
+
     // MARK: - Computed Properties
 
     /// Radius thresholds from settings
@@ -39,47 +46,79 @@ struct NearbyDashboard: View {
 
                 // Display "Near You" section
                 if !nearYou.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    GroupedRouteList(
-                        groups: nearYou,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        sheetNavigator: sheetNavigator,
-                        referenceLocation: refLocation
+                    NearYouSectionHeader(
+                        radiusMeters: nearYouRadius,
+                        updated: lastUpdated,
+                        isCollapsed: $isNearYouCollapsed
                     )
+                    if !isNearYouCollapsed {
+                        GroupedRouteList(
+                            groups: nearYou,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
                 } else if viewModel.searchText.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    EmptyTierHint()
+                    NearYouSectionHeader(
+                        radiusMeters: nearYouRadius,
+                        updated: lastUpdated,
+                        isCollapsed: $isNearYouCollapsed
+                    )
+                    if !isNearYouCollapsed {
+                        EmptyTierHint()
+                    }
                 }
 
                 // Display "A Little Farther Away" section
                 if !fartherAway.isEmpty {
-                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
-                    GroupedRouteList(
-                        groups: fartherAway,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        sheetNavigator: sheetNavigator,
-                        referenceLocation: refLocation
+                    FartherAwaySectionHeader(
+                        radiusMeters: fartherAwayRadius,
+                        isCollapsed: $isFartherCollapsed
                     )
+                    if !isFartherCollapsed {
+                        GroupedRouteList(
+                            groups: fartherAway,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
                 } else if viewModel.searchText.isEmpty {
-                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
-                    EmptyTierHint()
+                    FartherAwaySectionHeader(
+                        radiusMeters: fartherAwayRadius,
+                        isCollapsed: $isFartherCollapsed
+                    )
+                    if !isFartherCollapsed {
+                        EmptyTierHint()
+                    }
                 }
 
                 // Display "Much Farther Away" section
                 if !muchFarther.isEmpty {
-                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
-                    GroupedRouteList(
-                        groups: muchFarther,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        sheetNavigator: sheetNavigator,
-                        referenceLocation: refLocation
+                    MuchFartherAwaySectionHeader(
+                        radiusMeters: muchFartherAwayRadius,
+                        isCollapsed: $isMuchFartherCollapsed
                     )
+                    if !isMuchFartherCollapsed {
+                        GroupedRouteList(
+                            groups: muchFarther,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
                 } else if viewModel.searchText.isEmpty {
-                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
-                    EmptyTierHint()
+                    MuchFartherAwaySectionHeader(
+                        radiusMeters: muchFartherAwayRadius,
+                        isCollapsed: $isMuchFartherCollapsed
+                    )
+                    if !isMuchFartherCollapsed {
+                        EmptyTierHint()
+                    }
                 }
 
                 // Show empty state only when all sections are empty after filtering
@@ -106,21 +145,32 @@ struct NearbyDashboard: View {
                     arrivals: sorted, from: refLocation)
 
                 if !nearYouArrivals.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    FlatTransitList(
-                        arrivals: nearYouArrivals,
-                        viewModel: viewModel,
-                        locationManager: locationManager
+                    NearYouSectionHeader(
+                        radiusMeters: nearYouRadius,
+                        updated: lastUpdated,
+                        isCollapsed: $isNearYouCollapsed
                     )
+                    if !isNearYouCollapsed {
+                        FlatTransitList(
+                            arrivals: nearYouArrivals,
+                            viewModel: viewModel,
+                            locationManager: locationManager
+                        )
+                    }
                 }
 
                 if !fartherAwayArrivals.isEmpty {
-                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
-                    FlatTransitList(
-                        arrivals: fartherAwayArrivals,
-                        viewModel: viewModel,
-                        locationManager: locationManager
+                    FartherAwaySectionHeader(
+                        radiusMeters: fartherAwayRadius,
+                        isCollapsed: $isFartherCollapsed
                     )
+                    if !isFartherCollapsed {
+                        FlatTransitList(
+                            arrivals: fartherAwayArrivals,
+                            viewModel: viewModel,
+                            locationManager: locationManager
+                        )
+                    }
                 }
 
             } else if !viewModel.isLoading {
@@ -171,6 +221,39 @@ struct NearbyDashboard: View {
                         .noNearbyArrivals,
                         action: .explore(cameraPosition: $cameraPosition)
                     )
+                }
+            }
+
+            // Display "Inactive Lines" section — routes with no active service.
+            // Placed outside the grouped/flat/empty conditionals so it always
+            // appears when there are ghost or GTFS-only inactive routes.
+            let inactiveTotal = viewModel.ghostRoutes.count
+                + viewModel.inactiveGroupedTransit.count
+            if inactiveTotal > 0 {
+                InactiveLinesSectionHeader(
+                    count: inactiveTotal,
+                    isCollapsed: $isInactiveCollapsed
+                )
+                .id("inactive-section-anchor")
+                if !isInactiveCollapsed {
+                    // Ghost routes (in grouped feed but 0 arrivals) —
+                    // rendered as full GroupedRouteRow for tap-to-detail.
+                    if !viewModel.ghostRoutes.isEmpty {
+                        GroupedRouteList(
+                            groups: viewModel.ghostRoutes,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
+                    // Truly inactive routes (GTFS catalog only, no feed presence)
+                    if !viewModel.inactiveGroupedTransit.isEmpty {
+                        InactiveRouteList(
+                            routes: viewModel.inactiveGroupedTransit,
+                            sheetNavigator: sheetNavigator
+                        )
+                    }
                 }
             }
         }
@@ -240,97 +323,136 @@ struct ClosestToYouSectionHeader: View {
     }
 }
 
-/// "Near You" section header - minimal dot indicator
+/// "Near You" section header - tappable to collapse/expand
 struct NearYouSectionHeader: View {
     let radiusMeters: Double
     let updated: Date?
+    @Binding var isCollapsed: Bool
 
     private var radiusDisplay: String {
         formatDistanceMiles(radiusMeters)
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(AppTheme.Colors.successGreen)
-                .frame(width: 8, height: 8)
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isCollapsed.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(AppTheme.Colors.successGreen)
+                    .frame(width: 8, height: 8)
 
-            Text("Near You")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textPrimary)
+                Text("Near You")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
 
-            Text("· \(radiusDisplay)")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textTertiary)
-
-            Spacer()
-
-            if let updated = updated {
-                Text(updated, style: .time)
-                    .font(.system(size: 11, weight: .regular))
+                Text("· \(radiusDisplay)")
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textTertiary)
+
+                Spacer()
+
+                if let updated = updated {
+                    Text(updated, style: .time)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
             }
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.top, 8)
         .padding(.bottom, 4)
     }
 }
 
-/// "A Little Farther Away" section header - minimal dot indicator
+/// "A Little Farther Away" section header - tappable to collapse/expand
 struct FartherAwaySectionHeader: View {
     let radiusMeters: Double
+    @Binding var isCollapsed: Bool
 
     private var radiusDisplay: String {
         formatDistanceMiles(radiusMeters)
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(AppTheme.Colors.accent)
-                .frame(width: 8, height: 8)
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isCollapsed.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(AppTheme.Colors.accent)
+                    .frame(width: 8, height: 8)
 
-            Text("A Bit Farther")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textPrimary)
+                Text("A Bit Farther")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
 
-            Text("· \(radiusDisplay)")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textTertiary)
+                Text("· \(radiusDisplay)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
 
-            Spacer()
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+            }
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.top, 10)
         .padding(.bottom, 4)
     }
 }
 
-/// "Much Farther Away" section header - minimal dot indicator
+/// "Much Farther Away" section header - tappable to collapse/expand
 struct MuchFartherAwaySectionHeader: View {
     let radiusMeters: Double
+    @Binding var isCollapsed: Bool
 
     private var radiusDisplay: String {
         formatDistanceMiles(radiusMeters)
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(AppTheme.Colors.warningYellow)
-                .frame(width: 8, height: 8)
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isCollapsed.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(AppTheme.Colors.warningYellow)
+                    .frame(width: 8, height: 8)
 
-            Text("Much Farther")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textPrimary)
+                Text("Much Farther")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
 
-            Text("· \(radiusDisplay)")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textTertiary)
+                Text("· \(radiusDisplay)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
 
-            Spacer()
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+            }
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.top, 10)
         .padding(.bottom, 4)
@@ -346,6 +468,126 @@ struct EmptyTierHint: View {
             .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.35))
             .padding(.horizontal, AppTheme.Layout.margin + 14)
             .padding(.vertical, 6)
+    }
+}
+
+// MARK: - Inactive Lines Section
+
+/// Section header for routes with no active service (collapsed by default)
+struct InactiveLinesSectionHeader: View {
+    let count: Int
+    @Binding var isCollapsed: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                isCollapsed.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "moon.zzz.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+
+                Text("Inactive Lines")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+
+                Text("· \(count)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.7))
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 14)
+        .padding(.bottom, 4)
+    }
+}
+
+/// List of inactive routes rendered as individual cards matching `GroupedRouteRow` style.
+struct InactiveRouteList: View {
+    let routes: [InactiveRouteResponse]
+    let sheetNavigator: SheetNavigator
+
+    var body: some View {
+        LazyVStack(spacing: 12) {
+            ForEach(routes) { route in
+                InactiveRouteRow(route: route, sheetNavigator: sheetNavigator)
+            }
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+    }
+}
+
+/// Single card for an inactive route — matches the active `GroupedRouteRow` visual style.
+/// Tappable: opens the route detail sheet with an empty-directions stub.
+struct InactiveRouteRow: View {
+    let route: InactiveRouteResponse
+    let sheetNavigator: SheetNavigator
+
+    private var isBus: Bool { route.mode == "bus" }
+    private var isCommuterRail: Bool { route.mode == "lirr" || route.mode == "mnr" }
+
+    private var serviceLabel: String {
+        if let busType = route.busServiceType, !busType.isEmpty {
+            return busType
+        }
+        return route.mode.capitalized
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Route badge — same RouteBadge component used in active rows
+            RouteBadge(
+                routeID: route.displayName,
+                size: .medium,
+                isBus: isBus,
+                hexColor: route.colorHex,
+                mode: route.mode
+            )
+            .padding(.horizontal, isCommuterRail ? 6 : 8)
+            .padding(.vertical, 8)
+
+            // Center — "No active service" label
+            VStack(alignment: .leading, spacing: 5) {
+                Text("No active service")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                Text(serviceLabel)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // Build a lightweight stub group so the route-detail sheet
+            // can render the "No active service" empty state.
+            let stub = GroupedNearbyTransitResponse(
+                routeId: route.routeId,
+                displayName: route.displayName,
+                mode: route.mode,
+                colorHex: route.colorHex,
+                directions: [],
+                sortingKey: route.sortingKey,
+                busServiceType: route.busServiceType
+            )
+            sheetNavigator.navigate(to: .routeDetail(group: stub, directionIndex: 0))
+        }
     }
 }
 
@@ -412,7 +654,7 @@ struct GroupedRouteList: View {
                             to: .routeDetail(
                                 group: group,
                                 directionIndex: directionIndex,
-                                initialTab: .alerts))
+                                initialTab: .stops))
                         Task {
                             await viewModel.handleRouteSelection(
                                 group, directionIndex: directionIndex,

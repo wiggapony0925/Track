@@ -56,7 +56,7 @@ extension HomeViewModel {
         // Without this guard, a session cache that is >90 s old produces an
         // empty list here, making the stale-while-revalidate optimization a
         // no-op and showing a blank screen until the network refresh finishes.
-        let base = groupedTransit.filter { !$0.isExpired || showStaleRows }
+        let base = groupedTransit.filter { $0.hasRealArrivals && (!$0.isExpired || showStaleRows) }
         guard !searchText.isEmpty else { return base }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
@@ -134,7 +134,7 @@ extension HomeViewModel {
         let source = (nearbyGroupedBusArrivals.isEmpty
             ? groupedTransit.filter { $0.mode == "bus" }
             : nearbyGroupedBusArrivals
-        ).filter { !$0.isExpired || showStaleRows }
+        ).filter { $0.hasRealArrivals && (!$0.isExpired || showStaleRows) }
         guard !searchText.isEmpty else { return source }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
@@ -148,7 +148,7 @@ extension HomeViewModel {
         let source = (nearbyGroupedSubwayArrivals.isEmpty
             ? groupedTransit.filter { $0.mode == "subway" }
             : nearbyGroupedSubwayArrivals
-        ).filter { !$0.isExpired || showStaleRows }
+        ).filter { $0.hasRealArrivals && (!$0.isExpired || showStaleRows) }
         guard !searchText.isEmpty else { return source }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
@@ -162,7 +162,7 @@ extension HomeViewModel {
         let source = (nearbyGroupedLIRRArrivals.isEmpty
             ? groupedTransit.filter { $0.mode == "lirr" }
             : nearbyGroupedLIRRArrivals
-        ).filter { !$0.isExpired || showStaleRows }
+        ).filter { $0.hasRealArrivals && (!$0.isExpired || showStaleRows) }
         guard !searchText.isEmpty else { return source }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)
@@ -176,7 +176,7 @@ extension HomeViewModel {
         let source = (nearbyGroupedMNRArrivals.isEmpty
             ? groupedTransit.filter { $0.mode == "mnr" }
             : nearbyGroupedMNRArrivals
-        ).filter { !$0.isExpired || showStaleRows }
+        ).filter { $0.hasRealArrivals && (!$0.isExpired || showStaleRows) }
         guard !searchText.isEmpty else { return source }
         let query = searchText.lowercased()
         let stationRoutes = stationRoutesForQuery(query)

@@ -205,7 +205,8 @@ struct HomeView: View {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                 sheetDetent = .large
                             }
-                        }
+                        },
+                        dragToSearchEnabled: $dragToSearchEnabled
                     )
                 
                 // MARK: - Drag-to-Search Overlay

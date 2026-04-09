@@ -535,6 +535,48 @@ final class HomeViewModel {
     // Grouped nearby transit (one card per route)
     var groupedTransit: [GroupedNearbyTransitResponse] = []
 
+    /// Routes with no active service (placeholder-only — no real arrivals).
+    /// Shown in the "Inactive Lines" section at the bottom of the dashboard.
+    var inactiveGroupedTransit: [InactiveRouteResponse] = []
+
+    /// Mode-filtered inactive routes for per-tab display.
+    var inactiveSubwayRoutes: [InactiveRouteResponse] {
+        inactiveGroupedTransit.filter { $0.mode == "subway" }
+    }
+    var inactiveBusRoutes: [InactiveRouteResponse] {
+        inactiveGroupedTransit.filter { $0.mode == "bus" }
+    }
+    var inactiveLIRRRoutes: [InactiveRouteResponse] {
+        inactiveGroupedTransit.filter { $0.mode == "lirr" }
+    }
+    var inactiveMNRRoutes: [InactiveRouteResponse] {
+        inactiveGroupedTransit.filter { $0.mode == "mnr" }
+    }
+
+    // MARK: - Ghost Routes (grouped entries with zero real arrivals)
+
+    /// Routes present in the grouped API response but with zero real
+    /// (non-placeholder) arrivals in every direction.  These "ghost"
+    /// entries are moved from the active display to the Inactive Lines
+    /// section so they don't clutter the active dashboard.
+    var ghostRoutes: [GroupedNearbyTransitResponse] {
+        groupedTransit.filter { !$0.hasRealArrivals }
+    }
+
+    /// Mode-filtered ghost routes for per-tab inactive sections.
+    var ghostSubwayRoutes: [GroupedNearbyTransitResponse] {
+        ghostRoutes.filter { $0.mode == "subway" }
+    }
+    var ghostBusRoutes: [GroupedNearbyTransitResponse] {
+        ghostRoutes.filter { $0.isBus }
+    }
+    var ghostLIRRRoutes: [GroupedNearbyTransitResponse] {
+        ghostRoutes.filter { $0.isLIRR }
+    }
+    var ghostMNRRoutes: [GroupedNearbyTransitResponse] {
+        ghostRoutes.filter { $0.isMNR }
+    }
+
     /// Remembers the user's last selected direction per grouped route card.
     /// Keyed by "mode:routeId" so bus/subway routes with similar IDs don't collide.
     /// Stores both a stable direction key and the last known index fallback.

@@ -551,6 +551,41 @@ struct TrackAPI {
         }
     }
 
+    /// Fetches inactive transit routes — routes serving the area but with no active service.
+    ///
+    /// - Parameters:
+    ///   - lat: Latitude of the user's location.
+    ///   - lon: Longitude of the user's location.
+    ///   - radius: Search radius in meters.
+    ///   - activeRoutes: Display names of currently active routes to exclude.
+    /// - Returns: Array of `InactiveRouteResponse`.
+    static func fetchInactiveRoutes(
+        lat: Double, lon: Double, radius: Int? = nil,
+        activeRoutes: [String] = []
+    ) async throws -> [InactiveRouteResponse] {
+        let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
+        guard var components = URLComponents(string: baseURL + "/nearby/inactive") else {
+            throw TrackAPIError.invalidURL
+        }
+        var queryItems = [
+            URLQueryItem(name: "lat", value: String(lat)),
+            URLQueryItem(name: "lon", value: String(lon)),
+            URLQueryItem(name: "radius", value: String(effectiveRadius)),
+        ]
+        if !activeRoutes.isEmpty {
+            queryItems.append(
+                URLQueryItem(name: "active_routes", value: activeRoutes.joined(separator: ","))
+            )
+        }
+        components.queryItems = queryItems
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        AppLogger.shared.logRequest(method: "GET", url: url.absoluteString)
+        let data = try await get(url: url)
+        return try decoder.decode([InactiveRouteResponse].self, from: data)
+    }
+
     // MARK: - Bus Vehicles & Route Shapes
 
     /// Fetches live vehicle positions for a bus route.

@@ -366,13 +366,13 @@ struct ManageFavoritesView: View {
                             onTrack?(group, directionIndex)
                         },
                         onAlertTapped: isEditing ? nil : {
-                            // Navigate to alerts tab, then trigger route
+                            // Navigate to route detail, then trigger route
                             // selection so the map banner + polyline appear.
                             sheetNavigator.navigate(
                                 to: .routeDetail(
                                     group: group,
                                     directionIndex: 0,
-                                    initialTab: .alerts
+                                    initialTab: .stops
                                 )
                             )
                             onAlertSelect?(group)

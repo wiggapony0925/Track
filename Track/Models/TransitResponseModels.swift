@@ -415,3 +415,27 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
         busServiceType = try c.decodeIfPresent(String.self, forKey: .busServiceType)
     }
 }
+
+// MARK: - Inactive Route (no active service)
+
+/// Matches the backend's `InactiveRoute` JSON schema.
+/// Lightweight — no arrivals, just identification info for display.
+struct InactiveRouteResponse: Codable, Identifiable {
+    var id: String { routeId }
+
+    let routeId: String
+    let displayName: String
+    let mode: String
+    let colorHex: String?
+    let busServiceType: String?
+    let sortingKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case displayName = "display_name"
+        case mode
+        case colorHex = "color_hex"
+        case busServiceType = "bus_service_type"
+        case sortingKey = "sorting_key"
+    }
+}

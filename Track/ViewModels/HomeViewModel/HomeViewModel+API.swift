@@ -1567,10 +1567,15 @@ extension HomeViewModel {
                 )
             }
 
-            let newGrouped = mergedGrouped.filter { $0.hasRealArrivals }
+            // Keep ALL routes (including ghost/placeholder-only routes) so they
+            // appear in the ghostRoutes computed property and are rendered in
+            // the Inactive Lines section.  Downstream filters (filteredGroupedTransit,
+            // filteredNearbyGroupedSubwayArrivals, etc.) already exclude ghosts
+            // from the active dashboard via the hasRealArrivals guard.
+            let newGrouped = mergedGrouped
             let groupedElapsed = Date().timeIntervalSince(groupedStart)
-            let subwayCount = newGrouped.filter { $0.mode == "subway" }.count
-            let busCount = newGrouped.filter { $0.mode == "bus" }.count
+            let subwayCount = newGrouped.filter { $0.mode == "subway" && $0.hasRealArrivals }.count
+            let busCount = newGrouped.filter { $0.mode == "bus" && $0.hasRealArrivals }.count
             AppLogger.shared.log(
                 "TIMING",
                 message: "  nearby/grouped → \(newGrouped.count) "
@@ -1579,7 +1584,10 @@ extension HomeViewModel {
                     + "\(AppLogger.formatDuration(groupedElapsed))"
             )
 
+            // Flat arrivals — exclude placeholder-only arrivals from ghost routes
+            // so the flat arrival list doesn't show "99 min" stubs.
             let rawTransit = newGrouped
+                .filter(\.hasRealArrivals)
                 .flatMap(\ .directions)
                 .flatMap(\ .arrivals)
 
@@ -1591,6 +1599,30 @@ extension HomeViewModel {
                 existing: groupedTransit,
                 isAtTransitSpeed: location.speed >= AppSettings.transitSpeedThreshold
             )
+
+            // Fetch inactive routes from backend (fire-and-forget, non-blocking).
+            // Send ALL grouped route names (including ghost routes) so the backend
+            // doesn't return duplicates. Ghost routes are already shown in the
+            // inactive section as GroupedRouteRow with full detail.
+            let activeNames = newGrouped.map(\.displayName)
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let inactive = try await TrackAPI.fetchInactiveRoutes(
+                        lat: location.coordinate.latitude,
+                        lon: location.coordinate.longitude,
+                        activeRoutes: activeNames
+                    )
+                    await MainActor.run {
+                        self.inactiveGroupedTransit = inactive
+                    }
+                } catch {
+                    AppLogger.shared.log(
+                        "INACTIVE",
+                        message: "Failed to fetch inactive routes: \(error.localizedDescription)"
+                    )
+                }
+            }
 
             // Server responded — cancel any in-flight cold-start retry chain
             // and reset the attempt counter so the next cold-start (after a
@@ -1632,7 +1664,7 @@ extension HomeViewModel {
             // the top 3 bus routes while the user is still on the home screen.
             // When they tap a route, the shape is already in the LRU/disk
             // cache → stops list, polyline, and banner appear instantly.
-            prefetchTopBusShapes(from: newGrouped)
+            prefetchTopBusShapes(from: newGrouped.filter(\.hasRealArrivals))
 
             // On first load (cold start), global feeds were deferred until
             // grouped succeeds — fire them now that the backend is proven warm.
@@ -1663,9 +1695,10 @@ extension HomeViewModel {
             // ── Refresh complete: log timing summary ──
             let refreshElapsed = Date().timeIntervalSince(refreshStart)
             let totalFromLaunch = AppLogger.shared.timeSinceLaunch
-            let finalSubwayCount = newGrouped.filter { $0.mode == "subway" }.count
-            let finalBusCount = newGrouped.filter { $0.isBus }.count
-            let commuterCount = newGrouped.filter { $0.isCommuterRail }.count
+            let finalSubwayCount = newGrouped.filter { $0.mode == "subway" && $0.hasRealArrivals }.count
+            let finalBusCount = newGrouped.filter { $0.isBus && $0.hasRealArrivals }.count
+            let commuterCount = newGrouped.filter { $0.isCommuterRail && $0.hasRealArrivals }.count
+            let ghostCount = newGrouped.filter { !$0.hasRealArrivals }.count
             let launchDur = AppLogger.formatDuration(
                 totalFromLaunch
             )
@@ -1674,7 +1707,8 @@ extension HomeViewModel {
                 + " — \(newGrouped.count) groups"
                 + " (\(finalSubwayCount) subway,"
                 + " \(finalBusCount) bus,"
-                + " \(commuterCount) commuter)"
+                + " \(commuterCount) commuter,"
+                + " \(ghostCount) ghost)"
                 + " T+\(launchDur) since launch"
             AppLogger.shared.log("TIMING", message: doneMsg)
 

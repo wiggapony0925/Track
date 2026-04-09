@@ -25,6 +25,10 @@ struct MapControlsOverlay: View {
     /// Called when the user taps the alert bell — HomeView navigates to alerts page.
     var onAlertsTapped: (() -> Void)?
 
+    /// Two-way binding to the `@AppStorage("drag_to_search")` flag in
+    /// HomeView.  Lets the on-map toggle flip it without opening Settings.
+    @Binding var dragToSearchEnabled: Bool
+
     // MARK: - Internal State
 
     /// Tracks whether the recenter button was just tapped for the
@@ -53,11 +57,21 @@ struct MapControlsOverlay: View {
                 // provides its own close, 3D, recenter, and favorite buttons.
                 if sheetDetent != .large && !viewModel.isRouteDetailPresented {
                     VStack {
-                        HStack {
+                        HStack(alignment: .top) {
+                            // ── Drag Search Toggle (top-left) ──
+                            if viewModel.selectedRouteId == nil {
+                                DragSearchToggleButton(isEnabled: $dragToSearchEnabled)
+                                    .transition(
+                                        .opacity.combined(
+                                            with: .scale(scale: 0.85, anchor: .topLeading)
+                                        )
+                                    )
+                            }
+
                             Spacer()
                             mapControlIsland
                         }
-                        .padding(.trailing, 12)
+                        .padding(.horizontal, 12)
                         .padding(.top, 52) // Clear the MapLibre compass
                         Spacer()
                     }
@@ -462,7 +476,8 @@ private struct IslandButtonStyle: ButtonStyle {
             sheetDetent: .constant(SheetConstants.defaultDetent),
             currentMapCenter: nil,
             currentMapDistance: nil,
-            onAlertsTapped: {}
+            onAlertsTapped: {},
+            dragToSearchEnabled: .constant(true)
         )
     }
 }

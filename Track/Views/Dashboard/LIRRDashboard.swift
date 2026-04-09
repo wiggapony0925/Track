@@ -13,6 +13,13 @@ struct LIRRDashboard: View {
     let sheetNavigator: SheetNavigator
     let lastUpdated: Date?
     
+    // MARK: - Section Collapse State
+
+    @State private var isNearYouCollapsed = false
+    @State private var isFartherCollapsed = false
+    @State private var isMuchFartherCollapsed = false
+    @State private var isInactiveCollapsed = true
+
     // MARK: - Distance Settings
     
     private var nearYouRadius: Double { AppSettings.shared.nearYouRadiusMeters }
@@ -78,42 +85,65 @@ struct LIRRDashboard: View {
 
                 // "Near You" section
                 if !nearYou.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    GroupedRouteList(
-                        groups: nearYou,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        sheetNavigator: sheetNavigator,
-                        referenceLocation: refLocation
+                    NearYouSectionHeader(
+                        radiusMeters: nearYouRadius,
+                        updated: lastUpdated,
+                        isCollapsed: $isNearYouCollapsed
                     )
+                    if !isNearYouCollapsed {
+                        GroupedRouteList(
+                            groups: nearYou,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
                 } else if viewModel.searchText.isEmpty {
-                    NearYouSectionHeader(radiusMeters: nearYouRadius, updated: lastUpdated)
-                    EmptyTierHint()
+                    NearYouSectionHeader(
+                        radiusMeters: nearYouRadius,
+                        updated: lastUpdated,
+                        isCollapsed: $isNearYouCollapsed
+                    )
+                    if !isNearYouCollapsed {
+                        EmptyTierHint()
+                    }
                 }
 
                 // "A Bit Farther" section
                 if !fartherAway.isEmpty {
-                    FartherAwaySectionHeader(radiusMeters: fartherAwayRadius)
-                    GroupedRouteList(
-                        groups: fartherAway,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        sheetNavigator: sheetNavigator,
-                        referenceLocation: refLocation
+                    FartherAwaySectionHeader(
+                        radiusMeters: fartherAwayRadius,
+                        isCollapsed: $isFartherCollapsed
                     )
+                    if !isFartherCollapsed {
+                        GroupedRouteList(
+                            groups: fartherAway,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
                 }
 
                 // "Much Farther" section
                 if !muchFarther.isEmpty {
-                    MuchFartherAwaySectionHeader(radiusMeters: muchFartherAwayRadius)
-                    GroupedRouteList(
-                        groups: muchFarther,
-                        viewModel: viewModel,
-                        locationManager: locationManager,
-                        sheetNavigator: sheetNavigator,
-                        referenceLocation: refLocation
+                    MuchFartherAwaySectionHeader(
+                        radiusMeters: muchFartherAwayRadius,
+                        isCollapsed: $isMuchFartherCollapsed
                     )
+                    if !isMuchFartherCollapsed {
+                        GroupedRouteList(
+                            groups: muchFarther,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
                 }
+
             } else if !viewModel.isLoading {
                 if !viewModel.searchText.isEmpty && !viewModel.lirrArrivals.isEmpty {
                     EmptyStateView(
@@ -133,6 +163,33 @@ struct LIRRDashboard: View {
                         ),
                         compact: true
                     )
+                }
+            }
+
+            // Inactive LIRR lines — outside the active/empty conditional
+            let inactiveLIRRTotal = viewModel.ghostLIRRRoutes.count
+                + viewModel.inactiveLIRRRoutes.count
+            if inactiveLIRRTotal > 0 {
+                InactiveLinesSectionHeader(
+                    count: inactiveLIRRTotal,
+                    isCollapsed: $isInactiveCollapsed
+                )
+                if !isInactiveCollapsed {
+                    if !viewModel.ghostLIRRRoutes.isEmpty {
+                        GroupedRouteList(
+                            groups: viewModel.ghostLIRRRoutes,
+                            viewModel: viewModel,
+                            locationManager: locationManager,
+                            sheetNavigator: sheetNavigator,
+                            referenceLocation: refLocation
+                        )
+                    }
+                    if !viewModel.inactiveLIRRRoutes.isEmpty {
+                        InactiveRouteList(
+                            routes: viewModel.inactiveLIRRRoutes,
+                            sheetNavigator: sheetNavigator
+                        )
+                    }
                 }
             }
         }
