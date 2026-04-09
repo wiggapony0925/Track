@@ -61,6 +61,7 @@ from app.models import (
     BusStop,
     DirectionArrivals,
     GroupedNearbyTransit,
+    InactiveRoute,
     InlineAlert,
     NearbyTransitArrival,
 )
@@ -977,6 +978,211 @@ async def nearby_transit_grouped(
     task = asyncio.create_task(_miss_compute())
     _nearby_resp_inflight[key] = task
     return await task
+
+
+# ---------------------------------------------------------------------------
+# /nearby/inactive — routes serving the area with no active service
+# ---------------------------------------------------------------------------
+
+# In-memory cache: key → (timestamp, json_bytes)
+_inactive_cache: dict[tuple, tuple[float, bytes]] = {}
+_INACTIVE_FRESH_TTL = 300.0  # 5 min — inactive routes change slowly
+_INACTIVE_STALE_TTL = 900.0  # 15 min
+
+
+@lru_cache(maxsize=1)
+def _load_all_gtfs_routes() -> dict[str, tuple[str, str | None, int]]:
+    """Load all routes from GTFS: route_short_name → (route_id, route_color, route_type)."""
+    import sqlite3
+
+    db_path = Path("app/data/transit_schedule.db")
+    if not db_path.exists():
+        return {}
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT route_id, route_short_name, route_color, route_type FROM routes"
+        )
+        result: dict[str, tuple[str, str | None, int]] = {}
+        for route_id, short_name, color, rtype in cur.fetchall():
+            if short_name:
+                result[short_name] = (route_id, color, rtype or 0)
+        conn.close()
+        return result
+    except Exception:
+        return {}
+
+
+def _mode_for_route_type(route_type: int) -> str:
+    """Map GTFS route_type to Track mode string."""
+    if route_type == 1:
+        return "subway"
+    if route_type == 2:
+        return "lirr"  # commuter rail (covers both LIRR / MNR in NYC)
+    if route_type == 3:
+        return "bus"
+    return "bus"
+
+
+@router.get(
+    "/nearby/inactive",
+    response_model=list[InactiveRoute],
+    summary="List inactive transit routes in an area",
+    description=(
+        "Returns transit routes that serve stops near the given coordinates but "
+        "have no active service right now. Designed for the 'Inactive Lines' "
+        "section at the bottom of the home screen."
+    ),
+)
+async def nearby_inactive_routes(
+    lat: float = Query(
+        ..., ge=-90, le=90,
+        description="Latitude of the user's location.",
+        examples=[40.7580],
+    ),
+    lon: float = Query(
+        ..., ge=-180, le=180,
+        description="Longitude of the user's location.",
+        examples=[-73.9855],
+    ),
+    radius: int | None = Query(
+        None, ge=100, le=10000,
+        description="Search radius in meters.",
+        examples=[800],
+    ),
+    active_routes: str | None = Query(
+        None,
+        description=(
+            "Comma-separated display names of currently active routes "
+            "(from /nearby/grouped). These will be excluded from the inactive list."
+        ),
+        examples=["A,C,F,B63,M34-SBS"],
+    ),
+) -> list[InactiveRoute]:
+    """Return routes serving the area that have no active service.
+
+    The client calls this after ``/nearby/grouped`` and passes the
+    ``active_routes`` it received so the backend can subtract them.
+    """
+    import json as _json
+    import time as _time
+
+    settings = get_settings()
+    effective_radius = (
+        radius if radius is not None else settings.app_settings.search_radius_meters
+    )
+
+    # Coarse grid key (same 3-decimal quick grid)
+    grid_lat = round(lat, 3)
+    grid_lon = round(lon, 3)
+    cache_key = (grid_lat, grid_lon, effective_radius)
+
+    now = _time.time()
+    cached = _inactive_cache.get(cache_key)
+    if cached is not None:
+        ts, jb = cached
+        if now - ts < _INACTIVE_FRESH_TTL:
+            # Filter by current active_routes before returning
+            return _filter_inactive_json(jb, active_routes)
+
+    # Discover all routes serving nearby stops via GTFS static data
+    all_routes_in_area = _discover_routes_in_area(lat, lon, effective_radius)
+
+    # Build InactiveRoute objects (before filtering by active — cache the full set)
+    inactive_list: list[InactiveRoute] = []
+    for display_name, (route_id, color, route_type) in sorted(all_routes_in_area.items()):
+        mode = _mode_for_route_type(route_type)
+        service_type = _classify_bus_service_type(display_name) if mode == "bus" else None
+        color_hex = None
+        if mode == "bus":
+            color_hex = _bus_color_for_service_type(service_type or "Local")
+        elif color:
+            color_hex = f"#{color}" if not color.startswith("#") else color
+
+        inactive_list.append(
+            InactiveRoute(
+                route_id=route_id,
+                display_name=display_name,
+                mode=mode,
+                color_hex=color_hex,
+                bus_service_type=service_type,
+                sorting_key=_sorting_key(mode, display_name),
+            )
+        )
+
+    inactive_list.sort(key=lambda r: r.sorting_key)
+
+    # Cache the full list
+    jb = _json.dumps([r.model_dump() for r in inactive_list]).encode()
+    _inactive_cache[cache_key] = (now, jb)
+
+    # Evict old entries
+    stale_keys = [k for k, (t, _) in _inactive_cache.items() if now - t > _INACTIVE_STALE_TTL]
+    for k in stale_keys:
+        _inactive_cache.pop(k, None)
+
+    # Filter out currently active routes and return
+    if active_routes:
+        active_set = {n.strip().upper() for n in active_routes.split(",") if n.strip()}
+        return [r for r in inactive_list if r.display_name.upper() not in active_set]
+    return inactive_list
+
+
+def _filter_inactive_json(jb: bytes, active_routes: str | None) -> list[InactiveRoute]:
+    """Deserialize cached inactive list and filter out active routes."""
+    import json as _json
+
+    raw = _json.loads(jb)
+    all_routes = [InactiveRoute(**r) for r in raw]
+    if not active_routes:
+        return all_routes
+    active_set = {n.strip().upper() for n in active_routes.split(",") if n.strip()}
+    return [r for r in all_routes if r.display_name.upper() not in active_set]
+
+
+def _discover_routes_in_area(
+    lat: float, lon: float, radius_m: int,
+) -> dict[str, tuple[str, str | None, int]]:
+    """Return display_name → (route_id, route_color, route_type) for all GTFS routes
+    serving stops within radius_m of (lat, lon)."""
+    import sqlite3
+
+    db_path = Path("app/data/transit_schedule.db")
+    if not db_path.exists():
+        return {}
+
+    from app.providers import get_provider as _get_provider
+
+    _prov = _get_provider()
+    lat_span = radius_m / _prov.meters_per_deg_lat
+    lon_span = radius_m / _prov.meters_per_deg_lon
+
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT DISTINCT
+                r.route_id, r.route_short_name, r.route_color, r.route_type
+            FROM stops s
+            JOIN stop_times st ON st.stop_id = s.stop_id
+            JOIN trips t ON t.trip_id = st.trip_id
+            JOIN routes r ON r.route_id = t.route_id
+            WHERE s.stop_lat BETWEEN ? AND ?
+              AND s.stop_lon BETWEEN ? AND ?
+            """,
+            (lat - lat_span, lat + lat_span, lon - lon_span, lon + lon_span),
+        )
+        result: dict[str, tuple[str, str | None, int]] = {}
+        for route_id, short_name, color, rtype in cur.fetchall():
+            if short_name:
+                result[short_name] = (route_id, color, rtype or 0)
+        conn.close()
+        return result
+    except Exception as exc:
+        TrackLogger.info(f"Inactive route discovery failed: {exc}", exc_info=True)
+        return {}
 
 
 # ---------------------------------------------------------------------------

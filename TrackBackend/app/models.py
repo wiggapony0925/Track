@@ -402,6 +402,23 @@ class GroupedNearbyTransit(BaseModel):
     )
 
 
+class InactiveRoute(BaseModel):
+    """A transit route that serves the area but has no active service right now.
+
+    Lightweight model — no arrivals, just identification info.
+    """
+
+    route_id: str = Field(..., description="GTFS route ID.")
+    display_name: str = Field(..., description="Human-readable route name.")
+    mode: str = Field(..., description="Transit mode: subway, bus, lirr, mnr.")
+    color_hex: str | None = Field(None, description="Route brand colour as hex.")
+    bus_service_type: str | None = Field(
+        None,
+        description="Bus service classification, or null for non-bus routes.",
+    )
+    sorting_key: str = Field("", description="MTA canonical sort key.")
+
+
 class BusVehicle(BaseModel):
     """A live bus vehicle position from the SIRI vehicle-monitoring API."""
 
