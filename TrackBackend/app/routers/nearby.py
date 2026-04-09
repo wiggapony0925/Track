@@ -27,6 +27,8 @@ from app.cache_config import (
     NEARBY_RESPONSE_FRESH_TTL,
     NEARBY_RESPONSE_MAX_SIZE,
     NEARBY_RESPONSE_STALE_TTL,
+    SIRI_WAVE_SIZE,
+    SIRI_WAVE_DELAY,
 )
 from app.clients.bus_client import (
     BUS_AGENCY_PREFIXES,
@@ -483,7 +485,7 @@ def _route_prefix(route_id: str) -> str:
 _grouped_ta = _TypeAdapter(list[GroupedNearbyTransit])
 
 _nearby_resp_cache: dict[
-    tuple[float, float, int, str | None],  # (rounded_lat, rounded_lon, radius, mode)
+    tuple[float, float, int, str | None, bool],  # (rounded_lat, rounded_lon, radius, mode, quick)
     tuple[float, list[GroupedNearbyTransit], bytes],  # (timestamp, result, json_bytes)
 ] = {}
 _nearby_resp_inflight: dict[tuple, asyncio.Task] = {}
@@ -508,11 +510,13 @@ _NEARBY_COMPUTE_TIMEOUT: int = (
 
 
 async def _compute_and_cache_grouped(
-    key: tuple[float, float, int, str | None],
+    key: tuple[float, float, int, str | None, bool],
     lat: float,
     lon: float,
     radius: int,
     mode: str | None,
+    *,
+    quick: bool = False,
 ) -> list[GroupedNearbyTransit]:
     import time as _time
 
@@ -532,7 +536,7 @@ async def _compute_and_cache_grouped(
     # and explicitly cancels + awaits all pending tasks — no zombies.
     # The outer 45 s guard catches pathological cases (e.g. the
     # cancellation itself is blocked by GIL contention).
-    _ca_task = asyncio.create_task(_collect_all(lat, lon, radius, mode_filter=mode))
+    _ca_task = asyncio.create_task(_collect_all(lat, lon, radius, mode_filter=mode, quick=quick))
     try:
         flat = await asyncio.wait_for(
             asyncio.shield(_ca_task),
@@ -603,22 +607,32 @@ def clear_nearby_cache() -> int:
     return count
 
 
+# During drag search (quick=True), use 3 decimal places (~111 m grid)
+# instead of 4 (~11 m) so that small pan movements hit the same cache
+# cell.  This dramatically improves cache-hit rate while panning.
+_QUICK_GPS_DECIMALS: int = 3
+
+
 def _nearby_cache_key(
-    lat: float, lon: float, radius: int, mode: str | None
-) -> tuple[float, float, int, str | None]:
-    """Round GPS to ~111m grid cells for cache bucketing."""
-    factor = 10**NEARBY_GPS_DECIMALS
-    return (round(lat * factor) / factor, round(lon * factor) / factor, radius, mode)
+    lat: float, lon: float, radius: int, mode: str | None, *, quick: bool = False,
+) -> tuple[float, float, int, str | None, bool]:
+    """Round GPS to grid cells for cache bucketing.
+
+    Normal mode: 4 decimals (~11 m).  Quick mode: 3 decimals (~111 m).
+    """
+    decimals = _QUICK_GPS_DECIMALS if quick else NEARBY_GPS_DECIMALS
+    factor = 10**decimals
+    return (round(lat * factor) / factor, round(lon * factor) / factor, radius, mode, quick)
 
 
 def _find_cached_grouped_fallback(
-    key: tuple[float, float, int, str | None],
+    key: tuple[float, float, int, str | None, bool],
     now: float,
     *,
     max_age: float,
     include_neighbor_cells: bool,
 ) -> (
-    tuple[tuple[float, float, int, str | None], list[GroupedNearbyTransit], float]
+    tuple[tuple[float, float, int, str | None, bool], list[GroupedNearbyTransit], float]
     | None
 ):
     """Find the freshest compatible cached response for this location key.
@@ -627,22 +641,23 @@ def _find_cached_grouped_fallback(
     true, adjacent rounded GPS cells for the same radius/mode are also eligible.
     This keeps small GPS jitter from blowing away nearby/grouped cache hits.
     """
-    factor = 10**NEARBY_GPS_DECIMALS
+    req_lat, req_lon, req_radius, req_mode, req_quick = key
+    decimals = _QUICK_GPS_DECIMALS if req_quick else NEARBY_GPS_DECIMALS
+    factor = 10**decimals
     cell_span = 1 / factor
-    req_lat, req_lon, req_radius, req_mode = key
 
     best: (
         tuple[
             tuple[float, float],
-            tuple[float, float, int, str | None],
+            tuple[float, float, int, str | None, bool],
             list[GroupedNearbyTransit],
             bytes,
         ]
         | None
     ) = None
     for candidate_key, (ts, data, jb) in _nearby_resp_cache.items():
-        cand_lat, cand_lon, cand_radius, cand_mode = candidate_key
-        if cand_radius != req_radius or cand_mode != req_mode:
+        cand_lat, cand_lon, cand_radius, cand_mode, cand_quick = candidate_key
+        if cand_radius != req_radius or cand_mode != req_mode or cand_quick != req_quick:
             continue
 
         lat_ok = abs(cand_lat - req_lat) < 1e-12
@@ -768,6 +783,15 @@ async def nearby_transit_grouped(
         description="Filter results to a single transit mode. Omit for all modes.",
         examples=["subway", "bus", "lirr", "mnr"],
     ),
+    quick: bool = Query(
+        False,
+        description=(
+            "When true, skip expensive bus backfill phases (D/E/F) and use a "
+            "coarser GPS grid (~111 m) for faster cache hits.  Designed for "
+            "drag-to-search where speed matters more than completeness.  "
+            "Full results are returned on the next non-quick refresh."
+        ),
+    ),
 ) -> list[GroupedNearbyTransit]:
     """Return nearby arrivals grouped by route with direction sub-groups.
 
@@ -816,7 +840,7 @@ async def nearby_transit_grouped(
     )
     TrackLogger.location(lat, lon, "nearby/grouped")
 
-    key = _nearby_cache_key(lat, lon, effective_radius, mode)
+    key = _nearby_cache_key(lat, lon, effective_radius, mode, quick=quick)
     now = _time.time()
 
     # 1. Check cache
@@ -837,10 +861,10 @@ async def nearby_transit_grouped(
             if key not in _nearby_resp_inflight:
 
                 async def _bg_refresh(
-                    k: tuple, r: int, m: str | None
+                    k: tuple, r: int, m: str | None, *, q: bool = False,
                 ) -> list[GroupedNearbyTransit] | None:
                     try:
-                        return await _compute_and_cache_grouped(k, k[0], k[1], r, m)
+                        return await _compute_and_cache_grouped(k, k[0], k[1], r, m, quick=q)
                     except Exception as exc:
                         TrackLogger.info(
                             f"BG refresh /nearby/grouped failed: {_describe_exception(exc)}",
@@ -849,7 +873,7 @@ async def nearby_transit_grouped(
                     finally:
                         _nearby_resp_inflight.pop(k, None)
 
-                task = asyncio.create_task(_bg_refresh(key, effective_radius, mode))
+                task = asyncio.create_task(_bg_refresh(key, effective_radius, mode, q=quick))
                 _nearby_resp_inflight[key] = task
             resp = Response(content=json_bytes, media_type="application/json")
             resp.headers["X-Track-Cache"] = f"HIT-STALE age={age:.1f}s"
@@ -871,10 +895,11 @@ async def nearby_transit_grouped(
         if key not in _nearby_resp_inflight:
 
             async def _bg_refresh_exact(
-                k: tuple, req_lat: float, req_lon: float, r: int, m: str | None
+                k: tuple, req_lat: float, req_lon: float, r: int, m: str | None,
+                *, q: bool = False,
             ) -> list[GroupedNearbyTransit] | None:
                 try:
-                    return await _compute_and_cache_grouped(k, req_lat, req_lon, r, m)
+                    return await _compute_and_cache_grouped(k, req_lat, req_lon, r, m, quick=q)
                 except Exception as exc:
                     TrackLogger.info(
                         f"BG refresh /nearby/grouped failed: {_describe_exception(exc)}",
@@ -884,7 +909,7 @@ async def nearby_transit_grouped(
                     _nearby_resp_inflight.pop(k, None)
 
             task = asyncio.create_task(
-                _bg_refresh_exact(key, lat, lon, effective_radius, mode)
+                _bg_refresh_exact(key, lat, lon, effective_radius, mode, q=quick)
             )
             _nearby_resp_inflight[key] = task
         return Response(content=fallback_json, media_type="application/json")
@@ -908,7 +933,7 @@ async def nearby_transit_grouped(
     async def _miss_compute() -> list[GroupedNearbyTransit] | Response:
         try:
             result = await _compute_and_cache_grouped(
-                key, lat, lon, effective_radius, mode
+                key, lat, lon, effective_radius, mode, quick=quick,
             )
             # Return pre-serialized bytes from cache — skip response_model
             cached_after = _nearby_resp_cache.get(key)
@@ -965,12 +990,16 @@ async def _collect_all(
     radius: int | None = None,
     *,
     mode_filter: str | None = None,
+    quick: bool = False,
 ) -> list[NearbyTransitArrival]:
     """Gather subway + bus arrivals in parallel.
 
     When *mode_filter* is provided (e.g. ``"subway"``, ``"bus"``, ``"lirr"``,
     ``"mnr"``), only that mode is fetched — skipping unnecessary network
     calls for the other feeds.
+
+    When *quick* is ``True`` (drag-search), bus Phase D/E/F backfill is
+    skipped for faster response at the cost of completeness.
 
     Uses ``asyncio.wait()`` with an explicit timeout so that:
     1. Completed modes return partial results even when others are slow.
@@ -1019,7 +1048,7 @@ async def _collect_all(
         )
     if mode_filter is None or mode_filter == "bus":
         tasks["bus"] = asyncio.create_task(
-            _fetch_nearby_buses(lat, lon, effective_radius)
+            _fetch_nearby_buses(lat, lon, effective_radius, quick=quick)
         )
     if mode_filter is None or mode_filter == "lirr":
         tasks["lirr"] = asyncio.create_task(
@@ -2266,6 +2295,8 @@ async def _fetch_nearby_buses(
     lat: float,
     lon: float,
     radius: int | None = None,
+    *,
+    quick: bool = False,
 ) -> list[NearbyTransitArrival]:
     """Fetch bus arrivals from nearby stops.
 
@@ -2275,6 +2306,10 @@ async def _fetch_nearby_buses(
     dashboard (categorised by distance tier).  This ensures the user
     sees *all* bus service in their area, not just buses that happen to
     be approaching right now.
+
+    When *quick* is ``True`` (drag-search mode), only Phases A-C run.
+    Phases D/E/F (expensive OBA stops-for-route + static GTFS) are
+    skipped so the endpoint responds in <1 s for drag-search users.
     """
     import time as _monotonic_mod
 
@@ -2282,7 +2317,8 @@ async def _fetch_nearby_buses(
     # Phases A-F are "nice-to-have" enrichment; core SIRI results are
     # the priority.  Returning partial results is much better than
     # timing out and returning nothing.
-    _BUS_INTERNAL_DEADLINE = _monotonic_mod.monotonic() + 25  # seconds
+    # Quick mode: tighter 10 s budget — only Phases A-C need to run.
+    _BUS_INTERNAL_DEADLINE = _monotonic_mod.monotonic() + (10 if quick else 25)
 
     def _budget_left() -> float:
         return _BUS_INTERNAL_DEADLINE - _monotonic_mod.monotonic()
@@ -2359,12 +2395,25 @@ async def _fetch_nearby_buses(
     # dense areas; generous enough to cover both sides of a street
     # for all routes in the search radius.
     stops_to_query = stops[:BUS_MAX_SIRI_STOPS]
-    tasks = [get_realtime_arrivals(stop.id) for stop in stops_to_query]
     _t_siri = _t.perf_counter()
-    stop_results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Wave-based batching: split SIRI requests into waves of
+    # SIRI_WAVE_SIZE with SIRI_WAVE_DELAY between each wave to
+    # avoid triggering MTA's 403 rate limiter.  During drag-search
+    # the app fires rapid location-change requests, each spawning
+    # up to 80 concurrent SIRI calls — waves smooth this burst.
+    stop_results: list = []
+    for _wave_start in range(0, len(stops_to_query), SIRI_WAVE_SIZE):
+        _wave = stops_to_query[_wave_start : _wave_start + SIRI_WAVE_SIZE]
+        _wave_tasks = [get_realtime_arrivals(s.id) for s in _wave]
+        _wave_results = await asyncio.gather(*_wave_tasks, return_exceptions=True)
+        stop_results.extend(_wave_results)
+        # Sleep between waves (but not after the last one)
+        if _wave_start + SIRI_WAVE_SIZE < len(stops_to_query):
+            await asyncio.sleep(SIRI_WAVE_DELAY)
     _siri_ms = (_t.perf_counter() - _t_siri) * 1000
     TrackLogger.info(
         f"⏱ BUS SIRI: {len(stops_to_query)} stops fetched in {_siri_ms:.0f}ms"
+        f" ({(len(stops_to_query) - 1) // SIRI_WAVE_SIZE + 1} waves)"
     )
 
     # Pre-fetch all bus recency errors in one pipeline before the correction loop.
@@ -3042,6 +3091,19 @@ async def _fetch_nearby_buses(
             f"Phase C: Created {phase_c_count} opposite-direction placeholders "
             f"for single-direction routes"
         )
+
+    # ── Quick mode: skip expensive Phases D/E/F ─────────────────────
+    # During drag-search the user is panning the map — speed matters
+    # more than completeness.  Phases A-C already give live SIRI data
+    # plus missing-route / direction placeholders.  Phases D/E/F add
+    # deep OBA stops-for-route lookups and static GTFS which can take
+    # 5-12 s.  Return early so drag-search responses are <1 s.
+    if quick:
+        TrackLogger.bus(
+            f"Quick mode — returning {len(results)} bus results "
+            f"(skipped Phase D/E/F) budget={_budget_left():.1f}s"
+        )
+        return results
 
     # ── Deadline gate before Phase D (network calls to OBA) ─────────
     if _budget_left() <= 3:

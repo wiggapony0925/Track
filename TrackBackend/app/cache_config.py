@@ -104,10 +104,12 @@ BUS_NEARBY_STOPS_MAX_SIZE: int = _ovr.get("bus_nearby_stops_max_size", 500)
 # │  BUS — Circuit Breakers & Concurrency               │
 # └─────────────────────────────────────────────────────┘
 
-SIRI_FAIL_THRESHOLD: int = _ovr.get("siri_fail_threshold", 3)
+SIRI_FAIL_THRESHOLD: int = _ovr.get("siri_fail_threshold", 20)
 SIRI_CIRCUIT_COOLDOWN: float = _ovr.get("siri_circuit_cooldown", 300.0)
-OBA_AUTH_COOLDOWN: float = _ovr.get("oba_auth_cooldown", 60.0)
-BUS_UPSTREAM_CONCURRENCY: int = _ovr.get("bus_upstream_concurrency", 64)
+OBA_AUTH_COOLDOWN: float = _ovr.get("oba_auth_cooldown", 120.0)
+BUS_UPSTREAM_CONCURRENCY: int = _ovr.get("bus_upstream_concurrency", 40)
+SIRI_WAVE_SIZE: int = _ovr.get("siri_wave_size", 20)
+SIRI_WAVE_DELAY: float = _ovr.get("siri_wave_delay", 0.15)
 
 REDIS_KEY_PREFIX: str = "track:bus"
 

@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import csv
 import json
+import random as _random
 import re
 import time as _time
 from collections import defaultdict
@@ -45,6 +46,8 @@ from app.cache_config import (
     REDIS_KEY_PREFIX,
     SIRI_CIRCUIT_COOLDOWN,
     SIRI_FAIL_THRESHOLD,
+    SIRI_WAVE_SIZE,
+    SIRI_WAVE_DELAY,
 )
 from app.clients import redis_client as _redis
 from app.config import get_settings
@@ -847,6 +850,14 @@ async def _shared_cache_set(
     )
 
 
+_KEY_RE = re.compile(r"([?&])key=[0-9a-fA-F-]{8,}")
+
+
+def _redact_api_key(text: str) -> str:
+    """Strip API keys from URLs / error messages to prevent log leaks."""
+    return _KEY_RE.sub(r"\1key=REDACTED", text)
+
+
 def _normalize_mta_bus_url(url: str) -> str:
     """Force HTTPS for MTA Bus Time endpoints.
 
@@ -973,7 +984,16 @@ async def _fetch_bus_json(
                     _record_siri_auth_failure()
                 else:
                     _record_oba_auth_failure(url)
-                response.raise_for_status()
+                # Raise with redacted URL so API keys don't leak into logs
+                msg = _redact_api_key(
+                    f"Client error '{response.status_code} {response.reason_phrase}' "
+                    f"for url '{response.url}'"
+                )
+                raise httpx.HTTPStatusError(
+                    msg,
+                    request=response.request,
+                    response=response,
+                )
             if response.status_code >= 500 and attempt < _MAX_RETRIES - 1:
                 # Transient server error — wait briefly and retry
                 await asyncio.sleep(0.3)
