@@ -28,7 +28,7 @@
     "bus_arrivals_fresh_ttl": 20.0,
     "bus_arrivals_stale_ttl": 90.0,
     "bus_arrivals_max_size": 1000,
-    "bus_max_siri_stops": 50,
+    "bus_max_siri_stops": 80,
     "bus_vehicles_fresh_ttl": 8.0,
     "bus_vehicles_stale_ttl": 45.0,
     "bus_vehicles_max_size": 800,

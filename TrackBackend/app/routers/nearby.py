@@ -211,7 +211,7 @@ def _classify_bus_service_type(display_name: str) -> str:
     if "-SBS" in upper or "+SBS" in upper:
         return "Select Bus Service"
     # Express bus prefixes (NYC express buses)
-    if upper.startswith(("BXM", "QM", "SIM", "X")):
+    if upper.startswith(("BXM", "BM", "QM", "SIM", "X")):
         return "Express"
     # Limited-stop services (OBA marks these with +)
     if "+" in upper:
@@ -252,7 +252,7 @@ _SUBWAY_EXPRESS_ROUTES: frozenset[str] = frozenset({
 
 # Bus route-name patterns that indicate express / limited / SBS service.
 _BUS_EXPRESS_PREFIX_RE = re.compile(
-    r"^(SIM|BxM|BM\d|QM)\d",
+    r"^(SIM|BxM|BM|QM|X)\d",
     re.IGNORECASE,
 )
 
@@ -1895,10 +1895,10 @@ def _group_arrivals(
             )
         )
 
-    # Drop groups that consist entirely of backend-generated placeholders
-    # (minutesAway >= 99, no arrival_ts).  These are routes the OBA API lists
-    # as nearby but that have no live SIRI data AND no GTFS schedule matches —
-    # showing them as empty cards in the iOS app is confusing.
+    # Keep placeholder-only groups visible.  Phase E adds routes from the
+    # static GTFS index that have confirmed nearby stops but no live SIRI
+    # data.  Dropping them hides legitimate routes the user could walk to.
+    # Log for debugging but do NOT prune.
     def _has_any_real(g: GroupedNearbyTransit) -> bool:
         return any(
             a.minutes_away < _PLACEHOLDER_MINUTES or a.arrival_ts is not None
@@ -1910,10 +1910,9 @@ def _group_arrivals(
     if placeholder_only:
         names = [g.display_name for g in placeholder_only]
         TrackLogger.debug(
-            f"Dropped {len(placeholder_only)} placeholder-only route(s) "
-            f"with no real arrivals: {names}"
+            f"{len(placeholder_only)} placeholder-only route(s) kept "
+            f"(GTFS-backed, no live data): {names}"
         )
-        groups = [g for g in groups if _has_any_real(g)]
 
     # Sort groups by canonical MTA order, then by soonest arrival
     groups.sort(key=lambda g: (g.sorting_key, _soonest_minutes(g)))
@@ -2419,7 +2418,7 @@ async def _fetch_nearby_buses(
                 exp_utc = arrival.expected_arrival
                 if exp_utc.tzinfo is None:
                     exp_utc = exp_utc.replace(tzinfo=UTC)
-                if (exp_utc - now_utc).total_seconds() < -60:
+                if (exp_utc - now_utc).total_seconds() < -120:
                     continue
 
             minutes = _bus_minutes_away(arrival.expected_arrival)
@@ -3170,28 +3169,54 @@ async def _fetch_nearby_buses(
         )
         existing_routes = {r.route_id for r in results if r.mode == "bus"}
         phase_e_count = 0
-        for route_id, (stop_name, stop_lat, stop_lon, stop_id) in static_routes.items():
-            if route_id in existing_routes:
-                continue
-            results.append(
-                NearbyTransitArrival(
+
+        # Build schedule queries in parallel for all missing routes.
+        missing_items = [
+            (route_id, stop_name, stop_lat, stop_lon, stop_id)
+            for route_id, (stop_name, stop_lat, stop_lon, stop_id) in static_routes.items()
+            if route_id not in existing_routes
+        ]
+
+        if missing_items:
+            sched_tasks = [
+                _schedule_arrivals_for_stop(
+                    stop_id=stop_id,
                     route_id=route_id,
                     stop_name=stop_name,
-                    arrival_ts=None,
-                    direction=route_primary_direction.get(route_id) or "N/A",
-                    minutes_away=_PLACEHOLDER_MINUTES,
-                    status="Scheduled",
-                    mode="bus",
                     stop_lat=stop_lat,
                     stop_lon=stop_lon,
-                    stop_id=f"MTA_{stop_id}",
-                    vehicle_id=None,
-                    destination=None,
-                    is_express=_is_express_service(route_id, "bus"),
+                    fallback_direction=route_primary_direction.get(route_id) or "N/A",
                 )
-            )
-            existing_routes.add(route_id)
-            phase_e_count += 1
+                for route_id, stop_name, stop_lat, stop_lon, stop_id in missing_items
+            ]
+            sched_results = await asyncio.gather(*sched_tasks, return_exceptions=True)
+
+            for (route_id, stop_name, stop_lat, stop_lon, stop_id), sched in zip(
+                missing_items, sched_results
+            ):
+                if isinstance(sched, Exception) or not sched:
+                    # Fallback: bare placeholder so the route still appears
+                    results.append(
+                        NearbyTransitArrival(
+                            route_id=route_id,
+                            stop_name=stop_name,
+                            arrival_ts=None,
+                            direction=route_primary_direction.get(route_id) or "N/A",
+                            minutes_away=_PLACEHOLDER_MINUTES,
+                            status="Scheduled",
+                            mode="bus",
+                            stop_lat=stop_lat,
+                            stop_lon=stop_lon,
+                            stop_id=f"MTA_{stop_id}",
+                            vehicle_id=None,
+                            destination=None,
+                            is_express=_is_express_service(route_id, "bus"),
+                        )
+                    )
+                else:
+                    results.extend(sched)
+                existing_routes.add(route_id)
+                phase_e_count += 1
 
         if phase_e_count:
             TrackLogger.bus(
@@ -3216,7 +3241,7 @@ async def _fetch_nearby_buses(
     # OBA stops-for-route and inject placeholders for routes with stops
     # inside the radius.
     empty_route_metadata_stops = sum(1 for s in stops if not s.route_ids)
-    run_phase_f = empty_route_metadata_stops and (fail_count > 0)
+    run_phase_f = empty_route_metadata_stops or (fail_count > 0)
     if run_phase_f:
         local_prefixes = {
             _route_prefix(r.route_id)

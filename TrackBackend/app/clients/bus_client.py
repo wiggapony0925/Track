@@ -1393,7 +1393,9 @@ async def get_nearby_stops(
     # 100 stops can exclude legitimately closer routes before we sort client-
     # side. Use a larger cap for bigger radii so nearby routes like M11 are
     # not omitted simply because they fell outside the upstream truncation.
-    if effective_radius >= 5000:
+    if effective_radius >= 8000:
+        max_count = "500"
+    elif effective_radius >= 5000:
         max_count = "300"
     elif effective_radius >= 2500:
         max_count = "200"

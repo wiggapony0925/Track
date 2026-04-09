@@ -66,7 +66,7 @@ MTA_UPSTREAM_CONCURRENCY: int = _ovr.get("mta_upstream_concurrency", 48)
 BUS_ARRIVALS_FRESH_TTL: float = _ovr.get("bus_arrivals_fresh_ttl", 12.0)
 BUS_ARRIVALS_STALE_TTL: float = _ovr.get("bus_arrivals_stale_ttl", 25.0)
 BUS_ARRIVALS_MAX_SIZE: int = _ovr.get("bus_arrivals_max_size", 1000)
-BUS_MAX_SIRI_STOPS: int = _ovr.get("bus_max_siri_stops", 50)
+BUS_MAX_SIRI_STOPS: int = _ovr.get("bus_max_siri_stops", 80)
 
 
 # ┌─────────────────────────────────────────────────────┐
