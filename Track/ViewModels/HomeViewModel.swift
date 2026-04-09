@@ -786,6 +786,12 @@ final class HomeViewModel {
     var currentLocationName: String?
     @ObservationIgnored private var _lastGeocodedLocation: CLLocation?
     @ObservationIgnored private var _geocodeTask: Task<Void, Never>?
+    /// Epoch time of the last successful geocode — used with
+    /// `_geocodeCooldown` to enforce a rate ceiling.
+    @ObservationIgnored private var _lastGeocodeTime: CFAbsoluteTime = 0
+    /// Minimum seconds between reverse-geocode requests. Apple rate-
+    /// limits at 50 req / 60 s; 3 s keeps us well below that ceiling.
+    @ObservationIgnored private let _geocodeCooldown: CFAbsoluteTime = 3
 
     /// In-flight weather observation polling task. Cancelled on each
     /// `refresh()` so only one polling loop runs at a time.
@@ -1856,18 +1862,41 @@ final class HomeViewModel {
 
     // MARK: - Reverse Geocoding
 
+    /// Immediately update `currentLocationName` with a compact coordinate
+    /// string (e.g. "40.6892, -74.0445") so the header shows something
+    /// useful on every camera frame. The geocode will overwrite this once
+    /// the debounce settles. Only fires during drag-search.
+    func setInstantCoordinate(_ coord: CLLocationCoordinate2D) {
+        let lat = String(format: "%.4f", coord.latitude)
+        let lon = String(format: "%.4f", coord.longitude)
+        currentLocationName = "\(lat), \(lon)"
+    }
+
     /// Resolve the user's location to a human-readable place name.
     /// Shows the street address (e.g. "117-13 125th St") when available,
     /// falling back to neighborhood → city → "New York".
-    /// Throttled: only fires when the reference location moves > 50 m
-    /// from the last resolved point.
+    ///
+    /// **Throttled two ways:**
+    ///  1. Distance — skips when the reference location moved < 100 m.
+    ///  2. Time     — skips when < 3 s since the last geocode request.
+    ///
+    /// Together these keep us well under Apple's 50‑req/60‑s rate limit
+    /// even during aggressive drag-to-search usage.
     func updateLocationName(for location: CLLocation?) {
         guard let loc = location else { return }
+
+        // Distance guard — 100 m minimum move.
         if let last = _lastGeocodedLocation,
-           loc.distance(from: last) < 50 {
-            return // hasn't moved enough
+           loc.distance(from: last) < 100 {
+            return
         }
+
+        // Time guard — 3 s cooldown between requests.
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - _lastGeocodeTime >= _geocodeCooldown else { return }
+
         _geocodeTask?.cancel()
+        _lastGeocodeTime = now          // stamp BEFORE the await
         _geocodeTask = Task { [weak self] in
             do {
                 guard let request = MKReverseGeocodingRequest(location: loc) else { return }
@@ -2232,12 +2261,16 @@ final class HomeViewModel {
         // and were already loaded on the initial refresh.  Saves ~2 network
         // calls per pan gesture.
         let skipGlobal = isSearchPinActive
+        // During drag-to-search, use quick mode so the backend skips
+        // expensive bus backfill phases (D/E/F) — sub-second responses.
+        let useQuick = isSearchPinActive
 
         switch selectedMode {
         case .nearby:
             await refreshNearbyTransit(
                 location: loc,
                 skipGlobalFeeds: skipGlobal,
+                quick: useQuick,
                 silent: isSilentRefresh)
         case .subway:
             await refreshSubway(location: loc)
@@ -2407,6 +2440,9 @@ final class HomeViewModel {
         // New location context — expire grace so stale routes from the
         // previous location are evicted on the next merge.
         expireAllGraceCounters()
+        // Reset distance-mismatch warnings so they re-fire at the new
+        // location instead of being suppressed by the session-wide set.
+        Self._loggedDistWarnings.removeAll()
         // Use the full mode-aware refresh so bus/subway/LIRR/MNR tabs
         // all get correct data at the drag-search location.
         // Force=true bypasses the cooldown guard — the user explicitly
@@ -2424,6 +2460,9 @@ final class HomeViewModel {
         if let userLocation { lastKnownUserLocation = userLocation }
         isSearchPinActive = false
         searchPinCoordinate = nil
+        // Reset geocode anchor so the next refresh() geocodes the real
+        // GPS location even if it's close to where the drag pin was.
+        _lastGeocodedLocation = nil
         expireAllGraceCounters()
         goMode.cancelWalkingRoute()
         nearestStopCoordinate = nil

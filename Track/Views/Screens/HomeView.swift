@@ -1086,39 +1086,59 @@ struct HomeView: View {
         // Cancel any pending debounce
         dragSearchDebounce?.cancel()
         
-        // Fire a live geocode of the current map center so the sheet
-        // header updates in real-time as the user drags.
-        let dragLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-        viewModel.updateLocationName(for: dragLoc)
+        // ── Magnetic snap-back ─────────────────────────────────────
+        // When drag-search is active and the user drags back close to
+        // their GPS dot, instantly dismiss — no debounce, no delay.
+        // 50m ≈ half a short NYC block, triggers right as the circles
+        // visually overlap on the map.
+        if isDragSearchActive,
+           let userCoord = locationManager.currentLocation?.coordinate {
+            let userLoc = CLLocation(latitude: userCoord.latitude, longitude: userCoord.longitude)
+            let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+            if userLoc.distance(from: panLoc) < 50 {
+                HapticManager.notification(.success)
+                dismissDragSearch()
+                return
+            }
+        }
+        
+        // Instant coordinate feedback — show formatted lat/lon immediately
+        // so the header updates on every frame. The geocode will replace
+        // this with a real place name once the debounce settles.
+        if let userLoc = locationManager.currentLocation {
+            let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+            let dist = panLoc.distance(from: userLoc)
+            
+            if dist > 60 {
+                viewModel.setInstantCoordinate(center)
+                
+                // ── Instant activation ─────────────────────────────────
+                // Show the circle the FIRST frame the user pans 60m+ from
+                // GPS — no debounce, no waiting. The API call is still
+                // gated behind the 350ms debounce below.
+                if !isDragSearchActive {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        isDragSearchActive = true
+                        isDragSearchPanning = true
+                    }
+                    HapticManager.selection()
+                }
+            }
+        } else if isDragSearchActive {
+            viewModel.setInstantCoordinate(center)
+        }
         
         // Mark as actively panning — dims the map and shows "Release to search".
-        // The radius circles now track currentMapCenter live, so we don't need
-        // to clear dragSearchSettledCenter during panning.
         if isDragSearchActive {
             if !isDragSearchPanning {
                 isDragSearchPanning = true
-                // Give a quick vibration each time the user starts a new pan gesture
-                HapticManager.impact(.light)
-            }
-        } else {
-            // Not yet active — fire a single haptic hint when the user pans
-            // far enough that drag-to-search is about to activate.
-            if !hasFiredDragHaptic,
-               let userCoord = locationManager.currentLocation?.coordinate {
-                let userLoc = CLLocation(
-                    latitude: userCoord.latitude,
-                    longitude: userCoord.longitude)
-                let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-                if userLoc.distance(from: panLoc) > 60 {
-                    hasFiredDragHaptic = true
-                    HapticManager.impact(.light)
-                }
             }
         }
         
         dragSearchDebounce = Task { @MainActor in
-            // Wait for the user to stop panning (150ms of stillness)
-            try? await Task.sleep(for: .milliseconds(150))
+            // Wait for the user to stop panning (350ms of stillness)
+            // — snappy feel, safe with the 3 s geocoder time guard.
+            try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
             
             guard let userCoord = locationManager.currentLocation?.coordinate else { return }
@@ -1133,21 +1153,17 @@ struct HomeView: View {
             let threshold: Double = 100
             
             if distanceMoved > threshold {
-                // Show the center dot
-                if !isDragSearchActive {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        isDragSearchActive = true
-                    }
-                    HapticManager.selection()
-                }
-                
-                // Panning stopped — isDragSearching is now derived from
-                // viewModel.isLoading && viewModel.isSearchPinActive,
-                // so it activates automatically when setSearchPin fires.
+                // Panning stopped — fire the API search.
+                // The circle is already visible (activated instantly above).
                 withAnimation(.easeOut(duration: 0.15)) {
                     isDragSearchPanning = false
                 }
                 
+                // Geocode *after* debounce settles — one request per
+                // settled position instead of one per camera frame.
+                let dragLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+                viewModel.updateLocationName(for: dragLoc)
+
                 await viewModel.setSearchPin(center, userLocation: locationManager.currentLocation)
                 lastUpdated = Date()
                 

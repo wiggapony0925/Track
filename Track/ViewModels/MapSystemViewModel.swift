@@ -3177,7 +3177,11 @@ final class MapSystemViewModel {
             // Use structure and complexID from the first member
             let firstKey: GroupKey = keyForStation[memberIndices[0]]
             let allStopIDs: Set<String> = Set(memberIndices.map { stations[$0].id })
-            let primaryId: String = allStopIDs.sorted().first ?? ""
+            // Include structure in the ID so two groups at the same complex
+            // but different structures (e.g. elevated vs subway) get distinct
+            // SwiftUI identifiers — prevents ForEach duplicate-ID warnings.
+            let sortedFirst: String = allStopIDs.sorted().first ?? ""
+            let primaryId: String = "\(sortedFirst)-\(firstKey.structure)"
 
             result.append(ConsolidatedStation(
                 id: primaryId,

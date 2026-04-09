@@ -1429,9 +1429,12 @@ extension HomeViewModel {
     ///   skips alerts and accessibility fetches since those are location-independent
     ///   and are loaded during the initial app refresh. This makes area scanning
     ///   noticeably faster.
+    /// - Parameter quick: When `true` (drag-to-search), tells the backend to
+    ///   skip expensive bus backfill phases (D/E/F) for sub-second response.
     func refreshNearbyTransit(
         location: CLLocation?,
         skipGlobalFeeds: Bool = false,
+        quick: Bool = false,
         silent: Bool = false
     ) async {
         guard let location = location else {
@@ -1494,12 +1497,18 @@ extension HomeViewModel {
         // in 30 s.  By running bus stops in an unstructured Task, the
         // refresh completes as soon as grouped + stations arrive, and bus
         // stops update asynchronously afterward.
+        //
+        // During drag-to-search, rapid refreshes cancel previous tasks
+        // before they complete. To avoid losing bus stop data entirely,
+        // we keep the existing nearbyBusStops when cancelled — they may
+        // be slightly stale but still useful for distance calculations.
         _busStopsFetchTask = Task { @MainActor [weak self] in
             guard let self, !Task.isCancelled else { return }
             let stops = (try? await TrackAPI.fetchNearbyBusStops(
                 lat: lat, lon: lon, radius: Self.busStopsNearbyRadius
             )) ?? self.nearbyBusStops
-            guard !Task.isCancelled else { return }
+            // Don't discard results just because a new refresh started —
+            // stale bus stops are better than no bus stops.
             self.nearbyBusStops = Self.augmentBusStops(stops, from: self.groupedTransit)
         }
 
@@ -1532,8 +1541,8 @@ extension HomeViewModel {
             // in parallel. If subway is missing from the combined response but
             // present in the dedicated response, we merge it in.
             let groupedStart = Date()
-            async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon)
-            async let subwayTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "subway")
+            async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, quick: quick)
+            async let subwayTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "subway", quick: quick)
             async let stationsTask = repository.fetchNearbyStations(
                 latitude: lat, longitude: lon
             )
@@ -1728,6 +1737,7 @@ extension HomeViewModel {
                     await self.refreshNearbyTransit(
                         location: retryLocation,
                         skipGlobalFeeds: skipGlobalFeeds,
+                        quick: quick,
                         silent: true
                     )
                 }

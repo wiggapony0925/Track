@@ -475,6 +475,8 @@ struct TrackAPI {
     ///   - lon: User's longitude.
     ///   - radius: Search radius in meters (from settings.json by default).
     ///   - mode: Optional transit mode filter ("subway", "bus", "lirr", "mnr").
+    ///   - quick: When `true`, the backend skips expensive bus backfill phases
+    ///     and uses a coarser GPS grid for faster response during drag-to-search.
     /// - Returns: Array of `GroupedNearbyTransitResponse`.
     ///
     /// Uses extended timeouts because the backend's `/nearby/grouped`
@@ -484,7 +486,8 @@ struct TrackAPI {
     /// the server finishes computing, especially on cold starts where
     /// Render boots the container AND primes feed caches concurrently.
     static func fetchNearbyGrouped(
-        lat: Double, lon: Double, radius: Int? = nil, mode: String? = nil
+        lat: Double, lon: Double, radius: Int? = nil, mode: String? = nil,
+        quick: Bool = false
     ) async throws -> [GroupedNearbyTransitResponse] {
         let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
         guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {
@@ -497,6 +500,9 @@ struct TrackAPI {
         ]
         if let mode = mode {
             queryItems.append(URLQueryItem(name: "mode", value: mode))
+        }
+        if quick {
+            queryItems.append(URLQueryItem(name: "quick", value: "true"))
         }
         components.queryItems = queryItems
         guard let url = components.url else {
