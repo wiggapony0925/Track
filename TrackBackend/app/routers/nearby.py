@@ -198,33 +198,55 @@ def refresh_limited_route_set() -> None:
     _GTFS_LIMITED_ONLY, _GTFS_LIMITED_MIXED = _build_limited_route_sets()
 
 
-def _classify_bus_service_type(display_name: str) -> str:
+def _classify_bus_service_type(
+    display_name: str,
+    open_data_service_type: str | None = None,
+) -> str:
     """Derive MTA bus service classification from the display name.
 
     Rules (in order of specificity):
     1. Contains '-SBS' or '+SBS' → Select Bus Service
-    2. Starts with 'X' or 'BXM' or 'QM' or 'SIM' → Express
-    3. Contains '+' (OBA limited indicator) → Limited
-    4. Route has ALL trips LIMITED/RUSH in GTFS → Limited
-    5. Route has SOME trips LIMITED/RUSH in GTFS → Local / Limited
+    1b. Ends with '+' (MTA open-data SBS naming: M15+, B44+, Q44+) → SBS
+    2. Starts with 'BXM' or 'BM' or 'QM' or 'SIM' or 'X' → Express
+    3. Route has ALL trips LIMITED/RUSH in GTFS → Limited
+    4. Route has SOME trips LIMITED/RUSH in GTFS → Local / Limited
+    5. Open-data ``route_type`` fallback (catches S81, etc.) → mapped type
     6. Everything else → Local
+
+    Args:
+        display_name: Route display string (e.g. "B63", "M15-SBS", "Q44+").
+        open_data_service_type: Optional ``route_type`` from the MTA open-data
+            shapes dataset (e.g. "local", "limited", "sbs", "express").
+            Used as a last-resort fallback when GTFS headsigns don't cover
+            the route.
     """
     upper = display_name.upper().strip()
-    # SBS routes: M34-SBS, M15-SBS, etc.
+    # SBS routes — OBA uses "-SBS" / "+SBS", open data uses trailing "+"
     if "-SBS" in upper or "+SBS" in upper:
+        return "Select Bus Service"
+    if upper.endswith("+"):
         return "Select Bus Service"
     # Express bus prefixes (NYC express buses)
     if upper.startswith(("BXM", "BM", "QM", "SIM", "X")):
         return "Express"
-    # Limited-stop services (OBA marks these with +)
-    if "+" in upper:
-        return "Limited"
     # Dynamic: 100% limited/rush trips
     if upper in _GTFS_LIMITED_ONLY:
         return "Limited"
     # Dynamic: mixed local + limited/rush
     if upper in _GTFS_LIMITED_MIXED:
         return "Local / Limited"
+    # Fallback: MTA open-data route_type field (catches routes whose GTFS
+    # headsigns don't include LIMITED/RUSH but are classified by MTA).
+    if open_data_service_type:
+        _oda = open_data_service_type.strip().lower()
+        _ODA_MAP: dict[str, str] = {
+            "limited": "Limited",
+            "sbs": "Select Bus Service",
+            "express": "Express",
+            "school": "School",
+        }
+        if _oda in _ODA_MAP:
+            return _ODA_MAP[_oda]
     return "Local"
 
 

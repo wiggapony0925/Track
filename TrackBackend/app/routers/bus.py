@@ -138,7 +138,9 @@ async def bus_tile_data(response: Response) -> BusTileData:
     for route_id, shape in sorted(shapes_index.items()):
         if not shape.polylines:
             continue
-        service_type = _classify_bus_service_type(route_id)
+        service_type = _classify_bus_service_type(
+            route_id, open_data_service_type=shape.service_type
+        )
         color = _bus_color_for_service_type(service_type).lstrip("#")
         tile_routes.append(
             BusTileRoute(
