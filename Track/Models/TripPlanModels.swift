@@ -11,6 +11,7 @@ import SwiftData
 @Model
 final class SavedLocation {
     var id: UUID
+    var enginePlaceID: Int?
     var name: String
     var address: String
     var latitude: Double
@@ -21,6 +22,7 @@ final class SavedLocation {
     var lastUsedAt: Date?
 
     init(
+        enginePlaceID: Int? = nil,
         name: String,
         address: String,
         latitude: Double,
@@ -31,6 +33,7 @@ final class SavedLocation {
         lastUsedAt: Date? = nil
     ) {
         self.id = UUID()
+        self.enginePlaceID = enginePlaceID
         self.name = name
         self.address = address
         self.latitude = latitude
@@ -632,6 +635,28 @@ struct PlannerSavedPlaceRecord: Codable, Equatable {
     }
 }
 
+struct EngineSavedPlaceUpsertRequest: Encodable, Equatable {
+    let userID: String
+    let label: String
+    let kind: String
+    let lat: Double
+    let lon: Double
+    let address: String?
+    let icon: String?
+    let placeID: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case userID = "user_id"
+        case label
+        case kind
+        case lat
+        case lon
+        case address
+        case icon
+        case placeID = "place_id"
+    }
+}
+
 struct PlannerRecentTripRecord: Codable, Equatable {
     let recentTripID: Int
     let userID: String
@@ -997,4 +1022,3 @@ struct EngineServiceAlertDTO: Codable, Equatable {
         )
     }
 }
-

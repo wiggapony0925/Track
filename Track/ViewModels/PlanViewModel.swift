@@ -31,8 +31,10 @@ final class PlanViewModel {
     var recentSearches: [RecentSearchLocation] = []
     var savedTrips: [SavedTrip] = []
     var calendarLocations: [SavedLocation] = []
+    var pendingSavedPlaceCategory: SavedLocationCategory?
     let locationSearchService = LocationSearchService()
     var isResolvingLocation = false
+    var isSavingPlace = false
 
     // MARK: - Private
 
@@ -127,6 +129,18 @@ final class PlanViewModel {
     func selectOrigin(_ location: PlanLocation) {
         origin = location
         showOriginSearch = false
+    }
+
+    func selectLocation(_ location: PlanLocation, isOrigin: Bool) async {
+        if isOrigin {
+            selectOrigin(location)
+        } else {
+            selectDestination(location)
+        }
+
+        if let category = pendingSavedPlaceCategory {
+            await persistSavedPlace(location, category: category)
+        }
     }
 
     func selectRecommendation(_ recommendation: PlannerRecommendation) {
@@ -268,11 +282,7 @@ final class PlanViewModel {
                     lat: coordinate.latitude,
                     lon: coordinate.longitude
                 )
-                if isOrigin {
-                    selectOrigin(location)
-                } else {
-                    selectDestination(location)
-                }
+                await selectLocation(location, isOrigin: isOrigin)
             } catch {
                 errorMessage = "Couldn't resolve that location."
             }
@@ -291,11 +301,7 @@ final class PlanViewModel {
                     lat: coordinate.latitude,
                     lon: coordinate.longitude
                 )
-                if isOriginForMapPicker {
-                    selectOrigin(location)
-                } else {
-                    selectDestination(location)
-                }
+                await selectLocation(location, isOrigin: isOriginForMapPicker)
             } catch {
                 let fallback = PlanLocation.custom(
                     name: String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude),
@@ -303,11 +309,7 @@ final class PlanViewModel {
                     lat: coordinate.latitude,
                     lon: coordinate.longitude
                 )
-                if isOriginForMapPicker {
-                    selectOrigin(fallback)
-                } else {
-                    selectDestination(fallback)
-                }
+                await selectLocation(fallback, isOrigin: isOriginForMapPicker)
             }
             showMapPicker = false
         }
@@ -315,28 +317,35 @@ final class PlanViewModel {
 
     // MARK: - Saved Place Helpers
 
-    func addSavedLocation(
-        name: String,
-        address: String,
-        lat: Double,
-        lon: Double,
-        category: SavedLocationCategory
-    ) {
-        let location = SavedLocation(
-            name: name,
-            address: address,
-            latitude: lat,
-            longitude: lon,
-            category: category
-        )
-        savedLocations.removeAll {
-            $0.resolvedCategory == category || ($0.name == name && $0.address == address)
-        }
-        savedLocations.insert(location, at: 0)
+    func beginSavedPlaceFlow(_ category: SavedLocationCategory) {
+        pendingSavedPlaceCategory = category
+        searchText = ""
+        searchResults = []
+        showDestinationSearch = true
     }
 
-    func deleteSavedLocation(_ location: SavedLocation) {
-        savedLocations.removeAll { $0.id == location.id }
+    func cancelSavedPlaceFlow() {
+        pendingSavedPlaceCategory = nil
+    }
+
+    func deleteSavedLocation(_ location: SavedLocation) async {
+        guard let userID = currentUserID else {
+            savedLocations.removeAll { $0.id == location.id }
+            return
+        }
+        guard let placeID = location.enginePlaceID else {
+            savedLocations.removeAll { $0.id == location.id }
+            return
+        }
+
+        do {
+            try await TrackAPI.deleteEngineSavedPlace(placeID: placeID, userID: userID)
+            savedLocations.removeAll { $0.id == location.id }
+            pendingSavedPlaceCategory = nil
+            await refreshPlannerData()
+        } catch {
+            errorMessage = friendlyErrorMessage(for: error)
+        }
     }
 
     func savedLocation(for category: SavedLocationCategory) -> SavedLocation? {
@@ -414,6 +423,71 @@ final class PlanViewModel {
         }
     }
 
+    private func persistSavedPlace(
+        _ location: PlanLocation,
+        category: SavedLocationCategory
+    ) async {
+        defer { pendingSavedPlaceCategory = nil }
+        guard let userID = currentUserID else {
+            errorMessage = "Sign in to save places."
+            return
+        }
+        guard let coordinate = resolvedCoordinate(for: location) else {
+            errorMessage = "That place does not have a usable location yet."
+            return
+        }
+
+        isSavingPlace = true
+        defer { isSavingPlace = false }
+
+        do {
+            let savedRecord = try await TrackAPI.upsertEngineSavedPlace(
+                request: EngineSavedPlaceUpsertRequest(
+                    userID: userID,
+                    label: category.label,
+                    kind: category.rawValue,
+                    lat: coordinate.latitude,
+                    lon: coordinate.longitude,
+                    address: location.displayAddress,
+                    icon: category.defaultIcon,
+                    placeID: savedLocation(for: category)?.enginePlaceID
+                )
+            )
+
+            savedLocations.removeAll {
+                $0.resolvedCategory == category || $0.enginePlaceID == savedRecord.placeID
+            }
+            savedLocations.insert(
+                SavedLocation(
+                    enginePlaceID: savedRecord.placeID,
+                    name: savedRecord.label,
+                    address: savedRecord.address ?? location.displayAddress ?? "",
+                    latitude: savedRecord.lat,
+                    longitude: savedRecord.lon,
+                    category: category,
+                    iconName: savedRecord.icon ?? category.defaultIcon,
+                    createdAt: Date(timeIntervalSince1970: TimeInterval(savedRecord.createdAt)),
+                    lastUsedAt: savedRecord.lastUsedAt.map {
+                        Date(timeIntervalSince1970: TimeInterval($0))
+                    }
+                ),
+                at: 0
+            )
+            await refreshPlannerData()
+        } catch {
+            errorMessage = friendlyErrorMessage(for: error)
+        }
+    }
+
+    private func resolvedCoordinate(for location: PlanLocation) -> CLLocationCoordinate2D? {
+        switch location {
+        case .currentLocation:
+            return currentLocationCoordinate
+        default:
+            return location.coordinate
+        }
+    }
+
     private func applyPlannerSnapshot(
         savedPlaces: [PlannerSavedPlaceRecord],
         recentTrips: [PlannerRecentTripRecord],
@@ -422,6 +496,7 @@ final class PlanViewModel {
         savedLocations = savedPlaces.map { place in
             let category = SavedLocationCategory(engineKind: place.kind)
             return SavedLocation(
+                enginePlaceID: place.placeID,
                 name: place.label,
                 address: place.address ?? "",
                 latitude: place.lat,
@@ -440,6 +515,7 @@ final class PlanViewModel {
             .filter { $0.source == "calendar" }
             .map { recommendation in
                 SavedLocation(
+                    enginePlaceID: recommendation.placeID,
                     name: recommendation.label,
                     address: recommendation.subtitle,
                     latitude: recommendation.lat,

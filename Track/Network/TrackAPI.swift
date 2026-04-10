@@ -899,6 +899,30 @@ struct TrackAPI {
         return try decoder.decode([PlannerSavedPlaceRecord].self, from: data)
     }
 
+    static func upsertEngineSavedPlace(
+        request payload: EngineSavedPlaceUpsertRequest
+    ) async throws -> PlannerSavedPlaceRecord {
+        let data = try await sendJSON(
+            method: "POST",
+            path: "/engine/places",
+            body: payload,
+            timeout: 20
+        )
+        return try decoder.decode(PlannerSavedPlaceRecord.self, from: data)
+    }
+
+    static func deleteEngineSavedPlace(
+        placeID: Int,
+        userID: String
+    ) async throws {
+        _ = try await sendJSON(
+            method: "DELETE",
+            path: "/engine/places/\(placeID)",
+            queryItems: [URLQueryItem(name: "user_id", value: userID)],
+            timeout: 20
+        )
+    }
+
     static func fetchEngineRecentTrips(
         userID: String,
         limit: Int = 12
@@ -1354,6 +1378,21 @@ struct TrackAPI {
         }
 
         throw lastError
+    }
+
+    private static func sendJSON(
+        method: String,
+        path: String,
+        queryItems: [URLQueryItem] = [],
+        timeout: TimeInterval = 30
+    ) async throws -> Data {
+        try await sendJSON(
+            method: method,
+            path: path,
+            queryItems: queryItems,
+            body: Optional<String>.none,
+            timeout: timeout
+        )
     }
 }
 

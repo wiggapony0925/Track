@@ -674,8 +674,21 @@ struct PlanView: View {
                             viewModel.selectDestination(.saved(home))
                             Task { await viewModel.planTrip() }
                         }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                Task { await viewModel.deleteSavedLocation(home) }
+                            } label: {
+                                Label("Remove Home", systemImage: "trash")
+                            }
+                        }
                     } else {
-                        addPlaceCard(icon: "house.fill", label: "Set Home", color: AppTheme.Colors.accent)
+                        addPlaceCard(
+                            icon: "house.fill",
+                            label: "Set Home",
+                            color: AppTheme.Colors.accent
+                        ) {
+                            viewModel.beginSavedPlaceFlow(.home)
+                        }
                     }
 
                     if let work = viewModel.savedLocation(for: .work) {
@@ -687,8 +700,21 @@ struct PlanView: View {
                             viewModel.selectDestination(.saved(work))
                             Task { await viewModel.planTrip() }
                         }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                Task { await viewModel.deleteSavedLocation(work) }
+                            } label: {
+                                Label("Remove Work", systemImage: "trash")
+                            }
+                        }
                     } else {
-                        addPlaceCard(icon: "briefcase.fill", label: "Set Work", color: AppTheme.Colors.warningYellow)
+                        addPlaceCard(
+                            icon: "briefcase.fill",
+                            label: "Set Work",
+                            color: AppTheme.Colors.warningYellow
+                        ) {
+                            viewModel.beginSavedPlaceFlow(.work)
+                        }
                     }
 
                     if let school = viewModel.savedLocation(for: .school) {
@@ -700,6 +726,21 @@ struct PlanView: View {
                             viewModel.selectDestination(.saved(school))
                             Task { await viewModel.planTrip() }
                         }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                Task { await viewModel.deleteSavedLocation(school) }
+                            } label: {
+                                Label("Remove School", systemImage: "trash")
+                            }
+                        }
+                    } else {
+                        addPlaceCard(
+                            icon: "graduationcap.fill",
+                            label: "Set School",
+                            color: AppTheme.Colors.successGreen
+                        ) {
+                            viewModel.beginSavedPlaceFlow(.school)
+                        }
                     }
 
                     if let partner = viewModel.savedLocation(for: .partner) {
@@ -710,6 +751,21 @@ struct PlanView: View {
                         ) {
                             viewModel.selectDestination(.saved(partner))
                             Task { await viewModel.planTrip() }
+                        }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                Task { await viewModel.deleteSavedLocation(partner) }
+                            } label: {
+                                Label("Remove Partner", systemImage: "trash")
+                            }
+                        }
+                    } else {
+                        addPlaceCard(
+                            icon: "heart.fill",
+                            label: "Set Partner",
+                            color: AppTheme.Colors.alertRed
+                        ) {
+                            viewModel.beginSavedPlaceFlow(.partner)
                         }
                     }
                 }
@@ -787,9 +843,14 @@ struct PlanView: View {
         .buttonStyle(PlanCardButtonStyle())
     }
 
-    private func addPlaceCard(icon: String, label: String, color: Color) -> some View {
+    private func addPlaceCard(
+        icon: String,
+        label: String,
+        color: Color,
+        onTap: @escaping () -> Void
+    ) -> some View {
         Button {
-            // TODO: Open set-location flow
+            onTap()
         } label: {
             VStack(alignment: .leading, spacing: 12) {
                 ZStack {

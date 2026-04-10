@@ -13,6 +13,20 @@ struct DestinationSearchView: View {
     @FocusState private var isSearchFocused: Bool
     @State private var appeared = false
 
+    private var searchTitle: String {
+        if let category = viewModel.pendingSavedPlaceCategory {
+            return "Set \(category.label)"
+        }
+        return isOrigin ? "Set Origin" : "Where to?"
+    }
+
+    private var searchPlaceholder: String {
+        if let category = viewModel.pendingSavedPlaceCategory {
+            return "Search for \(category.label.lowercased())"
+        }
+        return isOrigin ? "Search origin..." : "Search a place or address"
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -48,11 +62,14 @@ struct DestinationSearchView: View {
             )
             .navigationBarHidden(true)
             .overlay {
-                if viewModel.isResolvingLocation {
+                if viewModel.isResolvingLocation || viewModel.isSavingPlace {
                     resolvingOverlay
                 }
             }
-            .animation(.easeInOut(duration: 0.25), value: viewModel.isResolvingLocation)
+            .animation(
+                .easeInOut(duration: 0.25),
+                value: viewModel.isResolvingLocation || viewModel.isSavingPlace
+            )
         }
         .onAppear {
             isSearchFocused = true
@@ -76,7 +93,7 @@ struct DestinationSearchView: View {
                         .tint(AppTheme.Colors.accent)
                         .scaleEffect(1.4)
                 }
-                Text("Getting location...")
+                Text(viewModel.isSavingPlace ? "Saving place..." : "Getting location...")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
             }
@@ -110,12 +127,18 @@ struct DestinationSearchView: View {
 
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isOrigin ? "Set Origin" : "Where to?")
+                    Text(searchTitle)
                         .font(.system(size: 26, weight: .bold, design: .rounded))
                         .foregroundColor(AppTheme.Colors.textPrimary)
+                    if let category = viewModel.pendingSavedPlaceCategory {
+                        Text("Pick a place to save as \(category.label.lowercased()).")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textTertiary)
+                    }
                 }
                 Spacer()
                 Button {
+                    viewModel.cancelSavedPlaceFlow()
                     dismiss()
                 } label: {
                     Image(systemName: "xmark")
@@ -147,10 +170,7 @@ struct DestinationSearchView: View {
                         .foregroundColor(AppTheme.Colors.accent)
                 }
 
-                TextField(
-                    isOrigin ? "Search origin..." : "Search a place or address",
-                    text: $viewModel.searchText
-                )
+                TextField(searchPlaceholder, text: $viewModel.searchText)
                 .font(.system(size: 16, weight: .medium, design: .rounded))
                 .foregroundColor(AppTheme.Colors.textPrimary)
                 .autocorrectionDisabled()
@@ -237,7 +257,9 @@ struct DestinationSearchView: View {
         HStack(spacing: 10) {
             quickActionTile(
                 icon: "location.fill", label: "Current\nLocation", color: .blue
-            ) { selectLocation(.currentLocation) }
+            ) {
+                Task { await selectLocation(.currentLocation) }
+            }
 
             quickActionTile(
                 icon: "map.fill", label: "Choose\non Map", color: AppTheme.Colors.accent
@@ -306,14 +328,52 @@ struct DestinationSearchView: View {
             sectionHeader("Saved Places")
             VStack(spacing: 2) {
                 if let home = viewModel.savedLocation(for: .home) {
-                    premiumLocationRow(icon: home.iconName, iconColor: AppTheme.Colors.accent, name: home.name, detail: home.address) { selectLocation(.saved(home)) }
+                    premiumLocationRow(icon: home.iconName, iconColor: AppTheme.Colors.accent, name: home.name, detail: home.address) {
+                        Task { await selectLocation(.saved(home)) }
+                    }
                 } else {
-                    setLocationRow(icon: "house.fill", label: "Set Home", color: AppTheme.Colors.accent)
+                    setLocationRow(
+                        icon: "house.fill",
+                        label: "Set Home",
+                        color: AppTheme.Colors.accent,
+                        category: .home
+                    )
                 }
                 if let work = viewModel.savedLocation(for: .work) {
-                    premiumLocationRow(icon: work.iconName, iconColor: AppTheme.Colors.warningYellow, name: work.name, detail: work.address) { selectLocation(.saved(work)) }
+                    premiumLocationRow(icon: work.iconName, iconColor: AppTheme.Colors.warningYellow, name: work.name, detail: work.address) {
+                        Task { await selectLocation(.saved(work)) }
+                    }
                 } else {
-                    setLocationRow(icon: "briefcase.fill", label: "Set Work", color: AppTheme.Colors.warningYellow)
+                    setLocationRow(
+                        icon: "briefcase.fill",
+                        label: "Set Work",
+                        color: AppTheme.Colors.warningYellow,
+                        category: .work
+                    )
+                }
+                if let school = viewModel.savedLocation(for: .school) {
+                    premiumLocationRow(icon: school.iconName, iconColor: AppTheme.Colors.successGreen, name: school.name, detail: school.address) {
+                        Task { await selectLocation(.saved(school)) }
+                    }
+                } else {
+                    setLocationRow(
+                        icon: "graduationcap.fill",
+                        label: "Set School",
+                        color: AppTheme.Colors.successGreen,
+                        category: .school
+                    )
+                }
+                if let partner = viewModel.savedLocation(for: .partner) {
+                    premiumLocationRow(icon: partner.iconName, iconColor: AppTheme.Colors.alertRed, name: partner.name, detail: partner.address) {
+                        Task { await selectLocation(.saved(partner)) }
+                    }
+                } else {
+                    setLocationRow(
+                        icon: "heart.fill",
+                        label: "Set Partner",
+                        color: AppTheme.Colors.alertRed,
+                        category: .partner
+                    )
                 }
             }
             .padding(.horizontal, 16)
@@ -327,7 +387,9 @@ struct DestinationSearchView: View {
                 sectionHeader("Calendar")
                 VStack(spacing: 2) {
                     ForEach(viewModel.calendarLocations) { loc in
-                        premiumLocationRow(icon: "calendar", iconColor: AppTheme.Colors.accent, name: loc.name, detail: loc.address) { selectLocation(.saved(loc)) }
+                        premiumLocationRow(icon: "calendar", iconColor: AppTheme.Colors.accent, name: loc.name, detail: loc.address) {
+                            Task { await selectLocation(.saved(loc)) }
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -342,7 +404,9 @@ struct DestinationSearchView: View {
                 sectionHeader("Recent")
                 VStack(spacing: 2) {
                     ForEach(viewModel.recentSearches) { loc in
-                        premiumLocationRow(icon: "clock.arrow.circlepath", iconColor: AppTheme.Colors.textTertiary, name: loc.name, detail: loc.address, isSubtle: true) { selectLocation(.recent(loc)) }
+                        premiumLocationRow(icon: "clock.arrow.circlepath", iconColor: AppTheme.Colors.textTertiary, name: loc.name, detail: loc.address, isSubtle: true) {
+                            Task { await selectLocation(.recent(loc)) }
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -517,8 +581,18 @@ struct DestinationSearchView: View {
     }
 
     private func setLocationRow(icon: String, label: String, color: Color) -> some View {
+        setLocationRow(icon: icon, label: label, color: color, category: .custom)
+    }
+
+    private func setLocationRow(
+        icon: String,
+        label: String,
+        color: Color,
+        category: SavedLocationCategory
+    ) -> some View {
         Button {
-            // TODO: Open set location flow
+            viewModel.beginSavedPlaceFlow(category)
+            isSearchFocused = true
         } label: {
             HStack(spacing: 14) {
                 ZStack {
@@ -556,7 +630,7 @@ struct DestinationSearchView: View {
 
     private func searchResultRow(_ result: SearchResultItem) -> some View {
         Button {
-            selectLocation(result.toPlanLocation())
+            Task { await selectLocation(result.toPlanLocation()) }
         } label: {
             HStack(spacing: 14) {
                 ZStack {
@@ -590,12 +664,8 @@ struct DestinationSearchView: View {
 
     // MARK: - Helpers
 
-    private func selectLocation(_ location: PlanLocation) {
-        if isOrigin {
-            viewModel.selectOrigin(location)
-        } else {
-            viewModel.selectDestination(location)
-        }
+    private func selectLocation(_ location: PlanLocation) async {
+        await viewModel.selectLocation(location, isOrigin: isOrigin)
         dismiss()
     }
 
