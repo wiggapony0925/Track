@@ -347,7 +347,8 @@ struct FavoriteCard: View {
                 routeID: favorite.routeDisplayName,
                 size: .medium,
                 hexColor: matchedGroup?.colorHex,
-                mode: favorite.mode
+                mode: favorite.mode,
+                busServiceType: matchedGroup?.busServiceType
             )
 
             VStack(alignment: .leading, spacing: 3) {
@@ -443,7 +444,8 @@ struct FavoriteCard: View {
                     routeID: favorite.routeDisplayName,
                     size: .medium,
                     hexColor: matchedGroup?.colorHex,
-                    mode: favorite.mode
+                    mode: favorite.mode,
+                    busServiceType: matchedGroup?.busServiceType
                 )
                 Spacer(minLength: 2)
                 countdownChip

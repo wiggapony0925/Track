@@ -313,7 +313,8 @@ struct RouteDetailSheet: View {
         if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
         if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
         return group.isBus
-            ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
+            ? AppTheme.BusColors.color(forServiceType: group.busServiceType)
+            : AppTheme.SubwayColors.color(for: group.displayName)
     }
 
     /// The name of the currently selected direction, used to match headsigns in RouteShape.

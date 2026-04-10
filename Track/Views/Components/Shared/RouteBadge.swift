@@ -42,6 +42,8 @@ struct RouteBadge: View {
     var mode: String? = nil
     /// Server-provided express flag — overrides client-side detection when true.
     var isExpressOverride: Bool = false
+    /// Backend bus service type (e.g. "Local", "Select Bus Service", "Limited", "Express").
+    var busServiceType: String? = nil
     
     // MARK: - Derived State
     
@@ -57,9 +59,15 @@ struct RouteBadge: View {
     /// Resolved bus flag — either explicit `isBus` or derived from `mode`
     private var resolvedIsBus: Bool { isBus || mode == "bus" }
     
-    /// Detects SBS (Select Bus Service) routes for distinct purple styling.
+    /// Detects SBS (Select Bus Service) routes — prefers the backend
+    /// `busServiceType` field, falling back to name-based detection.
     private var isSBS: Bool {
-        routeID.uppercased().contains("SBS")
+        if let svc = busServiceType {
+            return svc.lowercased() == "select bus service"
+        }
+        // Fallback: route names containing "SBS" or ending with "+"
+        let upper = routeID.uppercased()
+        return upper.contains("SBS") || upper.hasSuffix("+")
     }
 
     /// Display text for bus badges — strips "-SBS" / "+SBS" suffixes
@@ -88,12 +96,18 @@ struct RouteBadge: View {
         String(routeID.uppercased().dropLast())
     }
     
-    /// Bus background color: Purple for SBS, Blue for local buses
+    /// Bus background color — uses hex when available, then service type,
+    /// then name-based SBS detection, else local blue.
     private var busBackgroundColor: Color {
         if let hex = hexColor {
             return Color(hex: hex)
         }
-        return isSBS ? AppTheme.BusColors.sbsPurple : AppTheme.BusColors.localBlue
+        // Use the service-type palette when the backend told us the type
+        if let svc = busServiceType {
+            return AppTheme.BusColors.color(forServiceType: svc)
+        }
+        // Fallback: cyan for SBS-looking names, local blue otherwise
+        return isSBS ? AppTheme.BusColors.sbsCyan : AppTheme.BusColors.localBlue
     }
 
     private var backgroundColor: Color {
@@ -432,11 +446,12 @@ struct RouteBadge: View {
             RouteBadge(routeID: "FX", size: .large)
         }
         
-        // Bus routes (rounded rectangles)
+        // Bus routes (rounded rectangles) — full service-type palette
         HStack(spacing: 16) {
-            RouteBadge(routeID: "B63", size: .medium, isBus: true)
-            RouteBadge(routeID: "M15-SBS", size: .medium, isBus: true)
-            RouteBadge(routeID: "Bx12-SBS", size: .medium, isBus: true)
+            RouteBadge(routeID: "B63", size: .medium, isBus: true, busServiceType: "Local")
+            RouteBadge(routeID: "M15-SBS", size: .medium, isBus: true, busServiceType: "Select Bus Service")
+            RouteBadge(routeID: "Q9", size: .medium, isBus: true, busServiceType: "Limited")
+            RouteBadge(routeID: "BxM1", size: .medium, isBus: true, busServiceType: "Express")
         }
         
         // LIRR routes (rounded rect + train icon)

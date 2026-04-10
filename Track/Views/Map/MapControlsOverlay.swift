@@ -29,6 +29,13 @@ struct MapControlsOverlay: View {
     /// HomeView.  Lets the on-map toggle flip it without opening Settings.
     @Binding var dragToSearchEnabled: Bool
 
+    /// Whether a drag-search session is currently active (overlay visible).
+    var isDragSearchActive: Bool = false
+
+    /// Called when the toggle button is tapped while a drag-search session
+    /// is active — dismisses the session and recenters on the user.
+    var onDismissDragSearch: (() -> Void)?
+
     // MARK: - Internal State
 
     /// Tracks whether the recenter button was just tapped for the
@@ -60,12 +67,16 @@ struct MapControlsOverlay: View {
                         HStack(alignment: .top) {
                             // ── Drag Search Toggle (top-left) ──
                             if viewModel.selectedRouteId == nil {
-                                DragSearchToggleButton(isEnabled: $dragToSearchEnabled)
-                                    .transition(
-                                        .opacity.combined(
-                                            with: .scale(scale: 0.85, anchor: .topLeading)
-                                        )
+                                DragSearchToggleButton(
+                                    isEnabled: $dragToSearchEnabled,
+                                    isDragSearchActive: isDragSearchActive,
+                                    onDismissSession: onDismissDragSearch
+                                )
+                                .transition(
+                                    .opacity.combined(
+                                        with: .scale(scale: 0.85, anchor: .topLeading)
                                     )
+                                )
                             }
 
                             Spacer()
@@ -328,7 +339,8 @@ struct MapControlsOverlay: View {
                             : group.displayName,
                         size: .medium,
                         hexColor: group.colorHex,
-                        mode: group.mode
+                        mode: group.mode,
+                        busServiceType: group.busServiceType
                     )
                 }
 

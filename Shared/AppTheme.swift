@@ -357,13 +357,39 @@ enum AppTheme {
 
     // MARK: - Bus Colors
 
-    /// Bus route colors for visual distinction from subway routes.
+    /// Bus route colors matching the backend canonical palette
+    /// (`_BUS_SERVICE_COLORS` in nearby.py).
     struct BusColors {
-        /// Standard local bus color (MTA Blue).
-        static let localBlue = Color(red: 0 / 255, green: 57 / 255, blue: 166 / 255)
+        /// Local bus — #0078C6 (standard MTA bus blue).
+        static let localBlue = Color(red: 0 / 255, green: 120 / 255, blue: 198 / 255)
 
-        /// Select Bus Service (SBS) purple color.
-        static let sbsPurple = Color(red: 128 / 255, green: 0 / 255, blue: 128 / 255)
+        /// Select Bus Service (SBS) — #00B2E3 (cyan).
+        static let sbsCyan = Color(red: 0 / 255, green: 178 / 255, blue: 227 / 255)
+
+        /// Limited bus — #6E3FA3 (purple).
+        static let limitedPurple = Color(red: 110 / 255, green: 63 / 255, blue: 163 / 255)
+
+        /// Express bus — #3D9B35 (green).
+        static let expressGreen = Color(red: 61 / 255, green: 155 / 255, blue: 53 / 255)
+
+        /// School bus — #F7931E (orange).
+        static let schoolOrange = Color(red: 247 / 255, green: 147 / 255, blue: 30 / 255)
+
+        /// Default / unknown bus — #0039A6 (MTA corporate blue).
+        static let defaultBlue = Color(red: 0 / 255, green: 57 / 255, blue: 166 / 255)
+
+        /// Returns the correct color for a given bus service type string
+        /// (as provided by the backend `bus_service_type` field).
+        static func color(forServiceType type: String?) -> Color {
+            switch type?.lowercased() {
+            case "local":                       return localBlue
+            case "limited":                     return limitedPurple
+            case "select bus service":          return sbsCyan
+            case "express":                     return expressGreen
+            case "school":                      return schoolOrange
+            default:                            return localBlue
+            }
+        }
     }
 
     // MARK: - Commuter Rail Colors

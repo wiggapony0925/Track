@@ -207,7 +207,9 @@ struct HomeView: View {
                                 sheetDetent = .large
                             }
                         },
-                        dragToSearchEnabled: $dragToSearchEnabled
+                        dragToSearchEnabled: $dragToSearchEnabled,
+                        isDragSearchActive: isDragSearchActive,
+                        onDismissDragSearch: { dismissDragSearch() }
                     )
                 
                 // MARK: - Drag-to-Search Overlay
@@ -1137,7 +1139,9 @@ struct HomeView: View {
         // Mark as actively panning — dims the map and shows "Release to search".
         if isDragSearchActive {
             if !isDragSearchPanning {
-                isDragSearchPanning = true
+                withAnimation(.interpolatingSpring(stiffness: 200, damping: 22)) {
+                    isDragSearchPanning = true
+                }
             }
         }
         
@@ -1161,7 +1165,7 @@ struct HomeView: View {
             if distanceMoved > threshold {
                 // Panning stopped — fire the API search.
                 // The circle is already visible (activated instantly above).
-                withAnimation(.easeOut(duration: 0.15)) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
                     isDragSearchPanning = false
                 }
                 
@@ -1201,14 +1205,17 @@ struct HomeView: View {
     private func dismissDragSearchState() {
         dragSearchDebounce?.cancel()
         
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-            isDragSearchActive = false
+        // Staggered exit: circle shrinks first, then state clears
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
             isDragSearchPanning = false
+        }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            isDragSearchActive = false
             hasFiredDragHaptic = false
             dragSearchSettledCenter = nil
         }
         
-        HapticManager.selection()
+        HapticManager.notification(.success)
         
         Task {
             await viewModel.clearSearchPin(userLocation: locationManager.currentLocation)

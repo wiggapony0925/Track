@@ -551,7 +551,8 @@ struct InactiveRouteRow: View {
                 size: .medium,
                 isBus: isBus,
                 hexColor: route.colorHex,
-                mode: route.mode
+                mode: route.mode,
+                busServiceType: route.busServiceType
             )
             .padding(.horizontal, isCommuterRail ? 6 : 8)
             .padding(.vertical, 8)

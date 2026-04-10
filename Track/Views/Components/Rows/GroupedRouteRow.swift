@@ -50,7 +50,8 @@ struct  GroupedRouteRow: View {
         if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
         if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
         return group.isBus
-            ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
+            ? AppTheme.BusColors.color(forServiceType: group.busServiceType)
+            : AppTheme.SubwayColors.color(for: group.displayName)
     }
 
     private var isFavoritePresentation: Bool {
@@ -288,7 +289,8 @@ struct  GroupedRouteRow: View {
                 size: .medium,
                 isBus: group.isBus,
                 hexColor: group.colorHex,
-                mode: group.mode
+                mode: group.mode,
+                busServiceType: group.busServiceType
             )
 
             // Show diamond badge for each active express variant.
@@ -297,7 +299,8 @@ struct  GroupedRouteRow: View {
                     routeID: variant,
                     size: .medium,
                     hexColor: group.colorHex,
-                    mode: group.mode
+                    mode: group.mode,
+                    busServiceType: group.busServiceType
                 )
             }
         }

@@ -2,6 +2,9 @@
 // their real location, a subtle dim covers the map, a blue dot appears
 // at the screen center, and the bottom sheet shows a loading state.
 // The API fires automatically after panning stops.
+//
+// v2: Polished with multi-ring ripple, smooth scrim transitions,
+//     staggered status pill entrance, and breathing dot while idle.
 
 import SwiftUI
 
@@ -24,23 +27,32 @@ struct DragSearchOverlay: View {
     
     /// Drives the repeating ripple animation when searching.
     @State private var rippleActive = false
+
+    /// Second ripple ring with staggered timing for depth.
+    @State private var ripple2Active = false
+
+    /// Gentle breathing scale when idle (settled, not searching).
+    @State private var breathe = false
+
+    /// Pill entrance stagger — slides in from top after dot appears.
+    @State private var pillVisible = false
     
     var body: some View {
         if isActive {
             ZStack {
-                // ── Persistent dim outside the search area ──
-                // Shows a subtle overlay while drag search is active:
-                // slightly stronger while panning, lighter when settled.
-                AppTheme.Colors.mapScrim.opacity(isPanning ? 1.0 : 0.7)
+                // ── Map scrim ──
+                // Soft dim while panning, fades lighter once settled.
+                // Uses interpolatingSpring for organic feel.
+                AppTheme.Colors.mapScrim
+                    .opacity(isPanning ? 1.0 : 0.55)
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
-                    .animation(.easeInOut(duration: 0.2), value: isPanning)
+                    .animation(
+                        .interpolatingSpring(stiffness: 120, damping: 18),
+                        value: isPanning
+                    )
                 
                 // ── Blue dot pinned to map's effective center ──
-                // The map has safeAreaPadding(.bottom, 350), which shifts
-                // its camera center upward by half that amount.
-                // We offset the dot by the same amount so it sits exactly
-                // where the map reports its center coordinate.
                 appleLocationDot
                     .scaleEffect(hasAppeared ? 1.0 : 0.01)
                     .opacity(hasAppeared ? 1.0 : 0.0)
@@ -51,18 +63,32 @@ struct DragSearchOverlay: View {
                 VStack {
                     statusPill
                         .padding(.top, 14)
+                        .offset(y: pillVisible ? 0 : -30)
+                        .opacity(pillVisible ? 1 : 0)
                     Spacer()
                 }
             }
-            .transition(.opacity)
+            .transition(
+                .asymmetric(
+                    insertion: .opacity.animation(.easeOut(duration: 0.25)),
+                    removal: .opacity.combined(with: .scale(scale: 0.97))
+                        .animation(.easeIn(duration: 0.2))
+                )
+            )
             .onAppear {
-                // Grow from center — feels like the dot "came out of" the GPS circle
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                // Dot grows from center — feels like it emerged from GPS circle
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.65)) {
                     hasAppeared = true
+                }
+                // Pill slides in with slight stagger
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.78).delay(0.12)) {
+                    pillVisible = true
                 }
             }
             .onDisappear {
                 hasAppeared = false
+                pillVisible = false
+                breathe = false
             }
         }
     }
@@ -71,80 +97,145 @@ struct DragSearchOverlay: View {
     
     private var appleLocationDot: some View {
         ZStack {
-            // Outer ripple ring — pulses outward while searching
+            // ── Outer ripple ring — pulses outward while searching ──
             if isSearching {
+                // Primary ripple
                 Circle()
-                    .stroke(AppTheme.Colors.mtaBlue.opacity(0.35), lineWidth: 2)
+                    .stroke(AppTheme.Colors.mtaBlue.opacity(0.3), lineWidth: 1.5)
                     .frame(width: 44, height: 44)
-                    .scaleEffect(rippleActive ? 1.6 : 1.0)
-                    .opacity(rippleActive ? 0.0 : 0.5)
+                    .scaleEffect(rippleActive ? 2.0 : 1.0)
+                    .opacity(rippleActive ? 0.0 : 0.6)
                     .onAppear {
-                        withAnimation(.easeOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                        withAnimation(
+                            .easeOut(duration: 1.4)
+                            .repeatForever(autoreverses: false)
+                        ) {
                             rippleActive = true
                         }
                     }
                     .onDisappear { rippleActive = false }
+
+                // Secondary ripple (staggered for depth)
+                Circle()
+                    .stroke(AppTheme.Colors.mtaBlue.opacity(0.2), lineWidth: 1)
+                    .frame(width: 44, height: 44)
+                    .scaleEffect(ripple2Active ? 2.4 : 0.8)
+                    .opacity(ripple2Active ? 0.0 : 0.4)
+                    .onAppear {
+                        // Delay the second ring so they alternate
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                            withAnimation(
+                                .easeOut(duration: 1.4)
+                                .repeatForever(autoreverses: false)
+                            ) {
+                                ripple2Active = true
+                            }
+                        }
+                    }
+                    .onDisappear { ripple2Active = false }
             }
-            
-            // Soft accuracy halo
+
+            // ── Soft accuracy halo ──
+            // Slightly larger and more visible while panning;
+            // gentle breathing when settled idle.
             Circle()
-                .fill(AppTheme.Colors.mtaBlue.opacity(isPanning ? 0.18 : 0.12))
-                .frame(width: 44, height: 44)
+                .fill(AppTheme.Colors.mtaBlue.opacity(isPanning ? 0.20 : 0.10))
+                .frame(width: 48, height: 48)
+                .scaleEffect(breatheScale)
+                .animation(
+                    .interpolatingSpring(stiffness: 100, damping: 16),
+                    value: isPanning
+                )
             
-            // White border
+            // ── White border ring ──
             Circle()
                 .fill(AppTheme.Colors.cardBackground)
                 .frame(width: 22, height: 22)
-                .shadow(color: AppTheme.Colors.shadow.opacity(0.28), radius: 3, y: 1)
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.22), radius: 4, y: 1.5)
             
-            // Blue fill — pulses while searching
+            // ── Blue fill ──
+            // Pulses while searching; breathes gently when idle-settled.
             Circle()
                 .fill(AppTheme.Colors.mtaBlue)
                 .frame(width: 16, height: 16)
-                .scaleEffect(isSearching ? 1.15 : 1.0)
+                .scaleEffect(dotScale)
                 .animation(
-                    .easeInOut(duration: 0.6)
-                        .repeatForever(autoreverses: true),
-                    value: isSearching
+                    isSearching
+                        ? .easeInOut(duration: 0.55).repeatForever(autoreverses: true)
+                        : .easeInOut(duration: 2.0).repeatForever(autoreverses: true),
+                    value: isSearching ? isSearching : breathe
                 )
+                .onAppear {
+                    // Start subtle breathing after a beat
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        breathe = true
+                    }
+                }
         }
+    }
+
+    private var dotScale: CGFloat {
+        if isSearching { return 1.15 }
+        if breathe && !isPanning { return 1.06 }
+        return 1.0
+    }
+
+    private var breatheScale: CGFloat {
+        if isPanning { return 1.0 }
+        if breathe { return 1.08 }
+        return 1.0
     }
     
     // MARK: - Status Pill
     
     private var statusPill: some View {
         HStack(spacing: 8) {
-            if isSearching {
-                ProgressView()
-                    .scaleEffect(0.65)
-                    .tint(AppTheme.Colors.mtaBlue)
-            } else if isPanning {
-                Image(systemName: "hand.draw.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(AppTheme.Colors.mtaBlue)
-            } else {
-                Circle()
-                    .fill(AppTheme.Colors.mtaBlue)
-                    .frame(width: 7, height: 7)
+            // ── Leading indicator ──
+            Group {
+                if isSearching {
+                    ProgressView()
+                        .scaleEffect(0.65)
+                        .tint(AppTheme.Colors.mtaBlue)
+                } else if isPanning {
+                    Image(systemName: "hand.draw.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AppTheme.Colors.mtaBlue)
+                        .transition(.scale.combined(with: .opacity))
+                } else {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.mtaBlue)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: statusPhase)
             
             Text(statusText)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(AppTheme.Colors.textPrimary)
+                .contentTransition(.numericText())
+                .animation(.easeInOut(duration: 0.2), value: statusText)
             
+            // ── Dismiss X ──
             Button {
                 onDismiss()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 16))
+                    .font(.system(size: 16, weight: .medium))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(AppTheme.Colors.textSecondary)
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, 9)
         .trackFloatingChrome(cornerRadius: 999)
-        .animation(.easeInOut(duration: 0.2), value: statusText)
+    }
+
+    /// Discrete phase for animating indicator transitions.
+    private var statusPhase: Int {
+        if isSearching { return 2 }
+        if isPanning { return 1 }
+        return 0
     }
     
     private var statusText: String {

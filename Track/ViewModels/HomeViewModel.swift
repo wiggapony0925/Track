@@ -49,6 +49,14 @@ final class HomeViewModel {
     /// to prevent indefinite blocking from a hung request.
     private var _refreshStartedAt: Date?
 
+    /// When a drag-search `refresh(force: true)` is blocked by the
+    /// `_refreshInFlight` guard, this flag is set so the `defer` block
+    /// re-triggers a refresh with the latest pin coordinates once the
+    /// in-flight request completes. Without this, rapid panning leaves
+    /// stale data from an old location while the pin shows the new one,
+    /// causing all routes to land in the "Farther Away" bucket.
+    private var _dragSearchRefreshPending = false
+
     /// Tracks the single cold-start retry chain. When non-nil, a retry is
     /// already scheduled — new retry requests are ignored to prevent
     /// geometric growth (each failed fetch was scheduling a *new* 5s retry,
@@ -2387,11 +2395,22 @@ final class HomeViewModel {
                 Date().timeIntervalSince($0) > 60
             } ?? false
             if !stuckTooLong {
-                AppLogger.shared.log(
-                    "REFRESH",
-                    message: "⏭️ Skipped"
-                        + " — refresh already in flight"
-                        + "\(force ? " (forced)" : "")")
+                // During drag-search, the user may pan faster than the
+                // backend can respond. Mark a pending re-fetch so the
+                // defer block fires a follow-up with the latest pin.
+                if force && isSearchPinActive {
+                    _dragSearchRefreshPending = true
+                    AppLogger.shared.log(
+                        "REFRESH",
+                        message: "⏭️ Skipped (drag-search)"
+                            + " — queued pending re-fetch")
+                } else {
+                    AppLogger.shared.log(
+                        "REFRESH",
+                        message: "⏭️ Skipped"
+                            + " — refresh already in flight"
+                            + "\(force ? " (forced)" : "")")
+                }
                 return false
             }
             AppLogger.shared.log(
@@ -2414,6 +2433,22 @@ final class HomeViewModel {
         defer {
             _refreshInFlight = false
             _refreshStartedAt = nil
+
+            // If a drag-search refresh was blocked while this one ran,
+            // re-trigger now with the latest pin coordinates. The flag
+            // is cleared first so only one retry fires per cycle.
+            if _dragSearchRefreshPending && isSearchPinActive {
+                _dragSearchRefreshPending = false
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    let loc = self.effectiveLocation(
+                        userLocation: self.lastKnownUserLocation
+                    )
+                    await self.refresh(location: loc, force: true)
+                }
+            } else {
+                _dragSearchRefreshPending = false
+            }
         }
 
         AppLogger.shared.log(
@@ -2644,6 +2679,7 @@ final class HomeViewModel {
         if let userLocation { lastKnownUserLocation = userLocation }
         isSearchPinActive = false
         searchPinCoordinate = nil
+        _dragSearchRefreshPending = false
         // Reset geocode anchor so the next refresh() geocodes the real
         // GPS location even if it's close to where the drag pin was.
         _lastGeocodedLocation = nil

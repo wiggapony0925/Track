@@ -524,7 +524,7 @@ struct ManageFavoritesView: View {
         case "mnr":
             return AppTheme.CommuterRailColors.mnrBlue
         case "bus":
-            return AppTheme.Colors.mtaBlue
+            return AppTheme.BusColors.localBlue
         default:
             return AppTheme.SubwayColors.color(for: favorite.routeDisplayName)
         }
