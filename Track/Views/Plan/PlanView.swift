@@ -71,6 +71,11 @@ struct PlanView: View {
             .fullScreenCover(isPresented: $viewModel.showMapPicker) {
                 MapLocationPickerView(viewModel: viewModel)
             }
+            .sheet(isPresented: $viewModel.showAddPlaceSheet) {
+                AddPlaceSheet(viewModel: viewModel)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
             .overlay(alignment: .top) {
                 if !viewModel.showResults, let message = viewModel.errorMessage {
                     plannerErrorBanner(message)
@@ -706,10 +711,37 @@ struct PlanView: View {
 
     private var savedLocationsGallery: some View {
         VStack(alignment: .leading, spacing: 14) {
-            sectionHeader(title: "Saved Places")
+            HStack {
+                sectionHeader(title: "Saved Places")
+                Spacer()
+                Button {
+                    viewModel.beginCustomPlaceFlow()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .heavy))
+                        Text("Add")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(AppTheme.Colors.accent)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(AppTheme.Colors.accent.opacity(0.1))
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(AppTheme.Colors.accent.opacity(0.15), lineWidth: 0.5)
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 20)
+            }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
+                    // Preset: Home
                     if let home = viewModel.savedLocation(for: .home) {
                         savedPlaceCard(
                             icon: "house.fill", label: "Home",
@@ -736,6 +768,7 @@ struct PlanView: View {
                         }
                     }
 
+                    // Preset: Work
                     if let work = viewModel.savedLocation(for: .work) {
                         savedPlaceCard(
                             icon: "briefcase.fill", label: "Work",
@@ -762,6 +795,7 @@ struct PlanView: View {
                         }
                     }
 
+                    // Preset: School
                     if let school = viewModel.savedLocation(for: .school) {
                         savedPlaceCard(
                             icon: "graduationcap.fill", label: "School",
@@ -788,6 +822,7 @@ struct PlanView: View {
                         }
                     }
 
+                    // Preset: Partner
                     if let partner = viewModel.savedLocation(for: .partner) {
                         savedPlaceCard(
                             icon: "heart.fill", label: partner.name,
@@ -813,12 +848,40 @@ struct PlanView: View {
                             viewModel.beginSavedPlaceFlow(.partner)
                         }
                     }
+
+                    // Custom saved places
+                    ForEach(viewModel.customSavedLocations) { place in
+                        savedPlaceCard(
+                            icon: place.iconName,
+                            label: place.name,
+                            subtitle: place.address,
+                            color: AppTheme.Colors.accentSecondary
+                        ) {
+                            viewModel.selectDestination(.saved(place))
+                            Task { await viewModel.planTrip() }
+                        }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                Task { await viewModel.deleteSavedLocation(place) }
+                            } label: {
+                                Label("Remove \(place.name)", systemImage: "trash")
+                            }
+                        }
+                    }
+
+                    // "Add custom place" tile
+                    addPlaceCard(
+                        icon: "plus",
+                        label: "Custom Place",
+                        color: AppTheme.Colors.accentSecondary
+                    ) {
+                        viewModel.beginCustomPlaceFlow()
+                    }
                 }
                 .padding(.horizontal, 20)
             }
         }
     }
-
     private func savedPlaceCard(
         icon: String, label: String, subtitle: String,
         color: Color, onTap: @escaping () -> Void

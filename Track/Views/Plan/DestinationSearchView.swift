@@ -15,6 +15,10 @@ struct DestinationSearchView: View {
 
     private var searchTitle: String {
         if let category = viewModel.pendingSavedPlaceCategory {
+            if category == .custom {
+                let label = viewModel.customPlaceLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+                return label.isEmpty ? "Save a Place" : "Save \"\(label)\""
+            }
             return "Set \(category.label)"
         }
         return isOrigin ? "Set Origin" : "Where to?"
@@ -22,6 +26,9 @@ struct DestinationSearchView: View {
 
     private var searchPlaceholder: String {
         if let category = viewModel.pendingSavedPlaceCategory {
+            if category == .custom {
+                return "Search for a location to save"
+            }
             return "Search for \(category.label.lowercased())"
         }
         return isOrigin ? "Search origin..." : "Search a place or address"
@@ -136,9 +143,15 @@ struct DestinationSearchView: View {
                         .font(.system(size: 26, weight: .bold, design: .rounded))
                         .foregroundColor(AppTheme.Colors.textPrimary)
                     if let category = viewModel.pendingSavedPlaceCategory {
-                        Text("Pick a place to save as \(category.label.lowercased()).")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textTertiary)
+                        if category == .custom {
+                            Text("Search and select a location to save.")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textTertiary)
+                        } else {
+                            Text("Pick a place to save as \(category.label.lowercased()).")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textTertiary)
+                        }
                     }
                 }
                 Spacer()
@@ -411,6 +424,18 @@ struct DestinationSearchView: View {
                         color: AppTheme.Colors.alertRed,
                         category: .partner
                     )
+                }
+
+                // Custom saved places
+                ForEach(viewModel.customSavedLocations) { place in
+                    premiumLocationRow(
+                        icon: place.iconName,
+                        iconColor: AppTheme.Colors.accentSecondary,
+                        name: place.name,
+                        detail: place.address
+                    ) {
+                        Task { await selectLocation(.saved(place)) }
+                    }
                 }
             }
             .padding(.horizontal, 16)

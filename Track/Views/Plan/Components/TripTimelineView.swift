@@ -1,6 +1,6 @@
-// Premium timeline visualization for trip itinerary.
-// Rich leg rows with colored connectors, platform hints,
-// stop counts, and polished walk segments.
+// Clean vertical timeline visualization for trip itinerary.
+// Colored connectors, compact leg rows, live status badges,
+// and polished walk segments.
 
 import SwiftUI
 
@@ -19,13 +19,13 @@ struct TripTimelineView: View {
 
     @ViewBuilder
     private func legRow(_ leg: TripLeg, isFirst: Bool, isLast: Bool) -> some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 12) {
             // Time column
             VStack(spacing: 0) {
                 Text(timeString(leg.departureTime))
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
-                    .frame(width: 50, alignment: .trailing)
+                    .frame(width: 48, alignment: .trailing)
 
                 Spacer(minLength: 0)
 
@@ -33,7 +33,7 @@ struct TripTimelineView: View {
                     Text(timeString(leg.arrivalTime))
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .foregroundStyle(AppTheme.Colors.textPrimary)
-                        .frame(width: 50, alignment: .trailing)
+                        .frame(width: 48, alignment: .trailing)
                 }
             }
 
@@ -43,52 +43,34 @@ struct TripTimelineView: View {
                 ZStack {
                     if isFirst {
                         Circle()
-                            .fill(AppTheme.Colors.accent.opacity(0.2))
-                            .frame(width: 18, height: 18)
+                            .fill(AppTheme.Colors.accent.opacity(0.15))
+                            .frame(width: 16, height: 16)
                     }
                     Circle()
                         .fill(isFirst ? AppTheme.Colors.accent : legBarColor(leg))
-                        .frame(width: 12, height: 12)
-                    if isFirst {
-                        Circle()
-                            .fill(.white.opacity(0.5))
-                            .frame(width: 5, height: 5)
-                    }
+                        .frame(width: 10, height: 10)
                 }
 
                 // Connecting line
                 if leg.isTransit {
-                    // Solid colored bar with subtle gradient
-                    ZStack {
-                        Rectangle()
-                            .fill(legBarColor(leg))
-                            .frame(width: 4)
-                        // Subtle highlight on left edge
-                        Rectangle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [.white.opacity(0.15), .clear],
-                                    startPoint: .leading, endPoint: .trailing
-                                )
-                            )
-                            .frame(width: 4)
-                    }
-                    .frame(maxHeight: .infinity)
+                    Rectangle()
+                        .fill(legBarColor(leg))
+                        .frame(width: 3)
+                        .frame(maxHeight: .infinity)
                 } else {
-                    // Dashed line for walk/transfer
                     GeometryReader { geo in
                         Path { path in
                             let x = geo.size.width / 2
                             var y: CGFloat = 0
                             while y < geo.size.height {
                                 path.move(to: CGPoint(x: x, y: y))
-                                path.addLine(to: CGPoint(x: x, y: min(y + 5, geo.size.height)))
-                                y += 10
+                                path.addLine(to: CGPoint(x: x, y: min(y + 4, geo.size.height)))
+                                y += 8
                             }
                         }
-                        .stroke(AppTheme.Colors.textTertiary.opacity(0.4), lineWidth: 2.5)
+                        .stroke(AppTheme.Colors.textTertiary.opacity(0.35), lineWidth: 2)
                     }
-                    .frame(width: 4)
+                    .frame(width: 3)
                     .frame(maxHeight: .infinity)
                 }
 
@@ -96,31 +78,27 @@ struct TripTimelineView: View {
                 if isLast {
                     ZStack {
                         Circle()
-                            .fill(AppTheme.Colors.alertRed.opacity(0.2))
-                            .frame(width: 18, height: 18)
+                            .fill(AppTheme.Colors.alertRed.opacity(0.15))
+                            .frame(width: 16, height: 16)
                         Circle()
                             .fill(AppTheme.Colors.alertRed)
-                            .frame(width: 12, height: 12)
-                        Circle()
-                            .fill(.white.opacity(0.5))
-                            .frame(width: 5, height: 5)
+                            .frame(width: 10, height: 10)
                     }
                 }
             }
-            .frame(width: 18)
+            .frame(width: 16)
 
             // Leg detail content
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 6) {
                 // Board stop
                 Text(leg.boardStopName)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
 
-                // Route info
                 if leg.isTransit {
-                    // Badge + headsign in a card-like container
-                    HStack(spacing: 8) {
+                    // Route badge + headsign
+                    HStack(spacing: 7) {
                         if let routeId = leg.routeId {
                             RouteBadge(
                                 routeID: routeId,
@@ -135,94 +113,101 @@ struct TripTimelineView: View {
                                 .lineLimit(1)
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(AppTheme.Colors.cardInset.opacity(0.5))
+                            .fill(AppTheme.Colors.cardInset.opacity(0.4))
                     )
 
-                    // Stops + duration info
+                    // Stops + duration
                     HStack(spacing: 10) {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 3) {
                             Image(systemName: "mappin.circle")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 9, weight: .semibold))
                             Text("\(leg.numStops) stops")
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                         }
                         .foregroundStyle(AppTheme.Colors.textTertiary)
 
-                        HStack(spacing: 4) {
+                        HStack(spacing: 3) {
                             Image(systemName: "clock")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 9, weight: .semibold))
                             Text("\(leg.durationMinutes) min")
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                         }
                         .foregroundStyle(AppTheme.Colors.textTertiary)
                     }
 
+                    // Live status
                     if let liveLabel = leg.liveStatus?.shortLabel, !liveLabel.isEmpty {
-                        HStack(spacing: 5) {
-                            Image(systemName: "dot.radiowaves.left.and.right")
-                                .font(.system(size: 10, weight: .bold))
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(
+                                    (leg.liveStatus?.status == "delayed" || leg.liveStatus?.status == "cancelled")
+                                        ? AppTheme.Colors.warningYellow
+                                        : AppTheme.Colors.successGreen
+                                )
+                                .frame(width: 6, height: 6)
                             Text(liveLabel)
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
                         }
                         .foregroundStyle(
                             (leg.liveStatus?.status == "delayed" || leg.liveStatus?.status == "cancelled")
                                 ? AppTheme.Colors.warningYellow
-                                : AppTheme.Colors.accent
+                                : AppTheme.Colors.successGreen
                         )
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
                         .background(
                             Capsule()
-                                .fill(AppTheme.Colors.cardInset.opacity(0.45))
+                                .fill(AppTheme.Colors.cardInset.opacity(0.4))
                         )
                     }
 
+                    // Alert
                     if let alert = leg.alerts.first {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 9, weight: .bold))
                             Text(alert.title)
                                 .font(.system(size: 11, weight: .semibold))
                                 .lineLimit(2)
                         }
                         .foregroundStyle(AppTheme.Colors.warningYellow)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(AppTheme.Colors.warningYellow.opacity(0.1))
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(AppTheme.Colors.warningYellow.opacity(0.08))
                         )
                     }
                 } else {
-                    // Walk leg — styled as a compact card
-                    HStack(spacing: 7) {
+                    // Walk leg
+                    HStack(spacing: 5) {
                         Image(systemName: "figure.walk")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                         Text("Walk \(leg.durationMinutes) min")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                     }
                     .foregroundStyle(AppTheme.Colors.textSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
                     .background(
                         Capsule()
-                            .fill(AppTheme.Colors.cardInset.opacity(0.4))
+                            .fill(AppTheme.Colors.cardInset.opacity(0.35))
                     )
                 }
 
                 // Alight stop (destination on last leg)
                 if isLast {
-                    Spacer().frame(height: 8)
-                    HStack(spacing: 6) {
+                    Spacer().frame(height: 6)
+                    HStack(spacing: 5) {
                         Image(systemName: "mappin")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(AppTheme.Colors.alertRed)
                         Text(leg.alightStopName)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(AppTheme.Colors.textPrimary)
                             .lineLimit(1)
                     }
@@ -232,7 +217,7 @@ struct TripTimelineView: View {
 
             Spacer(minLength: 0)
         }
-        .frame(minHeight: leg.isTransit ? 100 : 60)
+        .frame(minHeight: leg.isTransit ? 90 : 50)
     }
 
     // MARK: - Helpers

@@ -32,6 +32,9 @@ final class PlanViewModel {
     var savedTrips: [SavedTrip] = []
     var calendarLocations: [SavedLocation] = []
     var pendingSavedPlaceCategory: SavedLocationCategory?
+    var customPlaceLabel: String = ""
+    var customPlaceIcon: String = "mappin"
+    var showAddPlaceSheet = false
     let locationSearchService = LocationSearchService()
     var isResolvingLocation = false
     var isSavingPlace = false
@@ -330,14 +333,47 @@ final class PlanViewModel {
     func beginSavedPlaceFlow(_ category: SavedLocationCategory) {
         errorMessage = nil
         pendingSavedPlaceCategory = category
+        customPlaceLabel = ""
+        customPlaceIcon = category == .custom ? "mappin" : category.defaultIcon
         searchText = ""
         searchResults = []
         showDestinationSearch = true
     }
 
+    func beginCustomPlaceFlow() {
+        errorMessage = nil
+        pendingSavedPlaceCategory = .custom
+        customPlaceLabel = ""
+        customPlaceIcon = "mappin"
+        showAddPlaceSheet = true
+    }
+
     func cancelSavedPlaceFlow() {
         pendingSavedPlaceCategory = nil
+        customPlaceLabel = ""
+        customPlaceIcon = "mappin"
     }
+
+    /// All custom (non-preset) saved places
+    var customSavedLocations: [SavedLocation] {
+        savedLocations.filter { $0.resolvedCategory == .custom }
+    }
+
+    /// Available icon options for custom places
+    static let customPlaceIcons: [(icon: String, label: String)] = [
+        ("mappin", "Pin"),
+        ("star.fill", "Star"),
+        ("fork.knife", "Food"),
+        ("cart.fill", "Shop"),
+        ("dumbbell.fill", "Gym"),
+        ("cross.fill", "Health"),
+        ("book.fill", "Library"),
+        ("music.note", "Music"),
+        ("theatermasks.fill", "Arts"),
+        ("figure.walk", "Park"),
+        ("building.2.fill", "Building"),
+        ("airplane", "Airport"),
+    ]
 
     func deleteSavedLocation(_ location: SavedLocation) async {
         guard let userID = currentUserID else {
@@ -438,7 +474,11 @@ final class PlanViewModel {
         _ location: PlanLocation,
         category: SavedLocationCategory
     ) async -> Bool {
-        defer { pendingSavedPlaceCategory = nil }
+        defer {
+            pendingSavedPlaceCategory = nil
+            customPlaceLabel = ""
+            customPlaceIcon = "mappin"
+        }
         guard let userID = currentUserID else {
             errorMessage = "Sign in to save places."
             return false
@@ -448,6 +488,22 @@ final class PlanViewModel {
             return false
         }
 
+        let effectiveLabel: String
+        let effectiveIcon: String
+        let effectiveKind: String
+
+        if category == .custom {
+            effectiveLabel = customPlaceLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? (location.displayName)
+                : customPlaceLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+            effectiveIcon = customPlaceIcon
+            effectiveKind = "custom"
+        } else {
+            effectiveLabel = category.label
+            effectiveIcon = category.defaultIcon
+            effectiveKind = category.rawValue
+        }
+
         isSavingPlace = true
         defer { isSavingPlace = false }
 
@@ -455,18 +511,22 @@ final class PlanViewModel {
             let savedRecord = try await TrackAPI.upsertEngineSavedPlace(
                 request: EngineSavedPlaceUpsertRequest(
                     userID: userID,
-                    label: category.label,
-                    kind: category.rawValue,
+                    label: effectiveLabel,
+                    kind: effectiveKind,
                     lat: coordinate.latitude,
                     lon: coordinate.longitude,
                     address: location.displayAddress,
-                    icon: category.defaultIcon,
-                    placeID: savedLocation(for: category)?.enginePlaceID
+                    icon: effectiveIcon,
+                    placeID: category == .custom ? nil : savedLocation(for: category)?.enginePlaceID
                 )
             )
 
-            savedLocations.removeAll {
-                $0.resolvedCategory == category || $0.enginePlaceID == savedRecord.placeID
+            if category != .custom {
+                savedLocations.removeAll {
+                    $0.resolvedCategory == category || $0.enginePlaceID == savedRecord.placeID
+                }
+            } else {
+                savedLocations.removeAll { $0.enginePlaceID == savedRecord.placeID }
             }
             savedLocations.insert(
                 SavedLocation(

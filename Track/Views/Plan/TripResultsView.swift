@@ -1,6 +1,6 @@
-// Full-screen trip results — premium layout with cinematic
-// gradient header, animated staggered cards, refined loading
-// skeleton, and polished error state.
+// Full-screen trip results — Transit-style layout with compact
+// gradient header, clean route summary, staggered animated cards,
+// and polished loading/error states.
 
 import SwiftUI
 
@@ -51,7 +51,7 @@ struct TripResultsView: View {
     private var resultsHeader: some View {
         VStack(spacing: 0) {
             // Top bar: back, title, actions
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 Button {
                     viewModel.clearResults()
                     dismiss()
@@ -59,22 +59,22 @@ struct TripResultsView: View {
                     ZStack {
                         Circle()
                             .fill(.white.opacity(0.12))
-                            .frame(width: 40, height: 40)
+                            .frame(width: 38, height: 38)
                             .overlay(
                                 Circle().strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
                             )
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                     }
                 }
                 .buttonStyle(ResultsButtonStyle())
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Trip Options")
-                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Routes")
+                        .font(.system(size: 20, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
-                    Text("\(viewModel.tripResults.count) route\(viewModel.tripResults.count != 1 ? "s" : "") found")
+                    Text("\(viewModel.tripResults.count) option\(viewModel.tripResults.count != 1 ? "s" : "")")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.5))
                 }
@@ -94,14 +94,14 @@ struct TripResultsView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 10)
+            .padding(.top, 8)
 
             routeSummaryRow
-                .padding(.top, 14)
+                .padding(.top, 10)
 
             departureChipRow
-                .padding(.top, 12)
-                .padding(.bottom, 18)
+                .padding(.top, 10)
+                .padding(.bottom, 14)
         }
         .background(
             ZStack {
@@ -114,27 +114,17 @@ struct TripResultsView: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 )
 
-                // Decorative orbs
+                // Subtle decorative orb
                 Circle()
                     .fill(
                         RadialGradient(
-                            colors: [.white.opacity(0.08), .clear],
-                            center: .center, startRadius: 0, endRadius: 110
+                            colors: [.white.opacity(0.06), .clear],
+                            center: .center, startRadius: 0, endRadius: 100
                         )
                     )
-                    .frame(width: 220, height: 220)
+                    .frame(width: 200, height: 200)
                     .offset(x: 130, y: -70)
-                    .scaleEffect(headerPulse ? 1.05 : 0.95)
-
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [AppTheme.Colors.accentSecondary.opacity(0.1), .clear],
-                            center: .center, startRadius: 0, endRadius: 60
-                        )
-                    )
-                    .frame(width: 120, height: 120)
-                    .offset(x: -100, y: 20)
+                    .scaleEffect(headerPulse ? 1.03 : 0.97)
             }
             .ignoresSafeArea(edges: .top)
         )
@@ -145,12 +135,12 @@ struct TripResultsView: View {
             ZStack {
                 Circle()
                     .fill(.white.opacity(0.12))
-                    .frame(width: 40, height: 40)
+                    .frame(width: 38, height: 38)
                     .overlay(
                         Circle().strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
                     )
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
             }
         }
@@ -160,42 +150,30 @@ struct TripResultsView: View {
     private var routeSummaryRow: some View {
         HStack(spacing: 0) {
             // Origin
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(.white.opacity(0.2))
-                        .frame(width: 12, height: 12)
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 6, height: 6)
-                        .shadow(color: .white.opacity(0.3), radius: 3)
-                }
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(.white)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: .white.opacity(0.3), radius: 3)
+
                 Text(viewModel.origin.displayName)
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
 
-            // Animated connector dots
-            HStack(spacing: 4) {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .fill(.white.opacity(0.3))
-                        .frame(width: 3, height: 3)
-                }
-            }
-            .padding(.horizontal, 10)
+            // Arrow connector
+            Image(systemName: "arrow.right")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white.opacity(0.4))
+                .padding(.horizontal, 8)
 
             // Destination
-            HStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(.white)
-                        .frame(width: 12, height: 12)
-                    Image(systemName: "mappin")
-                        .font(.system(size: 7, weight: .black))
-                        .foregroundStyle(AppTheme.Colors.accent)
-                }
+            HStack(spacing: 7) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(.white)
+                    .frame(width: 7, height: 7)
+
                 Text(viewModel.destination?.displayName ?? "Destination")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
@@ -274,7 +252,7 @@ struct TripResultsView: View {
 
     private var resultsList: some View {
         ScrollView {
-            LazyVStack(spacing: 12) {
+            LazyVStack(spacing: 10) {
                 ForEach(Array(viewModel.tripResults.enumerated()), id: \.element.id) { index, trip in
                     TripResultCard(
                         trip: trip,
@@ -283,19 +261,53 @@ struct TripResultsView: View {
                     )
                     .padding(.horizontal, 16)
                     .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 24)
+                    .offset(y: appeared ? 0 : 20)
                     .animation(
-                        .spring(response: 0.5, dampingFraction: 0.78).delay(Double(index) * 0.07),
+                        .spring(response: 0.45, dampingFraction: 0.78).delay(Double(index) * 0.06),
                         value: appeared
                     )
                 }
             }
-            .padding(.top, 16)
+            .padding(.top, 14)
+
+            // Show more trips button
+            if viewModel.tripResults.count >= 3 {
+                showMoreTripsButton
+                    .padding(.top, 8)
+            }
 
             otherOptionsSection
 
             Spacer(minLength: 80)
         }
+    }
+
+    // MARK: - Show More Trips
+
+    private var showMoreTripsButton: some View {
+        Button {
+            Task { await viewModel.planTrip() }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Show more trips")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+            }
+            .foregroundStyle(AppTheme.Colors.accent)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AppTheme.Colors.accent.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(AppTheme.Colors.accent.opacity(0.15), lineWidth: 0.8)
+                    )
+            )
+        }
+        .buttonStyle(ResultsButtonStyle())
+        .padding(.horizontal, 16)
     }
 
     // MARK: - Other Options
