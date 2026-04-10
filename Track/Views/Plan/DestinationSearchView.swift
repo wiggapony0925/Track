@@ -27,6 +27,11 @@ struct DestinationSearchView: View {
         return isOrigin ? "Search origin..." : "Search a place or address"
     }
 
+    private var plannerMessage: String? {
+        guard !viewModel.showResults else { return nil }
+        return viewModel.errorMessage
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -159,76 +164,108 @@ struct DestinationSearchView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 14)
 
-            // Search field
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.Colors.accent.opacity(0.12))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(AppTheme.Colors.accent)
-                }
-
-                TextField(searchPlaceholder, text: $viewModel.searchText)
-                .font(.system(size: 16, weight: .medium, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-                .autocorrectionDisabled()
-                .focused($isSearchFocused)
-                .onChange(of: viewModel.searchText) { _, newValue in
-                    viewModel.performSearch(query: newValue)
-                }
-
-                if viewModel.searchText.isEmpty {
-                    Button {
-                        if let text = UIPasteboard.general.string, !text.isEmpty {
-                            viewModel.searchText = text
-                            viewModel.performSearch(query: text)
-                        }
-                    } label: {
-                        Image(systemName: "doc.on.clipboard")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textTertiary)
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.Colors.accent.opacity(0.12))
                             .frame(width: 32, height: 32)
-                            .background(Circle().fill(AppTheme.Colors.cardInset.opacity(0.6)))
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.accent)
                     }
-                    .buttonStyle(.plain)
-                }
 
-                if !viewModel.searchText.isEmpty {
-                    Button {
-                        viewModel.searchText = ""
-                        viewModel.locationSearchService.cancel()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.5))
+                    TextField(searchPlaceholder, text: $viewModel.searchText)
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .autocorrectionDisabled()
+                    .focused($isSearchFocused)
+                    .onChange(of: viewModel.searchText) { _, newValue in
+                        viewModel.performSearch(query: newValue)
                     }
-                    .buttonStyle(.plain)
+
+                    if viewModel.searchText.isEmpty {
+                        Button {
+                            if let text = UIPasteboard.general.string, !text.isEmpty {
+                                viewModel.searchText = text
+                                viewModel.performSearch(query: text)
+                            }
+                        } label: {
+                            Image(systemName: "doc.on.clipboard")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textTertiary)
+                                .frame(width: 32, height: 32)
+                                .background(Circle().fill(AppTheme.Colors.cardInset.opacity(0.6)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if !viewModel.searchText.isEmpty {
+                        Button {
+                            viewModel.searchText = ""
+                            viewModel.locationSearchService.cancel()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(AppTheme.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(
-                                isSearchFocused
-                                    ? AppTheme.Colors.accent.opacity(0.35)
-                                    : AppTheme.Colors.borderSubtle.opacity(0.2),
-                                lineWidth: isSearchFocused ? 1.5 : 0.5
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(AppTheme.Colors.cardBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(
+                                    isSearchFocused
+                                        ? AppTheme.Colors.accent.opacity(0.35)
+                                        : AppTheme.Colors.borderSubtle.opacity(0.2),
+                                    lineWidth: isSearchFocused ? 1.5 : 0.5
+                                )
+                        )
+                        .shadow(
+                            color: isSearchFocused ? AppTheme.Colors.accent.opacity(0.08) : .clear,
+                            radius: 12
+                        )
+                )
+                .animation(.easeInOut(duration: 0.2), value: isSearchFocused)
+
+                if let message = plannerMessage {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.alertRed)
+                        Text(message)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                            .multilineTextAlignment(.leading)
+                        Spacer()
+                        Button {
+                            viewModel.dismissError()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(AppTheme.Colors.textTertiary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AppTheme.Colors.cardBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(AppTheme.Colors.alertRed.opacity(0.12), lineWidth: 0.8)
                             )
                     )
-                    .shadow(
-                        color: isSearchFocused ? AppTheme.Colors.accent.opacity(0.08) : .clear,
-                        radius: 12
-                    )
-            )
+                }
+            }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
-            .animation(.easeInOut(duration: 0.2), value: isSearchFocused)
 
             Rectangle()
                 .fill(AppTheme.Colors.borderSubtle.opacity(0.1))
@@ -487,8 +524,15 @@ struct DestinationSearchView: View {
 
     private func completionRow(_ completion: MKLocalSearchCompletion) -> some View {
         Button {
-            viewModel.selectCompletion(completion, isOrigin: isOrigin)
-            dismiss()
+            Task {
+                let shouldDismiss = await viewModel.selectCompletion(
+                    completion,
+                    isOrigin: isOrigin
+                )
+                if shouldDismiss {
+                    dismiss()
+                }
+            }
         } label: {
             HStack(spacing: 14) {
                 ZStack {
@@ -665,8 +709,10 @@ struct DestinationSearchView: View {
     // MARK: - Helpers
 
     private func selectLocation(_ location: PlanLocation) async {
-        await viewModel.selectLocation(location, isOrigin: isOrigin)
-        dismiss()
+        let shouldDismiss = await viewModel.selectLocation(location, isOrigin: isOrigin)
+        if shouldDismiss {
+            dismiss()
+        }
     }
 
     private func sectionHeader(_ title: String) -> some View {

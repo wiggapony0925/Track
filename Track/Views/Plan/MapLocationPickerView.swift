@@ -246,8 +246,12 @@ struct MapLocationPickerView: View {
 
             // Confirm button
             Button {
-                viewModel.selectMapCoordinate(centerCoordinate)
-                dismiss()
+                Task {
+                    let shouldDismiss = await viewModel.selectMapCoordinate(centerCoordinate)
+                    if shouldDismiss {
+                        dismiss()
+                    }
+                }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")

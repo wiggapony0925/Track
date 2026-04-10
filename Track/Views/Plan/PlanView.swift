@@ -71,6 +71,14 @@ struct PlanView: View {
             .fullScreenCover(isPresented: $viewModel.showMapPicker) {
                 MapLocationPickerView(viewModel: viewModel)
             }
+            .overlay(alignment: .top) {
+                if !viewModel.showResults, let message = viewModel.errorMessage {
+                    plannerErrorBanner(message)
+                        .padding(.top, 12)
+                        .padding(.horizontal, 16)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
         }
     }
 
@@ -442,13 +450,50 @@ struct PlanView: View {
 
     private var bodyContent: some View {
         VStack(spacing: 30) {
+            savedLocationsGallery
             quickActionsRow
             recommendationsSection
-            savedLocationsGallery
             recentTripsSection
             Spacer(minLength: viewModel.destination != nil ? 120 : 100)
         }
         .padding(.top, 10)
+    }
+
+    private func plannerErrorBanner(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(AppTheme.Colors.alertRed)
+
+            Text(message)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textPrimary)
+                .multilineTextAlignment(.leading)
+
+            Spacer(minLength: 0)
+
+            Button {
+                viewModel.dismissError()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(AppTheme.Colors.cardInset))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.alertRed.opacity(0.12), lineWidth: 0.8)
+                )
+                .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+        )
     }
 
     // MARK: - Quick Actions

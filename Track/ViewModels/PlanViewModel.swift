@@ -131,16 +131,18 @@ final class PlanViewModel {
         showOriginSearch = false
     }
 
-    func selectLocation(_ location: PlanLocation, isOrigin: Bool) async {
+    @discardableResult
+    func selectLocation(_ location: PlanLocation, isOrigin: Bool) async -> Bool {
+        if let category = pendingSavedPlaceCategory {
+            return await persistSavedPlace(location, category: category)
+        }
+
         if isOrigin {
             selectOrigin(location)
         } else {
             selectDestination(location)
         }
-
-        if let category = pendingSavedPlaceCategory {
-            await persistSavedPlace(location, category: category)
-        }
+        return true
     }
 
     func selectRecommendation(_ recommendation: PlannerRecommendation) {
@@ -155,6 +157,10 @@ final class PlanViewModel {
     func clearResults() {
         showResults = false
         tripResults = []
+        errorMessage = nil
+    }
+
+    func dismissError() {
         errorMessage = nil
     }
 
@@ -269,55 +275,60 @@ final class PlanViewModel {
         }
     }
 
-    func selectCompletion(_ completion: MKLocalSearchCompletion, isOrigin: Bool) {
+    func selectCompletion(_ completion: MKLocalSearchCompletion, isOrigin: Bool) async -> Bool {
         isResolvingLocation = true
-        Task {
-            defer { isResolvingLocation = false }
-            do {
-                let mapItem = try await locationSearchService.resolve(completion)
-                let coordinate = mapItem.location.coordinate
-                let location = PlanLocation.custom(
-                    name: mapItem.name ?? completion.title,
-                    address: mapItem.formattedAddress,
-                    lat: coordinate.latitude,
-                    lon: coordinate.longitude
-                )
-                await selectLocation(location, isOrigin: isOrigin)
-            } catch {
-                errorMessage = "Couldn't resolve that location."
-            }
+        defer { isResolvingLocation = false }
+        do {
+            let mapItem = try await locationSearchService.resolve(completion)
+            let coordinate = mapItem.location.coordinate
+            let location = PlanLocation.custom(
+                name: mapItem.name ?? completion.title,
+                address: mapItem.formattedAddress,
+                lat: coordinate.latitude,
+                lon: coordinate.longitude
+            )
+            return await selectLocation(location, isOrigin: isOrigin)
+        } catch {
+            errorMessage = "Couldn't resolve that location."
+            return false
         }
     }
 
-    func selectMapCoordinate(_ coordinate: CLLocationCoordinate2D) {
+    func selectMapCoordinate(_ coordinate: CLLocationCoordinate2D) async -> Bool {
         isResolvingLocation = true
-        Task {
-            defer { isResolvingLocation = false }
-            do {
-                let mapItem = try await locationSearchService.reverseGeocode(coordinate)
-                let location = PlanLocation.custom(
-                    name: mapItem.name ?? mapItem.formattedAddress,
-                    address: mapItem.formattedAddress,
-                    lat: coordinate.latitude,
-                    lon: coordinate.longitude
-                )
-                await selectLocation(location, isOrigin: isOriginForMapPicker)
-            } catch {
-                let fallback = PlanLocation.custom(
-                    name: String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude),
-                    address: "",
-                    lat: coordinate.latitude,
-                    lon: coordinate.longitude
-                )
-                await selectLocation(fallback, isOrigin: isOriginForMapPicker)
+        defer { isResolvingLocation = false }
+        do {
+            let mapItem = try await locationSearchService.reverseGeocode(coordinate)
+            let location = PlanLocation.custom(
+                name: mapItem.name ?? mapItem.formattedAddress,
+                address: mapItem.formattedAddress,
+                lat: coordinate.latitude,
+                lon: coordinate.longitude
+            )
+            let didApply = await selectLocation(location, isOrigin: isOriginForMapPicker)
+            if didApply {
+                showMapPicker = false
             }
-            showMapPicker = false
+            return didApply
+        } catch {
+            let fallback = PlanLocation.custom(
+                name: String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude),
+                address: "",
+                lat: coordinate.latitude,
+                lon: coordinate.longitude
+            )
+            let didApply = await selectLocation(fallback, isOrigin: isOriginForMapPicker)
+            if didApply {
+                showMapPicker = false
+            }
+            return didApply
         }
     }
 
     // MARK: - Saved Place Helpers
 
     func beginSavedPlaceFlow(_ category: SavedLocationCategory) {
+        errorMessage = nil
         pendingSavedPlaceCategory = category
         searchText = ""
         searchResults = []
@@ -426,15 +437,15 @@ final class PlanViewModel {
     private func persistSavedPlace(
         _ location: PlanLocation,
         category: SavedLocationCategory
-    ) async {
+    ) async -> Bool {
         defer { pendingSavedPlaceCategory = nil }
         guard let userID = currentUserID else {
             errorMessage = "Sign in to save places."
-            return
+            return false
         }
         guard let coordinate = resolvedCoordinate(for: location) else {
             errorMessage = "That place does not have a usable location yet."
-            return
+            return false
         }
 
         isSavingPlace = true
@@ -473,9 +484,12 @@ final class PlanViewModel {
                 ),
                 at: 0
             )
+            errorMessage = nil
             await refreshPlannerData()
+            return true
         } catch {
             errorMessage = friendlyErrorMessage(for: error)
+            return false
         }
     }
 

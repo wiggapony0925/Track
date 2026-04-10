@@ -565,6 +565,28 @@ struct TripResultsView: View {
             }
             .buttonStyle(ResultsButtonStyle())
 
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Quick Setup")
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 10),
+                        GridItem(.flexible(), spacing: 10),
+                    ],
+                    spacing: 10
+                ) {
+                    savePlaceAction(.home, color: AppTheme.Colors.accent)
+                    savePlaceAction(.work, color: AppTheme.Colors.warningYellow)
+                    savePlaceAction(.school, color: AppTheme.Colors.successGreen)
+                    savePlaceAction(.partner, color: AppTheme.Colors.alertRed)
+                }
+            }
+            .frame(maxWidth: 360)
+
             Spacer()
         }
         .padding(.horizontal, 32)
@@ -580,6 +602,53 @@ struct TripResultsView: View {
             return "\(totalMinutes) min walk"
         }
         return ""
+    }
+
+    private func savePlaceAction(_ category: SavedLocationCategory, color: Color) -> some View {
+        let existing = viewModel.savedLocation(for: category)
+        let title = existing == nil ? "Set \(category.label)" : "Update \(category.label)"
+
+        return Button {
+            viewModel.clearResults()
+            dismiss()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                viewModel.beginSavedPlaceFlow(category)
+            }
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(color.opacity(0.12))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: category.defaultIcon)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(color)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                    Text(existing?.address.isEmpty == false ? existing?.address ?? "" : "Save it for one-tap planning")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppTheme.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(color.opacity(0.12), lineWidth: 0.8)
+                    )
+            )
+        }
+        .buttonStyle(ResultsButtonStyle())
     }
 }
 
