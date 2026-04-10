@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Annotated
 
@@ -209,21 +210,40 @@ def _go_trip_model(go_trip) -> EngineGoTrip:
     ),
 )
 def engine_health() -> EngineHealth:
-    health = get_engine_service().health()
-    return EngineHealth(
-        version=health.version,
-        schedule_db_path=health.schedule_db_path,
-        state_db_path=health.state_db_path,
-        state_backend=health.state_backend,
-        prepared=health.prepared,
-        prepared_indexes=list(health.prepared_indexes),
-        schedule_db_error=health.schedule_db_error,
-        routing_backend=health.routing_backend,
-        remote_engine_url=health.remote_engine_url,
-        remote_engine_healthy=health.remote_engine_healthy,
-        remote_engine_version=health.remote_engine_version,
-        remote_engine_error=health.remote_engine_error,
-    )
+    try:
+        health = get_engine_service().health()
+        return EngineHealth(
+            version=health.version,
+            schedule_db_path=health.schedule_db_path,
+            state_db_path=health.state_db_path,
+            state_backend=health.state_backend,
+            prepared=health.prepared,
+            prepared_indexes=list(health.prepared_indexes),
+            schedule_db_error=health.schedule_db_error,
+            routing_backend=health.routing_backend,
+            remote_engine_url=health.remote_engine_url,
+            remote_engine_healthy=health.remote_engine_healthy,
+            remote_engine_version=health.remote_engine_version,
+            remote_engine_error=health.remote_engine_error,
+        )
+    except Exception as exc:  # pragma: no cover - production safety net
+        return EngineHealth(
+            version="0.3.0",
+            schedule_db_path=os.environ.get("TRACK_ENGINE_SCHEDULE_DB", "unknown"),
+            state_db_path=os.environ.get("TRACK_ENGINE_STATE_DB", "unknown"),
+            state_backend=os.environ.get("TRACK_ENGINE_STATE_BACKEND", "unknown"),
+            prepared=False,
+            prepared_indexes=[],
+            schedule_db_error=str(exc),
+            routing_backend="backend_state_only",
+            remote_engine_url=(
+                os.environ.get("TRACK_ENGINE_URL")
+                or os.environ.get("TRACK_ENGINE_INTERNAL_URL")
+            ),
+            remote_engine_healthy=False,
+            remote_engine_version=None,
+            remote_engine_error=str(exc),
+        )
 
 
 @router.get(
