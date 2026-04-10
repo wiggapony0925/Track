@@ -144,11 +144,89 @@ final class HomeViewModel {
     /// Prevents the same warning from repeating on every SwiftUI render pass.
     private static var _loggedDistWarnings: Set<String> = []
 
+    // MARK: - Distance Cache (Nearby Performance Fix)
+    //
+    // `displayDistanceMeters` scans `nearbyBusStops` / `nearbyStations`
+    // for every group.  When called from a SwiftUI body (e.g. `groupedDisplayBuckets`),
+    // reading those stored arrays creates @Observable tracking — so when
+    // `nearbyBusStops` updates asynchronously (background Task), it triggers
+    // another full body re-evaluation → another O(n×m) scan → cascading
+    // re-renders.  In the Nearby tab (all modes combined), 50+ groups ×
+    // 200+ bus stops = thousands of CLLocation allocations per body pass.
+    //
+    // The cache breaks this chain: distances are pre-computed eagerly after
+    // each refresh, and `displayDistanceMeters` does an O(1) dictionary
+    // lookup instead of an O(m) array scan.  Views only track the cache
+    // itself (ObservationIgnored), not the raw `nearbyBusStops` array.
+    @ObservationIgnored private var _distanceCache: [String: CLLocationDistance] = [:]
+    @ObservationIgnored private var _distanceCacheLocation: CLLocation?
+
+    /// Rebuilds the pre-computed distance cache for all groups.
+    /// Call after setting `groupedTransit`, `nearbyBusStops`, or `nearbyStations`.
+    func rebuildDistanceCache(location: CLLocation?) {
+        guard let location else { return }
+        _distanceCacheLocation = location
+
+        var cache: [String: CLLocationDistance] = [:]
+        cache.reserveCapacity(groupedTransit.count)
+
+        for group in groupedTransit {
+            let key = "\(group.routeId)|\(group.mode)"
+            if let dist = _computeDisplayDistance(for: group, from: location) {
+                cache[key] = dist
+            }
+        }
+
+        // Also cache per-mode tab groups so SubwayDashboard / BusDashboard
+        // benefit from the same fast path.
+        for group in nearbyGroupedSubwayArrivals {
+            let key = "\(group.routeId)|\(group.mode)"
+            if cache[key] == nil, let dist = _computeDisplayDistance(for: group, from: location) {
+                cache[key] = dist
+            }
+        }
+        for group in nearbyGroupedBusArrivals {
+            let key = "\(group.routeId)|\(group.mode)"
+            if cache[key] == nil, let dist = _computeDisplayDistance(for: group, from: location) {
+                cache[key] = dist
+            }
+        }
+        for group in nearbyGroupedLIRRArrivals {
+            let key = "\(group.routeId)|\(group.mode)"
+            if cache[key] == nil, let dist = _computeDisplayDistance(for: group, from: location) {
+                cache[key] = dist
+            }
+        }
+        for group in nearbyGroupedMNRArrivals {
+            let key = "\(group.routeId)|\(group.mode)"
+            if cache[key] == nil, let dist = _computeDisplayDistance(for: group, from: location) {
+                cache[key] = dist
+            }
+        }
+
+        _distanceCache = cache
+    }
+
     func displayDistanceMeters(
         for group: GroupedNearbyTransitResponse,
         from location: CLLocation?
     ) -> CLLocationDistance? {
         guard let location else { return nil }
+
+        // Fast path: return pre-computed distance from cache.
+        // The cache is rebuilt after each refresh so it stays in sync
+        // with the latest `nearbyBusStops` and `nearbyStations` data.
+        // This avoids reading those @Observable arrays inside view bodies,
+        // preventing cascading re-evaluations in the Nearby tab.
+        let key = "\(group.routeId)|\(group.mode)"
+        if let cached = _distanceCache[key] {
+            // Verify the cache was built for a nearby location (< 500 m drift).
+            // If the user has moved significantly, fall through to live computation.
+            if let cacheLoc = _distanceCacheLocation,
+               cacheLoc.distance(from: location) < 500 {
+                return cached
+            }
+        }
 
         let result: CLLocationDistance?
 
@@ -266,6 +344,67 @@ final class HomeViewModel {
                         best,
                         location.distance(from: stationLoc)
                     )
+                }
+                let best = min(nearbyDist, groupDist)
+                result = best.isFinite ? best : nil
+            } else {
+                result = groupDist.isFinite ? groupDist : nil
+            }
+        }
+
+        return result
+    }
+
+    /// Core distance computation — reads `nearbyBusStops` and `nearbyStations`
+    /// directly.  Called by `rebuildDistanceCache()` at controlled points
+    /// (after refresh), NOT from view bodies.
+    private func _computeDisplayDistance(
+        for group: GroupedNearbyTransitResponse,
+        from location: CLLocation
+    ) -> CLLocationDistance? {
+        let result: CLLocationDistance?
+
+        if group.isBus {
+            let target = normalizeMTARouteToken(group.routeId)
+            let matchingStops = nearbyBusStops.filter { stop in
+                guard let routeIds = stop.routeIds, !routeIds.isEmpty else { return false }
+                return routeIds.contains { normalizeMTARouteToken($0) == target }
+            }
+            let groupDist = groupMinDistance(for: group, from: location)
+            if !matchingStops.isEmpty {
+                let nearbyDist = matchingStops.reduce(
+                    Double.greatestFiniteMagnitude
+                ) { best, stop in
+                    min(best, location.distance(from: CLLocation(latitude: stop.lat, longitude: stop.lon)))
+                }
+                let best = min(nearbyDist, groupDist)
+                result = best.isFinite ? best : nil
+            } else {
+                result = groupDist.isFinite ? groupDist : nil
+            }
+        } else {
+            let target = normalizeMTARouteToken(group.routeId)
+            let groupMode = group.mode
+            let matchingStations = nearbyStations.filter { station in
+                station.routeIDs.contains { rawID in
+                    let lower = rawID.lowercased()
+                    switch groupMode {
+                    case "lirr":
+                        guard lower.hasPrefix("lirr_") else { return false }
+                    case "mnr":
+                        guard lower.hasPrefix("mnr_") || lower.hasPrefix("mta mnr_") else { return false }
+                    default:
+                        guard !lower.hasPrefix("lirr_") && !lower.hasPrefix("mnr_") && !lower.hasPrefix("mta mnr_") else { return false }
+                    }
+                    return normalizeMTARouteToken(rawID) == target
+                }
+            }
+            let groupDist = groupMinDistance(for: group, from: location)
+            if !matchingStations.isEmpty {
+                let nearbyDist = matchingStations.reduce(
+                    Double.greatestFiniteMagnitude
+                ) { best, station in
+                    min(best, location.distance(from: CLLocation(latitude: station.lat, longitude: station.lon)))
                 }
                 let best = min(nearbyDist, groupDist)
                 result = best.isFinite ? best : nil
@@ -2114,6 +2253,9 @@ final class HomeViewModel {
         if let cachedLocation {
             lastKnownUserLocation = cachedLocation
         }
+
+        // Pre-compute distance cache so the first dashboard render is fast.
+        rebuildDistanceCache(location: cachedLocation ?? lastKnownUserLocation)
 
         // Populate flat transit array for fallback code paths
         var seenIDs = Set<String>()

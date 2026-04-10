@@ -178,6 +178,7 @@ struct HomeView: View {
                     currentMapDistance: $currentMapDistance,
                     onRouteStopTap: presentRouteStopDetail,
                     onSystemStationTap: presentTrainStopDetail,
+                    onBusStopTap: presentBusStopDetail,
                     isDragSearchActive: isDragSearchActive,
                     dragSearchSettledCenter: dragSearchSettledCenter,
                     sheetHeightObserver: sheetHeightObserver
@@ -799,6 +800,10 @@ struct HomeView: View {
         _ station: MapSystemViewModel.ConsolidatedStation
     ) {
         presentStopDetail(.station(station))
+    }
+
+    private func presentBusStopDetail(_ stop: BusStop) {
+        presentStopDetail(.bus(stop))
     }
 
     private func presentStopDetail(_ selection: StopDetailSelection) {

@@ -37,6 +37,7 @@ struct MapLibreTrackMapView: View {
     @Binding var currentMapDistance: Double?
     var onRouteStopTap: ((BusStop) -> Void)? = nil
     var onSystemStationTap: ((MapSystemViewModel.ConsolidatedStation) -> Void)? = nil
+    var onBusStopTap: ((BusStop) -> Void)? = nil
 
     /// Whether drag-to-search is currently active.
     var isDragSearchActive: Bool = false
@@ -163,6 +164,7 @@ struct MapLibreTrackMapView: View {
                         cameraChangeToken &+= 1
                     }
                 },
+                onBusStopTap: onBusStopTap,
                 sheetHeightObserver: sheetHeightObserver
             )
             .equatable() // Bypass deep structural array equality check

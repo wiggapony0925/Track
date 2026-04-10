@@ -196,6 +196,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// their data inputs change, causing markers to "stick" to the screen.
     var onCameraMove: (() -> Void)?
 
+    /// Called when a baked bus stop dot is tapped on the map.
+    /// Carries a lightweight `BusStop` built from the GeoJSON feature.
+    var onBusStopTap: ((BusStop) -> Void)?
+
     /// Bridges real-time sheet height → contentInset.bottom (bypasses SwiftUI).
     /// Wired once in makeUIView; not included in Equatable check.
     var sheetHeightObserver: SheetHeightObserver?
@@ -248,6 +252,20 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
         // Delegate
         mapView.delegate = context.coordinator
+
+        // Tap gesture recognizer for bus stop feature queries.
+        // Station dots use SwiftUI overlays, but 13k bus stops would
+        // be too heavy — instead we query MapLibre's rendered features.
+        let tapGR = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleMapTap(_:))
+        )
+        tapGR.numberOfTapsRequired = 1
+        // Don't block built-in map gestures
+        for existing in mapView.gestureRecognizers ?? [] {
+            tapGR.require(toFail: existing)
+        }
+        mapView.addGestureRecognizer(tapGR)
 
         // Wire interactive sheet height → map content inset.
         // This closure fires on every drag frame (via SheetHeightObserver)
@@ -656,6 +674,47 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             viewFor annotation: MLNAnnotation
         ) -> MLNAnnotationView? {
             return nil  // All annotations use GL layers or SwiftUI overlays
+        }
+
+        // MARK: - Bus Stop Tap Handling
+
+        /// Handles taps on the map to detect bus stop feature hits.
+        /// Uses MapLibre's `visibleFeatures(at:)` to query the baked
+        /// bus-stops-dots layer instead of SwiftUI overlays (13k stops
+        /// would be too expensive as overlay views).
+        @objc func handleMapTap(_ sender: UITapGestureRecognizer) {
+            guard sender.state == .ended,
+                  parent.selectedMode == .bus,
+                  !parent.hasActiveRoute,
+                  let mapView = sender.view as? MLNMapView else { return }
+
+            let point = sender.location(in: mapView)
+            // Expand tap area slightly for fat-finger tolerance
+            let rect = CGRect(
+                x: point.x - 22, y: point.y - 22,
+                width: 44, height: 44
+            )
+
+            let features = mapView.visibleFeatures(
+                in: rect,
+                styleLayerIdentifiers: [MapLibreStyleConfig.layerBusStopsDots]
+            )
+
+            guard let hit = features.first,
+                  let stopId = hit.attributes["stop_id"] as? String,
+                  let name = hit.attributes["name"] as? String,
+                  let pointFeature = hit as? MLNPointFeature else { return }
+
+            let coord = pointFeature.coordinate
+            let busStop = BusStop(
+                id: stopId,
+                name: name,
+                lat: coord.latitude,
+                lon: coord.longitude,
+                direction: nil,
+                routeIds: nil
+            )
+            parent.onBusStopTap?(busStop)
         }
 
         // MARK: - Unified Layer Update
@@ -1163,9 +1222,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             }
 
             // ── Bus route casing (subtle border) ──
-            let busRouteColor = isDark
-                ? UIColor(red: 0.10, green: 0.45, blue: 0.91, alpha: 1.0)
-                : UIColor(red: 0.10, green: 0.45, blue: 0.91, alpha: 1.0)
+            // Bus route color is data-driven: each GeoJSON feature has a
+            // "color" property (e.g. "#0078C6") set by the service-type
+            // classifier.  MapLibre parses CSS hex strings automatically.
+            let busRouteColorExpr = NSExpression(forKeyPath: "color")
 
             if let existingCasing = style.layer(
                 withIdentifier: MapLibreStyleConfig.layerBusRoutesCasing
@@ -1202,7 +1262,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 withIdentifier: MapLibreStyleConfig.layerBusRoutesFill
             ) as? MLNLineStyleLayer {
                 existingFill.lineOpacity = NSExpression(forConstantValue: busOpacity)
-                existingFill.lineColor = NSExpression(forConstantValue: busRouteColor)
+                existingFill.lineColor = busRouteColorExpr
             } else if let source = style.source(
                 withIdentifier: MapLibreStyleConfig.srcBusRoutes
             ) {
@@ -1212,7 +1272,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 )
                 fill.lineWidth = MapLibreStyleConfig.busRouteWidth
                 fill.lineOpacity = NSExpression(forConstantValue: busOpacity)
-                fill.lineColor = NSExpression(forConstantValue: busRouteColor)
+                fill.lineColor = busRouteColorExpr
                 fill.lineCap = NSExpression(forConstantValue: "round")
                 fill.lineJoin = NSExpression(forConstantValue: "round")
                 // Insert above casing

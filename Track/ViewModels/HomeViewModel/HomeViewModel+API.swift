@@ -1509,7 +1509,17 @@ extension HomeViewModel {
             )) ?? self.nearbyBusStops
             // Don't discard results just because a new refresh started —
             // stale bus stops are better than no bus stops.
-            self.nearbyBusStops = Self.augmentBusStops(stops, from: self.groupedTransit)
+            let augmented = Self.augmentBusStops(stops, from: self.groupedTransit)
+            // Only update if the stop set actually changed — avoids an
+            // unnecessary @Observable notification that would cascade into
+            // heavy NearbyDashboard body re-evaluations.
+            let oldIDs = Set(self.nearbyBusStops.map(\.id))
+            let newIDs = Set(augmented.map(\.id))
+            if oldIDs != newIDs || augmented.count != self.nearbyBusStops.count {
+                self.nearbyBusStops = augmented
+            }
+            // Rebuild distance cache with fresh bus stop data.
+            self.rebuildDistanceCache(location: location)
         }
 
         // ── Alerts + Accessibility ────────────────────────────────────
@@ -1691,6 +1701,10 @@ extension HomeViewModel {
             // returns commuter rail stations, so this keeps the primary
             // station-matching path working for all modes.
             nearbyStations = Self.augmentStations(stations, from: groupedTransit)
+
+            // Pre-compute distance cache so dashboard body evaluations
+            // do O(1) lookups instead of scanning nearbyBusStops/nearbyStations.
+            rebuildDistanceCache(location: location)
 
             // ── Refresh complete: log timing summary ──
             let refreshElapsed = Date().timeIntervalSince(refreshStart)
@@ -2038,8 +2052,8 @@ extension HomeViewModel {
             allGroupsForAugment += nearbyGroupedLIRRArrivals
             allGroupsForAugment += nearbyGroupedMNRArrivals
             nearbyStations = Self.augmentStations(stations, from: allGroupsForAugment)
-        } catch {
-            AppLogger.shared.logError("refreshSubway", error: error)
+            rebuildDistanceCache(location: location)
+        } catch {            AppLogger.shared.logError("refreshSubway", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
     }
@@ -2084,6 +2098,7 @@ extension HomeViewModel {
                 stops = nearbyBusStops
             }
             nearbyBusStops = Self.augmentBusStops(stops, from: nearbyGroupedBusArrivals)
+            rebuildDistanceCache(location: location)
 
             // Fetch full route catalog only once — it rarely changes and is
             // cached for 30 s in the API memoizer.  Fire-and-forget so it
@@ -2140,6 +2155,7 @@ extension HomeViewModel {
                 )
                 // Inject LIRR station data so distance matching works
                 nearbyStations = Self.augmentStations(nearbyStations, from: newGrouped)
+                rebuildDistanceCache(location: loc)
             } catch {
                 AppLogger.shared.logError("fetchGroupedLIRR", error: error)
                 if nearbyGroupedLIRRArrivals.isEmpty {
@@ -2182,6 +2198,7 @@ extension HomeViewModel {
                 )
                 // Inject MNR station data so distance matching works
                 nearbyStations = Self.augmentStations(nearbyStations, from: newGrouped)
+                rebuildDistanceCache(location: loc)
             } catch {
                 AppLogger.shared.logError("fetchGroupedMNR", error: error)
                 if nearbyGroupedMNRArrivals.isEmpty {
