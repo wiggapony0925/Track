@@ -272,3 +272,46 @@ def test_engine_routes_cover_backend_state_without_local_planner(
     os.environ.pop("TRACK_ENGINE_SCHEDULE_DB", None)
     os.environ.pop("TRACK_ENGINE_STATE_DB", None)
     reset_engine_service()
+
+
+def test_engine_search_degrades_when_schedule_db_has_no_stops_table(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    schedule_db = tmp_path / "schedule_missing_stops.db"
+    state_db = tmp_path / "state.db"
+    conn = sqlite3.connect(schedule_db)
+    conn.execute("CREATE TABLE calendar (service_id TEXT PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("TRACK_ENGINE_SCHEDULE_DB", str(schedule_db))
+    monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
+    monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
+    reset_engine_service()
+
+    save_place_resp = client.post(
+        "/engine/places",
+        json={
+            "user_id": "user-1",
+            "label": "Richmond Hill High School",
+            "kind": "school",
+            "lat": 40.6945,
+            "lon": -73.8312,
+            "address": "89-30 114th St",
+        },
+    )
+    assert save_place_resp.status_code == 200
+
+    search_resp = client.get(
+        "/engine/search",
+        params={"q": "richmond", "user_id": "user-1"},
+    )
+    assert search_resp.status_code == 200
+    payload = search_resp.json()
+    assert payload
+    assert payload[0]["label"] == "Richmond Hill High School"
+
+    os.environ.pop("TRACK_ENGINE_SCHEDULE_DB", None)
+    os.environ.pop("TRACK_ENGINE_STATE_DB", None)
+    reset_engine_service()

@@ -74,3 +74,6 @@ TrackBackend/scripts/diag_*.py
 
 # Supabase CLI temp files
 supabase/.temp/
+
+# Standalone C++ engine lives in its own repo; keep the local copy out of this monorepo.
+/TrackEngine/

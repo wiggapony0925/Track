@@ -150,32 +150,41 @@ class ScheduleRepository:
             return []
         conn = self._connect()
         try:
-            rows = conn.execute(
-                """
-                SELECT stop_id, stop_name, stop_lat, stop_lon
-                FROM stops
-                WHERE lower(stop_name) LIKE ?
-                   OR lower(stop_id) LIKE ?
-                ORDER BY
-                    CASE
-                        WHEN lower(stop_name) = ? THEN 0
-                        WHEN lower(stop_name) LIKE ? THEN 1
-                        WHEN lower(stop_id) = ? THEN 2
-                        ELSE 3
-                    END,
-                    length(stop_name),
-                    stop_name COLLATE NOCASE
-                LIMIT ?
-                """,
-                (
-                    f"%{lowered}%",
-                    f"%{lowered}%",
-                    lowered,
-                    f"{lowered}%",
-                    lowered,
-                    limit,
-                ),
-            ).fetchall()
+            try:
+                rows = conn.execute(
+                    """
+                    SELECT stop_id, stop_name, stop_lat, stop_lon
+                    FROM stops
+                    WHERE lower(stop_name) LIKE ?
+                       OR lower(stop_id) LIKE ?
+                    ORDER BY
+                        CASE
+                            WHEN lower(stop_name) = ? THEN 0
+                            WHEN lower(stop_name) LIKE ? THEN 1
+                            WHEN lower(stop_id) = ? THEN 2
+                            ELSE 3
+                        END,
+                        length(stop_name),
+                        stop_name COLLATE NOCASE
+                    LIMIT ?
+                    """,
+                    (
+                        f"%{lowered}%",
+                        f"%{lowered}%",
+                        lowered,
+                        f"{lowered}%",
+                        lowered,
+                        limit,
+                    ),
+                ).fetchall()
+            except sqlite3.OperationalError as exc:
+                # Some production snapshots may temporarily lack the GTFS stops
+                # table while the main backend is still bootstrapping data.
+                # Search should still work for saved places/recents instead of
+                # failing the entire request with a 500.
+                if "no such table" in str(exc).lower():
+                    return []
+                raise
         finally:
             conn.close()
         return [
