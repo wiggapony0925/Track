@@ -202,6 +202,7 @@ class TrackEngineService:
     """Facade used by the FastAPI router."""
 
     VERSION = "0.3.0"
+    _RENDER_INTERNAL_ENGINE_URL = "http://trackegine:10000"
 
     def __init__(self, *, schedule_db: Path, state_db: Path):
         self.schedule_db = Path(schedule_db)
@@ -211,11 +212,7 @@ class TrackEngineService:
         self.state_backend = self.store.backend_name
         self.state_store_description = self.store.description
         self._last_remote_engine_version: str | None = None
-        self.remote_engine_url = os.environ.get("TRACK_ENGINE_URL", "").strip().rstrip(
-            "/"
-        )
-        if not self.remote_engine_url:
-            self.remote_engine_url = None
+        self.remote_engine_url = self._resolve_remote_engine_url()
         self.remote_engine_timeout_s = float(
             os.environ.get("TRACK_ENGINE_TIMEOUT_S", "25")
         )
@@ -232,6 +229,23 @@ class TrackEngineService:
             os.environ.get("TRACK_ENGINE_ALERT_TIMEOUT_S", "4.0")
         )
 
+    def _resolve_remote_engine_url(self) -> str | None:
+        explicit = (
+            os.environ.get("TRACK_ENGINE_URL")
+            or os.environ.get("TRACK_ENGINE_INTERNAL_URL")
+            or ""
+        ).strip().rstrip("/")
+        if explicit:
+            return explicit
+
+        # Render production currently runs this backend from /TrackBackend and
+        # the private C++ engine is addressable by its internal service name.
+        # Falling back here removes the need for a separate env var just to
+        # connect the two services inside the same Render workspace.
+        if Path("/TrackBackend").exists():
+            return self._RENDER_INTERNAL_ENGINE_URL
+        return None
+
     def _build_store(self, state_db: Path):
         state_backend = os.environ.get("TRACK_ENGINE_STATE_BACKEND", "").strip().lower()
         supabase_url = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
@@ -240,6 +254,8 @@ class TrackEngineService:
             or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
             or ""
         ).strip()
+        if not state_backend and supabase_url and supabase_key:
+            state_backend = "supabase"
         if state_backend == "supabase":
             if not supabase_url or not supabase_key:
                 raise RuntimeError(
