@@ -66,6 +66,8 @@ TrackBackend/app/data/.gtfs_meta/
 
 # Temp DB files
 *.db.tmp
+*.db-wal
+*.db-shm
 
 # Diagnostic scripts (local dev only)
 TrackBackend/scripts/diag_*.py

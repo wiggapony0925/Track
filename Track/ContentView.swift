@@ -48,7 +48,7 @@ struct ContentView: View {
             } else if !hasCompletedOnboarding {
                 OnboardingView()
             } else if locationGranted {
-                HomeView(locationManager: locationManager)
+                MainTabView(locationManager: locationManager)
             } else {
                 LocationPermissionView(
                     authorizationStatus: $locationManager.authorizationStatus,

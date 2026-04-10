@@ -56,6 +56,16 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false   # also accepted as SUPABASE_SERVICE_KEY — same value
+      - key: TRACK_ENGINE_STATE_BACKEND
+        value: supabase
+      - key: TRACK_ENGINE_URL
+        sync: false   # set to the internal URL of the standalone C++ TrackEngine service
+      - key: TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT
+        value: "1"
+      - key: TRACK_ENGINE_REALTIME_TIMEOUT_S
+        value: "3.5"
+      - key: TRACK_ENGINE_ALERT_TIMEOUT_S
+        value: "3.0"
 
       # ── Gunicorn worker count ──────────────────────────────
       # Standard plan: 1 CPU, 2 GB RAM.  ONE worker is optimal:

@@ -14,41 +14,47 @@ struct DataController {
     init() {
         // SwiftData models for local persistence
         // Note: WidgetSchedule uses UserDefaults for widget access
-        let schema = Schema([
+        // Trip-plan models only exist in the main app target.
+        var modelTypes: [any PersistentModel.Type] = [
             CommutePattern.self,
             TripLog.self,
             Station.self,
             Route.self,
-        ])
+        ]
+        #if !WIDGET_EXTENSION
+        modelTypes += [
+            SavedLocation.self,
+            RecentSearchLocation.self,
+            SavedTrip.self,
+        ]
+        #endif
+        let schema = Schema(modelTypes)
 
         // Point to the Shared App Group container
         let groupURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupIdentifier
         )
 
+        let fileURL = groupURL?.appendingPathComponent("Track.sqlite", isDirectory: false)
+
         let config: ModelConfiguration
-        if let groupURL {
-            // Use isDirectory: false to avoid blocking file system check
-            let fileURL = groupURL.appendingPathComponent("Track.sqlite", isDirectory: false)
+        if let fileURL {
             config = ModelConfiguration(url: fileURL)
         } else {
-            // Fallback to default container if App Group is unavailable
             config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         }
 
         do {
             container = try ModelContainer(for: schema, configurations: config)
         } catch {
-            // Attempt in-memory fallback so the app can still launch
             #if DEBUG
             print("⚠️ ModelContainer init failed: \(error). Falling back to in-memory store.")
             #endif
-            let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            do {
-                container = try ModelContainer(for: schema, configurations: fallback)
-            } catch {
-                fatalError("Failed to load even in-memory ModelContainer: \(error)")
-            }
+            // Attempt in-memory fallback so the app can still launch
+            container = try! ModelContainer(
+                for: schema,
+                configurations: ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            )
         }
     }
 }

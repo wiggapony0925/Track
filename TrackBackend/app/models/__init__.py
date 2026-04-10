@@ -1,8 +1,13 @@
-"""Pydantic schemas for the JSON responses returned to the iOS app."""
+"""Pydantic schemas for the JSON responses returned to the iOS app.
+
+Core transit response models live in this package root. TrackEngine-specific
+schemas are organized separately in ``app.models.track_engine``.
+"""
+# ruff: noqa: TC003
 
 from __future__ import annotations
 
-from datetime import datetime
+import datetime as dt
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -192,10 +197,10 @@ class BusArrival(BaseModel):
     status: str = Field(
         "Live", description="Status indicator: 'Live', 'Scheduled', or 'Approaching'."
     )
-    expected_arrival: datetime | None = Field(
+    expected_arrival: dt.datetime | None = Field(
         None, description="Predicted arrival time (UTC ISO 8601)."
     )
-    aimed_arrival: datetime | None = Field(
+    aimed_arrival: dt.datetime | None = Field(
         None, description="Scheduled arrival time from SIRI AimedArrivalTime."
     )
     schedule_deviation_s: int | None = Field(
@@ -436,7 +441,7 @@ class BusVehicle(BaseModel):
     direction_ref: int | None = Field(
         None, description="SIRI direction reference: 0 or 1."
     )
-    expected_arrival: datetime | None = Field(
+    expected_arrival: dt.datetime | None = Field(
         None, description="Expected arrival at the next stop (UTC ISO 8601)."
     )
     onward_calls: list[BusArrival] = Field(
@@ -445,7 +450,7 @@ class BusVehicle(BaseModel):
     is_realtime: bool = Field(
         True, description="False when position is interpolated from static schedule."
     )
-    position_recorded_at: datetime | None = Field(
+    position_recorded_at: dt.datetime | None = Field(
         None,
         description="When the GPS position was last recorded (RecordedAtTime). Stale > 3 min may indicate signal loss.",
     )

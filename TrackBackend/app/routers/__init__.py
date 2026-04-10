@@ -15,5 +15,6 @@ __all__ = [
     "predict",
     "status",
     "subway",
+    "track_engine_router",
     "weather",
 ]

@@ -166,7 +166,7 @@ struct HomeView: View {
     // MARK: - Map & Sheet Content (extracted to reduce body complexity)
     
     private var mapAndSheetContent: some View {
-        GeometryReader { _ in
+        GeometryReader { geo in
             ZStack {
                 // MARK: - Map Layer
                 MapLibreTrackMapView(
@@ -212,6 +212,33 @@ struct HomeView: View {
                         onDismissDragSearch: { dismissDragSearch() }
                     )
                 
+                // MARK: - Plan Trip Floating Button
+                // Positioned at bottom-right, just above the sheet edge.
+                // Moves with the sheet detent and hides when sheet is fully expanded.
+                if sheetDetent != .large
+                    && viewModel.selectedRouteId == nil
+                    && !viewModel.isRouteDetailPresented {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            PlanTripFloatingButton {
+                                NotificationCenter.default.post(
+                                    name: .switchToTab,
+                                    object: AppTab.plan
+                                )
+                            }
+                        }
+                        .padding(.trailing, 16)
+                        .padding(.bottom, planButtonBottom(screenHeight: geo.size.height))
+                    }
+                    .transition(
+                        .opacity.combined(
+                            with: .scale(scale: 0.85, anchor: .bottomTrailing)
+                        )
+                    )
+                }
+
                 // MARK: - Drag-to-Search Overlay
                 if dragToSearchEnabled
                     && viewModel.selectedRouteId == nil {
@@ -255,6 +282,18 @@ struct HomeView: View {
         }
     }
     
+    // MARK: - Plan Trip Button Positioning
+
+    /// Computes the bottom padding for the floating plan-trip button
+    /// so it sits just above the current sheet detent.
+    private func planButtonBottom(screenHeight: CGFloat) -> CGFloat {
+        if sheetDetent == .fraction(SheetConstants.defaultFraction) {
+            return screenHeight * SheetConstants.defaultFraction + 16
+        }
+        // Peek detent (or any other non-large, non-default)
+        return 180
+    }
+
     // MARK: - Modifier Handler Methods (extracted from body)
     
     private func onAppearSetup() {

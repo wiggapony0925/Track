@@ -364,6 +364,15 @@ def _rebuild_schedule_db() -> bool:
             "CREATE INDEX IF NOT EXISTS idx_stop_times_stop_dept "
             "ON stop_times(stop_id, departure_time)"
         )
+        # Hot path for downstream trip scans used by the C++ routing engine.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_stop_times_trip_seq "
+            "ON stop_times(trip_id, stop_sequence)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_stop_times_trip_stop_seq "
+            "ON stop_times(trip_id, stop_id, stop_sequence)"
+        )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_trips_service ON trips(service_id)"
         )
@@ -373,6 +382,7 @@ def _rebuild_schedule_db() -> bool:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_calendar_service ON calendar(service_id)"
         )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_stops_name ON stops(stop_name)")
         conn.commit()
         conn.close()
 

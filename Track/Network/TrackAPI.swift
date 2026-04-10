@@ -853,6 +853,111 @@ struct TrackAPI {
         }
     }
 
+    // MARK: - Track Engine
+
+    static func fetchEngineSearch(
+        query: String,
+        userID: String? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        limit: Int = 12
+    ) async throws -> [PlannerSearchResult] {
+        guard var components = URLComponents(string: baseURL + "/engine/search") else {
+            throw TrackAPIError.invalidURL
+        }
+        var queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+        if let userID, !userID.isEmpty {
+            queryItems.append(URLQueryItem(name: "user_id", value: userID))
+        }
+        if let latitude {
+            queryItems.append(URLQueryItem(name: "lat", value: String(latitude)))
+        }
+        if let longitude {
+            queryItems.append(URLQueryItem(name: "lon", value: String(longitude)))
+        }
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        let data = try await get(url: url)
+        return try decoder.decode([PlannerSearchResult].self, from: data)
+    }
+
+    static func fetchEngineSavedPlaces(userID: String) async throws -> [PlannerSavedPlaceRecord] {
+        guard var components = URLComponents(string: baseURL + "/engine/places") else {
+            throw TrackAPIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "user_id", value: userID)]
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        let data = try await get(url: url)
+        return try decoder.decode([PlannerSavedPlaceRecord].self, from: data)
+    }
+
+    static func fetchEngineRecentTrips(
+        userID: String,
+        limit: Int = 12
+    ) async throws -> [PlannerRecentTripRecord] {
+        guard var components = URLComponents(string: baseURL + "/engine/trips/recent") else {
+            throw TrackAPIError.invalidURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "user_id", value: userID),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        let data = try await get(url: url)
+        return try decoder.decode([PlannerRecentTripRecord].self, from: data)
+    }
+
+    static func fetchEngineRecommendations(
+        userID: String,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        originLabel: String = "Current location",
+        limit: Int = 6
+    ) async throws -> [PlannerRecommendation] {
+        guard var components = URLComponents(string: baseURL + "/engine/recommendations") else {
+            throw TrackAPIError.invalidURL
+        }
+        var queryItems = [
+            URLQueryItem(name: "user_id", value: userID),
+            URLQueryItem(name: "origin_label", value: originLabel),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+        if let latitude {
+            queryItems.append(URLQueryItem(name: "origin_lat", value: String(latitude)))
+        }
+        if let longitude {
+            queryItems.append(URLQueryItem(name: "origin_lon", value: String(longitude)))
+        }
+        components.queryItems = queryItems
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        let data = try await get(url: url)
+        return try decoder.decode([PlannerRecommendation].self, from: data)
+    }
+
+    static func fetchEngineGo(
+        request payload: EngineGoRequestPayload
+    ) async throws -> EngineGoResponseDTO {
+        let data = try await sendJSON(
+            method: "POST",
+            path: "/engine/go",
+            body: payload,
+            timeout: 40
+        )
+        return try decoder.decode(EngineGoResponseDTO.self, from: data)
+    }
+
     // MARK: - Private
 
     private static let decoder: JSONDecoder = {
@@ -877,6 +982,8 @@ struct TrackAPI {
         }
         return d
     }()
+
+    private static let encoder = JSONEncoder()
 
     private static let memoizer = APIRequestMemoizer()
     private static let staticEndpointTTL: TimeInterval = 30
@@ -1176,6 +1283,77 @@ struct TrackAPI {
             await memoizer.clearInflight(for: cacheKey)
             throw error
         }
+    }
+
+    private static func sendJSON<Body: Encodable>(
+        method: String,
+        path: String,
+        queryItems: [URLQueryItem] = [],
+        body: Body? = nil,
+        timeout: TimeInterval = 30
+    ) async throws -> Data {
+        guard var components = URLComponents(string: baseURL + path) else {
+            throw TrackAPIError.invalidURL
+        }
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+
+        AppLogger.shared.logRequest(method: method, url: url.absoluteString)
+
+        var lastError: Error = TrackAPIError.networkError
+        let wasColdStart = !serverWarmedUp
+        let attempts = wasColdStart ? 2 : 2
+
+        for attempt in 0..<attempts {
+            if attempt > 0 {
+                try await Task.sleep(nanoseconds: UInt64(0.5 * Double(attempt) * 1_000_000_000))
+            }
+
+            do {
+                var request = URLRequest(url: url)
+                request.httpMethod = method
+                request.timeoutInterval = wasColdStart ? max(timeout, 25) : timeout
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+                if let email = cachedUserEmail, !email.isEmpty {
+                    request.setValue(email, forHTTPHeaderField: "x-user-email")
+                }
+
+                if let body {
+                    request.httpBody = try encoder.encode(body)
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                }
+
+                let (data, response) = try await session.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    lastError = TrackAPIError.networkError
+                    continue
+                }
+                guard (200...299).contains(http.statusCode) else {
+                    let serverErr = TrackAPIError.serverError(statusCode: http.statusCode)
+                    if http.statusCode < 500 {
+                        throw serverErr
+                    }
+                    lastError = serverErr
+                    continue
+                }
+
+                serverWarmedUp = true
+                return data
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as TrackAPIError {
+                throw error
+            } catch {
+                lastError = error
+            }
+        }
+
+        throw lastError
     }
 }
 

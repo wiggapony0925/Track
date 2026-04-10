@@ -22,7 +22,17 @@ from starlette.middleware.gzip import GZipMiddleware
 from app.clients import redis_client as _redis
 from app.clients.bus_client import clear_bus_cache
 from app.config import get_settings
-from app.routers import bus, lirr, mnr, nearby, predict, status, subway, weather
+from app.routers import (
+    bus,
+    lirr,
+    mnr,
+    nearby,
+    predict,
+    status,
+    subway,
+    track_engine_router,
+    weather,
+)
 from app.services.gtfs.data_loader import ensure_data_available
 from app.services.gtfs.gtfs_refresh import rebuild_schedule_db_if_missing
 from app.utils import cache_stats
@@ -124,6 +134,13 @@ _OPENAPI_TAGS = [
         ),
     },
     {
+        "name": "engine",
+        "description": (
+            "Trip planning, saved places, recent trips, destination recommendations, "
+            "and calendar-aware routing hints for the Track planning experience."
+        ),
+    },
+    {
         "name": "system",
         "description": (
             "Server health, configuration, GTFS data status, and cache administration. "
@@ -158,6 +175,7 @@ app.include_router(bus.router)
 app.include_router(nearby.router)
 app.include_router(predict.router)
 app.include_router(weather.router)
+app.include_router(track_engine_router.router)
 
 # ── Static files (docs assets, favicon) ──────────────────────────────────
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
