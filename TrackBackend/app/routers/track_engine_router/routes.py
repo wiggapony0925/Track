@@ -575,6 +575,11 @@ def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
         itineraries = service.plan(request)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - production safety net
+        raise HTTPException(
+            status_code=503,
+            detail=f"TrackEngine plan is unavailable: {exc}",
+        ) from exc
     return EnginePlanResponse(
         engine_version=service.planner_version,
         requested_at_ts=int(time.time()),
@@ -616,6 +621,11 @@ def build_go_trip(payload: EngineGoRequest) -> EngineGoResponse:
         go_response = service.go(request, now_ts=payload.now_ts)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - production safety net
+        raise HTTPException(
+            status_code=503,
+            detail=f"TrackEngine go is unavailable: {exc}",
+        ) from exc
     return EngineGoResponse(
         engine_version=go_response.engine_version,
         requested_at_ts=go_response.requested_at_ts,
