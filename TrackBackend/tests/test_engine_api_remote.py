@@ -186,6 +186,7 @@ def test_backend_plan_route_uses_remote_cpp_engine(tmp_path: Path, monkeypatch: 
 
         monkeypatch.setenv("TRACK_ENGINE_SCHEDULE_DB", str(schedule_db))
         monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
+        monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
         monkeypatch.setenv("TRACK_ENGINE_URL", f"http://127.0.0.1:{port}")
         monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
         reset_engine_service()

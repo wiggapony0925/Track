@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import os
 import sqlite3
 from datetime import datetime
@@ -137,6 +138,7 @@ def test_engine_routes_cover_backend_state_without_local_planner(
 
     monkeypatch.setenv("TRACK_ENGINE_SCHEDULE_DB", str(schedule_db))
     monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
+    monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
     monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
     reset_engine_service()
 
@@ -271,6 +273,7 @@ def test_engine_routes_cover_backend_state_without_local_planner(
 
     os.environ.pop("TRACK_ENGINE_SCHEDULE_DB", None)
     os.environ.pop("TRACK_ENGINE_STATE_DB", None)
+    os.environ.pop("TRACK_ENGINE_STATE_BACKEND", None)
     reset_engine_service()
 
 
@@ -287,6 +290,7 @@ def test_engine_search_degrades_when_schedule_db_has_no_stops_table(
 
     monkeypatch.setenv("TRACK_ENGINE_SCHEDULE_DB", str(schedule_db))
     monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
+    monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
     monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
     reset_engine_service()
 
@@ -314,4 +318,84 @@ def test_engine_search_degrades_when_schedule_db_has_no_stops_table(
 
     os.environ.pop("TRACK_ENGINE_SCHEDULE_DB", None)
     os.environ.pop("TRACK_ENGINE_STATE_DB", None)
+    os.environ.pop("TRACK_ENGINE_STATE_BACKEND", None)
+    reset_engine_service()
+
+
+def test_engine_search_and_health_degrade_when_schedule_db_is_invalid(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    schedule_db = tmp_path / "schedule_invalid.db"
+    state_db = tmp_path / "state.db"
+    schedule_db.write_text("not a sqlite database")
+
+    monkeypatch.setenv("TRACK_ENGINE_SCHEDULE_DB", str(schedule_db))
+    monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
+    monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
+    monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
+    reset_engine_service()
+
+    save_place_resp = client.post(
+        "/engine/places",
+        json={
+            "user_id": "user-1",
+            "label": "Work",
+            "kind": "work",
+            "lat": 40.0020,
+            "lon": -73.0000,
+            "address": "Echo Ave",
+        },
+    )
+    assert save_place_resp.status_code == 200
+
+    search_resp = client.get("/engine/search", params={"q": "wo", "user_id": "user-1"})
+    assert search_resp.status_code == 200
+    assert search_resp.json()[0]["label"] == "Work"
+
+    health_resp = client.get("/engine/health")
+    assert health_resp.status_code == 200
+    health_payload = health_resp.json()
+    assert health_payload["prepared"] is False
+    assert health_payload["schedule_db_error"] is not None
+
+    os.environ.pop("TRACK_ENGINE_SCHEDULE_DB", None)
+    os.environ.pop("TRACK_ENGINE_STATE_DB", None)
+    os.environ.pop("TRACK_ENGINE_STATE_BACKEND", None)
+    reset_engine_service()
+
+
+def test_engine_schedule_artifact_endpoint_exports_gzip_snapshot(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    schedule_db = tmp_path / "schedule.db"
+    state_db = tmp_path / "state.db"
+    exported_db = tmp_path / "exported.db"
+    _build_schedule_db(schedule_db)
+
+    monkeypatch.setenv("TRACK_ENGINE_SCHEDULE_DB", str(schedule_db))
+    monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
+    monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
+    monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
+    reset_engine_service()
+
+    response = client.get("/engine/bootstrap/schedule-db.gz")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/gzip")
+
+    exported_db.write_bytes(gzip.decompress(response.content))
+    conn = sqlite3.connect(exported_db)
+    try:
+        stop_names = {
+            row[0] for row in conn.execute("SELECT stop_name FROM stops").fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert {"Alpha", "Charlie", "Echo"}.issubset(stop_names)
+
+    os.environ.pop("TRACK_ENGINE_SCHEDULE_DB", None)
+    os.environ.pop("TRACK_ENGINE_STATE_DB", None)
+    os.environ.pop("TRACK_ENGINE_STATE_BACKEND", None)
     reset_engine_service()

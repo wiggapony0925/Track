@@ -528,6 +528,10 @@ class EngineHealth(BaseModel):
         default_factory=list,
         description="Planner-owned SQLite indexes.",
     )
+    schedule_db_error: str | None = Field(
+        None,
+        description="Planner-side schedule DB error when GTFS search data is unavailable.",
+    )
     routing_backend: str = Field(
         ...,
         description="backend_state_only when only backend helpers are active, or cpp_remote when routing is delegated to the standalone C++ engine.",

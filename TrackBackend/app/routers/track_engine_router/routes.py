@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 
 from app.models.track_engine import (
     EngineCalendarEventInput,
@@ -216,11 +217,28 @@ def engine_health() -> EngineHealth:
         state_backend=health.state_backend,
         prepared=health.prepared,
         prepared_indexes=list(health.prepared_indexes),
+        schedule_db_error=health.schedule_db_error,
         routing_backend=health.routing_backend,
         remote_engine_url=health.remote_engine_url,
         remote_engine_healthy=health.remote_engine_healthy,
         remote_engine_version=health.remote_engine_version,
         remote_engine_error=health.remote_engine_error,
+    )
+
+
+@router.get(
+    "/bootstrap/schedule-db.gz",
+    include_in_schema=False,
+    summary="Internal TrackEngine schedule artifact",
+)
+def download_engine_schedule_artifact(request: Request) -> FileResponse:
+    del request
+    artifact_path = get_engine_service().ensure_schedule_artifact()
+    return FileResponse(
+        path=artifact_path,
+        filename="transit_schedule.db.gz",
+        media_type="application/gzip",
+        headers={"Cache-Control": "no-store"},
     )
 
 

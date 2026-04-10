@@ -321,6 +321,7 @@ class HealthStatus:
     state_backend: str
     prepared: bool
     prepared_indexes: tuple[str, ...]
+    schedule_db_error: str | None = None
     routing_backend: str = "backend_state_only"
     remote_engine_url: str | None = None
     remote_engine_healthy: bool | None = None

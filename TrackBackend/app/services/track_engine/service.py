@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import math
 import os
+import shutil
 import sqlite3
+import tempfile
 import threading
 import time
 from contextlib import suppress
@@ -113,6 +116,7 @@ class ScheduleRepository:
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
         self._prepared = False
+        self._prepare_error: str | None = None
         self._prepare_lock = threading.Lock()
 
     def _connect(self) -> sqlite3.Connection:
@@ -124,6 +128,7 @@ class ScheduleRepository:
         with self._prepare_lock:
             if self._prepared:
                 return
+            self._prepare_error = None
             conn = self._connect()
             try:
                 for sql in self._INDEXES.values():
@@ -131,14 +136,27 @@ class ScheduleRepository:
                         conn.execute(sql)
                     except sqlite3.OperationalError:
                         continue
+                    except sqlite3.Error as exc:
+                        self._prepare_error = str(exc)
+                        self._prepared = False
+                        return
                 conn.commit()
+            except sqlite3.Error as exc:
+                self._prepare_error = str(exc)
+                self._prepared = False
+                return
             finally:
                 conn.close()
             self._prepared = True
+            self._prepare_error = None
 
     @property
     def prepared(self) -> bool:
         return self._prepared
+
+    @property
+    def prepare_error(self) -> str | None:
+        return self._prepare_error
 
     @property
     def prepared_index_names(self) -> tuple[str, ...]:
@@ -209,6 +227,7 @@ class TrackEngineService:
         self.state_db = Path(state_db)
         self.repository = ScheduleRepository(self.schedule_db)
         self.store = self._build_store(self.state_db)
+        self._schedule_artifact_lock = threading.Lock()
         self.state_backend = self.store.backend_name
         self.state_store_description = self.store.description
         self._last_remote_engine_version: str | None = None
@@ -242,7 +261,7 @@ class TrackEngineService:
         # the private C++ engine is addressable by its internal service name.
         # Falling back here removes the need for a separate env var just to
         # connect the two services inside the same Render workspace.
-        if Path("/TrackBackend").exists():
+        if Path("/app/app").exists():
             return self._RENDER_INTERNAL_ENGINE_URL
         return None
 
@@ -278,12 +297,90 @@ class TrackEngineService:
     def prepare(self) -> None:
         self.repository.ensure_query_indexes()
 
+    def _schedule_artifact_path(self) -> Path:
+        return self.schedule_db.with_name(f"{self.schedule_db.name}.gz")
+
+    def _schedule_artifact_is_fresh(self, artifact_path: Path) -> bool:
+        if not artifact_path.exists() or not self.schedule_db.exists():
+            return False
+
+        dependency_mtime = self.schedule_db.stat().st_mtime
+        wal_path = self.schedule_db.with_name(f"{self.schedule_db.name}-wal")
+        if wal_path.exists():
+            dependency_mtime = max(dependency_mtime, wal_path.stat().st_mtime)
+        return artifact_path.stat().st_mtime >= dependency_mtime
+
+    def ensure_schedule_artifact(self) -> Path:
+        artifact_path = self._schedule_artifact_path()
+        if self._schedule_artifact_is_fresh(artifact_path):
+            return artifact_path
+        if not self.schedule_db.exists():
+            raise FileNotFoundError(f"Schedule DB not found: {self.schedule_db}")
+
+        with self._schedule_artifact_lock:
+            if self._schedule_artifact_is_fresh(artifact_path):
+                return artifact_path
+
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            compresslevel = int(
+                os.environ.get("TRACK_ENGINE_SCHEDULE_ARTIFACT_COMPRESSLEVEL", "5")
+            )
+            with tempfile.NamedTemporaryFile(
+                suffix=".db",
+                prefix="trackengine-snapshot-",
+                dir=str(artifact_path.parent),
+                delete=False,
+            ) as tmp_snapshot_handle:
+                tmp_snapshot = Path(tmp_snapshot_handle.name)
+            tmp_artifact = artifact_path.with_suffix(f"{artifact_path.suffix}.tmp")
+
+            try:
+                source = sqlite3.connect(
+                    self.schedule_db,
+                    timeout=30,
+                    check_same_thread=False,
+                )
+                try:
+                    snapshot = sqlite3.connect(tmp_snapshot)
+                    try:
+                        source.backup(snapshot)
+                    finally:
+                        snapshot.close()
+                finally:
+                    source.close()
+
+                with tmp_snapshot.open("rb") as source_stream, gzip.open(
+                    tmp_artifact,
+                    "wb",
+                    compresslevel=max(1, min(compresslevel, 9)),
+                ) as artifact_stream:
+                    shutil.copyfileobj(
+                        source_stream,
+                        artifact_stream,
+                        length=1024 * 1024,
+                    )
+
+                os.replace(tmp_artifact, artifact_path)
+            finally:
+                with suppress(FileNotFoundError):
+                    tmp_snapshot.unlink()
+                with suppress(FileNotFoundError):
+                    tmp_artifact.unlink()
+
+        return artifact_path
+
     @property
     def planner_version(self) -> str:
         return self._last_remote_engine_version or self.VERSION
 
     def health(self) -> HealthStatus:
-        self.prepare()
+        schedule_db_error = None
+        try:
+            self.prepare()
+        except Exception as exc:  # pragma: no cover
+            schedule_db_error = str(exc)
+        if schedule_db_error is None:
+            schedule_db_error = self.repository.prepare_error
         remote_healthy = None
         remote_version = None
         remote_error = None
@@ -307,8 +404,9 @@ class TrackEngineService:
             schedule_db_path=str(self.schedule_db),
             state_db_path=self.state_store_description,
             state_backend=self.state_backend,
-            prepared=self.repository.prepared,
+            prepared=self.repository.prepared and schedule_db_error is None,
             prepared_indexes=self.repository.prepared_index_names,
+            schedule_db_error=schedule_db_error,
             routing_backend=routing_backend,
             remote_engine_url=self.remote_engine_url,
             remote_engine_healthy=remote_healthy,
@@ -1076,7 +1174,13 @@ class TrackEngineService:
         near_lon: float | None = None,
         limit: int = 12,
     ) -> list[SearchResult]:
-        self.prepare()
+        schedule_ready = True
+        try:
+            self.prepare()
+        except Exception:
+            schedule_ready = False
+        if self.repository.prepare_error is not None:
+            schedule_ready = False
         lowered = query.strip().lower()
         if not lowered:
             return []
@@ -1094,7 +1198,11 @@ class TrackEngineService:
                 merged[key] = result
 
         if user_id:
-            for place in self.store.list_saved_places(user_id):
+            try:
+                saved_places = self.store.list_saved_places(user_id)
+            except Exception:
+                saved_places = []
+            for place in saved_places:
                 haystack = " ".join(
                     part for part in (place.label, place.kind, place.address or "") if part
                 ).lower()
@@ -1114,7 +1222,14 @@ class TrackEngineService:
                     )
                 )
 
-            for recent in self.store.list_recent_destinations(user_id, limit=limit):
+            try:
+                recent_destinations = self.store.list_recent_destinations(
+                    user_id,
+                    limit=limit,
+                )
+            except Exception:
+                recent_destinations = []
+            for recent in recent_destinations:
                 if lowered not in recent.label.lower():
                     continue
                 score = 80.0 + min(20.0, recent.trip_count * 4.0)
@@ -1130,7 +1245,11 @@ class TrackEngineService:
                 )
 
         try:
-            stop_results = self.repository.search_stops(query, limit=limit * 2)
+            stop_results = (
+                self.repository.search_stops(query, limit=limit * 2)
+                if schedule_ready
+                else []
+            )
         except sqlite3.Error:
             stop_results = []
 
