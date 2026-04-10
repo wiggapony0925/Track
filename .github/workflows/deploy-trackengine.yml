@@ -1,0 +1,28 @@
+name: Deploy TrackEngine
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger TrackEgine Render deploy
+        run: |
+          echo "Triggering TrackEgine Render deploy..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            --max-time 30 \
+            -X POST "https://api.render.com/v1/services/srv-d7cj8dt8nd3s73cinsqg/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          STATUS=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          echo "Render API returned HTTP $STATUS"
+          echo "$BODY" | head -5
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+            echo "::error::TrackEgine deploy API failed with HTTP $STATUS"
+            exit 1
+          fi
+          echo "TrackEgine deploy triggered successfully"
