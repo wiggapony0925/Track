@@ -1113,7 +1113,12 @@ class TrackEngineService:
                     )
                 )
 
-        for stop in self.repository.search_stops(query, limit=limit * 2):
+        try:
+            stop_results = self.repository.search_stops(query, limit=limit * 2)
+        except sqlite3.Error:
+            stop_results = []
+
+        for stop in stop_results:
             distance_bonus = 0.0
             subtitle = "Transit stop"
             if near_lat is not None and near_lon is not None:
