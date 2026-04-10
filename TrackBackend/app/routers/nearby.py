@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import csv
+import json as _json
 import re
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -115,6 +116,32 @@ _GTFS_DATA_ROOT = Path(__file__).resolve().parent.parent / "data"
 _GTFS_ROUTE_ZERO_RE = re.compile(r"^([A-Za-z]+)0+(\d+)$")
 
 
+_STATIC_LIMITED_JSON = _GTFS_DATA_ROOT / "limited_routes.json"
+
+
+def _load_static_limited_fallback() -> tuple[frozenset[str], frozenset[str]]:
+    """Load pre-computed limited route sets from the static JSON file.
+
+    This file is committed to the repo and ships with every deploy, so
+    production (Render) always has a baseline even when GTFS trips.txt
+    files are not present.
+    """
+    if not _STATIC_LIMITED_JSON.exists():
+        return frozenset(), frozenset()
+    try:
+        data = _json.loads(_STATIC_LIMITED_JSON.read_text(encoding="utf-8"))
+        only = frozenset(r.upper() for r in data.get("limited_only", []))
+        mixed = frozenset(r.upper() for r in data.get("limited_mixed", []))
+        TrackLogger.info(
+            f"🚌 Static limited fallback loaded: {len(only)} limited-only, "
+            f"{len(mixed)} mixed"
+        )
+        return only, mixed
+    except Exception as exc:
+        TrackLogger.info(f"🚌 Static limited fallback failed: {exc}")
+        return frozenset(), frozenset()
+
+
 def _build_limited_route_sets() -> tuple[frozenset[str], frozenset[str]]:
     """Scan all local GTFS trips.txt for LIMITED / RUSH headsigns.
 
@@ -129,6 +156,9 @@ def _build_limited_route_sets() -> tuple[frozenset[str], frozenset[str]]:
     The scan covers:
     - ``app/data/bus/{Borough}/trips.txt``  (MTA NYCT bus feeds)
     - ``app/data/MTA Bus Company/trips.txt`` (MTABC feed — Queens redesign)
+
+    Falls back to ``app/data/limited_routes.json`` (static snapshot) when
+    no GTFS trip data is available (e.g. on production Render deploys).
     """
     # route → [total_trips, limited_trips]
     route_counts: dict[str, list[int]] = {}
@@ -174,6 +204,12 @@ def _build_limited_route_sets() -> tuple[frozenset[str], frozenset[str]]:
         else:
             limited_mixed.add(route)
 
+    # If GTFS scan found nothing (e.g. production), fall back to static JSON
+    if not limited_only and not limited_mixed:
+        static_only, static_mixed = _load_static_limited_fallback()
+        if static_only or static_mixed:
+            return static_only, static_mixed
+
     TrackLogger.info(
         f"🚌 Dynamic limited routes: {len(limited_only)} limited-only, "
         f"{len(limited_mixed)} mixed  "
@@ -193,9 +229,32 @@ def refresh_limited_route_set() -> None:
 
     Called by the GTFS refresh service after downloading new feeds so
     the classifier picks up changes without a server restart.
+    Also persists the updated sets to the static JSON fallback so that
+    production deploys (which lack GTFS trips.txt) stay current.
     """
     global _GTFS_LIMITED_ONLY, _GTFS_LIMITED_MIXED  # noqa: PLW0603
     _GTFS_LIMITED_ONLY, _GTFS_LIMITED_MIXED = _build_limited_route_sets()
+    # Persist to static JSON for production fallback
+    if _GTFS_LIMITED_ONLY or _GTFS_LIMITED_MIXED:
+        try:
+            data = {
+                "limited_only": sorted(_GTFS_LIMITED_ONLY),
+                "limited_mixed": sorted(_GTFS_LIMITED_MIXED),
+                "_comment": (
+                    "Auto-generated from GTFS trips.txt headsigns. "
+                    "Routes with LIMITED/RUSH in all trips = limited_only; "
+                    "some trips = limited_mixed."
+                ),
+            }
+            _STATIC_LIMITED_JSON.write_text(
+                _json.dumps(data, indent=2), encoding="utf-8"
+            )
+            TrackLogger.info(
+                f"🚌 Static limited_routes.json updated: "
+                f"{len(_GTFS_LIMITED_ONLY)} only, {len(_GTFS_LIMITED_MIXED)} mixed"
+            )
+        except Exception as exc:
+            TrackLogger.info(f"🚌 Failed to persist limited_routes.json: {exc}")
 
 
 def _classify_bus_service_type(
