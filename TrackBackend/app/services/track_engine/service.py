@@ -581,10 +581,13 @@ class TrackEngineService:
             )
 
         payload = self._remote_payload(request)
-        with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
-            response = client.post(f"{self.remote_engine_url}/plan", json=payload)
-            response.raise_for_status()
-            data = response.json()
+        try:
+            with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
+                response = client.post(f"{self.remote_engine_url}/plan", json=payload)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"TrackEngine plan request failed: {exc}") from exc
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
@@ -599,10 +602,13 @@ class TrackEngineService:
             )
 
         payload = self._remote_payload(request, now_ts=now_ts)
-        with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
-            response = client.post(f"{self.remote_engine_url}/go", json=payload)
-            response.raise_for_status()
-            data = response.json()
+        try:
+            with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
+                response = client.post(f"{self.remote_engine_url}/go", json=payload)
+                response.raise_for_status()
+                data = response.json()
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"TrackEngine go request failed: {exc}") from exc
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
