@@ -1,6 +1,6 @@
-// Transit-style trip result card — proportional Gantt timeline,
-// "Go in X min" countdown, route badges above bar, compact
-// premium card with glass depth cues.
+// Transit-style trip result row — proportional Gantt timeline bar
+// with route labels inside, walk dots, "or" alternative badges,
+// "Go in X min" countdown, and total duration. Matches Transit app.
 
 import SwiftUI
 
@@ -13,90 +13,222 @@ struct TripResultCard: View {
         Int(trip.departureTime.timeIntervalSinceNow / 60)
     }
 
+    private let barHeight: CGFloat = 36
+
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 0) {
-                // Row 1: Countdown + Duration
-                countdownRow
-                    .padding(.bottom, 10)
+                // "or" alternative route badges (above the bar)
+                alternativeRoutesRow
+                    .padding(.bottom, 4)
 
-                // Row 2: Route badges above timeline
-                routeBadgeRow
-                    .padding(.bottom, 6)
-
-                // Row 3: Proportional Gantt timeline bar
+                // Proportional Gantt timeline bar
                 timelineBar
                     .padding(.bottom, 10)
 
-                // Row 4: Departure → Arrival + meta
-                detailRow
+                // "Go in X min" + duration row
+                infoRow
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
-            .background(cardBackground)
         }
         .buttonStyle(TripCardButtonStyle())
     }
 
-    // MARK: - Countdown Row
+    // MARK: - Alternative Routes Row ("or" badges above transit legs)
 
-    private var countdownRow: some View {
+    private var alternativeRoutesRow: some View {
+        GeometryReader { geo in
+            let segments = computeSegments(totalWidth: geo.size.width)
+
+            ZStack(alignment: .leading) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                    if segment.leg.isTransit, let alts = alternativeRoutes(for: segment.leg), !alts.isEmpty {
+                        HStack(spacing: 2) {
+                            Text("or")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(AppTheme.Colors.textTertiary)
+                            ForEach(alts, id: \.self) { altRouteId in
+                                RouteBadge(
+                                    routeID: altRouteId,
+                                    size: .custom(18, 9),
+                                    mode: modeString(segment.leg.mode)
+                                )
+                            }
+                        }
+                        .offset(x: segment.offset + segment.width - 40)
+                    }
+                }
+            }
+        }
+        .frame(height: 22)
+    }
+
+    // MARK: - Timeline Bar (Gantt)
+
+    private var timelineBar: some View {
+        GeometryReader { geo in
+            let segments = computeSegments(totalWidth: geo.size.width)
+
+            HStack(spacing: 0) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { idx, segment in
+                    if segment.leg.mode == .walk || segment.leg.mode == .transfer {
+                        walkSegment(width: segment.width, isFirst: idx == 0, isLast: idx == segments.count - 1)
+                    } else {
+                        transitSegment(segment.leg, width: segment.width, isFirst: idx == 0, isLast: idx == segments.count - 1)
+                    }
+                }
+            }
+        }
+        .frame(height: barHeight)
+    }
+
+    private func walkSegment(width: CGFloat, isFirst: Bool, isLast: Bool) -> some View {
+        HStack(spacing: 0) {
+            // Left connector dot
+            Circle()
+                .fill(AppTheme.Colors.textTertiary.opacity(0.5))
+                .frame(width: 5, height: 5)
+
+            // Connector line
+            Rectangle()
+                .fill(AppTheme.Colors.textTertiary.opacity(0.3))
+                .frame(height: 3)
+
+            // Right connector dot
+            Circle()
+                .fill(AppTheme.Colors.textTertiary.opacity(0.5))
+                .frame(width: 5, height: 5)
+        }
+        .frame(width: width, height: barHeight)
+    }
+
+    private func transitSegment(_ leg: TripLeg, width: CGFloat, isFirst: Bool, isLast: Bool) -> some View {
+        let color = legColor(leg)
+        let corners = segmentCorners(isFirst: isFirst, isLast: isLast)
+
+        return ZStack {
+            // Solid color fill with selective rounding
+            UnevenRoundedRectangle(
+                topLeadingRadius: corners.topLeading,
+                bottomLeadingRadius: corners.bottomLeading,
+                bottomTrailingRadius: corners.bottomTrailing,
+                topTrailingRadius: corners.topTrailing,
+                style: .continuous
+            )
+            .fill(color)
+
+            // Glass shimmer
+            UnevenRoundedRectangle(
+                topLeadingRadius: corners.topLeading,
+                bottomLeadingRadius: corners.bottomLeading,
+                bottomTrailingRadius: corners.bottomTrailing,
+                topTrailingRadius: corners.topTrailing,
+                style: .continuous
+            )
+            .fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: .white.opacity(0.15), location: 0),
+                        .init(color: .white.opacity(0.04), location: 0.35),
+                        .init(color: .clear, location: 0.6),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+
+            // Route label inside bar
+            if let routeId = leg.routeId {
+                if width > 54 {
+                    // Full label with icon
+                    HStack(spacing: 4) {
+                        if leg.mode == .bus {
+                            Image(systemName: "bus.fill")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        Text(routeId)
+                            .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    }
+                    .foregroundStyle(textColorForLeg(leg))
+                } else if width > 30 {
+                    Text(routeId)
+                        .font(.system(size: 13, weight: .heavy, design: .rounded))
+                        .foregroundStyle(textColorForLeg(leg))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                } else {
+                    // Icon only for very narrow segments
+                    Image(systemName: leg.mode.icon)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(textColorForLeg(leg))
+                }
+            }
+        }
+        .frame(width: width, height: barHeight)
+    }
+
+    private struct CornerRadii {
+        let topLeading: CGFloat
+        let bottomLeading: CGFloat
+        let bottomTrailing: CGFloat
+        let topTrailing: CGFloat
+    }
+
+    private func segmentCorners(isFirst: Bool, isLast: Bool) -> CornerRadii {
+        let r: CGFloat = 8
+        return CornerRadii(
+            topLeading: isFirst ? r : 0,
+            bottomLeading: isFirst ? r : 0,
+            bottomTrailing: isLast ? r : 0,
+            topTrailing: isLast ? r : 0
+        )
+    }
+
+    // MARK: - Info Row
+
+    private var infoRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
-            // "Go in X min" or "Go now"
+            // "Go in X min" / "Go now"
             if minutesUntilDeparture >= 0 && minutesUntilDeparture <= 120 {
-                HStack(spacing: 6) {
-                    countdownBadge
-                    if isRecommended {
-                        bestBadge
-                    }
-                }
+                goCountdown
             } else {
-                HStack(spacing: 6) {
-                    Text("Departs \(trip.departureTimeString)")
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
-                    if isRecommended {
-                        bestBadge
-                    }
-                }
+                Text("Departs \(trip.departureTimeString)")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+            }
+
+            if isRecommended {
+                bestBadge
+                    .padding(.leading, 8)
             }
 
             Spacer()
 
-            // Duration
+            // Total duration
             Text(trip.durationString)
                 .font(.system(size: 15, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textSecondary)
-
-            // Disruption / alert indicator
-            if trip.disruptionLevel != "normal" {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(AppTheme.Colors.warningYellow)
-                    .padding(.leading, 6)
-            } else if let alert = trip.primaryAlert {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(
-                        alert.severity == "warning"
-                            ? AppTheme.Colors.warningYellow
-                            : AppTheme.Colors.alertRed
-                    )
-                    .padding(.leading, 6)
-            }
+                .foregroundStyle(AppTheme.Colors.textPrimary)
         }
     }
 
-    private var countdownBadge: some View {
+    private var goCountdown: some View {
         let urgent = minutesUntilDeparture <= 3
-        let label: String = {
-            if minutesUntilDeparture <= 0 { return "Go now" }
-            return "Go in \(minutesUntilDeparture) min"
-        }()
+        let color = urgent ? AppTheme.Colors.successGreen : AppTheme.Colors.successGreen
 
-        return Text(label)
-            .font(.system(size: 15, weight: .heavy, design: .rounded))
-            .foregroundStyle(urgent ? AppTheme.Colors.alertRed : AppTheme.Colors.accent)
+        return HStack(spacing: 4) {
+            Text("Go in")
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textPrimary)
+
+            Text(minutesUntilDeparture <= 0 ? "now" : "\(minutesUntilDeparture) min")
+                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .foregroundStyle(color)
+
+            // Live indicator
+            Image(systemName: "dot.radiowaves.right")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(color)
+        }
     }
 
     private var bestBadge: some View {
@@ -120,201 +252,6 @@ struct TripResultCard: View {
         )
     }
 
-    // MARK: - Route Badge Row
-
-    private var routeBadgeRow: some View {
-        HStack(spacing: 0) {
-            GeometryReader { geo in
-                let totalWidth = geo.size.width
-                let segments = computeSegments(totalWidth: totalWidth)
-
-                ZStack(alignment: .leading) {
-                    ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                        if segment.leg.isTransit {
-                            badgeForLeg(segment.leg)
-                                .offset(x: segment.offset + (segment.width / 2) - 14)
-                        }
-                    }
-                }
-            }
-        }
-        .frame(height: 28)
-    }
-
-    @ViewBuilder
-    private func badgeForLeg(_ leg: TripLeg) -> some View {
-        if let routeId = leg.routeId {
-            RouteBadge(
-                routeID: routeId,
-                size: .small,
-                mode: modeString(leg.mode)
-            )
-        } else {
-            Image(systemName: leg.mode.icon)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(legColor(leg))
-                .frame(width: 28, height: 28)
-                .background(
-                    Circle().fill(legColor(leg).opacity(0.15))
-                )
-        }
-    }
-
-    // MARK: - Timeline Bar (Gantt)
-
-    private var timelineBar: some View {
-        GeometryReader { geo in
-            let segments = computeSegments(totalWidth: geo.size.width)
-
-            HStack(spacing: 0) {
-                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                    if segment.leg.mode == .walk || segment.leg.mode == .transfer {
-                        walkSegment(width: segment.width)
-                    } else {
-                        transitSegment(segment.leg, width: segment.width)
-                    }
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .frame(height: 28)
-    }
-
-    private func walkSegment(width: CGFloat) -> some View {
-        HStack(spacing: 4) {
-            Spacer(minLength: 0)
-            ForEach(0..<min(Int(width / 8), 5), id: \.self) { _ in
-                Circle()
-                    .fill(AppTheme.Colors.textTertiary.opacity(0.4))
-                    .frame(width: 4, height: 4)
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(width: width, height: 28)
-        .background(AppTheme.Colors.cardInset.opacity(0.5))
-    }
-
-    private func transitSegment(_ leg: TripLeg, width: CGFloat) -> some View {
-        let color = legColor(leg)
-
-        return ZStack {
-            // Solid color fill
-            Rectangle()
-                .fill(color)
-
-            // Glass shimmer
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white.opacity(0.18), location: 0),
-                            .init(color: .white.opacity(0.06), location: 0.3),
-                            .init(color: .clear, location: 0.6),
-                        ],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                )
-
-            // Route label inside bar (only if wide enough)
-            if width > 40, let routeId = leg.routeId {
-                Text(routeId)
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundStyle(textColorForLeg(leg))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-            }
-        }
-        .frame(width: width, height: 28)
-    }
-
-    // MARK: - Detail Row
-
-    private var detailRow: some View {
-        HStack(spacing: 0) {
-            // Departure time
-            Text(trip.departureTimeString)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textTertiary)
-
-            // Arrow
-            Image(systemName: "arrow.right")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.5))
-                .padding(.horizontal, 5)
-
-            // Arrival time
-            Text(trip.arrivalTimeString)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textTertiary)
-
-            Spacer()
-
-            // Transfer count
-            HStack(spacing: 4) {
-                Image(systemName: trip.numTransfers == 0 ? "arrow.right" : "arrow.triangle.swap")
-                    .font(.system(size: 9, weight: .bold))
-                Text(trip.numTransfers == 0 ? "Direct" : "\(trip.numTransfers) xfer")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-            }
-            .foregroundStyle(AppTheme.Colors.textTertiary)
-
-            // Walk distance
-            if trip.totalWalkMeters > 50 {
-                HStack(spacing: 3) {
-                    Image(systemName: "figure.walk")
-                        .font(.system(size: 9, weight: .semibold))
-                    Text(walkString)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                }
-                .foregroundStyle(AppTheme.Colors.textTertiary)
-                .padding(.leading, 10)
-            }
-        }
-    }
-
-    // MARK: - Card Background
-
-    private var cardBackground: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.Colors.cardBackground)
-
-            // Glass highlight for recommended
-            if isRecommended {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white.opacity(0.04), location: 0),
-                                .init(color: .clear, location: 0.3),
-                            ],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        )
-                    )
-            }
-
-            // Border
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(
-                    isRecommended
-                        ? LinearGradient(
-                            colors: [AppTheme.Colors.accent.opacity(0.35), AppTheme.Colors.accent.opacity(0.1)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        )
-                        : LinearGradient(
-                            colors: [AppTheme.Colors.borderSubtle.opacity(0.2), AppTheme.Colors.borderSubtle.opacity(0.08)],
-                            startPoint: .top, endPoint: .bottom
-                        ),
-                    lineWidth: isRecommended ? 1.2 : 0.5
-                )
-        }
-        .shadow(
-            color: isRecommended ? AppTheme.Colors.accent.opacity(0.1) : .black.opacity(0.04),
-            radius: isRecommended ? 16 : 8,
-            y: isRecommended ? 4 : 2
-        )
-    }
-
     // MARK: - Segment Computation
 
     private struct SegmentInfo {
@@ -325,24 +262,21 @@ struct TripResultCard: View {
 
     private func computeSegments(totalWidth: CGFloat) -> [SegmentInfo] {
         let totalDuration = max(trip.totalDurationMinutes, 1)
-        let minTransitWidth: CGFloat = 36
-        let minWalkWidth: CGFloat = 20
+        let minTransitWidth: CGFloat = 40
+        let minWalkWidth: CGFloat = 28
 
-        // First pass: compute raw proportional widths
         var rawWidths: [CGFloat] = trip.legs.map { leg in
             let fraction = CGFloat(leg.durationMinutes) / CGFloat(totalDuration)
             let minW = (leg.mode == .walk || leg.mode == .transfer) ? minWalkWidth : minTransitWidth
             return max(totalWidth * fraction, minW)
         }
 
-        // Normalize so they sum to totalWidth
         let rawSum = rawWidths.reduce(0, +)
         if rawSum > 0 {
             let scale = totalWidth / rawSum
             rawWidths = rawWidths.map { $0 * scale }
         }
 
-        // Build segment info with offsets
         var result: [SegmentInfo] = []
         var currentOffset: CGFloat = 0
         for (index, leg) in trip.legs.enumerated() {
@@ -355,12 +289,18 @@ struct TripResultCard: View {
 
     // MARK: - Helpers
 
-    private var walkString: String {
-        if trip.totalWalkMeters > 1609 {
-            return String(format: "%.1f mi", trip.totalWalkMeters / 1609.34)
+    /// Find alternative routes that serve the same stops as this leg
+    private func alternativeRoutes(for leg: TripLeg) -> [String]? {
+        // Use routeChips to find alternatives for this leg
+        let transitChips = trip.routeChips.filter { !$0.isWalk && $0.routeId != nil }
+        guard let chipForLeg = transitChips.first(where: { $0.routeId == leg.routeId }) else {
+            return nil
         }
-        let mins = Int(trip.totalWalkMeters / 83.0)
-        return "\(mins) min"
+        // Return other transit chips that share the same mode
+        let alts = transitChips
+            .filter { $0.routeId != chipForLeg.routeId && $0.mode == chipForLeg.mode }
+            .compactMap { $0.routeId }
+        return alts.isEmpty ? nil : Array(alts.prefix(3))
     }
 
     private func modeString(_ mode: TripLegMode) -> String? {
@@ -398,20 +338,26 @@ struct TripResultCard: View {
 private struct TripCardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
 #Preview {
-    VStack(spacing: 12) {
+    VStack(spacing: 0) {
         TripResultCard(
             trip: TripPlan(
-                departureTime: Date().addingTimeInterval(5 * 60),
-                arrivalTime: Date().addingTimeInterval(66 * 60),
-                totalDurationMinutes: 61,
+                departureTime: Date().addingTimeInterval(7 * 60),
+                arrivalTime: Date().addingTimeInterval(71 * 60),
+                totalDurationMinutes: 64,
                 legs: [
+                    TripLeg(
+                        mode: .walk, routeId: nil, routeName: nil,
+                        routeColor: nil, headsign: nil,
+                        boardStopName: "Home", alightStopName: "Bus Stop",
+                        departureTime: Date(), arrivalTime: Date().addingTimeInterval(420),
+                        numStops: 0, durationMinutes: 7
+                    ),
                     TripLeg(
                         mode: .bus, routeId: "Q9", routeName: "Q9",
                         routeColor: "#D42781", headsign: "Main St",
@@ -428,54 +374,69 @@ private struct TripCardButtonStyle: ButtonStyle {
                     ),
                     TripLeg(
                         mode: .subway, routeId: "E", routeName: "E Train",
-                        routeColor: "#EB6800", headsign: "WTC",
+                        routeColor: nil, headsign: "WTC",
                         boardStopName: "Station", alightStopName: "Penn",
                         departureTime: Date(), arrivalTime: Date().addingTimeInterval(1800),
                         numStops: 12, durationMinutes: 31
                     ),
+                    TripLeg(
+                        mode: .walk, routeId: nil, routeName: nil,
+                        routeColor: nil, headsign: nil,
+                        boardStopName: "Penn", alightStopName: "Dest",
+                        departureTime: Date(), arrivalTime: Date().addingTimeInterval(180),
+                        numStops: 0, durationMinutes: 3
+                    ),
                 ],
-                totalWalkMeters: 400,
+                totalWalkMeters: 800,
                 numTransfers: 1
             ),
             onTap: {},
             isRecommended: true
         )
 
+        Divider().padding(.leading, 16)
+
         TripResultCard(
             trip: TripPlan(
-                departureTime: Date().addingTimeInterval(15 * 60),
-                arrivalTime: Date().addingTimeInterval(75 * 60),
-                totalDurationMinutes: 60,
+                departureTime: Date().addingTimeInterval(20 * 60),
+                arrivalTime: Date().addingTimeInterval(90 * 60),
+                totalDurationMinutes: 70,
                 legs: [
                     TripLeg(
-                        mode: .subway, routeId: "1", routeName: "1 Train",
-                        routeColor: "#EE352E", headsign: "South Ferry",
-                        boardStopName: "168 St", alightStopName: "Times Sq",
-                        departureTime: Date(), arrivalTime: Date().addingTimeInterval(1500),
-                        numStops: 10, durationMinutes: 25
+                        mode: .walk, routeId: nil, routeName: nil,
+                        routeColor: nil, headsign: nil,
+                        boardStopName: "Home", alightStopName: "Stop",
+                        departureTime: Date(), arrivalTime: Date().addingTimeInterval(120),
+                        numStops: 0, durationMinutes: 2
                     ),
                     TripLeg(
-                        mode: .transfer, routeId: nil, routeName: nil,
+                        mode: .bus, routeId: "Q9", routeName: "Q9",
+                        routeColor: "#D42781", headsign: "Main St",
+                        boardStopName: "Stop", alightStopName: "Jamaica",
+                        departureTime: Date(), arrivalTime: Date().addingTimeInterval(1500),
+                        numStops: 12, durationMinutes: 25
+                    ),
+                    TripLeg(
+                        mode: .lirr, routeId: "LIRR", routeName: "Long Island Rail Road",
+                        routeColor: "#4D5357", headsign: "Penn Station",
+                        boardStopName: "Jamaica", alightStopName: "Penn Station",
+                        departureTime: Date(), arrivalTime: Date().addingTimeInterval(2400),
+                        numStops: 4, durationMinutes: 40
+                    ),
+                    TripLeg(
+                        mode: .walk, routeId: nil, routeName: nil,
                         routeColor: nil, headsign: nil,
-                        boardStopName: "Times Sq", alightStopName: "Times Sq",
+                        boardStopName: "Penn", alightStopName: "Dest",
                         departureTime: Date(), arrivalTime: Date().addingTimeInterval(180),
                         numStops: 0, durationMinutes: 3
                     ),
-                    TripLeg(
-                        mode: .subway, routeId: "7", routeName: "7 Train",
-                        routeColor: "#B933AD", headsign: "Flushing",
-                        boardStopName: "Times Sq", alightStopName: "Flushing",
-                        departureTime: Date(), arrivalTime: Date().addingTimeInterval(1920),
-                        numStops: 15, durationMinutes: 32
-                    ),
                 ],
-                totalWalkMeters: 200,
+                totalWalkMeters: 300,
                 numTransfers: 1
             ),
             onTap: {},
             isRecommended: false
         )
     }
-    .padding()
     .background(Color.black)
 }

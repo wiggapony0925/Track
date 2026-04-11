@@ -1,6 +1,6 @@
-// Destination / origin search sheet — rich search experience with
-// animated focus ring, categorised suggestions, MapKit autocomplete,
-// and premium row treatments. Every action is wired to live logic.
+// Premium destination / origin search sheet.
+// Prominent search bar with animated focus ring, categorised suggestions,
+// Apple MapKit autocomplete results, and polished row treatments.
 
 import MapKit
 import SwiftUI
@@ -12,7 +12,6 @@ struct DestinationSearchView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isSearchFocused: Bool
     @State private var appeared = false
-    @State private var pulseFocus = false
 
     private var searchTitle: String {
         if let category = viewModel.pendingSavedPlaceCategory {
@@ -63,7 +62,7 @@ struct DestinationSearchView: View {
                     AppTheme.Colors.background
                     RadialGradient(
                         colors: [
-                            AppTheme.Colors.accent.opacity(0.05),
+                            AppTheme.Colors.accent.opacity(0.04),
                             .clear,
                         ],
                         center: .top,
@@ -89,24 +88,19 @@ struct DestinationSearchView: View {
             withAnimation(.easeOut(duration: 0.4).delay(0.1)) {
                 appeared = true
             }
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-                pulseFocus = true
-            }
         }
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Resolving Overlay
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     private var resolvingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.45).ignoresSafeArea()
-            VStack(spacing: 18) {
+            Color.black.opacity(0.4).ignoresSafeArea()
+            VStack(spacing: 16) {
                 ZStack {
                     Circle()
-                        .stroke(AppTheme.Colors.accent.opacity(0.15), lineWidth: 3)
-                        .frame(width: 56, height: 56)
+                        .stroke(AppTheme.Colors.accent.opacity(0.2), lineWidth: 3)
+                        .frame(width: 54, height: 54)
                     ProgressView()
                         .tint(AppTheme.Colors.accent)
                         .scaleEffect(1.4)
@@ -115,52 +109,49 @@ struct DestinationSearchView: View {
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
             }
-            .padding(36)
+            .padding(32)
             .background(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .fill(.ultraThinMaterial)
                     .overlay {
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .fill(AppTheme.Colors.cardBackground.opacity(0.35))
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(AppTheme.Colors.cardBackground.opacity(0.4))
                     }
                     .overlay {
-                        RoundedRectangle(cornerRadius: 26, style: .continuous)
-                            .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
                     }
             )
-            .shadow(color: .black.opacity(0.25), radius: 40)
+            .shadow(color: .black.opacity(0.2), radius: 30)
         }
         .transition(.opacity)
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Search Header
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     private var searchHeader: some View {
         VStack(spacing: 0) {
-            // Drag indicator
             Capsule()
-                .fill(AppTheme.Colors.textTertiary.opacity(0.2))
+                .fill(AppTheme.Colors.textTertiary.opacity(0.25))
                 .frame(width: 36, height: 4)
                 .padding(.top, 10)
-                .padding(.bottom, 12)
+                .padding(.bottom, 14)
 
-            // Title row + close button
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(searchTitle)
-                        .font(.system(size: 26, weight: .heavy, design: .rounded))
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
                         .foregroundColor(AppTheme.Colors.textPrimary)
-
                     if let category = viewModel.pendingSavedPlaceCategory {
-                        Text(
-                            category == .custom
-                                ? "Search and select a location to save."
-                                : "Pick a place to save as \(category.label.lowercased())."
-                        )
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.textTertiary)
+                        if category == .custom {
+                            Text("Search and select a location to save.")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textTertiary)
+                        } else {
+                            Text("Pick a place to save as \(category.label.lowercased()).")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textTertiary)
+                        }
                     }
                 }
                 Spacer()
@@ -169,15 +160,15 @@ struct DestinationSearchView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundColor(AppTheme.Colors.textSecondary)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 34, height: 34)
                         .background(
                             Circle()
                                 .fill(AppTheme.Colors.cardInset)
                                 .overlay(
                                     Circle()
-                                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.25), lineWidth: 0.5)
+                                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.3), lineWidth: 0.5)
                                 )
                         )
                 }
@@ -185,33 +176,26 @@ struct DestinationSearchView: View {
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 14)
-            .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 8)
 
-            // Search bar
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
                     ZStack {
                         Circle()
-                            .fill(
-                                isSearchFocused
-                                    ? AppTheme.Colors.accent.opacity(0.14)
-                                    : AppTheme.Colors.accent.opacity(0.08)
-                            )
-                            .frame(width: 30, height: 30)
+                            .fill(AppTheme.Colors.accent.opacity(0.12))
+                            .frame(width: 32, height: 32)
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundColor(AppTheme.Colors.accent)
                     }
 
                     TextField(searchPlaceholder, text: $viewModel.searchText)
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .autocorrectionDisabled()
-                        .focused($isSearchFocused)
-                        .onChange(of: viewModel.searchText) { _, newValue in
-                            viewModel.performSearch(query: newValue)
-                        }
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .autocorrectionDisabled()
+                    .focused($isSearchFocused)
+                    .onChange(of: viewModel.searchText) { _, newValue in
+                        viewModel.performSearch(query: newValue)
+                    }
 
                     if viewModel.searchText.isEmpty {
                         Button {
@@ -221,9 +205,9 @@ struct DestinationSearchView: View {
                             }
                         } label: {
                             Image(systemName: "doc.on.clipboard")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(AppTheme.Colors.textTertiary)
-                                .frame(width: 30, height: 30)
+                                .frame(width: 32, height: 32)
                                 .background(Circle().fill(AppTheme.Colors.cardInset.opacity(0.6)))
                         }
                         .buttonStyle(.plain)
@@ -242,7 +226,7 @@ struct DestinationSearchView: View {
                     }
                 }
                 .padding(.horizontal, 14)
-                .padding(.vertical, 11)
+                .padding(.vertical, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(AppTheme.Colors.cardBackground)
@@ -250,21 +234,18 @@ struct DestinationSearchView: View {
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
                                 .strokeBorder(
                                     isSearchFocused
-                                        ? AppTheme.Colors.accent.opacity(pulseFocus ? 0.4 : 0.2)
-                                        : AppTheme.Colors.borderSubtle.opacity(0.15),
+                                        ? AppTheme.Colors.accent.opacity(0.35)
+                                        : AppTheme.Colors.borderSubtle.opacity(0.2),
                                     lineWidth: isSearchFocused ? 1.5 : 0.5
                                 )
                         )
                         .shadow(
-                            color: isSearchFocused
-                                ? AppTheme.Colors.accent.opacity(0.1)
-                                : .clear,
-                            radius: 14
+                            color: isSearchFocused ? AppTheme.Colors.accent.opacity(0.08) : .clear,
+                            radius: 12
                         )
                 )
                 .animation(.easeInOut(duration: 0.2), value: isSearchFocused)
 
-                // Error message
                 if let message = plannerMessage {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.circle.fill")
@@ -275,7 +256,9 @@ struct DestinationSearchView: View {
                             .foregroundColor(AppTheme.Colors.textSecondary)
                             .multilineTextAlignment(.leading)
                         Spacer()
-                        Button { viewModel.dismissError() } label: {
+                        Button {
+                            viewModel.dismissError()
+                        } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(AppTheme.Colors.textTertiary)
@@ -295,19 +278,19 @@ struct DestinationSearchView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 14)
+            .padding(.bottom, 16)
 
-            Divider().opacity(0.08)
+            Rectangle()
+                .fill(AppTheme.Colors.borderSubtle.opacity(0.1))
+                .frame(height: 1)
         }
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Default Content
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     private var defaultContent: some View {
         VStack(spacing: 0) {
-            quickChips
+            quickActionsGrid
                 .padding(.top, 14)
 
             savedLocationsSection
@@ -318,109 +301,134 @@ struct DestinationSearchView: View {
         }
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // MARK: - Quick Action Chips
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // MARK: - Quick Actions Grid
 
-    private var quickChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                quickChipButton(
-                    icon: "location.fill", label: "Current Location",
-                    color: .blue
-                ) {
-                    Task { await selectLocation(.currentLocation) }
-                }
-
-                quickChipButton(
-                    icon: "map.fill", label: "Choose on Map",
-                    color: AppTheme.Colors.accent
-                ) {
-                    viewModel.isOriginForMapPicker = isOrigin
-                    dismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        viewModel.showMapPicker = true
-                    }
-                }
-
-                quickChipButton(
-                    icon: "person.crop.rectangle.fill", label: "From Contacts",
-                    color: AppTheme.Colors.accentSecondary
-                ) { /* TODO: Open contacts picker */ }
+    private var quickActionsGrid: some View {
+        HStack(spacing: 10) {
+            quickActionTile(
+                icon: "location.fill", label: "Current\nLocation", color: .blue
+            ) {
+                Task { await selectLocation(.currentLocation) }
             }
-            .padding(.horizontal, 16)
+
+            quickActionTile(
+                icon: "map.fill", label: "Choose\non Map", color: AppTheme.Colors.accent
+            ) {
+                viewModel.isOriginForMapPicker = isOrigin
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    viewModel.showMapPicker = true
+                }
+            }
+
+            quickActionTile(
+                icon: "person.crop.rectangle.fill", label: "From\nContacts", color: AppTheme.Colors.accentSecondary
+            ) { /* TODO: Open contacts picker */ }
         }
+        .padding(.horizontal, 16)
     }
 
-    private func quickChipButton(
-        icon: String, label: String, color: Color,
-        action: @escaping () -> Void
+    private func quickActionTile(
+        icon: String, label: String, color: Color, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(color)
-                    .frame(width: 28, height: 28)
-                    .background(
-                        Circle().fill(color.opacity(0.12))
-                    )
-
+            VStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [color.opacity(0.15), color.opacity(0.06)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 48, height: 48)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(color.opacity(0.15), lineWidth: 1)
+                        )
+                    Image(systemName: icon)
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundColor(color)
+                }
                 Text(label)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.trailing, 14)
-            .padding(.leading, 6)
-            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
             .background(
-                Capsule()
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(AppTheme.Colors.cardBackground)
                     .overlay(
-                        Capsule()
-                            .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.12), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.15), lineWidth: 0.5)
                     )
             )
         }
-        .buttonStyle(SearchChipButtonStyle())
+        .buttonStyle(SearchTileButtonStyle())
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Saved Locations
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     private var savedLocationsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionHeader("Saved Places")
+            VStack(spacing: 2) {
+                if let home = viewModel.savedLocation(for: .home) {
+                    premiumLocationRow(icon: home.iconName, iconColor: AppTheme.Colors.accent, name: home.name, detail: home.address) {
+                        Task { await selectLocation(.saved(home)) }
+                    }
+                } else {
+                    setLocationRow(
+                        icon: "house.fill",
+                        label: "Set Home",
+                        color: AppTheme.Colors.accent,
+                        category: .home
+                    )
+                }
+                if let work = viewModel.savedLocation(for: .work) {
+                    premiumLocationRow(icon: work.iconName, iconColor: AppTheme.Colors.warningYellow, name: work.name, detail: work.address) {
+                        Task { await selectLocation(.saved(work)) }
+                    }
+                } else {
+                    setLocationRow(
+                        icon: "briefcase.fill",
+                        label: "Set Work",
+                        color: AppTheme.Colors.warningYellow,
+                        category: .work
+                    )
+                }
+                if let school = viewModel.savedLocation(for: .school) {
+                    premiumLocationRow(icon: school.iconName, iconColor: AppTheme.Colors.successGreen, name: school.name, detail: school.address) {
+                        Task { await selectLocation(.saved(school)) }
+                    }
+                } else {
+                    setLocationRow(
+                        icon: "graduationcap.fill",
+                        label: "Set School",
+                        color: AppTheme.Colors.successGreen,
+                        category: .school
+                    )
+                }
+                if let partner = viewModel.savedLocation(for: .partner) {
+                    premiumLocationRow(icon: partner.iconName, iconColor: AppTheme.Colors.alertRed, name: partner.name, detail: partner.address) {
+                        Task { await selectLocation(.saved(partner)) }
+                    }
+                } else {
+                    setLocationRow(
+                        icon: "heart.fill",
+                        label: "Set Partner",
+                        color: AppTheme.Colors.alertRed,
+                        category: .partner
+                    )
+                }
 
-            VStack(spacing: 4) {
-                savedLocationEntry(
-                    icon: "house.fill", label: "Home",
-                    color: AppTheme.Colors.accent,
-                    location: viewModel.savedLocation(for: .home),
-                    category: .home
-                )
-                savedLocationEntry(
-                    icon: "briefcase.fill", label: "Work",
-                    color: AppTheme.Colors.warningYellow,
-                    location: viewModel.savedLocation(for: .work),
-                    category: .work
-                )
-                savedLocationEntry(
-                    icon: "graduationcap.fill", label: "School",
-                    color: AppTheme.Colors.successGreen,
-                    location: viewModel.savedLocation(for: .school),
-                    category: .school
-                )
-                savedLocationEntry(
-                    icon: "heart.fill", label: "Partner",
-                    color: AppTheme.Colors.alertRed,
-                    location: viewModel.savedLocation(for: .partner),
-                    category: .partner
-                )
-
+                // Custom saved places
                 ForEach(viewModel.customSavedLocations) { place in
-                    locationRow(
+                    premiumLocationRow(
                         icon: place.iconName,
                         iconColor: AppTheme.Colors.accentSecondary,
                         name: place.name,
@@ -435,35 +443,13 @@ struct DestinationSearchView: View {
     }
 
     @ViewBuilder
-    private func savedLocationEntry(
-        icon: String, label: String, color: Color,
-        location: SavedLocation?, category: SavedLocationCategory
-    ) -> some View {
-        if let loc = location {
-            locationRow(
-                icon: loc.iconName, iconColor: color,
-                name: loc.name, detail: loc.address
-            ) {
-                Task { await selectLocation(.saved(loc)) }
-            }
-        } else {
-            setLocationRow(icon: icon, label: "Set \(label)", color: color, category: category)
-        }
-    }
-
-    @ViewBuilder
     private var calendarSection: some View {
         if !viewModel.calendarLocations.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 sectionHeader("Calendar")
-                VStack(spacing: 4) {
+                VStack(spacing: 2) {
                     ForEach(viewModel.calendarLocations) { loc in
-                        locationRow(
-                            icon: "calendar",
-                            iconColor: AppTheme.Colors.accent,
-                            name: loc.name,
-                            detail: loc.address
-                        ) {
+                        premiumLocationRow(icon: "calendar", iconColor: AppTheme.Colors.accent, name: loc.name, detail: loc.address) {
                             Task { await selectLocation(.saved(loc)) }
                         }
                     }
@@ -478,15 +464,9 @@ struct DestinationSearchView: View {
         if !viewModel.recentSearches.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 sectionHeader("Recent")
-                VStack(spacing: 4) {
+                VStack(spacing: 2) {
                     ForEach(viewModel.recentSearches) { loc in
-                        locationRow(
-                            icon: "clock.arrow.circlepath",
-                            iconColor: AppTheme.Colors.textTertiary,
-                            name: loc.name,
-                            detail: loc.address,
-                            isSubtle: true
-                        ) {
+                        premiumLocationRow(icon: "clock.arrow.circlepath", iconColor: AppTheme.Colors.textTertiary, name: loc.name, detail: loc.address, isSubtle: true) {
                             Task { await selectLocation(.recent(loc)) }
                         }
                     }
@@ -496,9 +476,7 @@ struct DestinationSearchView: View {
         }
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Search Results
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     @ViewBuilder
     private var searchResultsContent: some View {
@@ -530,21 +508,21 @@ struct DestinationSearchView: View {
     }
 
     private var emptySearchState: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Colors.cardInset.opacity(0.4))
-                    .frame(width: 68, height: 68)
+                    .fill(AppTheme.Colors.cardInset.opacity(0.5))
+                    .frame(width: 72, height: 72)
                 Circle()
                     .fill(AppTheme.Colors.cardInset)
-                    .frame(width: 52, height: 52)
+                    .frame(width: 56, height: 56)
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.5))
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.6))
             }
-            VStack(spacing: 4) {
+            VStack(spacing: 5) {
                 Text("No results found")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textSecondary)
                 Text("Try a different search term or address")
                     .font(.system(size: 13, weight: .medium))
@@ -552,7 +530,7 @@ struct DestinationSearchView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 64)
+        .padding(.top, 70)
     }
 
     private var searchingIndicator: some View {
@@ -567,9 +545,7 @@ struct DestinationSearchView: View {
         .padding(.vertical, 24)
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Completion Row
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     private func completionRow(_ completion: MKLocalSearchCompletion) -> some View {
         Button {
@@ -578,32 +554,30 @@ struct DestinationSearchView: View {
                     completion,
                     isOrigin: isOrigin
                 )
-                if shouldDismiss { dismiss() }
+                if shouldDismiss {
+                    dismiss()
+                }
             }
         } label: {
-            HStack(spacing: 13) {
+            HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(
                             LinearGradient(
-                                colors: [
-                                    AppTheme.Colors.accent.opacity(0.12),
-                                    AppTheme.Colors.accentDeep.opacity(0.05),
-                                ],
+                                colors: [AppTheme.Colors.accent.opacity(0.12), AppTheme.Colors.accentDeep.opacity(0.06)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 40, height: 40)
+                        .frame(width: 42, height: 42)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(AppTheme.Colors.accent.opacity(0.08), lineWidth: 0.5)
+                                .strokeBorder(AppTheme.Colors.accent.opacity(0.1), lineWidth: 0.5)
                         )
                     Image(systemName: completion.iconName)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(AppTheme.Colors.accent)
                 }
-
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(completion.title)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundColor(AppTheme.Colors.textPrimary)
@@ -615,45 +589,40 @@ struct DestinationSearchView: View {
                             .lineLimit(1)
                     }
                 }
-
                 Spacer(minLength: 0)
-
                 Image(systemName: "arrow.up.left")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.25))
-                    .frame(width: 26, height: 26)
-                    .background(Circle().fill(AppTheme.Colors.cardInset.opacity(0.4)))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.3))
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(AppTheme.Colors.cardInset.opacity(0.5)))
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 11)
         }
         .buttonStyle(SearchRowButtonStyle())
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Row Views
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    private func locationRow(
+    private func premiumLocationRow(
         icon: String, iconColor: Color, name: String, detail: String,
         isSubtle: Bool = false, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 13) {
+            HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(iconColor.opacity(isSubtle ? 0.05 : 0.12))
-                        .frame(width: 40, height: 40)
+                        .fill(iconColor.opacity(isSubtle ? 0.06 : 0.12))
+                        .frame(width: 42, height: 42)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(iconColor.opacity(0.06), lineWidth: 0.5)
+                                .strokeBorder(iconColor.opacity(0.08), lineWidth: 0.5)
                         )
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(iconColor)
                 }
-
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(name)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundColor(AppTheme.Colors.textPrimary)
@@ -665,50 +634,48 @@ struct DestinationSearchView: View {
                             .lineLimit(1)
                     }
                 }
-
                 Spacer(minLength: 0)
-
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.25))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.3))
             }
-            .padding(.vertical, 11)
+            .padding(.vertical, 12)
             .padding(.horizontal, 14)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AppTheme.Colors.cardBackground.opacity(0.45))
+                    .fill(AppTheme.Colors.cardBackground.opacity(0.5))
             )
         }
         .buttonStyle(SearchRowButtonStyle())
     }
 
+    private func setLocationRow(icon: String, label: String, color: Color) -> some View {
+        setLocationRow(icon: icon, label: label, color: color, category: .custom)
+    }
+
     private func setLocationRow(
-        icon: String, label: String, color: Color,
+        icon: String,
+        label: String,
+        color: Color,
         category: SavedLocationCategory
     ) -> some View {
         Button {
             viewModel.beginSavedPlaceFlow(category)
             isSearchFocused = true
         } label: {
-            HStack(spacing: 13) {
+            HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(
-                            color.opacity(0.18),
-                            style: StrokeStyle(lineWidth: 1.5, dash: [4])
-                        )
-                        .frame(width: 40, height: 40)
+                        .strokeBorder(color.opacity(0.2), style: StrokeStyle(lineWidth: 1.5, dash: [4]))
+                        .frame(width: 42, height: 42)
                     Image(systemName: icon)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(color.opacity(0.45))
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(color.opacity(0.5))
                 }
-
                 Text(label)
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textSecondary)
-
                 Spacer(minLength: 0)
-
                 HStack(spacing: 3) {
                     Image(systemName: "plus")
                         .font(.system(size: 9, weight: .heavy))
@@ -720,11 +687,11 @@ struct DestinationSearchView: View {
                 .padding(.vertical, 5)
                 .background(Capsule().fill(color.opacity(0.1)))
             }
-            .padding(.vertical, 11)
+            .padding(.vertical, 12)
             .padding(.horizontal, 14)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AppTheme.Colors.cardBackground.opacity(0.25))
+                    .fill(AppTheme.Colors.cardBackground.opacity(0.3))
             )
         }
         .buttonStyle(SearchRowButtonStyle())
@@ -734,17 +701,16 @@ struct DestinationSearchView: View {
         Button {
             Task { await selectLocation(result.toPlanLocation()) }
         } label: {
-            HStack(spacing: 13) {
+            HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(resultIconColor(result).opacity(0.12))
-                        .frame(width: 40, height: 40)
+                        .frame(width: 42, height: 42)
                     Image(systemName: resultIcon(result))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(resultIconColor(result))
                 }
-
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(result.name)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundColor(AppTheme.Colors.textPrimary)
@@ -754,69 +720,71 @@ struct DestinationSearchView: View {
                         .foregroundColor(AppTheme.Colors.textTertiary)
                         .lineLimit(1)
                 }
-
                 Spacer(minLength: 0)
-
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.25))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.3))
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 11)
         }
         .buttonStyle(SearchRowButtonStyle())
     }
 
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Helpers
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     private func selectLocation(_ location: PlanLocation) async {
         let shouldDismiss = await viewModel.selectLocation(location, isOrigin: isOrigin)
-        if shouldDismiss { dismiss() }
+        if shouldDismiss {
+            dismiss()
+        }
     }
 
     private func sectionHeader(_ title: String) -> some View {
-        HStack(spacing: 8) {
+        HStack {
             Text(title)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
                 .foregroundColor(AppTheme.Colors.textTertiary)
                 .textCase(.uppercase)
                 .tracking(1.0)
             Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [AppTheme.Colors.borderSubtle.opacity(0.2), .clear],
-                        startPoint: .leading, endPoint: .trailing
-                    )
-                )
+                .fill(AppTheme.Colors.borderSubtle.opacity(0.15))
                 .frame(height: 0.5)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 22)
+        .padding(.top, 24)
         .padding(.bottom, 10)
     }
 
     private func resultIcon(_ result: SearchResultItem) -> String {
         switch result {
-        case .saved(let loc):  return loc.iconName
-        case .recent:          return "clock.arrow.circlepath"
-        case .geocoded:        return "mappin"
-        case .planner(let r):  return r.iconName
+        case .saved(let loc):
+            return loc.iconName
+        case .recent:
+            return "clock.arrow.circlepath"
+        case .geocoded:
+            return "mappin"
+        case .planner(let result):
+            return result.iconName
         }
     }
 
     private func resultIconColor(_ result: SearchResultItem) -> Color {
         switch result {
-        case .saved:           return AppTheme.Colors.accent
-        case .recent:          return AppTheme.Colors.textTertiary
-        case .geocoded:        return AppTheme.Colors.alertRed
-        case .planner(let p):
-            switch p.source {
-            case "saved_place":        return AppTheme.Colors.accent
-            case "recent_destination": return AppTheme.Colors.textTertiary
+        case .saved:
+            return AppTheme.Colors.accent
+        case .recent:
+            return AppTheme.Colors.textTertiary
+        case .geocoded:
+            return AppTheme.Colors.alertRed
+        case .planner(let planner):
+            switch planner.source {
+            case "saved_place":
+                return AppTheme.Colors.accent
+            case "recent_destination":
+                return AppTheme.Colors.textTertiary
             default:
-                return p.mode == "subway"
+                return planner.mode == "subway"
                     ? AppTheme.Colors.accentSecondary
                     : AppTheme.Colors.alertRed
             }
@@ -832,19 +800,19 @@ private struct SearchRowButtonStyle: ButtonStyle {
             .background(
                 configuration.isPressed
                     ? RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(AppTheme.Colors.cardInset.opacity(0.45))
+                        .fill(AppTheme.Colors.cardInset.opacity(0.5))
                     : nil
             )
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
-private struct SearchChipButtonStyle: ButtonStyle {
+private struct SearchTileButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .opacity(configuration.isPressed ? 0.75 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }

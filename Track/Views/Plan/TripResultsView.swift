@@ -50,58 +50,90 @@ struct TripResultsView: View {
 
     private var resultsHeader: some View {
         VStack(spacing: 0) {
-            // Top bar: back, title, actions
-            HStack(spacing: 12) {
-                Button {
-                    viewModel.clearResults()
-                    dismiss()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(.white.opacity(0.12))
-                            .frame(width: 38, height: 38)
-                            .overlay(
-                                Circle().strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
-                            )
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 13, weight: .bold))
+            // Origin / Destination pill fields + swap button
+            HStack(alignment: .center, spacing: 10) {
+                // Dots column
+                VStack(spacing: 4) {
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 8, height: 8)
+                    Rectangle()
+                        .fill(.white.opacity(0.35))
+                        .frame(width: 2, height: 18)
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 8, height: 8)
+                }
+
+                // Pill fields
+                VStack(spacing: 6) {
+                    // Origin pill
+                    HStack(spacing: 8) {
+                        Image(systemName: originIcon)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.6))
+                        Text(viewModel.origin.displayName)
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(.white.opacity(0.15))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+                            )
+                    )
+
+                    // Destination pill
+                    HStack(spacing: 8) {
+                        Image(systemName: "mappin")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.6))
+                        Text(viewModel.destination?.displayName ?? "Destination")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(.white.opacity(0.15))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+                            )
+                    )
                 }
-                .buttonStyle(ResultsButtonStyle())
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Routes")
-                        .font(.system(size: 20, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
-                    Text("\(viewModel.tripResults.count) option\(viewModel.tripResults.count != 1 ? "s" : "")")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
-
-                Spacer()
-
-                HStack(spacing: 8) {
-                    headerButton(icon: "arrow.clockwise") {
+                // Swap button
+                Button {
+                    withAnimation(AppTheme.Animation.snappy) {
+                        viewModel.swapOriginDestination()
                         Task { await viewModel.planTrip() }
                     }
-                    headerButton(icon: "arrow.up.arrow.down") {
-                        withAnimation(AppTheme.Animation.snappy) {
-                            viewModel.swapOriginDestination()
-                            Task { await viewModel.planTrip() }
-                        }
-                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(
+                            Circle()
+                                .fill(.white.opacity(0.15))
+                                .overlay(Circle().strokeBorder(.white.opacity(0.1), lineWidth: 0.5))
+                        )
                 }
+                .buttonStyle(ResultsButtonStyle())
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
-
-            routeSummaryRow
-                .padding(.top, 10)
-
-            departureChipRow
-                .padding(.top, 10)
-                .padding(.bottom, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 30) // extra space for overlap
         }
         .background(
             ZStack {
@@ -114,7 +146,6 @@ struct TripResultsView: View {
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 )
 
-                // Subtle decorative orb
                 Circle()
                     .fill(
                         RadialGradient(
@@ -128,157 +159,100 @@ struct TripResultsView: View {
             }
             .ignoresSafeArea(edges: .top)
         )
-    }
-
-    private func headerButton(icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(.white.opacity(0.12))
-                    .frame(width: 38, height: 38)
-                    .overlay(
-                        Circle().strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
-                    )
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white)
-            }
+        // Control bar overlapping the header/content boundary
+        .overlay(alignment: .bottom) {
+            departureControlBar
+                .offset(y: 18)
         }
-        .buttonStyle(ResultsButtonStyle())
     }
 
-    private var routeSummaryRow: some View {
-        HStack(spacing: 0) {
-            // Origin
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(.white)
-                    .frame(width: 7, height: 7)
-                    .shadow(color: .white.opacity(0.3), radius: 3)
-
-                Text(viewModel.origin.displayName)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
+    // Floating control bar: Leave now + refresh + X
+    private var departureControlBar: some View {
+        HStack(spacing: 10) {
+            // Leave now / departure chip
+            Button {
+                viewModel.showTimePicker = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "clock.fill")
+                        .font(.system(size: 10, weight: .bold))
+                    Text(viewModel.departureTimeLabel)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                }
+                .foregroundStyle(AppTheme.Colors.textPrimary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(
+                    Capsule()
+                        .fill(AppTheme.Colors.cardBackground)
+                        .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+                )
             }
+            .buttonStyle(.plain)
 
-            // Arrow connector
-            Image(systemName: "arrow.right")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.white.opacity(0.4))
-                .padding(.horizontal, 8)
-
-            // Destination
-            HStack(spacing: 7) {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(.white)
-                    .frame(width: 7, height: 7)
-
-                Text(viewModel.destination?.displayName ?? "Destination")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
+            // Refresh
+            Button {
+                Task { await viewModel.planTrip() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                    .frame(width: 34, height: 34)
+                    .background(
+                        Circle()
+                            .fill(AppTheme.Colors.cardBackground)
+                            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+                    )
             }
+            .buttonStyle(ResultsButtonStyle())
 
-            Spacer(minLength: 0)
+            Spacer()
+
+            // Close button (red X like Transit)
+            Button {
+                viewModel.clearResults()
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(
+                        Circle()
+                            .fill(AppTheme.Colors.alertRed)
+                            .shadow(color: AppTheme.Colors.alertRed.opacity(0.3), radius: 6, y: 2)
+                    )
+            }
+            .buttonStyle(ResultsButtonStyle())
         }
         .padding(.horizontal, 16)
-    }
-
-    private var departureChipRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                // Departure time chip
-                Button {
-                    viewModel.showTimePicker = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock.fill")
-                            .font(.system(size: 10, weight: .bold))
-                        Text(viewModel.departureTimeLabel)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-
-                        if case .leaveNow = viewModel.departureOption {} else {
-                            Button {
-                                viewModel.clearDepartureOption()
-                                Task { await viewModel.planTrip() }
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 9, weight: .heavy))
-                                    .foregroundStyle(.white.opacity(0.5))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(
-                        Capsule()
-                            .fill(.white.opacity(0.18))
-                            .overlay(Capsule().strokeBorder(.white.opacity(0.1), lineWidth: 0.5))
-                    )
-                }
-                .buttonStyle(.plain)
-
-                // Walk summary
-                if let first = viewModel.tripResults.first, first.totalWalkMeters > 100 {
-                    chipPill(icon: "figure.walk", text: estimatedWalkTime)
-                }
-
-                // Total results chip
-                chipPill(icon: "tram.fill", text: "\(viewModel.tripResults.count) options")
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private func chipPill(icon: String, text: String) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .bold))
-            Text(text)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-        }
-        .foregroundStyle(.white.opacity(0.55))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(
-            Capsule().strokeBorder(.white.opacity(0.15), lineWidth: 1)
-        )
     }
 
     // MARK: - Results List
 
     private var resultsList: some View {
         ScrollView {
-            LazyVStack(spacing: 10) {
-                ForEach(Array(viewModel.tripResults.enumerated()), id: \.element.id) { index, trip in
-                    TripResultCard(
-                        trip: trip,
-                        onTap: { selectedTrip = trip },
-                        isRecommended: index == 0
-                    )
-                    .padding(.horizontal, 16)
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 20)
-                    .animation(
-                        .spring(response: 0.45, dampingFraction: 0.78).delay(Double(index) * 0.06),
-                        value: appeared
-                    )
+            VStack(spacing: 0) {
+                // Space for the floating departure control bar
+                Spacer().frame(height: 28)
+
+                // Interactive timeline grid
+                TripTimelineGridView(
+                    trips: viewModel.tripResults,
+                    onTripTap: { trip in selectedTrip = trip },
+                    recommendedIndex: 0
+                )
+
+                // Show more trips button
+                if viewModel.tripResults.count >= 3 {
+                    showMoreTripsButton
+                        .padding(.top, 12)
                 }
+
+                otherOptionsSection
+
+                Spacer(minLength: 80)
             }
-            .padding(.top, 14)
-
-            // Show more trips button
-            if viewModel.tripResults.count >= 3 {
-                showMoreTripsButton
-                    .padding(.top, 8)
-            }
-
-            otherOptionsSection
-
-            Spacer(minLength: 80)
         }
     }
 
@@ -288,22 +262,20 @@ struct TripResultsView: View {
         Button {
             Task { await viewModel.planTrip() }
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 14, weight: .semibold))
+            HStack {
                 Text("Show more trips")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
             }
-            .foregroundStyle(AppTheme.Colors.accent)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AppTheme.Colors.accent.opacity(0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(AppTheme.Colors.accent.opacity(0.15), lineWidth: 0.8)
-                    )
+                    .fill(AppTheme.Colors.cardBackground)
             )
         }
         .buttonStyle(ResultsButtonStyle())
@@ -605,6 +577,15 @@ struct TripResultsView: View {
     }
 
     // MARK: - Helpers
+
+    private var originIcon: String {
+        switch viewModel.origin {
+        case .currentLocation: return "location.fill"
+        case .saved: return "star.fill"
+        case .recent: return "clock.fill"
+        case .custom: return "mappin.circle.fill"
+        }
+    }
 
     private var estimatedWalkTime: String {
         if let first = viewModel.tripResults.first {

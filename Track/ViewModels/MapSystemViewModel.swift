@@ -21,6 +21,7 @@ final class MapSystemViewModel {
         let stations: [CachedSubwayStation]
         let consolidatedStations: [ConsolidatedStation]
         let routeLabels: [TrunkRouteLabel]
+        let bakedBusTileSet: TransitTileBaker.BakedBusTileSet?
     }
 
     private static var sharedSnapshot: SharedSnapshot?
@@ -299,6 +300,7 @@ final class MapSystemViewModel {
             trunkRouteLabels = snapshot.routeLabels
             cachedStations = snapshot.stations
             consolidatedStations = snapshot.consolidatedStations
+            bakedBusTileSet = snapshot.bakedBusTileSet
             return
         }
 
@@ -351,7 +353,8 @@ final class MapSystemViewModel {
                 flattenedCommuter: flattenedCommuterRailPolylines,
                 stations: cachedStations,
                 consolidatedStations: consolidatedStations,
-                routeLabels: trunkRouteLabels
+                routeLabels: trunkRouteLabels,
+                bakedBusTileSet: bakedBusTileSet
             )
         }
     }
@@ -1586,7 +1589,8 @@ final class MapSystemViewModel {
             flattenedCommuter: flattenedCommuterRailPolylines,
             stations: cachedStations,
             consolidatedStations: consolidatedStations,
-            routeLabels: trunkRouteLabels
+            routeLabels: trunkRouteLabels,
+            bakedBusTileSet: bakedBusTileSet
         )
 
         // Yield after subway polylines are set so the map can start rendering them

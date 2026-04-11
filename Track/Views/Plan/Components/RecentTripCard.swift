@@ -1,6 +1,5 @@
-// Premium recent trip card — layered glass card with gradient
-// accent strip, rich mode icon container, route badges, and
-// polished recency label.
+// Recent trip card — clean, bold card with large destination text,
+// inline route badges, and compact date label.
 
 import SwiftUI
 
@@ -10,119 +9,62 @@ struct RecentTripCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 0) {
-                // Gradient accent strip
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [AppTheme.Colors.accent, AppTheme.Colors.accentDeep],
-                            startPoint: .top, endPoint: .bottom
-                        )
+            HStack(spacing: 14) {
+                // Mode icon badge
+                Image(systemName: primaryModeIcon)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AppTheme.Colors.accent.gradient)
                     )
-                    .frame(width: 3.5)
-                    .padding(.vertical, 10)
 
-                HStack(spacing: 14) {
-                    // Mode icon container
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [AppTheme.Colors.accent.opacity(0.15), AppTheme.Colors.accent.opacity(0.05)],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 46, height: 46)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(AppTheme.Colors.accent.opacity(0.12), lineWidth: 0.5)
-                            )
-                        Image(systemName: primaryModeIcon)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(AppTheme.Colors.accent)
+                VStack(alignment: .leading, spacing: 6) {
+                    // Route: Origin → Destination
+                    HStack(spacing: 6) {
+                        Text(trip.originName)
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.Colors.textPrimary)
+                            .lineLimit(1)
+
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.45))
+
+                        Text(trip.destinationName)
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.Colors.textPrimary)
+                            .lineLimit(1)
                     }
 
-                    // Trip info
-                    VStack(alignment: .leading, spacing: 7) {
-                        // Origin → destination
-                        HStack(spacing: 6) {
-                            Text(trip.originName)
-                                .lineLimit(1)
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.5))
-                            Text(trip.destinationName)
-                                .lineLimit(1)
-                        }
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
-
-                        // Leg badges + date
-                        HStack(spacing: 5) {
-                            ForEach(Array(zip(trip.legSummary, trip.legModes).enumerated()), id: \.offset) { index, pair in
-                                let (routeId, modeStr) = pair
-                                if index > 0 {
-                                    Circle()
-                                        .fill(AppTheme.Colors.textTertiary.opacity(0.25))
-                                        .frame(width: 3, height: 3)
-                                }
-                                legBadge(routeId: routeId, mode: modeStr)
+                    // Leg badges
+                    HStack(spacing: 5) {
+                        ForEach(Array(zip(trip.legSummary, trip.legModes).enumerated()), id: \.offset) { index, pair in
+                            let (routeId, modeStr) = pair
+                            if index > 0 {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 7, weight: .bold))
+                                    .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.3))
                             }
-
-                            Spacer(minLength: 0)
-
-                            Text(dateLabel)
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(AppTheme.Colors.textTertiary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(
-                                    Capsule()
-                                        .fill(AppTheme.Colors.cardInset.opacity(0.5))
-                                        .overlay(
-                                            Capsule()
-                                                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.08), lineWidth: 0.5)
-                                        )
-                                )
+                            legBadge(routeId: routeId, mode: modeStr)
                         }
                     }
+                }
 
-                    // Chevron
+                Spacer(minLength: 0)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(dateLabel)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.3))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.25))
                 }
-                .padding(.leading, 12)
-                .padding(.trailing, 14)
-                .padding(.vertical, 13)
             }
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(AppTheme.Colors.cardBackground)
-
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .white.opacity(0.04), location: 0),
-                                    .init(color: .clear, location: 0.35),
-                                ],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
-
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [AppTheme.Colors.borderSubtle.opacity(0.2), AppTheme.Colors.borderSubtle.opacity(0.08)],
-                                startPoint: .top, endPoint: .bottom
-                            ),
-                            lineWidth: 0.5
-                        )
-                }
-                .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
-            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
         .buttonStyle(RecentTripButtonStyle())
     }
