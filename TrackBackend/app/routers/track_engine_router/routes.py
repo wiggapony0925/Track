@@ -572,7 +572,7 @@ def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
         record_recent=payload.record_recent,
     )
     try:
-        itineraries = service.plan(request)
+        itineraries, schedule_note = service.plan(request)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - production safety net
@@ -588,6 +588,7 @@ def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
         depart_at_ts=payload.depart_at_ts,
         arrive_by_ts=payload.arrive_by_ts,
         itineraries=[_itinerary_model(item) for item in itineraries],
+        schedule_note=schedule_note,
     )
 
 
@@ -639,4 +640,5 @@ def build_go_trip(payload: EngineGoRequest) -> EngineGoResponse:
             else None
         ),
         alternatives=[_go_trip_model(item) for item in go_response.alternatives],
+        schedule_note=go_response.schedule_note,
     )

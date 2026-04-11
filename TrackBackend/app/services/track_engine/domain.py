@@ -176,6 +176,7 @@ class GoResponse:
     session_kind: str
     primary_trip: GoTrip | None
     alternatives: list[GoTrip] = field(default_factory=list)
+    schedule_note: str | None = None
 
 
 @dataclass(slots=True)

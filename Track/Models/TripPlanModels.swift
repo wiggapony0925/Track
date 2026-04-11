@@ -748,6 +748,7 @@ struct EngineGoResponseDTO: Codable, Equatable {
     let sessionKind: String
     let primaryTrip: EngineGoTripDTO?
     let alternatives: [EngineGoTripDTO]
+    let scheduleNote: String?
 
     enum CodingKeys: String, CodingKey {
         case engineVersion = "engine_version"
@@ -756,6 +757,7 @@ struct EngineGoResponseDTO: Codable, Equatable {
         case sessionKind = "session_kind"
         case primaryTrip = "primary_trip"
         case alternatives
+        case scheduleNote = "schedule_note"
     }
 
     var tripPlans: [TripPlan] {

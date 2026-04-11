@@ -22,9 +22,12 @@ struct TripResultsView: View {
 
                     if viewModel.isLoading {
                         loadingState
-                    } else if let error = viewModel.errorMessage {
+                    } else if let error = viewModel.errorMessage, viewModel.tripResults.isEmpty {
                         errorState(error)
                     } else {
+                        if let note = viewModel.scheduleNote {
+                            scheduleNoteBanner(note)
+                        }
                         resultsList
                     }
                 }
@@ -236,12 +239,28 @@ struct TripResultsView: View {
                 // Space for the floating departure control bar
                 Spacer().frame(height: 28)
 
-                // Interactive timeline grid
-                TripTimelineGridView(
-                    trips: viewModel.tripResults,
-                    onTripTap: { trip in selectedTrip = trip },
-                    recommendedIndex: 0
-                )
+                // Trip result cards (Transit-style proportional Gantt bars)
+                ForEach(Array(viewModel.tripResults.enumerated()), id: \.element.id) { index, trip in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(AppTheme.Colors.borderSubtle.opacity(0.12))
+                            .frame(height: 1)
+                            .padding(.leading, 16)
+                    }
+
+                    TripResultCard(
+                        trip: trip,
+                        onTap: { selectedTrip = trip },
+                        isRecommended: index == 0
+                    )
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 10)
+                    .animation(
+                        .spring(response: 0.4, dampingFraction: 0.85)
+                            .delay(Double(index) * 0.06),
+                        value: appeared
+                    )
+                }
 
                 // Show more trips button
                 if !viewModel.tripResults.isEmpty {
@@ -484,6 +503,34 @@ struct TripResultsView: View {
                         .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.15), lineWidth: 0.5)
                 )
         )
+    }
+
+    // MARK: - Schedule Note Banner
+
+    private func scheduleNoteBanner(_ note: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(AppTheme.Colors.warningYellow)
+
+            Text(note)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textPrimary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.Colors.warningYellow.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.warningYellow.opacity(0.2), lineWidth: 0.5)
+                )
+        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Error State

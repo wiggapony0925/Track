@@ -13,7 +13,7 @@ import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from datetime import time as time_value
 from pathlib import Path
 from typing import Any
@@ -431,6 +431,63 @@ class TrackEngineService:
             int(midnight.timestamp()),
         )
 
+    def _future_day_payload(
+        self,
+        request: PlanRequest,
+        day_offset: int,
+        *,
+        now_ts: int | None = None,
+    ) -> dict:
+        """Build an engine payload shifted to *day_offset* days in the future.
+
+        Keeps origin/destination but replaces timestamps so the engine
+        queries for the future service day.  We pick 8 AM local as a
+        reasonable departure time for the lookahead query.
+        """
+        today_ny = datetime.now(NY_TZ).date()
+        future_date = today_ny + timedelta(days=day_offset)
+        future_8am = datetime.combine(future_date, time_value(8, 0), tzinfo=NY_TZ)
+        future_ts = int(future_8am.timestamp())
+        future_midnight = datetime.combine(future_date, time_value.min, tzinfo=NY_TZ)
+
+        payload = {
+            "origin": {
+                "label": request.origin.label,
+                "lat": request.origin.lat,
+                "lon": request.origin.lon,
+                "stop_id": request.origin.stop_id,
+                "address": request.origin.address,
+            },
+            "destination": {
+                "label": request.destination.label,
+                "lat": request.destination.lat,
+                "lon": request.destination.lon,
+                "stop_id": request.destination.stop_id,
+                "address": request.destination.address,
+            },
+            "depart_at_ts": future_ts,
+            "arrive_by_ts": None,
+            "query_ts": future_ts,
+            "service_day_yyyymmdd": int(future_date.strftime("%Y%m%d")),
+            "service_weekday": future_date.weekday(),
+            "service_day_midnight_ts": int(future_midnight.timestamp()),
+            "max_transfers": request.max_transfers,
+            "max_origin_walk_m": request.max_origin_walk_m,
+            "max_destination_walk_m": request.max_destination_walk_m,
+            "max_transfer_walk_m": request.max_transfer_walk_m,
+            "search_window_minutes": request.search_window_minutes,
+            "num_itineraries": request.num_itineraries,
+            "modes": list(request.modes),
+        }
+        if now_ts is not None:
+            payload["now_ts"] = now_ts
+        return payload
+
+    @staticmethod
+    def _schedule_note_for_date(future_date) -> str:
+        """Build a human-readable schedule note like 'Next trips available Monday, Apr 14'."""
+        return f"Next trips available {future_date.strftime('%A, %b %-d')}"
+
     def _remote_payload(self, request: PlanRequest, *, now_ts: int | None = None):
         query_ts = self._query_timestamp(request)
         service_day_yyyymmdd, service_weekday, service_day_midnight_ts = (
@@ -573,7 +630,12 @@ class TrackEngineService:
             arrive_label=payload["arrive_label"],
         )
 
-    def _remote_plan(self, request: PlanRequest) -> list[Itinerary]:
+    def _remote_plan(self, request: PlanRequest) -> tuple[list[Itinerary], str | None]:
+        """Plan trip, falling back to upcoming days when today has no service.
+
+        Returns ``(itineraries, schedule_note)`` where *schedule_note* is
+        ``None`` when the results are for the originally requested time.
+        """
         if not self.remote_engine_url:
             raise RuntimeError(
                 "TRACK_ENGINE_URL is not configured. Routing now runs only in the "
@@ -592,7 +654,35 @@ class TrackEngineService:
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
 
-        return [self._parse_itinerary(item) for item in data.get("itineraries", [])]
+        itineraries = [self._parse_itinerary(item) for item in data.get("itineraries", [])]
+        if itineraries:
+            return itineraries, None
+
+        # ---- next-service-day fallback ----
+        schedule_note = self._try_future_days_plan(request)
+        if schedule_note is not None:
+            return schedule_note
+        return [], None
+
+    def _try_future_days_plan(
+        self, request: PlanRequest, *, max_lookahead: int = 7
+    ) -> tuple[list[Itinerary], str] | None:
+        """Try up to *max_lookahead* future days, returning the first day with results."""
+        today_ny = datetime.now(NY_TZ).date()
+        for offset in range(1, max_lookahead + 1):
+            future_date = today_ny + timedelta(days=offset)
+            payload = self._future_day_payload(request, offset)
+            try:
+                with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
+                    resp = client.post(f"{self.remote_engine_url}/plan", json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+            except httpx.HTTPError:
+                continue
+            items = [self._parse_itinerary(item) for item in data.get("itineraries", [])]
+            if items:
+                return items, self._schedule_note_for_date(future_date)
+        return None
 
     def _remote_go(self, request: PlanRequest, *, now_ts: int) -> GoResponse:
         if not self.remote_engine_url:
@@ -613,7 +703,7 @@ class TrackEngineService:
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
 
-        return GoResponse(
+        go_response = GoResponse(
             engine_version=str(data["engine_version"]),
             requested_at_ts=int(data["requested_at_ts"]),
             now_ts=int(data["now_ts"]),
@@ -629,6 +719,45 @@ class TrackEngineService:
                 self._parse_go_trip(item) for item in data.get("alternatives", [])
             ],
         )
+
+        # ---- next-service-day fallback ----
+        if go_response.primary_trip is None and not go_response.alternatives:
+            fallback = self._try_future_days_go(request, now_ts=now_ts)
+            if fallback is not None:
+                return fallback
+        return go_response
+
+    def _try_future_days_go(
+        self, request: PlanRequest, *, now_ts: int, max_lookahead: int = 7
+    ) -> GoResponse | None:
+        """Try future days for the /go endpoint."""
+        today_ny = datetime.now(NY_TZ).date()
+        for offset in range(1, max_lookahead + 1):
+            future_date = today_ny + timedelta(days=offset)
+            payload = self._future_day_payload(request, offset, now_ts=now_ts)
+            try:
+                with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
+                    resp = client.post(f"{self.remote_engine_url}/go", json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+            except httpx.HTTPError:
+                continue
+            primary = data.get("primary_trip")
+            if primary is not None:
+                return GoResponse(
+                    engine_version=str(data["engine_version"]),
+                    requested_at_ts=int(data["requested_at_ts"]),
+                    now_ts=int(data["now_ts"]),
+                    origin=request.origin,
+                    destination=request.destination,
+                    session_kind=str(data["session_kind"]),
+                    primary_trip=self._parse_go_trip(primary),
+                    alternatives=[
+                        self._parse_go_trip(item) for item in data.get("alternatives", [])
+                    ],
+                    schedule_note=self._schedule_note_for_date(future_date),
+                )
+        return None
 
     def _normalize_route_key(self, value: str | None) -> str:
         if not value:
@@ -1509,8 +1638,8 @@ class TrackEngineService:
         )
         return ordered[:limit]
 
-    def plan(self, request: PlanRequest):
-        itineraries = self._remote_plan(request)
+    def plan(self, request: PlanRequest) -> tuple[list, str | None]:
+        itineraries, schedule_note = self._remote_plan(request)
         if request.user_id and request.record_recent and itineraries:
             self.store.record_recent_trip(
                 request.user_id,
@@ -1522,4 +1651,4 @@ class TrackEngineService:
                 destination_lon=request.destination.lon or 0.0,
                 itinerary=itineraries[0],
             )
-        return itineraries
+        return itineraries, schedule_note

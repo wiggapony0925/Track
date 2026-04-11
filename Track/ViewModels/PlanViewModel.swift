@@ -20,6 +20,7 @@ final class PlanViewModel {
     var isLoading = false
     var isLoadingMore = false
     var errorMessage: String?
+    var scheduleNote: String?
     var showResults = false
     var showDestinationSearch = false
     var showOriginSearch = false
@@ -111,6 +112,7 @@ final class PlanViewModel {
         do {
             let response = try await TrackAPI.fetchEngineGo(request: request)
             tripResults = response.tripPlans
+            scheduleNote = response.scheduleNote
             if tripResults.isEmpty {
                 errorMessage = "No trip options came back for that route."
             } else {
@@ -119,6 +121,7 @@ final class PlanViewModel {
             await refreshPlannerData()
         } catch {
             tripResults = []
+            scheduleNote = nil
             errorMessage = friendlyErrorMessage(for: error)
         }
 

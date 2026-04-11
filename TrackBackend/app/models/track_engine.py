@@ -438,6 +438,10 @@ class EnginePlanResponse(BaseModel):
         description="Unix latest-arrival constraint when provided.",
     )
     itineraries: list[EngineItinerary] = Field(..., description="Returned itineraries.")
+    schedule_note: str | None = Field(
+        None,
+        description="Human-readable note when trips are shown for a future service day.",
+    )
 
 
 class EngineGoTrip(BaseModel):
@@ -513,6 +517,10 @@ class EngineGoResponse(BaseModel):
     alternatives: list[EngineGoTrip] = Field(
         default_factory=list,
         description="Alternative trip options returned by the engine.",
+    )
+    schedule_note: str | None = Field(
+        None,
+        description="Human-readable note when trips are shown for a future service day.",
     )
 
 
