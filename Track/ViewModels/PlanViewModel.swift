@@ -18,6 +18,7 @@ final class PlanViewModel {
     var tripResults: [TripPlan] = []
     var recommendations: [PlannerRecommendation] = []
     var isLoading = false
+    var isLoadingMore = false
     var errorMessage: String?
     var showResults = false
     var showDestinationSearch = false
@@ -122,6 +123,74 @@ final class PlanViewModel {
         }
 
         isLoading = false
+    }
+
+    /// Load additional trips starting after the last displayed trip.
+    /// Appends unique results — no duplicates.
+    func loadMoreTrips() async {
+        guard let destination else { return }
+        guard let originPayload = payload(for: origin),
+              let destinationPayload = payload(for: destination) else { return }
+        guard !isLoadingMore else { return }
+
+        // Cursor: start searching 60s after the last trip's departure
+        let cursor: Int? = if let lastDeparture = tripResults.last?.departureTime {
+            Int(lastDeparture.timeIntervalSince1970) + 60
+        } else {
+            departureOption.departureTimestamp
+        }
+
+        isLoadingMore = true
+
+        let request = EngineGoRequestPayload(
+            origin: originPayload,
+            destination: destinationPayload,
+            userID: nil,
+            departAtTS: cursor,
+            arriveByTS: nil,
+            maxTransfers: 2,
+            maxOriginWalkM: 1400,
+            maxDestinationWalkM: 1200,
+            maxTransferWalkM: 350,
+            searchWindowMinutes: 180,
+            numItineraries: 4,
+            modes: ["subway", "bus", "lirr", "mnr"],
+            recordRecent: false,
+            nowTS: Int(Date().timeIntervalSince1970)
+        )
+
+        do {
+            let response = try await TrackAPI.fetchEngineGo(request: request)
+            let existingIDs = Set(tripResults.map(\.itineraryID))
+            let newTrips = response.tripPlans.filter { !existingIDs.contains($0.itineraryID) }
+
+            // Also deduplicate by route pattern + departure time
+            var existingKeys = Set(tripResults.map { tripDedupeKey($0) })
+            var uniqueNew: [TripPlan] = []
+            for trip in newTrips {
+                let key = tripDedupeKey(trip)
+                if !existingKeys.contains(key) {
+                    existingKeys.insert(key)
+                    uniqueNew.append(trip)
+                }
+            }
+
+            if !uniqueNew.isEmpty {
+                tripResults.append(contentsOf: uniqueNew)
+            }
+        } catch {
+            // Silently fail — user still sees existing results
+        }
+
+        isLoadingMore = false
+    }
+
+    /// Creates a dedup key from route pattern + departure timestamp.
+    private func tripDedupeKey(_ trip: TripPlan) -> String {
+        let routes = trip.legs.map { leg in
+            leg.isTransit ? (leg.routeId ?? leg.mode.rawValue) : "walk"
+        }.joined(separator: "|")
+        return "\(routes)@\(Int(trip.departureTime.timeIntervalSince1970))"
     }
 
     func selectDestination(_ location: PlanLocation) {

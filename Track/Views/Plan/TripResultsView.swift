@@ -244,9 +244,10 @@ struct TripResultsView: View {
                 )
 
                 // Show more trips button
-                if viewModel.tripResults.count >= 3 {
+                if !viewModel.tripResults.isEmpty {
                     showMoreTripsButton
                         .padding(.top, 12)
+                        .disabled(viewModel.isLoadingMore)
                 }
 
                 otherOptionsSection
@@ -260,16 +261,24 @@ struct TripResultsView: View {
 
     private var showMoreTripsButton: some View {
         Button {
-            Task { await viewModel.planTrip() }
+            Task { await viewModel.loadMoreTrips() }
         } label: {
             HStack {
-                Text("Show more trips")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                if viewModel.isLoadingMore {
+                    ProgressView()
+                        .tint(AppTheme.Colors.textTertiary)
+                        .scaleEffect(0.8)
+                } else {
+                    Text("Show more trips")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                if !viewModel.isLoadingMore {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                }
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
