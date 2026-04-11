@@ -2322,19 +2322,28 @@ struct RouteDetailSheet: View {
         // SmartETA's vehicle-position blending can reorder far-out trains
         // (e.g. trip A inflated 10 min, trip B deflated 6 min → swapped),
         // but the feed's relative arrival order at a given stop is reliable.
+        // Tiebreaker: stable `id` prevents flicker when two chips share an
+        // identical timestamp — without it the TimelineView re-sort can swap
+        // their order every second.
         live.sort { a, b in
             if let tsA = a.arrival.arrivalTs, let tsB = b.arrival.arrivalTs,
                tsA > 0, tsB > 0, tsA != tsB {
                 return tsA < tsB
             }
-            return a.eta.secondsRemaining < b.eta.secondsRemaining
+            if a.eta.secondsRemaining != b.eta.secondsRemaining {
+                return a.eta.secondsRemaining < b.eta.secondsRemaining
+            }
+            return a.arrival.id < b.arrival.id
         }
         sched.sort { a, b in
             if let tsA = a.arrival.arrivalTs, let tsB = b.arrival.arrivalTs,
                tsA > 0, tsB > 0, tsA != tsB {
                 return tsA < tsB
             }
-            return a.eta.secondsRemaining < b.eta.secondsRemaining
+            if a.eta.secondsRemaining != b.eta.secondsRemaining {
+                return a.eta.secondsRemaining < b.eta.secondsRemaining
+            }
+            return a.arrival.id < b.arrival.id
         }
 
         // Safety cap: if more than 2 live chips show "NOW" simultaneously,
@@ -2545,6 +2554,9 @@ struct RouteDetailSheet: View {
                 ForEach(Array(chips.enumerated()), id: \.element.arrival.id) { index, pair in
                     arrivalCard(arrival: pair.arrival, index: index, eta: pair.eta)
                 }
+
+                // "See More" chip — opens the Departures tab
+                seeMoreChip
             }
             .padding(.horizontal, AppTheme.Layout.margin)
             .padding(.top, 8)
@@ -2552,6 +2564,35 @@ struct RouteDetailSheet: View {
             .onAppear { logChips(chips) }
             .onChange(of: chips.map(\.arrival.id)) { _, _ in logChips(chips) }
         }
+    }
+
+    /// A trailing chip in the horizontal scroller that switches to the
+    /// Departures tab so the user can browse the full schedule board.
+    private var seeMoreChip: some View {
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                selectedTab = .departures
+            }
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(routeColor)
+                Text("See More")
+                    .font(.custom("Helvetica-Bold", fixedSize: 11))
+                    .foregroundColor(routeColor)
+            }
+            .frame(width: 72, height: 72)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(routeColor.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(routeColor.opacity(0.15), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     /// Logs every visible chip for debugging — compare against raw endpoint data.

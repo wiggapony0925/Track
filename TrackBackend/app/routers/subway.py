@@ -807,6 +807,35 @@ async def subway_arrivals(
             a.minutes_away = max(0, (a.arrival_ts - now) // 60)
         # Sort by soonest first, then cap total count
         fresh.sort(key=lambda a: a.arrival_ts)
+
+        # ── Schedule backfill ─────────────────────────────────────
+        # Extend beyond the GTFS-RT horizon with static GTFS schedule
+        # so the client can display "Scheduled" chips hours ahead.
+        try:
+            from app.services.transit.schedule_service import schedule_service
+
+            sched = await schedule_service.get_line_schedule_async(
+                clean_id, limit=max_results
+            )
+            # Deduplicate: skip scheduled entries whose trip_id already
+            # appears in the live RT set.
+            rt_trip_ids = {a.trip_id for a in fresh if a.trip_id}
+            rt_keys = {
+                (a.station, a.arrival_ts) for a in fresh if a.arrival_ts
+            }
+            for s in sched:
+                if s.trip_id and s.trip_id in rt_trip_ids:
+                    continue
+                if (s.station, s.arrival_ts) in rt_keys:
+                    continue
+                fresh.append(s)
+            fresh.sort(key=lambda a: a.arrival_ts or 0)
+        except Exception as sched_exc:
+            TrackLogger.warning(
+                f"[SUBWAY] /{line_id}: schedule backfill failed ({sched_exc})",
+                tag="SUBWAY",
+            )
+
         return fresh[:max_results]
     except Exception as exc:
         TrackLogger.warning(

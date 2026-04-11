@@ -277,6 +277,147 @@ class ScheduleService:
             self.get_scheduled_arrivals, stop_id, route_id, limit
         )
 
+    # ── Route-wide schedule query (for chip backfill) ──────────────
+
+    def get_line_schedule(
+        self, route_id: str, limit: int = 200
+    ) -> list[TrackArrival]:
+        """Fetch the next ``limit`` scheduled departures for a route
+        across ALL stops.
+
+        Used by the subway endpoint to backfill scheduled arrivals beyond
+        the GTFS-RT horizon so the client can display more chips.
+        """
+        if not self.db_path.exists():
+            return []
+
+        now = datetime.now(tz=_NY)
+        current_date = now.strftime("%Y%m%d")
+        current_time_str = now.strftime("%H:%M:%S")
+
+        tomorrow = now + timedelta(days=1)
+        tomorrow_date = tomorrow.strftime("%Y%m%d")
+
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            active_services = self._resolve_active_services(cursor, current_date)
+            arrivals: list[TrackArrival] = []
+
+            if active_services:
+                arrivals = self._query_route_stop_times(
+                    cursor, active_services, current_time_str, route_id, limit
+                )
+
+            # Cross-day fill if today didn't reach limit
+            if len(arrivals) < limit:
+                tomorrow_services = self._resolve_active_services(
+                    cursor, tomorrow_date
+                )
+                if tomorrow_services:
+                    remaining = limit - len(arrivals)
+                    next_day = self._query_route_stop_times(
+                        cursor,
+                        tomorrow_services,
+                        "00:00:00",
+                        route_id,
+                        remaining,
+                        day_offset=1,
+                    )
+                    arrivals.extend(next_day)
+
+            return arrivals
+        except Exception as e:
+            TrackLogger.error(
+                f"Line schedule query failed for {route_id}: {e}",
+                tag="SCHEDULE",
+                exc_info=True,
+            )
+            return []
+        finally:
+            conn.close()
+
+    async def get_line_schedule_async(
+        self, route_id: str, limit: int = 200
+    ) -> list[TrackArrival]:
+        """Async wrapper for ``get_line_schedule``."""
+        return await asyncio.to_thread(self.get_line_schedule, route_id, limit)
+
+    def _query_route_stop_times(
+        self,
+        cursor,
+        active_services: list[str],
+        time_from: str,
+        route_id: str,
+        limit: int,
+        *,
+        day_offset: int = 0,
+    ) -> list[TrackArrival]:
+        """Like ``_query_stop_times`` but without a stop_id filter — returns
+        departures at every stop on the route."""
+        route_filter = (
+            "AND (t.route_id = ? COLLATE NOCASE"
+            " OR t.route_id LIKE (? || '+%') COLLATE NOCASE"
+            " OR t.route_id LIKE (? || '-%') COLLATE NOCASE"
+            " OR t.route_id IN"
+            "   (SELECT route_id FROM routes"
+            "    WHERE route_short_name = ? COLLATE NOCASE"
+            "       OR route_short_name LIKE (? || '-%') COLLATE NOCASE))"
+        )
+        route_params = [route_id, route_id, route_id, route_id, route_id]
+
+        query = """
+            SELECT
+                t.route_id,
+                st.stop_id,
+                st.arrival_time,
+                t.trip_headsign,
+                t.direction_id,
+                t.trip_id
+            FROM stop_times st
+            JOIN trips t ON st.trip_id = t.trip_id
+            WHERE t.service_id IN ({})
+            {}
+            AND st.arrival_time >= ?
+            GROUP BY t.route_id, st.stop_id, st.arrival_time
+            ORDER BY st.arrival_time ASC
+            LIMIT ?
+        """.format(",".join(["?"] * len(active_services)), route_filter)
+
+        params = [*active_services, *route_params, time_from, limit]
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        arrivals: list[TrackArrival] = []
+        for row in rows:
+            r_id, s_id, arr_time, headsign, direction_id, trip_id = row
+            minutes, arrival_ts = self._calculate_timing(
+                arr_time, day_offset=day_offset
+            )
+            direction = "N" if direction_id == 0 else "S"
+            arrivals.append(
+                TrackArrival(
+                    route_id=r_id,
+                    station=s_id,
+                    station_name=get_stop_name(s_id),
+                    direction=direction,
+                    destination=headsign,
+                    minutes_away=minutes,
+                    arrival_ts=arrival_ts,
+                    status="Scheduled",
+                    trip_id=trip_id,
+                    stop_lat=(
+                        stop_info.lat
+                        if (stop_info := get_stop_info(s_id))
+                        else None
+                    ),
+                    stop_lon=stop_info.lon if stop_info else None,
+                )
+            )
+        return arrivals
+
     def _calculate_timing(
         self, gtfs_time: str, *, day_offset: int = 0
     ) -> tuple[int, int]:
