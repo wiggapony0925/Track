@@ -140,3 +140,21 @@ NEARBY_GPS_DECIMALS: int = _ovr.get("nearby_gps_decimals", 4)
 
 PREDICT_FACTOR_TTL: float = _ovr.get("predict_factor_ttl", 3600.0)  # 1 hour
 PREDICT_FACTOR_MAX_SIZE: int = _ovr.get("predict_factor_max_size", 512)
+
+
+# ┌─────────────────────────────────────────────────────┐
+# │  ENGINE — C++ TrackEngine Response Cache            │
+# │  Caches /plan and /go JSON responses from the C++   │
+# │  engine in Redis so identical requests within a     │
+# │  short window get sub-millisecond responses.        │
+# │  Key: origin coords + dest coords + query_ts bucket │
+# │  Buckets are 60s wide so tiny clock drifts don't    │
+# │  miss the cache.                                    │
+# └─────────────────────────────────────────────────────┘
+
+ENGINE_PLAN_FRESH_TTL: float = _ovr.get("engine_plan_fresh_ttl", 30.0)
+ENGINE_PLAN_STALE_TTL: float = _ovr.get("engine_plan_stale_ttl", 90.0)
+ENGINE_GO_FRESH_TTL: float = _ovr.get("engine_go_fresh_ttl", 15.0)
+ENGINE_GO_STALE_TTL: float = _ovr.get("engine_go_stale_ttl", 45.0)
+ENGINE_CACHE_TS_BUCKET_S: int = _ovr.get("engine_cache_ts_bucket", 60)
+ENGINE_REDIS_PREFIX: str = "track:engine"

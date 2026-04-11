@@ -316,3 +316,91 @@ async def feed_set(
     except Exception as exc:
         s.errors += 1
         TrackLogger.info(f"[REDIS] feed SET error  kind={kind}: {exc}", tag="REDIS")
+
+
+# ---------------------------------------------------------------------------
+# Engine helpers — used by TrackEngineService for /plan and /go response cache
+# ---------------------------------------------------------------------------
+
+_ENGINE_PREFIX = "track:engine"
+
+
+def _engine_key(endpoint: str, cache_key: str) -> str:
+    """Build a Redis key for a cached engine response."""
+    return f"{_ENGINE_PREFIX}:{endpoint}:{cache_key}"
+
+
+async def engine_get(
+    endpoint: str,
+    cache_key: str,
+    *,
+    fresh_ttl: float,
+    stale_ttl: float,
+) -> tuple[dict | None, str | None]:
+    """GET a cached C++ engine response from Redis.
+
+    Returns ``(parsed_json, "fresh"|"stale")`` on hit, ``(None, None)`` on miss.
+    """
+    if _redis_client is None:
+        return None, None
+    key = _engine_key(endpoint, cache_key)
+    s = cache_stats.bucket(f"engine_{endpoint}")
+    try:
+        raw = await _redis_client.get(key)
+        if not raw:
+            s.miss += 1
+            cache_stats.tick()
+            return None, None
+        payload = json.loads(raw)
+        fetched_at = float(payload.get("fetched_at", 0.0))
+        age = _time.time() - fetched_at
+        if age <= fresh_ttl:
+            s.fresh += 1
+            cache_stats.tick()
+            return payload["data"], "fresh"
+        if age <= stale_ttl:
+            s.stale += 1
+            cache_stats.tick()
+            return payload["data"], "stale"
+        s.miss += 1
+        cache_stats.tick()
+        return None, None
+    except Exception as exc:
+        s.errors += 1
+        cache_stats.tick()
+        TrackLogger.info(
+            f"[REDIS] engine GET error  endpoint={endpoint}: {exc}", tag="REDIS"
+        )
+        return None, None
+
+
+async def engine_set(
+    endpoint: str,
+    cache_key: str,
+    data: dict,
+    *,
+    stale_ttl: float,
+) -> None:
+    """SET a C++ engine response to Redis."""
+    if _redis_client is None:
+        return
+    key = _engine_key(endpoint, cache_key)
+    payload = {"fetched_at": _time.time(), "data": data}
+    s = cache_stats.bucket(f"engine_{endpoint}")
+    try:
+        serialized = json.dumps(payload)
+        await _redis_client.set(key, serialized, ex=max(1, int(stale_ttl)))
+        s.sets += 1
+        if not s._first_set_logged:
+            s._first_set_logged = True
+            size_kb = len(serialized) / 1024
+            TrackLogger.redis(
+                f"[REDIS] ✓ First SET  engine:{endpoint}  "
+                f"ttl={int(stale_ttl)}s  size={size_kb:.1f}KB"
+            )
+        cache_stats.tick()
+    except Exception as exc:
+        s.errors += 1
+        TrackLogger.info(
+            f"[REDIS] engine SET error  endpoint={endpoint}: {exc}", tag="REDIS"
+        )

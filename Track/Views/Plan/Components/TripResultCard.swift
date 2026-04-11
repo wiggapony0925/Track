@@ -18,9 +18,11 @@ struct TripResultCard: View {
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 0) {
-                // "or" alternative route badges (above the bar)
-                alternativeRoutesRow
-                    .padding(.bottom, 4)
+                // Transit-style route chips (above the bar)
+                if hasTransitAlternatives {
+                    routeChipsRow
+                        .padding(.bottom, 4)
+                }
 
                 // Proportional Gantt timeline bar
                 timelineBar
@@ -35,33 +37,60 @@ struct TripResultCard: View {
         .buttonStyle(TripCardButtonStyle())
     }
 
-    // MARK: - Alternative Routes Row ("or" badges above transit legs)
+    // MARK: - Route Chips Row (Transit-style badges above transit legs)
 
-    private var alternativeRoutesRow: some View {
+    private var hasTransitAlternatives: Bool {
+        trip.legs.contains { leg in
+            leg.isTransit && !(alternativeRoutes(for: leg) ?? []).isEmpty
+        }
+    }
+
+    private var routeChipsRow: some View {
         GeometryReader { geo in
             let segments = computeSegments(totalWidth: geo.size.width)
 
             ZStack(alignment: .leading) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                    if segment.leg.isTransit, let alts = alternativeRoutes(for: segment.leg), !alts.isEmpty {
-                        HStack(spacing: 2) {
-                            Text("or")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .foregroundStyle(AppTheme.Colors.textTertiary)
-                            ForEach(alts, id: \.self) { altRouteId in
+                    if segment.leg.isTransit {
+                        let alts = alternativeRoutes(for: segment.leg) ?? []
+                        if alts.count == 1 {
+                            // Single alternative: "or" + badge
+                            HStack(spacing: 3) {
+                                Text("or")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(AppTheme.Colors.textTertiary)
                                 RouteBadge(
-                                    routeID: altRouteId,
-                                    size: .custom(18, 9),
+                                    routeID: alts[0],
+                                    size: .custom(20, 10),
                                     mode: modeString(segment.leg.mode)
                                 )
                             }
+                            .offset(x: segment.offset + segment.width / 2 - 20)
+                        } else if alts.count > 1 {
+                            // Multiple alternatives: primary + alt badges + "+"
+                            let allRoutes = [segment.leg.routeId].compactMap { $0 } + alts
+                            HStack(spacing: 2) {
+                                ForEach(Array(allRoutes.prefix(4).enumerated()),
+                                        id: \.offset) { _, routeId in
+                                    RouteBadge(
+                                        routeID: routeId,
+                                        size: .custom(20, 10),
+                                        mode: modeString(segment.leg.mode)
+                                    )
+                                }
+                                if allRoutes.count > 4 {
+                                    Text("+")
+                                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                                }
+                            }
+                            .offset(x: segment.offset)
                         }
-                        .offset(x: segment.offset + segment.width - 40)
                     }
                 }
             }
         }
-        .frame(height: 22)
+        .frame(height: 24)
     }
 
     // MARK: - Timeline Bar (Gantt)
@@ -84,21 +113,19 @@ struct TripResultCard: View {
     }
 
     private func walkSegment(width: CGFloat, isFirst: Bool, isLast: Bool) -> some View {
-        HStack(spacing: 0) {
-            // Left connector dot
-            Circle()
-                .fill(AppTheme.Colors.textTertiary.opacity(0.5))
-                .frame(width: 5, height: 5)
+        let dotSize: CGFloat = 5
+        let dotCount = max(2, min(Int(width / 9), 6))
+        let totalDotsWidth = CGFloat(dotCount) * dotSize
+        let spacing = dotCount > 1
+            ? max((width - totalDotsWidth - 4) / CGFloat(dotCount - 1), 2)
+            : 0
 
-            // Connector line
-            Rectangle()
-                .fill(AppTheme.Colors.textTertiary.opacity(0.3))
-                .frame(height: 3)
-
-            // Right connector dot
-            Circle()
-                .fill(AppTheme.Colors.textTertiary.opacity(0.5))
-                .frame(width: 5, height: 5)
+        return HStack(spacing: spacing) {
+            ForEach(0..<dotCount, id: \.self) { _ in
+                Circle()
+                    .fill(AppTheme.Colors.textTertiary.opacity(0.45))
+                    .frame(width: dotSize, height: dotSize)
+            }
         }
         .frame(width: width, height: barHeight)
     }
@@ -137,15 +164,13 @@ struct TripResultCard: View {
                 )
             )
 
-            // Route label inside bar
+            // Route label + vehicle icon inside bar
             if let routeId = leg.routeId {
                 if width > 54 {
-                    // Full label with icon
+                    // Full label with vehicle icon
                     HStack(spacing: 4) {
-                        if leg.mode == .bus {
-                            Image(systemName: "bus.fill")
-                                .font(.system(size: 11, weight: .bold))
-                        }
+                        Image(systemName: leg.mode.icon)
+                            .font(.system(size: 11, weight: .bold))
                         Text(routeId)
                             .font(.system(size: 15, weight: .heavy, design: .rounded))
                     }
@@ -165,6 +190,16 @@ struct TripResultCard: View {
             }
         }
         .frame(width: width, height: barHeight)
+        // Alert indicator overlay
+        .overlay(alignment: .bottomTrailing) {
+            if !leg.alerts.isEmpty {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AppTheme.Colors.warningYellow)
+                    .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                    .offset(x: 4, y: 4)
+            }
+        }
     }
 
     private struct CornerRadii {
@@ -212,22 +247,14 @@ struct TripResultCard: View {
     }
 
     private var goCountdown: some View {
-        let urgent = minutesUntilDeparture <= 3
-        let color = urgent ? AppTheme.Colors.successGreen : AppTheme.Colors.successGreen
-
-        return HStack(spacing: 4) {
-            Text("Go in")
+        HStack(spacing: 4) {
+            Text(minutesUntilDeparture <= 0 ? "Go" : "Go in")
                 .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(AppTheme.Colors.textPrimary)
 
             Text(minutesUntilDeparture <= 0 ? "now" : "\(minutesUntilDeparture) min")
                 .font(.system(size: 15, weight: .heavy, design: .rounded))
-                .foregroundStyle(color)
-
-            // Live indicator
-            Image(systemName: "dot.radiowaves.right")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(color)
+                .foregroundStyle(AppTheme.Colors.successGreen)
         }
     }
 

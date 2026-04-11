@@ -44,6 +44,7 @@ from .domain import (
 )
 from .store import EngineStore
 from .store_supabase import SupabaseEngineStore
+from .engine_cache import get_cached_go, get_cached_plan, set_cached_go, set_cached_plan
 
 NY_TZ = ZoneInfo("America/New_York")
 
@@ -220,7 +221,7 @@ class TrackEngineService:
     """Facade used by the FastAPI router."""
 
     VERSION = "0.3.0"
-    _RENDER_INTERNAL_ENGINE_URL = "http://trackegine:10000"
+    _RENDER_INTERNAL_ENGINE_URL = "http://trackengine:10000"
 
     def __init__(self, *, schedule_db: Path, state_db: Path):
         self.schedule_db = Path(schedule_db)
@@ -643,6 +644,17 @@ class TrackEngineService:
             )
 
         payload = self._remote_payload(request)
+
+        # ── Redis cache check ──
+        cached_data = get_cached_plan(payload)
+        if cached_data is not None:
+            remote_version = cached_data.get("engine_version")
+            if remote_version:
+                self._last_remote_engine_version = str(remote_version)
+            itineraries = [self._parse_itinerary(item) for item in cached_data.get("itineraries", [])]
+            if itineraries:
+                return itineraries, None
+
         try:
             with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
                 response = client.post(f"{self.remote_engine_url}/plan", json=payload)
@@ -656,6 +668,7 @@ class TrackEngineService:
 
         itineraries = [self._parse_itinerary(item) for item in data.get("itineraries", [])]
         if itineraries:
+            set_cached_plan(payload, data)
             return itineraries, None
 
         # ---- next-service-day fallback ----
@@ -692,6 +705,28 @@ class TrackEngineService:
             )
 
         payload = self._remote_payload(request, now_ts=now_ts)
+
+        # ── Redis cache check ──
+        cached_data = get_cached_go(payload)
+        if cached_data is not None:
+            remote_version = cached_data.get("engine_version")
+            if remote_version:
+                self._last_remote_engine_version = str(remote_version)
+            primary = cached_data.get("primary_trip")
+            if primary is not None:
+                return GoResponse(
+                    engine_version=str(cached_data["engine_version"]),
+                    requested_at_ts=int(cached_data["requested_at_ts"]),
+                    now_ts=int(cached_data["now_ts"]),
+                    origin=request.origin,
+                    destination=request.destination,
+                    session_kind=str(cached_data["session_kind"]),
+                    primary_trip=self._parse_go_trip(primary),
+                    alternatives=[
+                        self._parse_go_trip(item) for item in cached_data.get("alternatives", [])
+                    ],
+                )
+
         try:
             with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
                 response = client.post(f"{self.remote_engine_url}/go", json=payload)
@@ -702,6 +737,10 @@ class TrackEngineService:
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
+
+        # ── Cache the raw response ──
+        if data.get("primary_trip") is not None:
+            set_cached_go(payload, data)
 
         go_response = GoResponse(
             engine_version=str(data["engine_version"]),

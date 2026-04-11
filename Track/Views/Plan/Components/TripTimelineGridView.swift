@@ -12,7 +12,7 @@ struct TripTimelineGridView: View {
 
     @State private var nowDate = Date()
     @State private var appeared = false
-    private let ticker = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    private let ticker = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
     // Layout
     private let barHeight: CGFloat = 40
@@ -64,37 +64,50 @@ struct TripTimelineGridView: View {
     // MARK: - Body
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                timeAxisRow
-                    .padding(.bottom, 4)
+        VStack(alignment: .leading, spacing: 0) {
+            // Single horizontal scroll for time axis + all candle bars
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    timeAxisRow
+                        .padding(.bottom, 4)
 
-                ForEach(Array(trips.enumerated()), id: \.element.id) { index, trip in
-                    if index > 0 {
-                        Rectangle()
-                            .fill(AppTheme.Colors.borderSubtle.opacity(0.12))
-                            .frame(height: 1)
-                            .padding(.leading, 16)
-                    }
-
-                    Button { onTripTap(trip) } label: {
-                        VStack(alignment: .leading, spacing: 8) {
-                            candleRow(trip)
-                            infoRow(trip, isRecommended: index == recommendedIndex)
+                    ForEach(Array(trips.enumerated()), id: \.element.id) { index, trip in
+                        if index > 0 {
+                            Rectangle()
+                                .fill(AppTheme.Colors.borderSubtle.opacity(0.12))
+                                .frame(height: 1)
+                                .padding(.leading, 16)
                         }
-                        .padding(.vertical, 16)
+
+                        candleRow(trip)
+                            .padding(.vertical, 8)
                     }
-                    .buttonStyle(TimelineRowButtonStyle())
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 10)
-                    .animation(
-                        .spring(response: 0.4, dampingFraction: 0.85)
-                            .delay(Double(index) * 0.05),
-                        value: appeared
-                    )
                 }
+                .frame(width: canvasWidth)
             }
-            .frame(width: canvasWidth)
+
+            // Pinned info rows (always visible, not scrollable)
+            ForEach(Array(trips.enumerated()), id: \.element.id) { index, trip in
+                if index > 0 {
+                    Rectangle()
+                        .fill(AppTheme.Colors.borderSubtle.opacity(0.06))
+                        .frame(height: 1)
+                        .padding(.horizontal, 16)
+                }
+
+                Button { onTripTap(trip) } label: {
+                    infoRow(trip, isRecommended: index == recommendedIndex)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(TimelineRowButtonStyle())
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 10)
+                .animation(
+                    .spring(response: 0.4, dampingFraction: 0.85)
+                        .delay(Double(index) * 0.05),
+                    value: appeared
+                )
+            }
         }
         .onReceive(ticker) { _ in nowDate = Date() }
         .onAppear {
@@ -162,31 +175,116 @@ struct TripTimelineGridView: View {
     // MARK: - Candle Row
 
     private func candleRow(_ trip: TripPlan) -> some View {
-        ZStack {
-            // Clean thin tick lines (not a full grid — just small marks)
-            ForEach(timeMarkers, id: \.self) { marker in
-                let x = xPos(for: marker)
-                Rectangle()
-                    .fill(AppTheme.Colors.borderSubtle.opacity(0.1))
-                    .frame(width: 0.5, height: barHeight)
-                    .position(x: x, y: barHeight / 2)
-            }
+        VStack(spacing: 2) {
+            // "or" alternative route badges row (above the bars)
+            alternativesRow(trip)
 
-            // "Now" needle
-            if nowDate >= windowStart && nowDate <= windowEnd {
-                let nx = xPos(for: nowDate)
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(AppTheme.Colors.successGreen.opacity(0.5))
-                    .frame(width: 2, height: barHeight + 4)
-                    .position(x: nx, y: barHeight / 2)
-            }
+            // Main timeline bars
+            ZStack {
+                // Clean thin tick lines (not a full grid — just small marks)
+                ForEach(timeMarkers, id: \.self) { marker in
+                    let x = xPos(for: marker)
+                    Rectangle()
+                        .fill(AppTheme.Colors.borderSubtle.opacity(0.1))
+                        .frame(width: 0.5, height: barHeight)
+                        .position(x: x, y: barHeight / 2)
+                }
 
-            // Legs
-            ForEach(trip.legs) { leg in
-                legView(leg)
+                // "Now" needle
+                if nowDate >= windowStart && nowDate <= windowEnd {
+                    let nx = xPos(for: nowDate)
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(AppTheme.Colors.successGreen.opacity(0.5))
+                        .frame(width: 2, height: barHeight + 4)
+                        .position(x: nx, y: barHeight / 2)
+                }
+
+                // Legs
+                ForEach(trip.legs) { leg in
+                    legView(leg)
+                }
+            }
+            .frame(width: canvasWidth, height: barHeight)
+        }
+    }
+
+    // MARK: - Alternatives Row (Transit-style "or" badges above transit bars)
+
+    private func alternativesRow(_ trip: TripPlan) -> some View {
+        let transitLegs = trip.legs.filter { $0.isTransit }
+        let hasAlternatives = transitLegs.contains { leg in
+            !(alternativeRoutes(for: leg, in: trip) ?? []).isEmpty
+        }
+
+        return ZStack(alignment: .leading) {
+            if hasAlternatives {
+                ForEach(transitLegs) { leg in
+                    let alts = alternativeRoutes(for: leg, in: trip) ?? []
+                    if !alts.isEmpty {
+                        let startX = xPos(for: leg.departureTime)
+                        let endX = xPos(for: leg.arrivalTime)
+                        let legW = max(endX - startX, 42)
+                        let cx = startX + legW / 2
+
+                        if alts.count == 1 {
+                            HStack(spacing: 3) {
+                                Text("or")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                                RouteBadge(
+                                    routeID: alts[0],
+                                    size: .custom(20, 10),
+                                    mode: modeString(leg.mode)
+                                )
+                            }
+                            .position(x: cx, y: 10)
+                        } else {
+                            let allRoutes = [leg.routeId].compactMap { $0 } + alts
+                            HStack(spacing: 2) {
+                                ForEach(Array(allRoutes.prefix(4).enumerated()), id: \.offset) { _, routeId in
+                                    RouteBadge(
+                                        routeID: routeId,
+                                        size: .custom(20, 10),
+                                        mode: modeString(leg.mode)
+                                    )
+                                }
+                                if allRoutes.count > 4 {
+                                    Text("+")
+                                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                                }
+                            }
+                            .position(x: cx, y: 10)
+                        }
+                    }
+                }
             }
         }
-        .frame(width: canvasWidth, height: barHeight)
+        .frame(width: canvasWidth, height: hasAlternatives ? 22 : 0)
+    }
+
+    /// Find alternative routes for a transit leg (same mode, different route)
+    private func alternativeRoutes(for leg: TripLeg, in trip: TripPlan) -> [String]? {
+        let transitChips = trip.routeChips.filter { !$0.isWalk && $0.routeId != nil }
+        guard let chipForLeg = transitChips.first(where: { $0.routeId == leg.routeId }) else {
+            return nil
+        }
+        let legRouteId: String? = chipForLeg.routeId
+        let legMode: String? = chipForLeg.mode
+        let matching = transitChips.filter { chip in
+            chip.routeId != legRouteId && chip.mode == legMode
+        }
+        let alts: [String] = matching.compactMap { $0.routeId }
+        return alts.isEmpty ? nil : Array(alts.prefix(3))
+    }
+
+    private func modeString(_ mode: TripLegMode) -> String? {
+        switch mode {
+        case .bus:  return "bus"
+        case .lirr: return "lirr"
+        case .mnr:  return "mnr"
+        default:    return nil
+        }
     }
 
     // MARK: - Leg View
@@ -195,7 +293,7 @@ struct TripTimelineGridView: View {
     private func legView(_ leg: TripLeg) -> some View {
         let startX = xPos(for: leg.departureTime)
         let endX = xPos(for: leg.arrivalTime)
-        let legW = max(endX - startX, leg.isTransit ? 42 : 20)
+        let legW = max(endX - startX, leg.isTransit ? 42 : 24)
         let cx = startX + legW / 2
         let cy = barHeight / 2
 
@@ -203,9 +301,21 @@ struct TripTimelineGridView: View {
             transitBar(leg, width: legW)
                 .position(x: cx, y: cy)
         } else {
-            walkConnector(leg, width: legW)
+            walkSegment(leg, width: legW)
                 .position(x: cx, y: cy)
         }
+    }
+
+    /// Returns true when this walk leg is the very first or very last leg
+    /// (i.e. origin walk or destination walk), as opposed to a mid-trip transfer.
+    private func isEdgeWalk(_ leg: TripLeg) -> Bool {
+        guard let trip = trips.first(where: { $0.legs.contains(where: { $0.id == leg.id }) }) else {
+            return true
+        }
+        guard let idx = trip.legs.firstIndex(where: { $0.id == leg.id }) else {
+            return true
+        }
+        return idx == 0 || idx == trip.legs.count - 1
     }
 
     // MARK: - Transit Bar
@@ -229,78 +339,82 @@ struct TripTimelineGridView: View {
                     )
                 )
 
-            // Route label
+            // Route label + vehicle icon (Transit-style)
             if let routeId = leg.routeId {
                 let txt = textColorForLeg(leg)
                 if width > 52 {
-                    HStack(spacing: 3) {
-                        if leg.mode == .bus {
-                            Image(systemName: "bus.fill")
-                                .font(.system(size: 11, weight: .bold))
-                        }
+                    HStack(spacing: 4) {
+                        Image(systemName: vehicleIcon(for: leg))
+                            .font(.system(size: 13, weight: .bold))
                         Text(routeId)
                             .font(.system(size: 15, weight: .heavy, design: .rounded))
                     }
                     .foregroundStyle(txt)
-                } else if width > 28 {
-                    Text(routeId)
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                } else if width > 36 {
+                    // Icon only or compact label
+                    HStack(spacing: 2) {
+                        Image(systemName: vehicleIcon(for: leg))
+                            .font(.system(size: 11, weight: .bold))
+                        Text(routeId)
+                            .font(.system(size: 12, weight: .heavy, design: .rounded))
+                            .minimumScaleFactor(0.5)
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(txt)
+                } else {
+                    // Very narrow: icon only
+                    Image(systemName: vehicleIcon(for: leg))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(txt)
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
                 }
+            } else {
+                // Generic transit icon when no route ID
+                Image(systemName: vehicleIcon(for: leg))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
             }
         }
         .frame(width: width, height: barHeight)
         .shadow(color: color.opacity(0.3), radius: 5, y: 3)
+        // Alert indicator overlay
+        .overlay(alignment: .bottomTrailing) {
+            if !leg.alerts.isEmpty {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AppTheme.Colors.warningYellow)
+                    .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                    .offset(x: 4, y: 4)
+            }
+        }
     }
 
-    // MARK: - Walk Connector
-
-    private func walkConnector(_ leg: TripLeg, width: CGFloat) -> some View {
-        let dotSize: CGFloat = 8
-        let iconSize: CGFloat = 14
-        let cy = barHeight / 2
-        let lineColor = AppTheme.Colors.textTertiary.opacity(0.35)
-
-        return ZStack {
-            // Solid thin connecting line
-            Rectangle()
-                .fill(lineColor)
-                .frame(width: max(width - dotSize * 2, 2), height: 2)
-                .position(x: width / 2, y: cy)
-
-            // Walk / transfer icon in center
-            if width > 32 {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.Colors.cardBackground)
-                        .frame(width: 24, height: 24)
-
-                    Circle()
-                        .strokeBorder(AppTheme.Colors.textTertiary.opacity(0.2), lineWidth: 1)
-                        .frame(width: 24, height: 24)
-
-                    Image(systemName: leg.mode == .transfer ? "arrow.left.arrow.right" : "figure.walk")
-                        .font(.system(size: iconSize, weight: .semibold))
-                        .foregroundStyle(AppTheme.Colors.textSecondary)
-                }
-                .position(x: width / 2, y: cy)
-            }
-
-            // Start dot
-            Circle()
-                .fill(AppTheme.Colors.textTertiary.opacity(0.5))
-                .frame(width: dotSize, height: dotSize)
-                .position(x: dotSize / 2, y: cy)
-
-            // End dot
-            Circle()
-                .fill(AppTheme.Colors.textTertiary.opacity(0.5))
-                .frame(width: dotSize, height: dotSize)
-                .position(x: width - dotSize / 2, y: cy)
+    /// Vehicle icon matching Transit app style
+    private func vehicleIcon(for leg: TripLeg) -> String {
+        switch leg.mode {
+        case .bus:     return "bus.fill"
+        case .subway:  return "tram.fill"
+        case .lirr:    return "train.side.front.car"
+        case .mnr:     return "train.side.front.car"
+        default:       return "tram.fill"
         }
-        .frame(width: width, height: barHeight)
+    }
+
+    // MARK: - Walk Segment (Transit-style: compact dots + walking icon + min)
+
+    private func walkSegment(_ leg: TripLeg, width: CGFloat) -> some View {
+        let mins = leg.durationMinutes
+
+        return VStack(spacing: 1) {
+            Image(systemName: "figure.walk")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.6))
+            if mins > 0 {
+                Text("\(mins)")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.6))
+            }
+        }
+        .frame(width: max(width, 24), height: barHeight)
     }
 
     // MARK: - Info Row
@@ -337,30 +451,19 @@ struct TripTimelineGridView: View {
                     .font(.system(size: 15, weight: .heavy, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.successGreen)
             }
-        } else if minutes <= 60 {
-            HStack(spacing: 5) {
-                Text("Go at")
+        } else if minutes <= 120 {
+            HStack(spacing: 4) {
+                Text("Go in")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
-                Text(trip.departureTimeString)
+                Text("\(minutes) min")
                     .font(.system(size: 15, weight: .heavy, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.successGreen)
-                Text("·")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
-                Text("\(minutes) min")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
             }
         } else {
-            HStack(spacing: 5) {
-                Text("Go at")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-                Text(trip.departureTimeString)
-                    .font(.system(size: 15, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-            }
+            Text("Departs \(trip.departureTimeString)")
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textPrimary)
         }
     }
 

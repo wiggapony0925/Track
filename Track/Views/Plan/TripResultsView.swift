@@ -237,30 +237,14 @@ struct TripResultsView: View {
         ScrollView {
             VStack(spacing: 0) {
                 // Space for the floating departure control bar
-                Spacer().frame(height: 28)
+                Spacer().frame(height: 24)
 
-                // Trip result cards (Transit-style proportional Gantt bars)
-                ForEach(Array(viewModel.tripResults.enumerated()), id: \.element.id) { index, trip in
-                    if index > 0 {
-                        Rectangle()
-                            .fill(AppTheme.Colors.borderSubtle.opacity(0.12))
-                            .frame(height: 1)
-                            .padding(.leading, 16)
-                    }
-
-                    TripResultCard(
-                        trip: trip,
-                        onTap: { selectedTrip = trip },
-                        isRecommended: index == 0
-                    )
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 10)
-                    .animation(
-                        .spring(response: 0.4, dampingFraction: 0.85)
-                            .delay(Double(index) * 0.06),
-                        value: appeared
-                    )
-                }
+                // Transit-style scrollable timeline grid
+                TripTimelineGridView(
+                    trips: viewModel.tripResults,
+                    onTripTap: { trip in selectedTrip = trip },
+                    recommendedIndex: 0
+                )
 
                 // Show more trips button
                 if !viewModel.tripResults.isEmpty {
