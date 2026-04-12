@@ -110,6 +110,19 @@ class TransitAlert(BaseModel):
 class ElevatorStatus(BaseModel):
     """An elevator or escalator that is currently out of service."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "station": "34 St-Penn Station",
+                    "equipment_type": "EL",
+                    "description": "Downtown platform to mezzanine elevator is out of service.",
+                    "outage_since": "2025-06-27T13:15:00-04:00",
+                }
+            ]
+        }
+    )
+
     station: str = Field(
         ..., description="Station name where the equipment is located."
     )
@@ -126,6 +139,20 @@ class ElevatorStatus(BaseModel):
 
 class BusRoute(BaseModel):
     """A normalized bus route from the OBA API."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": "MTA NYCT_Q9",
+                    "short_name": "Q9",
+                    "long_name": "Jamaica - South Ozone Park",
+                    "color": "6CBE45",
+                    "description": "Limited-stop corridor between Jamaica Center and South Ozone Park.",
+                }
+            ]
+        }
+    )
 
     id: str = Field(
         ..., description="Fully-qualified OBA route ID (e.g. 'MTA NYCT_B63')."
@@ -146,6 +173,21 @@ class BusRoute(BaseModel):
 
 class BusStop(BaseModel):
     """A normalized bus stop from the OBA API."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": "MTA_308214",
+                    "name": "SUTPHIN BLVD/ARCHER AV",
+                    "lat": 40.7004,
+                    "lon": -73.8087,
+                    "direction": "N",
+                    "route_ids": ["MTA NYCT_Q9", "MTA NYCT_Q40", "MTA NYCT_Q44"],
+                }
+            ]
+        }
+    )
 
     id: str = Field(..., description="OBA stop ID (e.g. 'MTA_308214').")
     name: str = Field(..., description="Human-readable stop name.")
@@ -227,6 +269,34 @@ class BusArrival(BaseModel):
 
 class NearbyTransitArrival(BaseModel):
     """A single upcoming transit arrival (bus or train) near the user."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "route_id": "7",
+                    "stop_name": "Times Sq-42 St",
+                    "direction": "Queensbound",
+                    "destination": "Flushing-Main St",
+                    "minutes_away": 2,
+                    "arrival_ts": 1719500400,
+                    "status": "On Time",
+                    "mode": "subway",
+                    "stop_lat": 40.7553,
+                    "stop_lon": -73.987,
+                    "stop_id": "726N",
+                    "vehicle_id": None,
+                    "trip_id": "080350_7..N",
+                    "distance_m": 94.6,
+                    "is_real_time": True,
+                    "is_cancelled": False,
+                    "is_express": False,
+                    "color_hex": "#B933AD",
+                    "bus_service_type": None,
+                }
+            ]
+        }
+    )
 
     route_id: str = Field(..., description="GTFS route ID (e.g. 'A', 'B63').")
     stop_name: str = Field(..., description="Human-readable stop name.")
@@ -314,6 +384,40 @@ class NearbyTransitArrival(BaseModel):
 
 class DirectionArrivals(BaseModel):
     """Arrivals for a single direction of a route."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "direction": "0",
+                    "direction_label": "Queensbound",
+                    "arrivals": [
+                        {
+                            "route_id": "7",
+                            "stop_name": "Times Sq-42 St",
+                            "direction": "Queensbound",
+                            "destination": "Flushing-Main St",
+                            "minutes_away": 2,
+                            "arrival_ts": 1719500400,
+                            "status": "On Time",
+                            "mode": "subway",
+                            "stop_lat": 40.7553,
+                            "stop_lon": -73.987,
+                            "stop_id": "726N",
+                            "vehicle_id": None,
+                            "trip_id": "080350_7..N",
+                            "distance_m": 94.6,
+                            "is_real_time": True,
+                            "is_cancelled": False,
+                            "is_express": False,
+                            "color_hex": "#B933AD",
+                            "bus_service_type": None,
+                        }
+                    ],
+                }
+            ]
+        }
+    )
 
     direction: str = Field(..., description="Direction identifier (e.g. '0', '1').")
     direction_label: str = Field(
@@ -465,6 +569,23 @@ class InactiveRoute(BaseModel):
     Lightweight model — no arrivals, just identification info.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "route_id": "W",
+                    "display_name": "W",
+                    "mode": "subway",
+                    "color_hex": "#FCCC0A",
+                    "text_color_hex": "#000000",
+                    "mode_name": "Subway",
+                    "bus_service_type": None,
+                    "sorting_key": "W",
+                }
+            ]
+        }
+    )
+
     route_id: str = Field(..., description="GTFS route ID.")
     display_name: str = Field(..., description="Human-readable route name.")
     mode: str = Field(..., description="Transit mode: subway, bus, lirr, mnr.")
@@ -480,6 +601,44 @@ class InactiveRoute(BaseModel):
 
 class BusVehicle(BaseModel):
     """A live bus vehicle position from the SIRI vehicle-monitoring API."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "vehicle_id": "7560",
+                    "route_id": "MTA NYCT_Q9",
+                    "lat": 40.6891,
+                    "lon": -73.7961,
+                    "bearing": 42.0,
+                    "next_stop": "MTA_550123",
+                    "status_text": "Approaching LIBERTY AV/110 ST",
+                    "direction_ref": 0,
+                    "expected_arrival": "2025-06-27T18:36:00Z",
+                    "onward_calls": [
+                        {
+                            "route_id": "MTA NYCT_Q9",
+                            "vehicle_id": "7560",
+                            "stop_id": "MTA_550123",
+                            "stop_name": "LIBERTY AV/110 ST",
+                            "status_text": "SOUTH OZONE PARK via LINCOLN ST — 2 min",
+                            "status": "Live",
+                            "expected_arrival": "2025-06-27T18:36:00Z",
+                            "aimed_arrival": "2025-06-27T18:35:00Z",
+                            "schedule_deviation_s": 60,
+                            "distance_meters": 245.0,
+                            "bearing": 42.0,
+                            "direction_ref": 0,
+                            "destination_name": "SOUTH OZONE PARK LINCOLN ST",
+                            "is_realtime": True,
+                        }
+                    ],
+                    "is_realtime": True,
+                    "position_recorded_at": "2025-06-27T18:34:42Z",
+                }
+            ]
+        }
+    )
 
     vehicle_id: str = Field(..., description="MTA vehicle ID.")
     route_id: str = Field(..., description="Fully-qualified bus route ID.")
@@ -513,6 +672,30 @@ class BusVehicle(BaseModel):
 class DirectionShape(BaseModel):
     """Polylines and stops for one direction of a route."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "direction_id": 0,
+                    "headsign": "Manhattan",
+                    "polylines": ["owuwF~btbM?e@tDkJxAeE"],
+                    "stops": [
+                        {
+                            "id": "MTA_308214",
+                            "name": "5 AV/9 ST",
+                            "lat": 40.6708,
+                            "lon": -73.9896,
+                            "direction": "N",
+                            "route_ids": ["MTA NYCT_B63"],
+                        }
+                    ],
+                    "service_type": "local",
+                    "local_only_stop_ids": [],
+                }
+            ]
+        }
+    )
+
     direction_id: int = Field(..., description="GTFS direction_id: 0 or 1.")
     headsign: str = Field(
         "", description="Trip headsign (e.g. 'Manhattan', 'Far Rockaway')."
@@ -542,6 +725,55 @@ class RouteShape(BaseModel):
     by GTFS direction_id so the iOS app can show only the selected direction.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "route_id": "A",
+                    "polylines": ["owuwF~btbM?e@tDkJxAeEfDkL"],
+                    "stops": [
+                        {
+                            "id": "A27N",
+                            "name": "Jay St-MetroTech",
+                            "lat": 40.6922,
+                            "lon": -73.9871,
+                            "direction": None,
+                            "route_ids": ["A", "C", "F"],
+                        },
+                        {
+                            "id": "A28N",
+                            "name": "Hoyt-Schermerhorn Sts",
+                            "lat": 40.6885,
+                            "lon": -73.9851,
+                            "direction": None,
+                            "route_ids": ["A", "C", "G"],
+                        },
+                    ],
+                    "directions": [
+                        {
+                            "direction_id": 0,
+                            "headsign": "Inwood-207 St",
+                            "polylines": ["owuwF~btbM?e@tDkJxAeEfDkL"],
+                            "stops": [
+                                {
+                                    "id": "A27N",
+                                    "name": "Jay St-MetroTech",
+                                    "lat": 40.6922,
+                                    "lon": -73.9871,
+                                    "direction": None,
+                                    "route_ids": ["A", "C", "F"],
+                                }
+                            ],
+                            "service_type": "express",
+                            "local_only_stop_ids": [],
+                        }
+                    ],
+                    "service_type": "express",
+                }
+            ]
+        }
+    )
+
     route_id: str = Field(..., description="GTFS route ID.")
     polylines: list[str] = Field(
         ..., description="Google-encoded polylines (all directions merged)."
@@ -564,6 +796,18 @@ class SubwayLineOverlay(BaseModel):
     Intentionally excludes stops to keep the all-lines payload small.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "route_id": "E",
+                    "color_hex": "#0039A6",
+                    "polylines": ["owuwF~btbM?e@tDkJxAeEfDkL"],
+                }
+            ]
+        }
+    )
+
     route_id: str = Field(..., description="Subway route ID (e.g. 'A', '7', 'L').")
     color_hex: str = Field(
         ..., description="Route brand colour as hex (e.g. '#0039A6')."
@@ -582,6 +826,21 @@ class TrunkGroupPolylines(BaseModel):
     for A/C/E).  The iOS client renders these directly, avoiding the need to
     re-merge overlapping per-route GTFS polylines.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "trunk_index": 7,
+                    "color_hex": "#0039A6",
+                    "route_ids": ["A", "C", "E"],
+                    "polylines": ["owuwF~btbM?e@tDkJxAeEfDkL"],
+                    "lane_offset": 2.5,
+                    "polyline_lane_offsets": [0.0, 2.5],
+                }
+            ]
+        }
+    )
 
     trunk_index: int = Field(
         ..., description="Trunk group index (0-10) matching TRUNK_GROUPS order."
@@ -611,6 +870,18 @@ class CrossingPoint(BaseModel):
     lower trunk's casing layer that create an over/under visual effect.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "lat": 40.7518,
+                    "lng": -73.9936,
+                    "trunk_indices": [3, 7],
+                }
+            ]
+        }
+    )
+
     lat: float = Field(..., description="Crossing latitude (WGS 84).")
     lng: float = Field(..., description="Crossing longitude (WGS 84).")
     trunk_indices: list[int] = Field(
@@ -620,6 +891,44 @@ class CrossingPoint(BaseModel):
 
 class AllSubwayLinesResponse(BaseModel):
     """All subway line overlays for drawing the full system map."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "lines": [
+                        {
+                            "route_id": "E",
+                            "color_hex": "#0039A6",
+                            "polylines": ["owuwF~btbM?e@tDkJxAeEfDkL"],
+                        },
+                        {
+                            "route_id": "7",
+                            "color_hex": "#B933AD",
+                            "polylines": ["s~mxFv`vbM{BmKyAcG_BgI"],
+                        },
+                    ],
+                    "trunk_polylines": [
+                        {
+                            "trunk_index": 7,
+                            "color_hex": "#0039A6",
+                            "route_ids": ["A", "C", "E"],
+                            "polylines": ["owuwF~btbM?e@tDkJxAeEfDkL"],
+                            "lane_offset": 2.5,
+                            "polyline_lane_offsets": [0.0, 2.5],
+                        }
+                    ],
+                    "crossings": [
+                        {
+                            "lat": 40.7518,
+                            "lng": -73.9936,
+                            "trunk_indices": [3, 7],
+                        }
+                    ],
+                }
+            ]
+        }
+    )
 
     lines: list[SubwayLineOverlay] = Field(
         ..., description="Per-route subway line overlays."
@@ -635,6 +944,20 @@ class AllSubwayLinesResponse(BaseModel):
 class SubwayStation(BaseModel):
     """A subway station marker with list of lines served."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": "R16",
+                    "name": "Times Sq-42 St",
+                    "lat": 40.7553,
+                    "lon": -73.987,
+                    "routes": ["1", "2", "3", "7", "N", "Q", "R", "W", "S"],
+                }
+            ]
+        }
+    )
+
     id: str = Field(..., description="GTFS stop ID.")
     name: str = Field(..., description="Human-readable station name.")
     lat: float = Field(..., description="Station latitude (WGS 84).")
@@ -647,11 +970,48 @@ class SubwayStation(BaseModel):
 class AllSubwayStationsResponse(BaseModel):
     """All subway stations for the system map."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "stations": [
+                        {
+                            "id": "R16",
+                            "name": "Times Sq-42 St",
+                            "lat": 40.7553,
+                            "lon": -73.987,
+                            "routes": ["1", "2", "3", "7", "N", "Q", "R", "W", "S"],
+                        },
+                        {
+                            "id": "A27",
+                            "name": "Jay St-MetroTech",
+                            "lat": 40.6922,
+                            "lon": -73.9871,
+                            "routes": ["A", "C", "F", "R"],
+                        },
+                    ]
+                }
+            ]
+        }
+    )
+
     stations: list[SubwayStation] = Field(..., description="All subway stations.")
 
 
 class StopPosition(BaseModel):
     """A stop snapped onto a specific route's offset line."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "route_id": "7",
+                    "lat": 40.7544,
+                    "lon": -73.9837,
+                }
+            ]
+        }
+    )
 
     route_id: str = Field(..., description="Route ID this position is snapped to.")
     lat: float = Field(..., description="Snapped latitude (WGS 84).")
@@ -666,6 +1026,30 @@ class ProcessedStation(BaseModel):
     rounded-rect bar connecting dots for transfer stations.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "station_id": "R16",
+                    "name": "Times Sq-42 St",
+                    "is_transfer": True,
+                    "positions": [
+                        {
+                            "route_id": "7",
+                            "lat": 40.7544,
+                            "lon": -73.9837,
+                        },
+                        {
+                            "route_id": "N",
+                            "lat": 40.7547,
+                            "lon": -73.9861,
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+
     station_id: str = Field(..., description="GTFS stop ID.")
     name: str = Field(..., description="Human-readable station name.")
     is_transfer: bool = Field(
@@ -679,6 +1063,46 @@ class ProcessedStation(BaseModel):
 class ProcessedStationsResponse(BaseModel):
     """Processed stations with offset-snapped positions."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "stations": [
+                        {
+                            "station_id": "R16",
+                            "name": "Times Sq-42 St",
+                            "is_transfer": True,
+                            "positions": [
+                                {
+                                    "route_id": "7",
+                                    "lat": 40.7544,
+                                    "lon": -73.9837,
+                                },
+                                {
+                                    "route_id": "N",
+                                    "lat": 40.7547,
+                                    "lon": -73.9861,
+                                },
+                            ],
+                        },
+                        {
+                            "station_id": "A65",
+                            "name": "80 St",
+                            "is_transfer": False,
+                            "positions": [
+                                {
+                                    "route_id": "A",
+                                    "lat": 40.6794,
+                                    "lon": -73.8582,
+                                }
+                            ],
+                        },
+                    ]
+                }
+            ]
+        }
+    )
+
     stations: list[ProcessedStation] = Field(
         ..., description="All processed subway stations."
     )
@@ -686,6 +1110,19 @@ class ProcessedStationsResponse(BaseModel):
 
 class CommuterRailStop(BaseModel):
     """A single commuter rail stop (station) with coordinates."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "stop_id": "Babylon",
+                    "name": "Babylon",
+                    "lat": 40.7079,
+                    "lon": -73.3225,
+                }
+            ]
+        }
+    )
 
     stop_id: str = Field(..., description="GTFS stop ID.")
     name: str = Field(..., description="Human-readable station name.")
@@ -695,6 +1132,34 @@ class CommuterRailStop(BaseModel):
 
 class CommuterRailLineOverlay(BaseModel):
     """Lightweight shape for drawing a single commuter rail line on the map."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "route_id": "LIRR_9",
+                    "name": "Babylon",
+                    "color_hex": "#00985F",
+                    "polylines": ["gopwFnyubM}CyOa@uC_AiG"],
+                    "mode": "lirr",
+                    "stops": [
+                        {
+                            "stop_id": "Penn Station",
+                            "name": "Penn Station",
+                            "lat": 40.7506,
+                            "lon": -73.9935,
+                        },
+                        {
+                            "stop_id": "Babylon",
+                            "name": "Babylon",
+                            "lat": 40.7079,
+                            "lon": -73.3225,
+                        },
+                    ],
+                }
+            ]
+        }
+    )
 
     route_id: str = Field(..., description="GTFS route ID (e.g. 'LIRR_9', 'MNR_1').")
     name: str = Field(..., description="Line/branch name (e.g. 'Babylon', 'Hudson').")
@@ -713,6 +1178,59 @@ class CommuterRailLineOverlay(BaseModel):
 class AllCommuterRailLinesResponse(BaseModel):
     """All LIRR and MNR line overlays for the full system map."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "lines": [
+                        {
+                            "route_id": "LIRR_9",
+                            "name": "Babylon",
+                            "color_hex": "#00985F",
+                            "polylines": ["gopwFnyubM}CyOa@uC_AiG"],
+                            "mode": "lirr",
+                            "stops": [
+                                {
+                                    "stop_id": "Penn Station",
+                                    "name": "Penn Station",
+                                    "lat": 40.7506,
+                                    "lon": -73.9935,
+                                },
+                                {
+                                    "stop_id": "Babylon",
+                                    "name": "Babylon",
+                                    "lat": 40.7079,
+                                    "lon": -73.3225,
+                                },
+                            ],
+                        },
+                        {
+                            "route_id": "MNR_1",
+                            "name": "Hudson",
+                            "color_hex": "#0039A6",
+                            "polylines": ["_twwFbeubMfBvJz@xFf@rC"],
+                            "mode": "mnr",
+                            "stops": [
+                                {
+                                    "stop_id": "Grand Central",
+                                    "name": "Grand Central",
+                                    "lat": 40.7527,
+                                    "lon": -73.9772,
+                                },
+                                {
+                                    "stop_id": "Croton-Harmon",
+                                    "name": "Croton-Harmon",
+                                    "lat": 41.1904,
+                                    "lon": -73.8829,
+                                },
+                            ],
+                        },
+                    ]
+                }
+            ]
+        }
+    )
+
     lines: list[CommuterRailLineOverlay] = Field(
         ..., description="All commuter rail line overlays."
     )
@@ -720,6 +1238,20 @@ class AllCommuterRailLinesResponse(BaseModel):
 
 class BusScheduleDeparture(BaseModel):
     """A single scheduled departure for a bus route."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "stop_name": "SUTPHIN BLVD/ARCHER AV",
+                    "stop_id": "MTA_550001",
+                    "departure_time": 1751049600,
+                    "headsign": "South Ozone Park Lincoln St",
+                    "trip_id": "Q9_20250627_1820",
+                }
+            ]
+        }
+    )
 
     stop_name: str = Field(..., description="Human-readable stop name.")
     stop_id: str = Field(..., description="OBA stop ID.")
@@ -733,6 +1265,27 @@ class BusScheduleDeparture(BaseModel):
 class BusScheduleDirection(BaseModel):
     """Scheduled departures for one direction of a bus route."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "route_id": "MTA NYCT_Q9",
+                    "direction": "0",
+                    "headsign": "South Ozone Park Lincoln St",
+                    "departures": [
+                        {
+                            "stop_name": "SUTPHIN BLVD/ARCHER AV",
+                            "stop_id": "MTA_550001",
+                            "departure_time": 1751049600,
+                            "headsign": "South Ozone Park Lincoln St",
+                            "trip_id": "Q9_20250627_1820",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
     route_id: str = Field(..., description="Fully-qualified bus route ID.")
     direction: str = Field(..., description="Direction identifier.")
     headsign: str = Field("", description="Trip headsign for this direction.")
@@ -743,6 +1296,32 @@ class BusScheduleDirection(BaseModel):
 
 class BusScheduleResponse(BaseModel):
     """Today's upcoming scheduled departures for a bus route."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "route_id": "MTA NYCT_Q9",
+                    "directions": [
+                        {
+                            "route_id": "MTA NYCT_Q9",
+                            "direction": "0",
+                            "headsign": "South Ozone Park Lincoln St",
+                            "departures": [
+                                {
+                                    "stop_name": "SUTPHIN BLVD/ARCHER AV",
+                                    "stop_id": "MTA_550001",
+                                    "departure_time": 1751049600,
+                                    "headsign": "South Ozone Park Lincoln St",
+                                    "trip_id": "Q9_20250627_1820",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+    )
 
     route_id: str = Field(..., description="Requested bus route ID.")
     directions: list[BusScheduleDirection] = Field(
@@ -806,6 +1385,17 @@ class WeatherResponse(BaseModel):
 class ReloadModelResponse(BaseModel):
     """Result of the ML model hot-reload operation."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "success": True,
+                    "message": "Delay model reloaded from /app/models/latest.joblib.",
+                }
+            ]
+        }
+    )
+
     success: bool = Field(
         ..., description="Whether the model was reloaded successfully."
     )
@@ -819,6 +1409,19 @@ class ReloadModelResponse(BaseModel):
 
 class BusTileRoute(BaseModel):
     """Compact bus route representation for tile baking."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "route_id": "Q9",
+                    "short_name": "Q9",
+                    "color": "6CBE45",
+                    "polylines": ["mpvwF`_wbM~AeGhCoN_BoH"],
+                }
+            ]
+        }
+    )
 
     route_id: str = Field(..., description="Short route ID (e.g. 'B63').")
     short_name: str = Field(..., description="Display name (e.g. 'B63').")
@@ -834,6 +1437,19 @@ class BusTileRoute(BaseModel):
 class BusTileStop(BaseModel):
     """Compact bus stop representation for tile baking."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "id": "550001",
+                    "name": "SUTPHIN BLVD/ARCHER AV",
+                    "lat": 40.7004,
+                    "lon": -73.8087,
+                }
+            ]
+        }
+    )
+
     id: str = Field(..., description="Stop ID.")
     name: str = Field(..., description="Human-readable stop name.")
     lat: float = Field(..., description="Latitude (WGS 84).")
@@ -842,6 +1458,43 @@ class BusTileStop(BaseModel):
 
 class BusTileData(BaseModel):
     """All NYC bus route shapes and stops for pre-baked map tile rendering."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "routes": [
+                        {
+                            "route_id": "Q9",
+                            "short_name": "Q9",
+                            "color": "6CBE45",
+                            "polylines": ["mpvwF`_wbM~AeGhCoN_BoH"],
+                        },
+                        {
+                            "route_id": "Q80",
+                            "short_name": "Q80",
+                            "color": "C60C30",
+                            "polylines": ["otvwFxfwbM{AgFqBcL"],
+                        },
+                    ],
+                    "stops": [
+                        {
+                            "id": "550001",
+                            "name": "SUTPHIN BLVD/ARCHER AV",
+                            "lat": 40.7004,
+                            "lon": -73.8087,
+                        },
+                        {
+                            "id": "550144",
+                            "name": "LIBERTY AV/110 ST",
+                            "lat": 40.6843,
+                            "lon": -73.8275,
+                        },
+                    ],
+                }
+            ]
+        }
+    )
 
     routes: list[BusTileRoute] = Field(
         ..., description="All bus route polylines."
