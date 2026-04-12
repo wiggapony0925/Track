@@ -1229,10 +1229,15 @@ class TrackEngineService:
                     response.raise_for_status()
                     data = response.json()
                     break
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                # Engine explicitly says not ready — don't retry
+                if exc.response.status_code == 503:
+                    break
             except httpx.HTTPError as exc:
                 last_exc = exc
         if data is None:
-            raise RuntimeError(f"TrackEngine plan request failed after 2 attempts: {last_exc}") from last_exc
+            raise RuntimeError(f"TrackEngine plan request failed after retries: {last_exc}") from last_exc
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
@@ -1267,6 +1272,10 @@ class TrackEngineService:
                     resp = client.post(f"{self.remote_engine_url}/plan", json=payload)
                     resp.raise_for_status()
                     data = resp.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 503:
+                    return None  # engine down — stop immediately
+                continue
             except httpx.HTTPError:
                 continue
             items = [self._parse_itinerary(item) for item in data.get("itineraries", [])]
@@ -1324,10 +1333,15 @@ class TrackEngineService:
                     response.raise_for_status()
                     data = response.json()
                     break
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                # Engine explicitly says not ready — don't retry
+                if exc.response.status_code == 503:
+                    break
             except httpx.HTTPError as exc:
                 last_exc = exc
         if data is None:
-            raise RuntimeError(f"TrackEngine go request failed after 2 attempts: {last_exc}") from last_exc
+            raise RuntimeError(f"TrackEngine go request failed after retries: {last_exc}") from last_exc
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
@@ -1381,6 +1395,10 @@ class TrackEngineService:
                     resp = client.post(f"{self.remote_engine_url}/go", json=payload)
                     resp.raise_for_status()
                     data = resp.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 503:
+                    return None  # engine down — stop immediately
+                continue
             except httpx.HTTPError:
                 continue
             primary = data.get("primary_trip")

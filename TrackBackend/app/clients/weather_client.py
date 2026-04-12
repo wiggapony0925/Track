@@ -31,7 +31,7 @@ _OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 # ── Cache ─────────────────────────────────────────────────────────────────
 _CACHE_TTL = 300  # 5 minutes for successful fetches
-_NEGATIVE_CACHE_TTL = 1800  # 30 min max backoff for sustained 429s
+_NEGATIVE_CACHE_TTL = 3600  # 60 min max backoff for sustained 429s
 _cached_weather: str | None = None
 _cached_details: dict[str, Any] | None = None
 _cached_at: float = 0.0
