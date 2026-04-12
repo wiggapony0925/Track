@@ -828,7 +828,7 @@ final class PlanViewModel {
         if isDriving {
             let leg = TripLeg(
                 mode: .bus,
-                routeId: nil,
+                routeId: "Drive",
                 routeName: "Drive",
                 routeColor: "4A90D9",
                 headsign: route.name.isEmpty ? "Via car" : route.name,
@@ -879,11 +879,12 @@ final class PlanViewModel {
                     ))
                 } else {
                     transitLegCount += 1
+                    let label = route.name.isEmpty ? "Transit" : route.name
                     legs.append(TripLeg(
                         mode: .subway,
-                        routeId: nil,
-                        routeName: route.name.isEmpty ? "Transit" : route.name,
-                        routeColor: nil,
+                        routeId: label,
+                        routeName: label,
+                        routeColor: "4A90D9",
                         headsign: step.instructions,
                         boardStopName: step.instructions,
                         alightStopName: "",
@@ -897,11 +898,12 @@ final class PlanViewModel {
 
         // Fallback: single transit leg when steps are unavailable
         if legs.isEmpty {
+            let label = route.name.isEmpty ? "Transit" : route.name
             legs.append(TripLeg(
-                mode: .subway,
-                routeId: nil,
-                routeName: route.name.isEmpty ? "Transit" : route.name,
-                routeColor: nil,
+                mode: .bus,
+                routeId: label,
+                routeName: label,
+                routeColor: "4A90D9",
                 headsign: route.name,
                 boardStopName: origin.displayName,
                 alightStopName: destination?.displayName ?? "Destination",
