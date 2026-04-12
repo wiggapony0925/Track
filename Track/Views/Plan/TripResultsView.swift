@@ -25,6 +25,9 @@ struct TripResultsView: View {
                     } else if let error = viewModel.errorMessage, viewModel.tripResults.isEmpty {
                         errorState(error)
                     } else {
+                        if viewModel.isUsingAppleFallback {
+                            appleFallbackBanner
+                        }
                         if let note = viewModel.scheduleNote {
                             scheduleNoteBanner(note)
                         }
@@ -255,8 +258,8 @@ struct TripResultsView: View {
                     }
                 }
 
-                // Show more trips button
-                if !viewModel.tripResults.isEmpty {
+                // Show more trips button (not available in Apple Maps fallback)
+                if !viewModel.tripResults.isEmpty && !viewModel.isUsingAppleFallback {
                     showMoreTripsButton
                         .padding(.top, 12)
                         .disabled(viewModel.isLoadingMore)
@@ -496,6 +499,53 @@ struct TripResultsView: View {
                         .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.15), lineWidth: 0.5)
                 )
         )
+    }
+
+    // MARK: - Apple Maps Fallback Banner
+
+    private var appleFallbackBanner: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.accent.opacity(0.10))
+                    .frame(width: 36, height: 36)
+                Image(systemName: "exclamationmark.icloud.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(AppTheme.Colors.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Rerouted with Apple Maps")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                Text("Our servers are updating — we'll be back shortly.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            AppTheme.Colors.accent.opacity(0.06),
+                            AppTheme.Colors.accent.opacity(0.02),
+                        ],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.accent.opacity(0.18), lineWidth: 0.5)
+                )
+        )
+        .padding(.horizontal, 16)
+        .padding(.top, 26)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Schedule Note Banner
