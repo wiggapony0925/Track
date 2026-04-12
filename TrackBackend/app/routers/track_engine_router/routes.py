@@ -275,6 +275,11 @@ def download_engine_schedule_artifact(request: Request) -> FileResponse:
     "/search",
     response_model=list[EngineSearchResult],
     summary="Search saved places, recents, and stops",
+    description=(
+        "Unified search used by the planner's destination/origin picker. Merges saved places, "
+        "recent destinations, and indexed transit stops into one ranked list. Optional `lat`/`lon` "
+        "bias results toward the rider's current area."
+    ),
 )
 def search_engine_places(
     q: str = Query(..., min_length=1, description="Search query."),
@@ -314,6 +319,7 @@ def search_engine_places(
     "/places",
     response_model=list[EngineSavedPlace],
     summary="List saved places",
+    description="Returns all saved places for a user, such as Home, Work, or custom pins shown in planner shortcuts.",
 )
 def list_saved_places(
     user_id: str = Query(..., description="Stable user identifier."),
@@ -340,6 +346,10 @@ def list_saved_places(
     "/places",
     response_model=EngineSavedPlace,
     summary="Create or update a saved place",
+    description=(
+        "Creates a new saved place or updates an existing one. Used by the planner's saved-place editor "
+        "and shortcut management UI."
+    ),
 )
 def upsert_saved_place(payload: EngineSavedPlaceUpsert) -> EngineSavedPlace:
     place = get_engine_service().upsert_saved_place(
@@ -370,6 +380,7 @@ def upsert_saved_place(payload: EngineSavedPlaceUpsert) -> EngineSavedPlace:
 @router.delete(
     "/places/{place_id}",
     summary="Delete a saved place",
+    description="Deletes a saved place for the given user. The app should remove the shortcut locally after success.",
 )
 def delete_saved_place(
     place_id: int,
@@ -383,6 +394,7 @@ def delete_saved_place(
     "/trips/saved",
     response_model=list[EngineSavedTrip],
     summary="List saved trips",
+    description="Returns saved trip templates such as commute presets that the planner can reopen with one tap.",
 )
 def list_saved_trips(
     user_id: str = Query(..., description="Stable user identifier."),
@@ -413,6 +425,9 @@ def list_saved_trips(
     "/trips/saved",
     response_model=EngineSavedTrip,
     summary="Create or update a saved trip",
+    description=(
+        "Creates or updates a saved trip template containing origin, destination, and preferred planning constraints."
+    ),
 )
 def upsert_saved_trip(payload: EngineSavedTripUpsert) -> EngineSavedTrip:
     trip = get_engine_service().upsert_saved_trip(
@@ -451,6 +466,7 @@ def upsert_saved_trip(payload: EngineSavedTripUpsert) -> EngineSavedTrip:
 @router.delete(
     "/trips/saved/{trip_id}",
     summary="Delete a saved trip",
+    description="Deletes a saved trip template for the given user.",
 )
 def delete_saved_trip(
     trip_id: int,
@@ -464,6 +480,7 @@ def delete_saved_trip(
     "/trips/recent",
     response_model=list[EngineRecentTrip],
     summary="List recent trips",
+    description="Returns recently planned trips so the app can render quick re-run cards in the planning experience.",
 )
 def list_recent_trips(
     user_id: str = Query(..., description="Stable user identifier."),
@@ -493,6 +510,10 @@ def list_recent_trips(
     "/calendar/events",
     response_model=list[EngineCalendarEventInput],
     summary="Replace upcoming calendar events",
+    description=(
+        "Replaces the backend's cached set of upcoming calendar events for a user. These events feed destination "
+        "recommendations and calendar-aware commute suggestions."
+    ),
 )
 def replace_calendar_events(
     events: Annotated[list[EngineCalendarEventInput], Body(...)],
@@ -519,6 +540,10 @@ def replace_calendar_events(
     "/recommendations",
     response_model=list[EngineRecommendation],
     summary="Recommend likely destinations",
+    description=(
+        "Returns ranked destination suggestions derived from saved places, saved trips, recent trips, and synced calendar events. "
+        "Used for the planner's smart recommendations surface."
+    ),
 )
 def get_engine_recommendations(
     user_id: str = Query(..., description="Stable user identifier."),
@@ -559,8 +584,9 @@ def get_engine_recommendations(
     response_model=EnginePlanResponse,
     summary="Plan a trip",
     description=(
-        "Plans a trip through the standalone C++ TrackEngine service. When "
-        "user_id is provided, the best itinerary is recorded into recent trips."
+        "Plans a trip through the standalone C++ TrackEngine service and returns ranked itineraries with transit legs, "
+        "walking segments, colors, alerts, and timing. When `user_id` is provided, the best itinerary can also be recorded "
+        "into recent trips for planner shortcuts."
     ),
 )
 def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
@@ -606,8 +632,8 @@ def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
     response_model=EngineGoResponse,
     summary="Build a Transit-style Go session",
     description=(
-        "Returns the best trip plus alternatives, route chips, transfer timing, "
-        "and live next-action state for a Transit-style Go experience."
+        "Builds a frontend-ready live trip session for the Go experience. The response adds route chips, step-by-step instructions, "
+        "transfer timing, aggregated alerts, and a 'next action' block on top of the core planner result."
     ),
 )
 def build_go_trip(payload: EngineGoRequest) -> EngineGoResponse:

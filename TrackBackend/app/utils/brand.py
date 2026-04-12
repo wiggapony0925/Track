@@ -23,10 +23,12 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from app.config import get_settings
+
 _CONFIG_DIR = Path(__file__).resolve().parents[3] / "config"
 _log = logging.getLogger("track.brand")
 
-_MTA_COLORS_API = "https://data.ny.gov/resource/3uhz-sej2.json?$limit=200"
+_MTA_COLORS_API = get_settings().urls.mta_colors_api
 _SYNC_STALE_SECONDS = 7 * 24 * 3600  # refresh if JSON is older than 7 days
 
 

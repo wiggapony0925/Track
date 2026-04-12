@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 
+from app.config import get_settings
 from app.utils.logger import TrackLogger
 from app.utils.metrics import WEATHER_CATEGORY, WEATHER_FETCH_TOTAL
 
@@ -27,7 +28,7 @@ _DEFAULT_LAT = 40.7128
 _DEFAULT_LON = -74.0060
 
 # ── Open-Meteo endpoint ──────────────────────────────────────────────────
-_OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+_OPEN_METEO_URL = get_settings().urls.open_meteo_api
 
 # ── Cache ─────────────────────────────────────────────────────────────────
 _CACHE_TTL = 300  # 5 minutes for successful fetches

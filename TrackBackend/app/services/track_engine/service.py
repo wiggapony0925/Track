@@ -21,6 +21,8 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from app.config import get_settings
+
 from .domain import (
     CalendarEvent,
     GoAction,
@@ -535,7 +537,7 @@ class TrackEngineService:
     """Facade used by the FastAPI router."""
 
     VERSION = "0.3.0"
-    _RENDER_INTERNAL_ENGINE_URL = "http://trackengine:10000"
+    _RENDER_INTERNAL_ENGINE_URL = get_settings().urls.track_engine_internal_url
 
     def __init__(self, *, schedule_db: Path, state_db: Path):
         self.schedule_db = Path(schedule_db)

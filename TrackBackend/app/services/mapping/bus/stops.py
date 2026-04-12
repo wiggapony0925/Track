@@ -38,6 +38,7 @@ from typing import Any
 
 import httpx
 
+from app.config import get_settings
 from app.models import BusStop
 from app.utils.logger import TrackLogger
 
@@ -51,12 +52,7 @@ from app.utils.logger import TrackLogger
 # Socrata exposes ``in_effect`` as "true"/"false" strings but
 # ``revenue_stop`` as "1"/"0" strings, not booleans.  Filtering on
 # revenue_stop='true' returns zero rows from the live dataset.
-_OPEN_DATA_URL = (
-    "https://data.ny.gov/resource/2ucp-7wg5.json"
-    "?$where=in_effect=%27true%27 AND revenue_stop=%271%27"
-    "&$limit=50000"
-    "&$order=route_id,direction_id,stop_id"
-)
+_OPEN_DATA_URL = get_settings().urls.bus_open_data_stops_api
 
 _PAGE_SIZE = 50_000
 

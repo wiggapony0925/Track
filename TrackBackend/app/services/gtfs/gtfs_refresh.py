@@ -29,6 +29,7 @@ from typing import Any
 
 import httpx
 
+from app.config import get_settings
 from app.utils.logger import TrackLogger
 
 # ---------------------------------------------------------------------------
@@ -39,59 +40,61 @@ _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 _META_DIR = _DATA_DIR / ".gtfs_meta"
 
 # MTA GTFS static feed URLs
+_GTFS_STATIC_FEED_URLS = get_settings().urls.gtfs_static_feeds
+
 GTFS_FEEDS: dict[str, dict[str, Any]] = {
     # ---- Feeds that affect shapes / routes / stops (uploaded to Supabase) ----
     "subway": {
-        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip",
+        "url": _GTFS_STATIC_FEED_URLS["subway"],
         "extract_to": _DATA_DIR / "subway" / "supplemented_GTFS",
         "supabase_archives": ["subway_core", "subway_routes", "subway_supplemented"],
         "rebuilds_db": True,
     },
     "lirr": {
-        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip",
+        "url": _GTFS_STATIC_FEED_URLS["lirr"],
         "extract_to": _DATA_DIR / "lirr" / "gtfslirr",
         "supabase_archives": ["lirr"],
         "rebuilds_db": True,
     },
     "metro_north": {
-        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfsmnr.zip",
+        "url": _GTFS_STATIC_FEED_URLS["metro_north"],
         "extract_to": _DATA_DIR / "metro_north" / "gtfsmnr",
         "supabase_archives": ["mnr"],
         "rebuilds_db": True,
     },
     # ---- Bus feeds (only used for transit_schedule.db, not Supabase) ----
     "bus_bronx": {
-        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_bx.zip",
+        "url": _GTFS_STATIC_FEED_URLS["bus_bronx"],
         "extract_to": _DATA_DIR / "bus" / "Bronx",
         "supabase_archives": [],
         "rebuilds_db": True,
     },
     "bus_brooklyn": {
-        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_b.zip",
+        "url": _GTFS_STATIC_FEED_URLS["bus_brooklyn"],
         "extract_to": _DATA_DIR / "bus" / "Brooklyn",
         "supabase_archives": [],
         "rebuilds_db": True,
     },
     "bus_manhattan": {
-        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_m.zip",
+        "url": _GTFS_STATIC_FEED_URLS["bus_manhattan"],
         "extract_to": _DATA_DIR / "bus" / "Manhattan",
         "supabase_archives": [],
         "rebuilds_db": True,
     },
     "bus_queens": {
-        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_q.zip",
+        "url": _GTFS_STATIC_FEED_URLS["bus_queens"],
         "extract_to": _DATA_DIR / "bus" / "Queens",
         "supabase_archives": [],
         "rebuilds_db": True,
     },
     "bus_staten_island": {
-        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_si.zip",
+        "url": _GTFS_STATIC_FEED_URLS["bus_staten_island"],
         "extract_to": _DATA_DIR / "bus" / "Staten Island",
         "supabase_archives": [],
         "rebuilds_db": True,
     },
     "bus_mta": {
-        "url": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_busco.zip",
+        "url": _GTFS_STATIC_FEED_URLS["bus_mta"],
         "extract_to": _DATA_DIR / "MTA Bus Company",
         "supabase_archives": [],
         "rebuilds_db": True,

@@ -32,6 +32,7 @@ from typing import Any
 
 import httpx
 
+from app.config import get_settings
 from app.models import DirectionShape, RouteShape
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import encode_polyline
@@ -41,10 +42,7 @@ from app.utils.polyline_utils import encode_polyline
 # ---------------------------------------------------------------------------
 
 # Pre-filtered Socrata view: in_effect = true, current bundle only.
-_OPEN_DATA_URL = (
-    "https://data.ny.gov/resource/h2wf-afav.json"
-    "?$limit=50000&$order=route_id,direction_id"
-)
+_OPEN_DATA_URL = get_settings().urls.bus_open_data_routes_api
 
 # Page size for paginated fallback (only used if the dataset grows past 50 k).
 _PAGE_SIZE = 50_000

@@ -855,23 +855,63 @@ class BusTileData(BaseModel):
 # Usage:  @router.get("/path", responses={**RESP_404, **RESP_502})
 
 RESP_400: dict = {
-    400: {"model": ErrorDetail, "description": "Bad request — invalid parameters."},
+    400: {
+        "model": ErrorDetail,
+        "description": "Bad request — invalid parameters.",
+        "content": {
+            "application/json": {
+                "example": {"detail": "Provide either depart_at_ts or arrive_by_ts, not both."}
+            }
+        },
+    },
 }
 RESP_403: dict = {
     403: {
         "model": ErrorDetail,
         "description": "Forbidden — endpoint restricted to localhost.",
+        "content": {
+            "application/json": {
+                "example": {"detail": "localhost only"}
+            }
+        },
     },
 }
 RESP_404: dict = {
-    404: {"model": ErrorDetail, "description": "Resource not found."},
+    404: {
+        "model": ErrorDetail,
+        "description": "Resource not found.",
+        "content": {
+            "application/json": {
+                "example": {"detail": "Unknown subway line: ZZ"}
+            }
+        },
+    },
 }
 RESP_502: dict = {
-    502: {"model": ErrorDetail, "description": "Upstream MTA/OBA service error."},
+    502: {
+        "model": ErrorDetail,
+        "description": "Upstream MTA/OBA service error.",
+        "content": {
+            "application/json": {
+                "example": {"detail": "Upstream service temporarily unavailable."}
+            }
+        },
+    },
 }
 RESP_503: dict = {
     503: {
         "model": ErrorDetail,
         "description": "Service unavailable — server is warming up. Retry after the `Retry-After` header value.",
+        "headers": {
+            "Retry-After": {
+                "description": "Number of seconds the client should wait before retrying.",
+                "schema": {"type": "string", "example": "5"},
+            }
+        },
+        "content": {
+            "application/json": {
+                "example": {"detail": "Feeds warming up"}
+            }
+        },
     },
 }

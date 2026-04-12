@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EngineLocationPayload(BaseModel):
@@ -36,6 +36,23 @@ class EngineLocationPayload(BaseModel):
 class EngineSearchResult(BaseModel):
     """Merged search result for saved places, recent destinations, and stops."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "source": "saved_place",
+                "label": "Home",
+                "subtitle": "Jackson Heights, Queens",
+                "lat": 40.7554,
+                "lon": -73.8892,
+                "score": 0.98,
+                "stop_id": None,
+                "place_id": 12,
+                "icon": "house.fill",
+                "mode": None,
+            }
+        }
+    )
+
     source: str = Field(..., description="saved_place, recent_destination, or stop.")
     label: str = Field(..., description="Primary display text.")
     subtitle: str = Field(..., description="Secondary display text.")
@@ -50,6 +67,21 @@ class EngineSearchResult(BaseModel):
 
 class EngineSavedPlaceUpsert(BaseModel):
     """Create or update a saved place."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "user_id": "ios-user-42",
+                "label": "Work",
+                "kind": "work",
+                "lat": 40.758,
+                "lon": -73.9855,
+                "address": "Times Sq, Manhattan, NY",
+                "icon": "briefcase.fill",
+                "place_id": None,
+            }
+        }
+    )
 
     user_id: str = Field(..., description="Stable user identifier from the app.")
     label: str = Field(..., description="Display label, e.g. Home or Work.")
@@ -66,6 +98,24 @@ class EngineSavedPlaceUpsert(BaseModel):
 
 class EngineSavedPlace(BaseModel):
     """Saved user place."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "place_id": 12,
+                "user_id": "ios-user-42",
+                "label": "Work",
+                "kind": "work",
+                "lat": 40.758,
+                "lon": -73.9855,
+                "address": "Times Sq, Manhattan, NY",
+                "icon": "briefcase.fill",
+                "created_at": 1735603200,
+                "updated_at": 1735606800,
+                "last_used_at": 1735693200,
+            }
+        }
+    )
 
     place_id: int = Field(..., description="Saved place primary key.")
     user_id: str = Field(..., description="Stable user identifier.")
@@ -85,6 +135,33 @@ class EngineSavedPlace(BaseModel):
 
 class EngineSavedTripUpsert(BaseModel):
     """Create or update a saved trip."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "user_id": "ios-user-42",
+                "name": "Morning commute",
+                "origin": {
+                    "label": "Home",
+                    "lat": 40.7554,
+                    "lon": -73.8892,
+                    "stop_id": None,
+                    "address": "Jackson Heights, Queens",
+                },
+                "destination": {
+                    "label": "Office",
+                    "lat": 40.758,
+                    "lon": -73.9855,
+                    "stop_id": None,
+                    "address": "Times Sq, Manhattan",
+                },
+                "preferred_departure_hour": 8,
+                "preferred_arrival_hour": None,
+                "preferred_modes": ["subway", "bus"],
+                "trip_id": None,
+            }
+        }
+    )
 
     user_id: str = Field(..., description="Stable user identifier from the app.")
     name: str = Field(..., description="Human-friendly name for the saved trip.")
@@ -110,6 +187,28 @@ class EngineSavedTripUpsert(BaseModel):
 
 class EngineSavedTrip(BaseModel):
     """Saved trip template."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "trip_id": 7,
+                "user_id": "ios-user-42",
+                "name": "Morning commute",
+                "origin_label": "Home",
+                "origin_lat": 40.7554,
+                "origin_lon": -73.8892,
+                "destination_label": "Office",
+                "destination_lat": 40.758,
+                "destination_lon": -73.9855,
+                "preferred_departure_hour": 8,
+                "preferred_arrival_hour": None,
+                "preferred_modes": ["subway", "bus"],
+                "created_at": 1735603200,
+                "updated_at": 1735606800,
+                "last_used_at": 1735693200,
+            }
+        }
+    )
 
     trip_id: int = Field(..., description="Saved trip primary key.")
     user_id: str = Field(..., description="Stable user identifier.")
@@ -164,6 +263,23 @@ class EngineCalendarEventInput(BaseModel):
 
 class EngineRecommendation(BaseModel):
     """Suggested destination for the app to highlight."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "source": "calendar",
+                "label": "Dentist",
+                "subtitle": "39-01 Main St, Flushing",
+                "lat": 40.7601,
+                "lon": -73.8303,
+                "score": 0.88,
+                "reason": "Calendar event starts in 55 minutes",
+                "upcoming_at": 1735756200,
+                "place_id": None,
+                "saved_trip_id": None,
+            }
+        }
+    )
 
     source: str = Field(..., description="saved_place, saved_trip, recent_trip, or calendar.")
     label: str = Field(..., description="Destination label.")
@@ -344,6 +460,26 @@ class EngineGoAction(BaseModel):
 class EngineRecentTrip(BaseModel):
     """Recently planned trip."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "recent_trip_id": 91,
+                "user_id": "ios-user-42",
+                "origin_label": "Home",
+                "origin_lat": 40.7554,
+                "origin_lon": -73.8892,
+                "destination_label": "Grand Central Terminal",
+                "destination_lat": 40.7527,
+                "destination_lon": -73.9772,
+                "requested_at": 1735693200,
+                "leave_at_ts": 1735693500,
+                "arrive_at_ts": 1735695900,
+                "summary": "7 to Grand Central • 1 transfer",
+                "route_tokens": ["7", "S"],
+            }
+        }
+    )
+
     recent_trip_id: int = Field(..., description="Recent trip primary key.")
     user_id: str = Field(..., description="Stable user identifier.")
     origin_label: str = Field(..., description="Origin label.")
@@ -364,6 +500,38 @@ class EngineRecentTrip(BaseModel):
 
 class EnginePlanRequest(BaseModel):
     """Trip planning request for /engine/plan."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "origin": {
+                    "label": "Home",
+                    "lat": 40.7554,
+                    "lon": -73.8892,
+                    "stop_id": None,
+                    "address": "Jackson Heights, Queens",
+                },
+                "destination": {
+                    "label": "Penn Station",
+                    "lat": 40.7506,
+                    "lon": -73.9935,
+                    "stop_id": None,
+                    "address": "Penn Station, Manhattan",
+                },
+                "user_id": "ios-user-42",
+                "depart_at_ts": 1735700400,
+                "arrive_by_ts": None,
+                "max_transfers": 2,
+                "max_origin_walk_m": 1200,
+                "max_destination_walk_m": 1200,
+                "max_transfer_walk_m": 250,
+                "search_window_minutes": 180,
+                "num_itineraries": 3,
+                "modes": ["subway", "bus", "lirr", "mnr"],
+                "record_recent": True,
+            }
+        }
+    )
 
     origin: EngineLocationPayload = Field(..., description="Origin.")
     destination: EngineLocationPayload = Field(..., description="Destination.")
@@ -433,6 +601,48 @@ class EnginePlanRequest(BaseModel):
 
 class EnginePlanResponse(BaseModel):
     """Planner response."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "engine_version": "0.3.0",
+                "requested_at_ts": 1735700100,
+                "origin": {
+                    "label": "Home",
+                    "lat": 40.7554,
+                    "lon": -73.8892,
+                    "stop_id": None,
+                    "address": "Jackson Heights, Queens",
+                },
+                "destination": {
+                    "label": "Penn Station",
+                    "lat": 40.7506,
+                    "lon": -73.9935,
+                    "stop_id": None,
+                    "address": "Penn Station, Manhattan",
+                },
+                "depart_at_ts": 1735700400,
+                "arrive_by_ts": None,
+                "itineraries": [
+                    {
+                        "itinerary_id": "itin_1",
+                        "leave_at_ts": 1735700400,
+                        "arrive_at_ts": 1735702680,
+                        "total_duration_s": 2280,
+                        "in_vehicle_s": 1620,
+                        "walking_s": 420,
+                        "waiting_s": 240,
+                        "transfer_count": 1,
+                        "walk_meters": 540.0,
+                        "score": 0.93,
+                        "summary": "7 to Times Sq • Walk to Penn Station",
+                        "legs": []
+                    }
+                ],
+                "schedule_note": None,
+            }
+        }
+    )
 
     engine_version: str = Field(..., description="TrackEngine version string.")
     requested_at_ts: int = Field(..., description="Unix timestamp when the backend handled the query.")
@@ -513,6 +723,34 @@ class EngineGoRequest(EnginePlanRequest):
 class EngineGoResponse(BaseModel):
     """Go session response."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "engine_version": "0.3.0",
+                "requested_at_ts": 1735700100,
+                "now_ts": 1735700100,
+                "origin": {
+                    "label": "Home",
+                    "lat": 40.7554,
+                    "lon": -73.8892,
+                    "stop_id": None,
+                    "address": "Jackson Heights, Queens",
+                },
+                "destination": {
+                    "label": "Grand Central Terminal",
+                    "lat": 40.7527,
+                    "lon": -73.9772,
+                    "stop_id": None,
+                    "address": "89 E 42nd St, Manhattan",
+                },
+                "session_kind": "leave_now",
+                "primary_trip": None,
+                "alternatives": [],
+                "schedule_note": None,
+            }
+        }
+    )
+
     engine_version: str = Field(..., description="TrackEngine version string.")
     requested_at_ts: int = Field(..., description="Unix timestamp when the backend handled the query.")
     now_ts: int = Field(..., description="Unix timestamp used to compute trip state.")
@@ -535,6 +773,25 @@ class EngineGoResponse(BaseModel):
 
 class EngineHealth(BaseModel):
     """Health response for /engine/health."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "version": "0.3.0",
+                "schedule_db_path": "app/data/transit_schedule.db",
+                "state_db_path": "supabase://track_engine_state",
+                "state_backend": "supabase",
+                "prepared": True,
+                "prepared_indexes": ["stops_name_idx", "stop_times_trip_idx"],
+                "schedule_db_error": None,
+                "routing_backend": "cpp_remote",
+                "remote_engine_url": "http://trackengine:10000",
+                "remote_engine_healthy": True,
+                "remote_engine_version": "0.3.0",
+                "remote_engine_error": None,
+            }
+        }
+    )
 
     version: str = Field(..., description="TrackEngine version string.")
     schedule_db_path: str = Field(..., description="Resolved schedule DB path.")

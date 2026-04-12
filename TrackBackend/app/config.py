@@ -10,8 +10,6 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.utils.transit_utils import resolve_subway_feed_key
-
 # ── Auto-load .env from project root ─────────────────────────────────────
 _ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 try:
@@ -95,6 +93,12 @@ class Urls(BaseModel):
     elevators_json: str
     bus_siri_base: str = ""
     bus_oba_base: str = ""
+    mta_colors_api: str = ""
+    open_meteo_api: str = ""
+    track_engine_internal_url: str = ""
+    bus_open_data_routes_api: str = ""
+    bus_open_data_stops_api: str = ""
+    gtfs_static_feeds: dict[str, str] = {}
     bus_endpoints: BusEndpoints | None = None
 
 
@@ -115,7 +119,9 @@ def get_settings() -> Settings:
     Returns:
         Validated Settings instance with app_settings, api_keys, and urls.
     """
-    raw: dict[str, Any] = json.loads(_SETTINGS_PATH.read_text(encoding="utf-8"))
+    raw: dict[str, Any] = json.loads(
+        _strip_json_comments(_SETTINGS_PATH.read_text(encoding="utf-8"))
+    )
 
     # ── env-var overrides for API keys ────────────────────────────────────
     api_keys = raw.setdefault("api_keys", {})
@@ -136,9 +142,50 @@ def get_feed_url(line_id: str) -> str | None:
     Returns:
         Feed URL string, or None if the line is unrecognised.
     """
+    from app.utils.transit_utils import resolve_subway_feed_key
+
     settings = get_settings()
     key = resolve_subway_feed_key(line_id)
     if key is None:
         return None
     urls_dict = settings.urls.model_dump()
     return urls_dict.get(key)
+
+
+def _strip_json_comments(raw: str) -> str:
+    """Strip `// ...` comments from settings.json while preserving strings."""
+    out: list[str] = []
+    in_string = False
+    escaped = False
+    i = 0
+
+    while i < len(raw):
+        ch = raw[i]
+
+        if in_string:
+            out.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+            i += 1
+            continue
+
+        if ch == "/" and i + 1 < len(raw) and raw[i + 1] == "/":
+            i += 2
+            while i < len(raw) and raw[i] != "\n":
+                i += 1
+            continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out)

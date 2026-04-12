@@ -60,31 +60,84 @@
     "mta_bus_key": ""
   },
   "urls": {
+    // this api url is for: fetching the A/C/E GTFS-Realtime subway feed used by nearby arrivals, route detail views, countdown chips, and live home screen subway data.
     "subway_ace": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace",
+    // this api url is for: fetching the G train GTFS-Realtime feed used by nearby arrivals, route detail views, countdown chips, and live home screen subway data.
     "subway_g": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g",
+    // this api url is for: fetching the N/Q/R/W GTFS-Realtime feed used by nearby arrivals, route detail views, countdown chips, and live home screen subway data.
     "subway_nqrw": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw",
+    // this api url is for: fetching the 1/2/3/4/5/6/7 GTFS-Realtime feed used by nearby arrivals, route detail views, countdown chips, and live home screen subway data.
     "subway_123456": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs",
+    // this api url is for: fetching the B/D/F/M GTFS-Realtime feed used by nearby arrivals, route detail views, countdown chips, and live home screen subway data.
     "subway_bdfm": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm",
+    // this api url is for: fetching the J/Z GTFS-Realtime feed used by nearby arrivals, route detail views, countdown chips, and live home screen subway data.
     "subway_jz": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz",
+    // this api url is for: fetching the L train GTFS-Realtime feed used by nearby arrivals, route detail views, countdown chips, and live home screen subway data.
     "subway_l": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l",
+    // this api url is for: fetching the Staten Island Railway GTFS-Realtime feed used by nearby arrivals and route detail live updates.
     "subway_si": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si",
+    // this api url is for: fetching Long Island Rail Road GTFS-Realtime arrivals used by nearby, grouped results, and commuter rail route detail screens.
     "lirr": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr",
+    // this api url is for: fetching Metro-North GTFS-Realtime arrivals used by nearby, grouped results, and commuter rail route detail screens.
     "metro_north": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr",
+    // this api url is for: fetching subway service alerts displayed inline on nearby cards, route sheets, and alerts UI.
     "alerts_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json",
+    // this api url is for: fetching bus service alerts displayed inline on nearby cards, route sheets, and alerts UI.
     "bus_alerts_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fbus-alerts.json",
+    // this api url is for: fetching LIRR service alerts displayed inline on nearby cards, route sheets, and alerts UI.
     "lirr_alerts_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts.json",
+    // this api url is for: fetching Metro-North service alerts displayed inline on nearby cards, route sheets, and alerts UI.
     "mnr_alerts_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json",
+    // this api url is for: fetching elevator and escalator outage data surfaced in accessibility banners and station detail UI.
     "elevators_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json",
+    // this api url is for: the SIRI base URL used for live bus stop monitoring and vehicle monitoring in nearby buses, route detail, and map tracking UI.
     "bus_siri_base": "https://bustime.mta.info/api/siri",
+    // this api url is for: the OBA base URL used for route lists, stops-for-route, and nearby bus stop discovery powering the bus UI.
     "bus_oba_base": "https://bustime.mta.info/api/where",
+    // this api url is for: syncing official MTA subway, LIRR, and Metro-North brand colors used across route badges, chips, and map styling UI.
+    "mta_colors_api": "https://data.ny.gov/resource/3uhz-sej2.json?$limit=200",
+    // this api url is for: fetching current weather used by delay modeling, ETA adjustments, and weather state shown in health/debug responses.
+    "open_meteo_api": "https://api.open-meteo.com/v1/forecast",
+    // this api url is for: reaching the internal TrackEngine service from the backend for trip planning, journey results, and go-mode route computation UI.
+    "track_engine_internal_url": "http://trackengine:10000",
+    // this api url is for: downloading current bus route open-data geometry used to build route lines and map overlays for the bus UI.
+    "bus_open_data_routes_api": "https://data.ny.gov/resource/h2wf-afav.json?$limit=50000&$order=route_id,direction_id",
+    // this api url is for: downloading in-effect revenue bus stops used to build route stop lists, map annotations, and nearby bus stop discovery UI.
+    "bus_open_data_stops_api": "https://data.ny.gov/resource/2ucp-7wg5.json?$where=in_effect=%27true%27 AND revenue_stop=%271%27&$limit=50000&$order=route_id,direction_id,stop_id",
+    "gtfs_static_feeds": {
+      // this api url is for: downloading the static subway GTFS bundle used to build stops, routes, shapes, schedules, and subway map/detail UI data.
+      "subway": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip",
+      // this api url is for: downloading the static LIRR GTFS bundle used to build commuter rail shapes, stops, schedules, and route detail UI data.
+      "lirr": "https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip",
+      // this api url is for: downloading the static Metro-North GTFS bundle used to build commuter rail shapes, stops, schedules, and route detail UI data.
+      "metro_north": "https://rrgtfsfeeds.s3.amazonaws.com/gtfsmnr.zip",
+      // this api url is for: downloading the Bronx bus GTFS static bundle used to build schedule DB entries backing nearby bus and route detail UI data.
+      "bus_bronx": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_bx.zip",
+      // this api url is for: downloading the Brooklyn bus GTFS static bundle used to build schedule DB entries backing nearby bus and route detail UI data.
+      "bus_brooklyn": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_b.zip",
+      // this api url is for: downloading the Manhattan bus GTFS static bundle used to build schedule DB entries backing nearby bus and route detail UI data.
+      "bus_manhattan": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_m.zip",
+      // this api url is for: downloading the Queens bus GTFS static bundle used to build schedule DB entries backing nearby bus and route detail UI data.
+      "bus_queens": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_q.zip",
+      // this api url is for: downloading the Staten Island bus GTFS static bundle used to build schedule DB entries backing nearby bus and route detail UI data.
+      "bus_staten_island": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_si.zip",
+      // this api url is for: downloading the MTA Bus Company GTFS static bundle used to build schedule DB entries backing nearby bus and route detail UI data.
+      "bus_mta": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_busco.zip"
+    },
     "bus_endpoints": {
+      // this api url is for: the SIRI vehicle-monitoring path used to fetch live bus positions for route tracking and map vehicle UI.
       "vehicle_monitoring": "/vehicle-monitoring.json",
+      // this api url is for: the SIRI stop-monitoring path used to fetch live upcoming bus arrivals shown in nearby and route detail UI.
       "stop_monitoring": "/stop-monitoring.json",
       "routes_for_agency": [
+        // this api url is for: the OBA route-list path for MTA NYCT routes used to populate `/bus/routes` and bus route metadata UI.
         "/routes-for-agency/MTA%20NYCT.json",
+        // this api url is for: the OBA route-list path for MTABC routes used to populate `/bus/routes` and bus route metadata UI.
         "/routes-for-agency/MTABC.json"
       ],
+      // this api url is for: the OBA stops-for-route path used to populate ordered route stops and route detail UI for a selected bus.
       "stops_for_route": "/stops-for-route/{route_id}.json",
+      // this api url is for: the OBA nearby-stops path used to discover nearby bus stops for home and nearby bus UI.
       "stops_near_location": "/stops-for-location.json"
     }
   }
