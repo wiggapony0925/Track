@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.utils.brand import PLANNER_DEFAULTS as _PD
+
 
 @dataclass(slots=True)
 class LocationInput:
@@ -62,6 +64,7 @@ class TransitLeg:
     duration_s: int
     stop_count: int
     walk_meters: float = 0.0
+    bus_service_type: str | None = None
     live_status: LegLiveStatus | None = None
     alerts: list[ServiceAlertSummary] = field(default_factory=list)
 
@@ -181,19 +184,23 @@ class GoResponse:
 
 @dataclass(slots=True)
 class PlanRequest:
-    """Planner request passed from the backend router."""
+    """Planner request passed from the backend router.
+
+    Defaults are loaded from ``config/planner_defaults.json`` via
+    :mod:`app.utils.brand` so they stay in sync with the C++ engine.
+    """
 
     origin: LocationInput
     destination: LocationInput
     user_id: str | None = None
     depart_at_ts: int | None = None
     arrive_by_ts: int | None = None
-    max_transfers: int = 2
-    max_origin_walk_m: int = 1200
-    max_destination_walk_m: int = 1200
-    max_transfer_walk_m: int = 250
-    search_window_minutes: int = 180
-    num_itineraries: int = 3
+    max_transfers: int = _PD.get("max_transfers", 2)
+    max_origin_walk_m: int = _PD.get("max_origin_walk_m", 1200)
+    max_destination_walk_m: int = _PD.get("max_destination_walk_m", 1200)
+    max_transfer_walk_m: int = _PD.get("max_transfer_walk_m", 250)
+    search_window_minutes: int = _PD.get("search_window_minutes", 180)
+    num_itineraries: int = _PD.get("num_itineraries", 3)
     modes: tuple[str, ...] = ("subway", "bus", "lirr", "mnr")
     record_recent: bool = True
 

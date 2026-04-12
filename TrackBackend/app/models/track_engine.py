@@ -190,6 +190,8 @@ class EngineTripLeg(BaseModel):
     route_id: str = Field(..., description="GTFS route_id or walk for walking legs.")
     route_name: str = Field(..., description="Human-friendly route label.")
     color_hex: str | None = Field(None, description="Hex route color when available.")
+    text_color_hex: str | None = Field(None, description="Contrasting text color for legibility on color_hex background.")
+    mode_name: str | None = Field(None, description="Human-readable mode label, e.g. Subway, Bus, LIRR, Metro-North.")
     headsign: str | None = Field(None, description="Trip headsign or destination label.")
     trip_id: str | None = Field(None, description="GTFS trip_id when applicable.")
     board_stop_id: str = Field(..., description="Boarding stop identifier.")
@@ -203,6 +205,10 @@ class EngineTripLeg(BaseModel):
     walk_meters: float = Field(
         0.0,
         description="Walking distance in meters for walk legs.",
+    )
+    bus_service_type: str | None = Field(
+        None,
+        description="Bus service classification: Local, Limited, Local / Limited, Select Bus Service, Express, or School.",
     )
     live_status: EngineLegLiveStatus | None = Field(
         None,
@@ -238,7 +244,9 @@ class EngineRouteChip(BaseModel):
     label: str = Field(..., description="Display label, e.g. Q10 or Walk 4 min.")
     route_id: str | None = Field(None, description="Route ID when the chip represents transit.")
     color_hex: str | None = Field(None, description="Route color when available.")
+    text_color_hex: str | None = Field(None, description="Contrasting text color for legibility on color_hex background.")
     mode: str | None = Field(None, description="Transit mode or walk.")
+    mode_name: str | None = Field(None, description="Human-readable mode label.")
     duration_s: int | None = Field(None, description="Duration represented by the chip.")
     walk_meters: float | None = Field(None, description="Walking distance for walk chips.")
 
@@ -300,6 +308,7 @@ class EngineGoStep(BaseModel):
     route_id: str | None = Field(None, description="Transit route ID when applicable.")
     route_name: str | None = Field(None, description="Transit route label when applicable.")
     color_hex: str | None = Field(None, description="Route color when applicable.")
+    text_color_hex: str | None = Field(None, description="Contrasting text color for legibility on color_hex background.")
     stop_id: str | None = Field(None, description="Relevant stop ID when applicable.")
     stop_name: str | None = Field(None, description="Relevant stop name when applicable.")
 

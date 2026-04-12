@@ -86,21 +86,16 @@ from app.services.transit.schedule_service import schedule_service
 from app.services.transit.station_lookup import get_nearby_stop_ids, get_stop_info
 from app.utils.geo_utils import haversine_m
 from app.utils.logger import TrackLogger
+from app.utils.brand import (
+    bus_color as _brand_bus_color,
+    mode_color as _brand_mode_color,
+    mode_name as _brand_mode_name,
+    text_color_for_route as _brand_text_color,
+)
 from app.utils.transit_utils import get_subway_color
 
-# Default bus color (MTA blue) — used when bus routes don't provide one
-_BUS_DEFAULT_COLOR = "#0039A6"
-
-# MTA bus service-type color palette (matches official MTA Bus Routes map).
-# Source: MTA open data — route_type field + official palette.
-_BUS_SERVICE_COLORS: dict[str, str] = {
-    "Local": "#0078C6",           # Blue
-    "Limited": "#6E3FA3",         # Purple
-    "Local / Limited": "#6E3FA3", # Purple (dual-service: some trips local, some limited)
-    "Select Bus Service": "#00B2E3",  # Cyan / light blue
-    "Express": "#3D9B35",         # Green
-    "School": "#F7931E",          # Orange
-}
+# Bus colors now sourced from config/brand_colors.json via brand.py
+# (no more hardcoded hex values here)
 
 # ---------------------------------------------------------------------------
 # Dynamic limited-route detection from GTFS trip headsigns
@@ -311,7 +306,7 @@ def _classify_bus_service_type(
 
 def _bus_color_for_service_type(service_type: str) -> str:
     """Return the MTA-standard hex color for a bus service type."""
-    return _BUS_SERVICE_COLORS.get(service_type, _BUS_DEFAULT_COLOR)
+    return _brand_bus_color(service_type)
 
 # Load tunable constants from settings.json → app_settings
 _PLACEHOLDER_MINUTES: int = get_settings().app_settings.placeholder_minutes
@@ -1187,12 +1182,18 @@ async def nearby_inactive_routes(
         elif color:
             color_hex = f"#{color}" if not color.startswith("#") else color
 
+        # Guarantee color_hex is never null — fall back to mode default
+        if not color_hex:
+            color_hex = _brand_mode_color(mode)
+
         inactive_list.append(
             InactiveRoute(
                 route_id=route_id,
                 display_name=display_name,
                 mode=mode,
                 color_hex=color_hex,
+                text_color_hex=_brand_text_color(mode, route_id),
+                mode_name=_brand_mode_name(mode),
                 bus_service_type=service_type,
                 sorting_key=_sorting_key(mode, display_name),
             )
@@ -2209,6 +2210,8 @@ def _group_arrivals(
                 display_name=display,
                 mode=mode,
                 color_hex=color,
+                text_color_hex=_brand_text_color(mode, route_id),
+                mode_name=_brand_mode_name(mode),
                 directions=directions,
                 sorting_key=_sorting_key(mode, display),
                 alerts=route_alerts,

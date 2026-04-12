@@ -45,6 +45,11 @@ from .domain import (
 from .store import EngineStore
 from .store_supabase import SupabaseEngineStore
 from .engine_cache import get_cached_go, get_cached_plan, set_cached_go, set_cached_plan
+from app.utils.brand import (
+    bus_color as _brand_bus_color,
+    mode_color as _brand_mode_color,
+    subway_color as _brand_subway_color,
+)
 
 NY_TZ = ZoneInfo("America/New_York")
 
@@ -1083,32 +1088,82 @@ class TrackEngineService:
             timestamp_shift_s=timestamp_shift_s,
         )
 
+    @staticmethod
+    def _enrich_color(
+        mode: str | None,
+        route_id: str | None,
+        raw_color: str | None,
+        *,
+        step_kind: str | None = None,
+    ) -> str | None:
+        """Apply brand-correct color for subway/bus, fallback to mode default.
+
+        For go steps that lack an explicit ``mode`` we infer it from
+        ``route_id`` (subway colors map, or bus-like route name pattern).
+        """
+        from app.routers.nearby import _classify_bus_service_type
+        from app.utils.brand import SUBWAY_COLORS
+
+        # Infer mode when missing (common for go steps where C++ omits mode)
+        if not mode and route_id and route_id != "walk":
+            if route_id in SUBWAY_COLORS:
+                mode = "subway"
+            elif step_kind == "ride":
+                mode = "bus"
+
+        if mode == "subway" and route_id:
+            return _brand_subway_color(route_id)
+        if mode == "bus" and route_id:
+            svc_type = _classify_bus_service_type(route_id)
+            return _brand_bus_color(svc_type)
+        if not raw_color and mode:
+            return _brand_mode_color(mode)
+        return raw_color
+
     def _parse_itinerary(
         self,
         item,
         *,
         timestamp_shift_s: int = 0,
     ) -> Itinerary:
-        legs = [
-            TransitLeg(
-                mode=leg["mode"],
-                route_id=leg["route_id"],
-                route_name=leg["route_name"],
-                color_hex=leg.get("color_hex"),
-                headsign=leg.get("headsign"),
-                trip_id=leg.get("trip_id"),
-                board_stop_id=leg["board_stop_id"],
-                board_stop_name=leg["board_stop_name"],
-                alight_stop_id=leg["alight_stop_id"],
-                alight_stop_name=leg["alight_stop_name"],
-                departure_ts=leg["departure_ts"] + timestamp_shift_s,
-                arrival_ts=leg["arrival_ts"] + timestamp_shift_s,
-                duration_s=leg["duration_s"],
-                stop_count=leg["stop_count"],
-                walk_meters=leg.get("walk_meters", 0.0),
+        from app.routers.nearby import _classify_bus_service_type
+
+        parsed_legs: list[TransitLeg] = []
+        for leg in item.get("legs", []):
+            mode = leg["mode"]
+            route_name = leg["route_name"]
+            color_hex = leg.get("color_hex")
+            bus_service_type: str | None = None
+
+            # For bus legs, classify service type and apply the correct color
+            if mode == "bus" and route_name:
+                bus_service_type = _classify_bus_service_type(route_name)
+                color_hex = _brand_bus_color(bus_service_type)
+
+            # Guarantee color_hex is never null — fall back to mode default
+            if not color_hex:
+                color_hex = _brand_mode_color(mode)
+
+            parsed_legs.append(
+                TransitLeg(
+                    mode=mode,
+                    route_id=leg["route_id"],
+                    route_name=route_name,
+                    color_hex=color_hex,
+                    headsign=leg.get("headsign"),
+                    trip_id=leg.get("trip_id"),
+                    board_stop_id=leg["board_stop_id"],
+                    board_stop_name=leg["board_stop_name"],
+                    alight_stop_id=leg["alight_stop_id"],
+                    alight_stop_name=leg["alight_stop_name"],
+                    departure_ts=leg["departure_ts"] + timestamp_shift_s,
+                    arrival_ts=leg["arrival_ts"] + timestamp_shift_s,
+                    duration_s=leg["duration_s"],
+                    stop_count=leg["stop_count"],
+                    walk_meters=leg.get("walk_meters", 0.0),
+                    bus_service_type=bus_service_type,
+                )
             )
-            for leg in item.get("legs", [])
-        ]
         return Itinerary(
             itinerary_id=item["itinerary_id"],
             leave_at_ts=item["leave_at_ts"] + timestamp_shift_s,
@@ -1121,7 +1176,7 @@ class TrackEngineService:
             walk_meters=item["walk_meters"],
             score=float(item["score"]),
             summary=item["summary"],
-            legs=legs,
+            legs=parsed_legs,
         )
 
     def _parse_go_action(
@@ -1156,7 +1211,9 @@ class TrackEngineService:
                     kind=chip["kind"],
                     label=chip["label"],
                     route_id=chip.get("route_id"),
-                    color_hex=chip.get("color_hex"),
+                    color_hex=self._enrich_color(
+                        chip.get("mode"), chip.get("route_id"), chip.get("color_hex"),
+                    ),
                     mode=chip.get("mode"),
                     duration_s=chip.get("duration_s"),
                     walk_meters=chip.get("walk_meters"),
@@ -1172,7 +1229,12 @@ class TrackEngineService:
                     end_ts=step["end_ts"] + timestamp_shift_s,
                     route_id=step.get("route_id"),
                     route_name=step.get("route_name"),
-                    color_hex=step.get("color_hex"),
+                    color_hex=self._enrich_color(
+                        step.get("mode"),
+                        step.get("route_id"),
+                        step.get("color_hex"),
+                        step_kind=step["kind"],
+                    ),
                     stop_id=step.get("stop_id"),
                     stop_name=step.get("stop_name"),
                 )

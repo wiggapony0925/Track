@@ -488,19 +488,25 @@ struct TripTimelineGridView: View {
     // MARK: - Colors
 
     private func legColor(_ leg: TripLeg) -> Color {
-        if let hex = leg.routeColor, !hex.isEmpty {
-            return Color(hex: hex)
-        }
+        // Always prefer the app's own theme colors for known modes.
+        // Only fall back to GTFS routeColor for unknown modes.
         switch leg.mode {
         case .subway:  return AppTheme.SubwayColors.color(for: leg.routeId ?? "")
-        case .bus:     return AppTheme.BusColors.localBlue
+        case .bus:     return AppTheme.BusColors.color(forServiceType: leg.busServiceType)
         case .lirr:    return AppTheme.CommuterRailColors.lirrBlue
         case .mnr:     return AppTheme.CommuterRailColors.mnrBlue
-        default:       return AppTheme.Colors.textTertiary
+        default:
+            if let hex = leg.routeColor, !hex.isEmpty {
+                return Color(hex: hex)
+            }
+            return AppTheme.Colors.textTertiary
         }
     }
 
     private func textColorForLeg(_ leg: TripLeg) -> Color {
+        if let hex = leg.textColorHex, !hex.isEmpty {
+            return Color(hex: hex)
+        }
         if leg.mode == .subway, let routeId = leg.routeId {
             return AppTheme.SubwayColors.textColor(for: routeId)
         }

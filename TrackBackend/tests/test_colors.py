@@ -40,7 +40,7 @@ class TestTransitColors(unittest.TestCase):
         self.assertEqual(get_subway_color("11"), "#60269E")  # Belmont Purple
 
         # Metro-North Lines
-        self.assertEqual(get_subway_color("New Haven Line"), "#E00034")  # Red
+        self.assertEqual(get_subway_color("New Haven Line"), "#E00034")  # Red (MTA official)
         self.assertEqual(get_subway_color("Hudson Line"), "#009B3A")  # Green
         self.assertEqual(get_subway_color("Harlem Line"), "#0039A6")  # Blue
 

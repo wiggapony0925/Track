@@ -381,6 +381,12 @@ class GroupedNearbyTransit(BaseModel):
     color_hex: str | None = Field(
         None, description="Route brand colour as hex (e.g. '#0039A6')."
     )
+    text_color_hex: str | None = Field(
+        None, description="Contrasting text color for legibility on color_hex background."
+    )
+    mode_name: str | None = Field(
+        None, description="Human-readable mode label, e.g. 'Subway', 'Bus', 'LIRR', 'Metro-North'."
+    )
     directions: list[DirectionArrivals] = Field(
         ..., description="Arrivals split by direction (e.g. Northbound / Southbound)."
     )
@@ -417,6 +423,8 @@ class InactiveRoute(BaseModel):
     display_name: str = Field(..., description="Human-readable route name.")
     mode: str = Field(..., description="Transit mode: subway, bus, lirr, mnr.")
     color_hex: str | None = Field(None, description="Route brand colour as hex.")
+    text_color_hex: str | None = Field(None, description="Contrasting text color for legibility on color_hex background.")
+    mode_name: str | None = Field(None, description="Human-readable mode label.")
     bus_service_type: str | None = Field(
         None,
         description="Bus service classification, or null for non-bus routes.",

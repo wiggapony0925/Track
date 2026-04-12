@@ -71,17 +71,26 @@ struct TripResultCard: View {
 
     private func routeChipBadge(_ chip: TripRouteChip) -> some View {
         let color: Color = {
-            if let hex = chip.colorHex, !hex.isEmpty { return Color(hex: hex) }
             if let mode = chip.routeMode {
                 switch mode {
                 case .subway: return AppTheme.SubwayColors.color(for: chip.routeId ?? chip.label)
-                case .bus:    return AppTheme.BusColors.localBlue
+                case .bus:
+                    if let hex = chip.colorHex, !hex.isEmpty { return Color(hex: hex) }
+                    return AppTheme.BusColors.localBlue
                 case .lirr:   return AppTheme.CommuterRailColors.lirrBlue
                 case .mnr:    return AppTheme.CommuterRailColors.mnrBlue
-                default:      return AppTheme.Colors.textTertiary
+                default:
+                    if let hex = chip.colorHex, !hex.isEmpty { return Color(hex: hex) }
+                    return AppTheme.Colors.textTertiary
                 }
             }
+            if let hex = chip.colorHex, !hex.isEmpty { return Color(hex: hex) }
             return AppTheme.Colors.textTertiary
+        }()
+
+        let textColor: Color = {
+            if let hex = chip.textColorHex, !hex.isEmpty { return Color(hex: hex) }
+            return .white
         }()
 
         return ZStack {
@@ -90,7 +99,7 @@ struct TripResultCard: View {
                 .frame(width: 22, height: 22)
             Image(systemName: chip.routeMode?.icon ?? "tram.fill")
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(textColor)
         }
     }
 
@@ -374,19 +383,23 @@ struct TripResultCard: View {
     // MARK: - Helpers
 
     private func legColor(_ leg: TripLeg) -> Color {
-        if let hex = leg.routeColor, !hex.isEmpty {
-            return Color(hex: hex)
-        }
         switch leg.mode {
         case .subway:  return AppTheme.SubwayColors.color(for: leg.routeId ?? "")
-        case .bus:     return AppTheme.BusColors.localBlue
+        case .bus:     return AppTheme.BusColors.color(forServiceType: leg.busServiceType)
         case .lirr:    return AppTheme.CommuterRailColors.lirrBlue
         case .mnr:     return AppTheme.CommuterRailColors.mnrBlue
-        default:       return AppTheme.Colors.textTertiary
+        default:
+            if let hex = leg.routeColor, !hex.isEmpty {
+                return Color(hex: hex)
+            }
+            return AppTheme.Colors.textTertiary
         }
     }
 
     private func textColorForLeg(_ leg: TripLeg) -> Color {
+        if let hex = leg.textColorHex, !hex.isEmpty {
+            return Color(hex: hex)
+        }
         if leg.mode == .subway, let routeId = leg.routeId {
             return AppTheme.SubwayColors.textColor(for: routeId)
         }

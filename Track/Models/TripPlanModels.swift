@@ -199,6 +199,8 @@ struct TripLeg: Identifiable, Codable, Equatable {
     let routeId: String?
     let routeName: String?
     let routeColor: String?
+    let textColorHex: String?
+    let modeName: String?
     let headsign: String?
     let boardStopId: String?
     let alightStopId: String?
@@ -209,6 +211,7 @@ struct TripLeg: Identifiable, Codable, Equatable {
     let numStops: Int
     let durationMinutes: Int
     let walkMeters: Double
+    let busServiceType: String?
     let liveStatus: TripLegLiveStatus?
     let alerts: [TripServiceAlert]
 
@@ -217,6 +220,8 @@ struct TripLeg: Identifiable, Codable, Equatable {
         routeId: String?,
         routeName: String?,
         routeColor: String?,
+        textColorHex: String? = nil,
+        modeName: String? = nil,
         headsign: String?,
         boardStopId: String? = nil,
         alightStopId: String? = nil,
@@ -227,6 +232,7 @@ struct TripLeg: Identifiable, Codable, Equatable {
         numStops: Int,
         durationMinutes: Int,
         walkMeters: Double = 0,
+        busServiceType: String? = nil,
         liveStatus: TripLegLiveStatus? = nil,
         alerts: [TripServiceAlert] = []
     ) {
@@ -234,6 +240,8 @@ struct TripLeg: Identifiable, Codable, Equatable {
         self.routeId = routeId
         self.routeName = routeName
         self.routeColor = routeColor
+        self.textColorHex = textColorHex
+        self.modeName = modeName
         self.headsign = headsign
         self.boardStopId = boardStopId
         self.alightStopId = alightStopId
@@ -244,6 +252,7 @@ struct TripLeg: Identifiable, Codable, Equatable {
         self.numStops = numStops
         self.durationMinutes = durationMinutes
         self.walkMeters = walkMeters
+        self.busServiceType = busServiceType
         self.liveStatus = liveStatus
         self.alerts = alerts
     }
@@ -318,7 +327,9 @@ struct TripRouteChip: Codable, Equatable {
     let label: String
     let routeId: String?
     let colorHex: String?
+    let textColorHex: String?
     let mode: String?
+    let modeName: String?
     let durationSeconds: Int?
     let walkMeters: Double?
 
@@ -842,6 +853,8 @@ struct EngineTripLegDTO: Codable, Equatable {
     let routeID: String
     let routeName: String
     let colorHex: String?
+    let textColorHex: String?
+    let modeName: String?
     let headsign: String?
     let boardStopID: String
     let boardStopName: String
@@ -851,6 +864,7 @@ struct EngineTripLegDTO: Codable, Equatable {
     let arrivalTS: Int
     let stopCount: Int
     let walkMeters: Double
+    let busServiceType: String?
     let liveStatus: EngineLegLiveStatusDTO?
     let alerts: [EngineServiceAlertDTO]
 
@@ -859,6 +873,8 @@ struct EngineTripLegDTO: Codable, Equatable {
         case routeID = "route_id"
         case routeName = "route_name"
         case colorHex = "color_hex"
+        case textColorHex = "text_color_hex"
+        case modeName = "mode_name"
         case headsign
         case boardStopID = "board_stop_id"
         case boardStopName = "board_stop_name"
@@ -868,6 +884,7 @@ struct EngineTripLegDTO: Codable, Equatable {
         case arrivalTS = "arrival_ts"
         case stopCount = "stop_count"
         case walkMeters = "walk_meters"
+        case busServiceType = "bus_service_type"
         case liveStatus = "live_status"
         case alerts
     }
@@ -878,6 +895,8 @@ struct EngineTripLegDTO: Codable, Equatable {
             routeId: mode == "walk" ? nil : routeID,
             routeName: mode == "walk" ? nil : routeName,
             routeColor: colorHex,
+            textColorHex: textColorHex,
+            modeName: modeName,
             headsign: headsign,
             boardStopId: boardStopID,
             alightStopId: alightStopID,
@@ -888,6 +907,7 @@ struct EngineTripLegDTO: Codable, Equatable {
             numStops: stopCount,
             durationMinutes: max(1, Int(round(Double(max(arrivalTS - departureTS, 60)) / 60.0))),
             walkMeters: walkMeters,
+            busServiceType: busServiceType,
             liveStatus: liveStatus?.toTripLegLiveStatus(),
             alerts: alerts.map { $0.toTripServiceAlert() }
         )
@@ -899,7 +919,9 @@ struct EngineRouteChipDTO: Codable, Equatable {
     let label: String
     let routeID: String?
     let colorHex: String?
+    let textColorHex: String?
     let mode: String?
+    let modeName: String?
     let durationS: Int?
     let walkMeters: Double?
 
@@ -908,7 +930,9 @@ struct EngineRouteChipDTO: Codable, Equatable {
         case label
         case routeID = "route_id"
         case colorHex = "color_hex"
+        case textColorHex = "text_color_hex"
         case mode
+        case modeName = "mode_name"
         case durationS = "duration_s"
         case walkMeters = "walk_meters"
     }
@@ -919,7 +943,9 @@ struct EngineRouteChipDTO: Codable, Equatable {
             label: label,
             routeId: routeID,
             colorHex: colorHex,
+            textColorHex: textColorHex,
             mode: mode,
+            modeName: modeName,
             durationSeconds: durationS,
             walkMeters: walkMeters
         )

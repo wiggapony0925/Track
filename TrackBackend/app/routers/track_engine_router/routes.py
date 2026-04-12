@@ -39,6 +39,7 @@ from app.services.track_engine.integration import (
     PlanRequest,
     get_engine_service,
 )
+from app.utils.brand import mode_name as _mode_name, text_color_for_route as _text_color
 
 router = APIRouter(prefix="/engine", tags=["engine"])
 
@@ -59,6 +60,8 @@ def _leg_model(leg) -> EngineTripLeg:
         route_id=leg.route_id,
         route_name=leg.route_name,
         color_hex=leg.color_hex,
+        text_color_hex=_text_color(leg.mode, leg.route_id),
+        mode_name=_mode_name(leg.mode),
         headsign=leg.headsign,
         trip_id=leg.trip_id,
         board_stop_id=leg.board_stop_id,
@@ -70,6 +73,7 @@ def _leg_model(leg) -> EngineTripLeg:
         duration_s=leg.duration_s,
         stop_count=leg.stop_count,
         walk_meters=leg.walk_meters,
+        bus_service_type=getattr(leg, "bus_service_type", None),
         live_status=_leg_live_status_model(leg.live_status),
         alerts=[_service_alert_model(alert) for alert in leg.alerts],
     )
@@ -93,12 +97,15 @@ def _itinerary_model(itinerary) -> EngineItinerary:
 
 
 def _route_chip_model(chip) -> EngineRouteChip:
+    _chip_mode = chip.mode or "walk"
     return EngineRouteChip(
         kind=chip.kind,
         label=chip.label,
         route_id=chip.route_id,
         color_hex=chip.color_hex,
+        text_color_hex=_text_color(_chip_mode, chip.route_id),
         mode=chip.mode,
+        mode_name=_mode_name(_chip_mode) if chip.mode else None,
         duration_s=chip.duration_s,
         walk_meters=chip.walk_meters,
     )
@@ -132,6 +139,7 @@ def _leg_live_status_model(live_status) -> EngineLegLiveStatus | None:
 
 
 def _go_step_model(step) -> EngineGoStep:
+    _step_mode = getattr(step, "mode", None) or ("walk" if step.kind == "walk" else None)
     return EngineGoStep(
         kind=step.kind,
         title=step.title,
@@ -141,6 +149,7 @@ def _go_step_model(step) -> EngineGoStep:
         route_id=step.route_id,
         route_name=step.route_name,
         color_hex=step.color_hex,
+        text_color_hex=_text_color(_step_mode or "walk", step.route_id) if step.color_hex else None,
         stop_id=step.stop_id,
         stop_name=step.stop_name,
     )

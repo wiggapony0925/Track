@@ -1,0 +1,24 @@
+{
+  "_version": "1.0.0",
+  "_description": "Shared planner defaults. Used by TrackBackend (domain.py) and TrackEngine (engine_service.cpp).",
+
+  "max_transfers": 2,
+  "max_origin_walk_m": 1200,
+  "max_destination_walk_m": 1200,
+  "max_transfer_walk_m": 250,
+  "search_window_minutes": 180,
+  "num_itineraries": 3,
+  "default_modes": ["subway", "bus", "lirr", "mnr"],
+
+  "walk_speed_mps": 1.45,
+  "earth_radius_m": 6371009.0,
+
+  "metro_north_branches": [
+    "hudson",
+    "harlem",
+    "new haven",
+    "new canaan",
+    "danbury",
+    "waterbury"
+  ]
+}

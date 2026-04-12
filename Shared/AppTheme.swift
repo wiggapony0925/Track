@@ -337,7 +337,9 @@ enum AppTheme {
                 return Color(red: 246 / 255, green: 188 / 255, blue: 38 / 255)    // Yellow #F6BC26
             case "S":
                 return Color(red: 124 / 255, green: 133 / 255, blue: 140 / 255)   // Grey #7C858C
-            case "SI":
+            case "SI", "SIR":
+                return Color(red: 8 / 255, green: 23 / 255, blue: 156 / 255)      // Navy #08179C
+            case "T":
                 return Color(red: 0 / 255, green: 142 / 255, blue: 183 / 255)     // Teal #008EB7
             default:
                 return Colors.mtaBlue

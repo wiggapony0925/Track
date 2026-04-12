@@ -92,7 +92,9 @@ struct SubwayRoutesData {
         
         // Shuttles & SIR
         "S": Color(hex: "7C858C"),  // Grey
-        "SI": Color(hex: "008EB7"), // Teal
+        "SI": Color(hex: "08179C"), // Navy (MTA official)
+        "SIR": Color(hex: "08179C"),
+        "T": Color(hex: "008EB7"), // Second Avenue Subway (Teal)
     ]
     
     /// Get color for a route ID (supports LIRR_*, MNR_* prefixes)

@@ -233,7 +233,7 @@ struct TripTimelineView: View {
         case .subway:
             return AppTheme.SubwayColors.color(for: leg.routeId ?? "")
         case .bus:
-            return AppTheme.BusColors.localBlue
+            return AppTheme.BusColors.color(forServiceType: leg.busServiceType)
         case .lirr:
             return AppTheme.CommuterRailColors.lirrBlue
         case .mnr:
