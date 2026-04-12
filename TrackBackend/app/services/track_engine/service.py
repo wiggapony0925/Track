@@ -1218,13 +1218,21 @@ class TrackEngineService:
             if itineraries:
                 return itineraries, context.schedule_note
 
-        try:
-            with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
-                response = client.post(f"{self.remote_engine_url}/plan", json=payload)
-                response.raise_for_status()
-                data = response.json()
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"TrackEngine plan request failed: {exc}") from exc
+        last_exc: httpx.HTTPError | None = None
+        data: dict | None = None
+        for attempt in range(3):
+            if attempt > 0:
+                time.sleep(0.5 * attempt)  # 0.5s, 1.0s backoff
+            try:
+                with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
+                    response = client.post(f"{self.remote_engine_url}/plan", json=payload)
+                    response.raise_for_status()
+                    data = response.json()
+                    break
+            except httpx.HTTPError as exc:
+                last_exc = exc
+        if data is None:
+            raise RuntimeError(f"TrackEngine plan request failed after 3 attempts: {last_exc}") from last_exc
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
@@ -1305,13 +1313,21 @@ class TrackEngineService:
                     schedule_note=context.schedule_note,
                 )
 
-        try:
-            with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
-                response = client.post(f"{self.remote_engine_url}/go", json=payload)
-                response.raise_for_status()
-                data = response.json()
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"TrackEngine go request failed: {exc}") from exc
+        last_exc: httpx.HTTPError | None = None
+        data: dict | None = None
+        for attempt in range(3):
+            if attempt > 0:
+                time.sleep(0.5 * attempt)  # 0.5s, 1.0s backoff
+            try:
+                with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
+                    response = client.post(f"{self.remote_engine_url}/go", json=payload)
+                    response.raise_for_status()
+                    data = response.json()
+                    break
+            except httpx.HTTPError as exc:
+                last_exc = exc
+        if data is None:
+            raise RuntimeError(f"TrackEngine go request failed after 3 attempts: {last_exc}") from last_exc
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
