@@ -6,6 +6,15 @@ import Foundation
 import MapKit
 import SwiftData
 
+enum PlanErrorKind {
+    /// Engine returned 200 but no trips matched the request.
+    case noResults
+    /// The routing engine is not reachable (503 / connection refused).
+    case engineUnavailable
+    /// A network or decoding error unrelated to the engine.
+    case general
+}
+
 @Observable
 @MainActor
 final class PlanViewModel {
@@ -20,6 +29,7 @@ final class PlanViewModel {
     var isLoading = false
     var isLoadingMore = false
     var errorMessage: String?
+    var errorKind: PlanErrorKind = .general
     var scheduleNote: String?
     var showResults = false
     var showDestinationSearch = false
@@ -114,7 +124,8 @@ final class PlanViewModel {
             tripResults = response.tripPlans
             scheduleNote = response.scheduleNote
             if tripResults.isEmpty {
-                errorMessage = "No trip options came back for that route."
+                errorKind = .noResults
+                errorMessage = emptyResultsMessage()
             } else {
                 errorMessage = nil
             }
@@ -122,7 +133,9 @@ final class PlanViewModel {
         } catch {
             tripResults = []
             scheduleNote = nil
-            errorMessage = friendlyErrorMessage(for: error)
+            let (kind, message) = friendlyError(for: error)
+            errorKind = kind
+            errorMessage = message
         }
 
         isLoading = false
@@ -463,7 +476,9 @@ final class PlanViewModel {
             pendingSavedPlaceCategory = nil
             await refreshPlannerData()
         } catch {
-            errorMessage = friendlyErrorMessage(for: error)
+            let (kind, message) = friendlyError(for: error)
+            errorKind = kind
+            errorMessage = message
         }
     }
 
@@ -620,7 +635,9 @@ final class PlanViewModel {
             await refreshPlannerData()
             return true
         } catch {
-            errorMessage = friendlyErrorMessage(for: error)
+            let (kind, message) = friendlyError(for: error)
+            errorKind = kind
+            errorMessage = message
             return false
         }
     }
@@ -707,16 +724,30 @@ final class PlanViewModel {
         }
     }
 
-    private func friendlyErrorMessage(for error: Error) -> String {
+    private func friendlyError(for error: Error) -> (PlanErrorKind, String) {
         if let apiError = error as? TrackAPIError {
             switch apiError {
             case .serverError(let statusCode) where statusCode == 503:
-                return "The routing engine is waking up. Try again in a moment."
+                return (.engineUnavailable, "The routing engine is starting up — it usually takes a few seconds.")
+            case .networkError:
+                return (.general, "Check your connection and try again.")
             default:
-                return apiError.localizedDescription
+                return (.general, apiError.localizedDescription)
             }
         }
-        return error.localizedDescription
+        if (error as NSError).domain == NSURLErrorDomain {
+            return (.general, "Check your connection and try again.")
+        }
+        return (.general, error.localizedDescription)
+    }
+
+    /// Build a contextual message when the engine returned zero trips.
+    private func emptyResultsMessage() -> String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour >= 1 && hour < 5 {
+            return "Transit service is very limited at this hour. Try a later departure time."
+        }
+        return "No trip options found. Try adjusting your origin or destination."
     }
 
     private static func modeToken(for token: String) -> String {

@@ -1330,11 +1330,14 @@ struct TrackAPI {
 
         var lastError: Error = TrackAPIError.networkError
         let wasColdStart = !serverWarmedUp
-        let attempts = wasColdStart ? 2 : 2
+        let attempts = wasColdStart ? 4 : 3
 
         for attempt in 0..<attempts {
             if attempt > 0 {
-                try await Task.sleep(nanoseconds: UInt64(0.5 * Double(attempt) * 1_000_000_000))
+                let delay: UInt64 = wasColdStart
+                    ? UInt64(min(3 + attempt * 2, 10)) * 1_000_000_000
+                    : UInt64(attempt) * 1_000_000_000
+                try await Task.sleep(nanoseconds: delay)
             }
 
             do {
@@ -1361,6 +1364,14 @@ struct TrackAPI {
                     let serverErr = TrackAPIError.serverError(statusCode: http.statusCode)
                     if http.statusCode < 500 {
                         throw serverErr
+                    }
+                    // Respect Retry-After from 503 (engine starting up)
+                    if http.statusCode == 503,
+                       let retryAfter = http.value(forHTTPHeaderField: "Retry-After"),
+                       let retrySec = Double(retryAfter),
+                       retrySec > 0, retrySec <= 15
+                    {
+                        try await Task.sleep(nanoseconds: UInt64(retrySec * 1_000_000_000))
                     }
                     lastError = serverErr
                     continue

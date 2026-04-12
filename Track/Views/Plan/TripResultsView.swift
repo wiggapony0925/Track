@@ -239,12 +239,21 @@ struct TripResultsView: View {
                 // Space for the floating departure control bar
                 Spacer().frame(height: 24)
 
-                // Transit-style scrollable timeline grid
-                TripTimelineGridView(
-                    trips: viewModel.tripResults,
-                    onTripTap: { trip in selectedTrip = trip },
-                    recommendedIndex: 0
-                )
+                // Transit-style card rows
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.tripResults.enumerated()), id: \.element.id) { index, trip in
+                        if index > 0 {
+                            Divider()
+                                .padding(.leading, 16)
+                        }
+
+                        TripResultCard(
+                            trip: trip,
+                            onTap: { selectedTrip = trip },
+                            isRecommended: index == 0
+                        )
+                    }
+                }
 
                 // Show more trips button
                 if !viewModel.tripResults.isEmpty {
@@ -519,13 +528,46 @@ struct TripResultsView: View {
 
     // MARK: - Error State
 
+    private var errorTitle: String {
+        switch viewModel.errorKind {
+        case .engineUnavailable:
+            return "Temporarily unavailable"
+        case .noResults:
+            return "Couldn't find routes"
+        case .general:
+            return "Something went wrong"
+        }
+    }
+
+    private var errorIcon: String {
+        switch viewModel.errorKind {
+        case .engineUnavailable:
+            return "arrow.trianglehead.2.clockwise"
+        case .noResults:
+            return "exclamationmark.triangle.fill"
+        case .general:
+            return "wifi.exclamationmark"
+        }
+    }
+
+    private var errorIconColor: Color {
+        switch viewModel.errorKind {
+        case .engineUnavailable:
+            return AppTheme.Colors.accent
+        case .noResults:
+            return AppTheme.Colors.warningYellow
+        case .general:
+            return AppTheme.Colors.alertRed
+        }
+    }
+
     private func errorState(_ message: String) -> some View {
         VStack(spacing: 28) {
             Spacer()
 
             ZStack {
                 Circle()
-                    .fill(AppTheme.Colors.warningYellow.opacity(0.06))
+                    .fill(errorIconColor.opacity(0.06))
                     .frame(width: 100, height: 100)
 
                 Circle()
@@ -533,16 +575,16 @@ struct TripResultsView: View {
                     .frame(width: 72, height: 72)
                     .overlay(
                         Circle()
-                            .strokeBorder(AppTheme.Colors.warningYellow.opacity(0.15), lineWidth: 1)
+                            .strokeBorder(errorIconColor.opacity(0.15), lineWidth: 1)
                     )
 
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image(systemName: errorIcon)
                     .font(.system(size: 30))
-                    .foregroundStyle(AppTheme.Colors.warningYellow)
+                    .foregroundStyle(errorIconColor)
             }
 
             VStack(spacing: 8) {
-                Text("Couldn't find routes")
+                Text(errorTitle)
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
                 Text(message)
