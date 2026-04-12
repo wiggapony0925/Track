@@ -13,7 +13,7 @@ import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from datetime import time as time_value
 from pathlib import Path
 from typing import Any
@@ -57,6 +57,19 @@ class StopRecord:
     lon: float
 
 
+@dataclass(frozen=True, slots=True)
+class ScheduleWindow:
+    start_date: date
+    end_date: date
+
+
+@dataclass(frozen=True, slots=True)
+class RemotePayloadContext:
+    payload: dict[str, Any]
+    schedule_note: str | None = None
+    timestamp_shift_s: int = 0
+
+
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in meters."""
 
@@ -70,6 +83,33 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
     )
     return earth_radius_m * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def bounding_box_degrees(radius_m: float, center_lat: float) -> tuple[float, float]:
+    """Return latitude/longitude deltas that bound a circle of *radius_m*."""
+
+    lat_delta = radius_m / 111_000.0
+    lon_divisor = 111_320.0 * math.cos(math.radians(center_lat))
+    lon_delta = lat_delta if abs(lon_divisor) < 1e-9 else radius_m / lon_divisor
+    return lat_delta, lon_delta
+
+
+def parse_gtfs_date(value: str | None) -> date | None:
+    """Parse YYYYMMDD GTFS dates from calendar/calendar_dates rows."""
+
+    if not value:
+        return None
+    cleaned = str(value).replace("-", "").strip()
+    if len(cleaned) != 8 or not cleaned.isdigit():
+        return None
+    try:
+        return date(
+            int(cleaned[0:4]),
+            int(cleaned[4:6]),
+            int(cleaned[6:8]),
+        )
+    except ValueError:
+        return None
 
 
 def hour_of_day(timestamp_s: int) -> int:
@@ -119,6 +159,8 @@ class ScheduleRepository:
         self._prepared = False
         self._prepare_error: str | None = None
         self._prepare_lock = threading.Lock()
+        self._service_window_lock = threading.Lock()
+        self._service_window_cache: dict[str, ScheduleWindow | None] = {}
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
@@ -215,6 +257,273 @@ class ScheduleRepository:
             )
             for row in rows
         ]
+
+    @staticmethod
+    def _route_filter_sql(mode: str) -> str | None:
+        metro_north_branches = (
+            "'hudson', 'harlem', 'new haven', 'new canaan', "
+            "'danbury', 'waterbury'"
+        )
+        if mode == "bus":
+            return "(r.route_type = 3 OR (r.route_type >= 700 AND r.route_type <= 799))"
+        if mode == "subway":
+            return "(r.route_type = 1 OR r.route_id IN ('SI', 'SIR'))"
+        if mode == "mnr":
+            return (
+                "r.route_type = 2 AND lower(coalesce(r.route_long_name, '')) "
+                f"IN ({metro_north_branches})"
+            )
+        if mode == "lirr":
+            return (
+                "r.route_type = 2 AND lower(coalesce(r.route_long_name, '')) "
+                f"NOT IN ({metro_north_branches})"
+            )
+        return None
+
+    @staticmethod
+    def _stop_mode_filter_sql(mode: str) -> str | None:
+        if mode == "bus":
+            return "(sm.route_type = 3 OR (sm.route_type >= 700 AND sm.route_type <= 799))"
+        if mode == "subway":
+            return "(sm.route_type = 1)"
+        if mode in {"lirr", "mnr"}:
+            return "(sm.route_type = 2)"
+        return None
+
+    def service_window_for_mode(self, mode: str) -> ScheduleWindow | None:
+        normalized = mode.strip().lower()
+        with self._service_window_lock:
+            if normalized in self._service_window_cache:
+                return self._service_window_cache[normalized]
+
+        route_filter = self._route_filter_sql(normalized)
+        if route_filter is None:
+            return None
+
+        conn = self._connect()
+        try:
+            try:
+                row = conn.execute(
+                    f"""
+                    WITH mode_service_ids AS (
+                        SELECT DISTINCT t.service_id
+                        FROM trips t
+                        JOIN routes r ON r.route_id = t.route_id
+                        WHERE {route_filter}
+                    ),
+                    ranges AS (
+                        SELECT c.start_date AS start_date, c.end_date AS end_date
+                        FROM calendar c
+                        JOIN mode_service_ids ms ON ms.service_id = c.service_id
+                        UNION ALL
+                        SELECT cd.date AS start_date, cd.date AS end_date
+                        FROM calendar_dates cd
+                        JOIN mode_service_ids ms ON ms.service_id = cd.service_id
+                        WHERE cd.exception_type = 1
+                    )
+                    SELECT MIN(start_date) AS earliest, MAX(end_date) AS latest
+                    FROM ranges
+                    """
+                ).fetchone()
+            except sqlite3.OperationalError:
+                row = None
+        finally:
+            conn.close()
+
+        window: ScheduleWindow | None = None
+        if row is not None:
+            start_date = parse_gtfs_date(row["earliest"])
+            end_date = parse_gtfs_date(row["latest"])
+            if start_date is not None and end_date is not None:
+                window = ScheduleWindow(start_date=start_date, end_date=end_date)
+
+        with self._service_window_lock:
+            self._service_window_cache[normalized] = window
+        return window
+
+    def has_nearby_stop_for_mode(
+        self,
+        *,
+        lat: float,
+        lon: float,
+        radius_m: int,
+        mode: str,
+    ) -> bool:
+        route_filter = self._stop_mode_filter_sql(mode.strip().lower())
+        normalized_mode = mode.strip().lower()
+        if route_filter is None:
+            return False
+
+        lat_delta, lon_delta = bounding_box_degrees(radius_m, lat)
+        conn = self._connect()
+        try:
+            try:
+                rows = conn.execute(
+                    f"""
+                    SELECT s.stop_lat, s.stop_lon
+                    FROM stops s
+                    JOIN stop_modes sm ON sm.stop_id = s.stop_id
+                    WHERE s.stop_lat BETWEEN ? AND ?
+                      AND s.stop_lon BETWEEN ? AND ?
+                      AND {route_filter}
+                    LIMIT 200
+                    """,
+                    (
+                        lat - lat_delta,
+                        lat + lat_delta,
+                        lon - lon_delta,
+                        lon + lon_delta,
+                    ),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                route_join_filter = self._route_filter_sql(normalized_mode)
+                if route_join_filter is None:
+                    return False
+                rows = conn.execute(
+                    f"""
+                    SELECT DISTINCT s.stop_lat, s.stop_lon
+                    FROM stops s
+                    JOIN stop_times st ON st.stop_id = s.stop_id
+                    JOIN trips t ON t.trip_id = st.trip_id
+                    JOIN routes r ON r.route_id = t.route_id
+                    WHERE s.stop_lat BETWEEN ? AND ?
+                      AND s.stop_lon BETWEEN ? AND ?
+                      AND {route_join_filter}
+                    LIMIT 200
+                    """,
+                    (
+                        lat - lat_delta,
+                        lat + lat_delta,
+                        lon - lon_delta,
+                        lon + lon_delta,
+                    ),
+                ).fetchall()
+        finally:
+            conn.close()
+
+        for row in rows:
+            distance = haversine_m(
+                lat,
+                lon,
+                float(row["stop_lat"]),
+                float(row["stop_lon"]),
+            )
+            if distance <= radius_m:
+                return True
+        return False
+
+    def nearby_route_ids_for_mode(
+        self,
+        *,
+        lat: float,
+        lon: float,
+        radius_m: int,
+        mode: str,
+    ) -> list[str]:
+        route_filter = self._route_filter_sql(mode.strip().lower())
+        if route_filter is None:
+            return []
+
+        lat_delta, lon_delta = bounding_box_degrees(radius_m, lat)
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                f"""
+                SELECT DISTINCT s.stop_id, s.stop_lat, s.stop_lon, t.route_id
+                FROM stops s
+                JOIN stop_times st ON st.stop_id = s.stop_id
+                JOIN trips t ON t.trip_id = st.trip_id
+                JOIN routes r ON r.route_id = t.route_id
+                WHERE s.stop_lat BETWEEN ? AND ?
+                  AND s.stop_lon BETWEEN ? AND ?
+                  AND {route_filter}
+                LIMIT 5000
+                """,
+                (
+                    lat - lat_delta,
+                    lat + lat_delta,
+                    lon - lon_delta,
+                    lon + lon_delta,
+                ),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        finally:
+            conn.close()
+
+        route_ids: set[str] = set()
+        for row in rows:
+            distance = haversine_m(
+                lat,
+                lon,
+                float(row["stop_lat"]),
+                float(row["stop_lon"]),
+            )
+            if distance <= radius_m:
+                route_ids.add(str(row["route_id"]))
+        return sorted(route_ids)
+
+    def route_has_service_on_date(self, route_id: str, target_date: date) -> bool:
+        weekday_columns = (
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        )
+        weekday_column = weekday_columns[target_date.weekday()]
+        date_value = target_date.strftime("%Y%m%d")
+
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                f"""
+                WITH route_services AS (
+                    SELECT DISTINCT service_id
+                    FROM trips
+                    WHERE route_id = ?
+                ),
+                removed AS (
+                    SELECT service_id
+                    FROM calendar_dates
+                    WHERE date = ? AND exception_type = 2
+                ),
+                added AS (
+                    SELECT service_id
+                    FROM calendar_dates
+                    WHERE date = ? AND exception_type = 1
+                )
+                SELECT 1
+                FROM (
+                    SELECT a.service_id
+                    FROM added a
+                    JOIN route_services rs ON rs.service_id = a.service_id
+                    UNION
+                    SELECT c.service_id
+                    FROM calendar c
+                    JOIN route_services rs ON rs.service_id = c.service_id
+                    WHERE c.{weekday_column} = 1
+                      AND c.start_date <= ?
+                      AND c.end_date >= ?
+                      AND c.service_id NOT IN (SELECT service_id FROM removed)
+                )
+                LIMIT 1
+                """,
+                (
+                    route_id,
+                    date_value,
+                    date_value,
+                    date_value,
+                    date_value,
+                ),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return False
+        finally:
+            conn.close()
+        return row is not None
 
 
 class TrackEngineService:
@@ -432,6 +741,201 @@ class TrackEngineService:
             int(midnight.timestamp()),
         )
 
+    @staticmethod
+    def _format_schedule_date(target_date: date) -> str:
+        return f"{target_date.strftime('%A, %b')} {target_date.day}"
+
+    @staticmethod
+    def _shift_timestamp_to_date(timestamp_s: int, target_date: date) -> int:
+        source_dt = datetime.fromtimestamp(timestamp_s, NY_TZ)
+        shifted_dt = datetime.combine(
+            target_date,
+            source_dt.timetz().replace(tzinfo=None),
+            tzinfo=NY_TZ,
+        )
+        return int(shifted_dt.timestamp())
+
+    @staticmethod
+    def _matching_weekday_on_or_before(
+        latest_date: date,
+        weekday: int,
+        *,
+        earliest_date: date,
+    ) -> date | None:
+        for offset in range(7):
+            candidate = latest_date - timedelta(days=offset)
+            if candidate < earliest_date:
+                return None
+            if candidate.weekday() == weekday:
+                return candidate
+        return None
+
+    @staticmethod
+    def _matching_weekday_on_or_after(
+        earliest_date: date,
+        weekday: int,
+        *,
+        latest_date: date,
+    ) -> date | None:
+        for offset in range(7):
+            candidate = earliest_date + timedelta(days=offset)
+            if candidate > latest_date:
+                return None
+            if candidate.weekday() == weekday:
+                return candidate
+        return None
+
+    def _location_needs_bus(self, location: LocationInput, *, radius_m: int) -> bool:
+        if location.lat is None or location.lon is None:
+            return False
+
+        capped_radius = max(300, min(radius_m, 1_200))
+        bus_nearby = self.repository.has_nearby_stop_for_mode(
+            lat=location.lat,
+            lon=location.lon,
+            radius_m=capped_radius,
+            mode="bus",
+        )
+        if not bus_nearby:
+            return False
+
+        rail_nearby = any(
+            self.repository.has_nearby_stop_for_mode(
+                lat=location.lat,
+                lon=location.lon,
+                radius_m=capped_radius,
+                mode=mode,
+            )
+            for mode in ("subway", "lirr", "mnr")
+        )
+        return not rail_nearby
+
+    def _candidate_bus_routes(self, request: PlanRequest) -> list[str]:
+        routes: set[str] = set()
+        locations = (
+            (request.origin, request.max_origin_walk_m),
+            (request.destination, request.max_destination_walk_m),
+        )
+        for location, radius_m in locations:
+            if location.lat is None or location.lon is None:
+                continue
+            capped_radius = max(300, min(radius_m, 1_200))
+            if not self._location_needs_bus(location, radius_m=capped_radius):
+                continue
+            routes.update(
+                self.repository.nearby_route_ids_for_mode(
+                    lat=location.lat,
+                    lon=location.lon,
+                    radius_m=capped_radius,
+                    mode="bus",
+                )
+            )
+        return sorted(routes)
+
+    def _fallback_bus_schedule_date(
+        self,
+        route_ids: list[str],
+        requested_date: date,
+    ) -> tuple[date, str] | None:
+        if not route_ids:
+            return None
+        if any(
+            self.repository.route_has_service_on_date(route_id, requested_date)
+            for route_id in route_ids
+        ):
+            return None
+
+        def has_service(candidate_date: date) -> bool:
+            return any(
+                self.repository.route_has_service_on_date(route_id, candidate_date)
+                for route_id in route_ids
+            )
+
+        for offset in range(7, 36, 7):
+            past_date = requested_date - timedelta(days=offset)
+            if has_service(past_date):
+                return past_date, (
+                    f"Using latest available bus schedule from "
+                    f"{self._format_schedule_date(past_date)}"
+                )
+
+            future_date = requested_date + timedelta(days=offset)
+            if has_service(future_date):
+                return future_date, (
+                    f"Using next available bus schedule from "
+                    f"{self._format_schedule_date(future_date)}"
+                )
+
+        for offset in range(1, 15):
+            past_date = requested_date - timedelta(days=offset)
+            if has_service(past_date):
+                return past_date, (
+                    f"Using latest available bus schedule from "
+                    f"{self._format_schedule_date(past_date)}"
+                )
+
+            future_date = requested_date + timedelta(days=offset)
+            if has_service(future_date):
+                return future_date, (
+                    f"Using next available bus schedule from "
+                    f"{self._format_schedule_date(future_date)}"
+                )
+        return None
+
+    def _stale_bus_schedule_override(
+        self,
+        request: PlanRequest,
+        query_ts: int,
+    ) -> tuple[date, str] | None:
+        if "bus" not in request.modes:
+            return None
+        if not (
+            self._location_needs_bus(
+                request.origin,
+                radius_m=request.max_origin_walk_m,
+            )
+            or self._location_needs_bus(
+                request.destination,
+                radius_m=request.max_destination_walk_m,
+            )
+        ):
+            return None
+
+        requested_date = service_date_for_timestamp(query_ts)
+        route_override = self._fallback_bus_schedule_date(
+            self._candidate_bus_routes(request),
+            requested_date,
+        )
+        if route_override is not None:
+            return route_override
+
+        bus_window = self.repository.service_window_for_mode("bus")
+        if bus_window is None:
+            return None
+        if bus_window.start_date <= requested_date <= bus_window.end_date:
+            return None
+
+        if requested_date > bus_window.end_date:
+            adjusted_date = self._matching_weekday_on_or_before(
+                bus_window.end_date,
+                requested_date.weekday(),
+                earliest_date=bus_window.start_date,
+            )
+            label = "latest available bus schedule"
+        else:
+            adjusted_date = self._matching_weekday_on_or_after(
+                bus_window.start_date,
+                requested_date.weekday(),
+                latest_date=bus_window.end_date,
+            )
+            label = "next available bus schedule"
+
+        if adjusted_date is None:
+            return None
+        return adjusted_date, (
+            f"Using {label} from {self._format_schedule_date(adjusted_date)}"
+        )
+
     def _future_day_payload(
         self,
         request: PlanRequest,
@@ -487,10 +991,37 @@ class TrackEngineService:
     @staticmethod
     def _schedule_note_for_date(future_date) -> str:
         """Build a human-readable schedule note like 'Next trips available Monday, Apr 14'."""
-        return f"Next trips available {future_date.strftime('%A, %b %-d')}"
+        return f"Next trips available {future_date.strftime('%A, %b')} {future_date.day}"
 
-    def _remote_payload(self, request: PlanRequest, *, now_ts: int | None = None):
+    def _remote_payload_context(
+        self,
+        request: PlanRequest,
+        *,
+        now_ts: int | None = None,
+    ) -> RemotePayloadContext:
         query_ts = self._query_timestamp(request)
+        depart_at_ts = request.depart_at_ts
+        arrive_by_ts = request.arrive_by_ts
+        adjusted_now_ts = now_ts
+        schedule_note = None
+        timestamp_shift_s = 0
+
+        override = self._stale_bus_schedule_override(request, query_ts)
+        if override is not None:
+            adjusted_date, schedule_note = override
+            adjusted_query_ts = self._shift_timestamp_to_date(query_ts, adjusted_date)
+            timestamp_shift_s = query_ts - adjusted_query_ts
+            query_ts = adjusted_query_ts
+            if depart_at_ts is not None:
+                depart_at_ts = self._shift_timestamp_to_date(depart_at_ts, adjusted_date)
+            if arrive_by_ts is not None:
+                arrive_by_ts = self._shift_timestamp_to_date(arrive_by_ts, adjusted_date)
+            if adjusted_now_ts is not None:
+                adjusted_now_ts = self._shift_timestamp_to_date(
+                    adjusted_now_ts,
+                    adjusted_date,
+                )
+
         service_day_yyyymmdd, service_weekday, service_day_midnight_ts = (
             self._service_day_context(query_ts)
         )
@@ -509,8 +1040,8 @@ class TrackEngineService:
                 "stop_id": request.destination.stop_id,
                 "address": request.destination.address,
             },
-            "depart_at_ts": request.depart_at_ts,
-            "arrive_by_ts": request.arrive_by_ts,
+            "depart_at_ts": depart_at_ts,
+            "arrive_by_ts": arrive_by_ts,
             "query_ts": query_ts,
             "service_day_yyyymmdd": service_day_yyyymmdd,
             "service_weekday": service_weekday,
@@ -523,11 +1054,20 @@ class TrackEngineService:
             "num_itineraries": request.num_itineraries,
             "modes": list(request.modes),
         }
-        if now_ts is not None:
-            payload["now_ts"] = now_ts
-        return payload
+        if adjusted_now_ts is not None:
+            payload["now_ts"] = adjusted_now_ts
+        return RemotePayloadContext(
+            payload=payload,
+            schedule_note=schedule_note,
+            timestamp_shift_s=timestamp_shift_s,
+        )
 
-    def _parse_itinerary(self, item) -> Itinerary:
+    def _parse_itinerary(
+        self,
+        item,
+        *,
+        timestamp_shift_s: int = 0,
+    ) -> Itinerary:
         legs = [
             TransitLeg(
                 mode=leg["mode"],
@@ -540,8 +1080,8 @@ class TrackEngineService:
                 board_stop_name=leg["board_stop_name"],
                 alight_stop_id=leg["alight_stop_id"],
                 alight_stop_name=leg["alight_stop_name"],
-                departure_ts=leg["departure_ts"],
-                arrival_ts=leg["arrival_ts"],
+                departure_ts=leg["departure_ts"] + timestamp_shift_s,
+                arrival_ts=leg["arrival_ts"] + timestamp_shift_s,
                 duration_s=leg["duration_s"],
                 stop_count=leg["stop_count"],
                 walk_meters=leg.get("walk_meters", 0.0),
@@ -550,8 +1090,8 @@ class TrackEngineService:
         ]
         return Itinerary(
             itinerary_id=item["itinerary_id"],
-            leave_at_ts=item["leave_at_ts"],
-            arrive_at_ts=item["arrive_at_ts"],
+            leave_at_ts=item["leave_at_ts"] + timestamp_shift_s,
+            arrive_at_ts=item["arrive_at_ts"] + timestamp_shift_s,
             total_duration_s=item["total_duration_s"],
             in_vehicle_s=item["in_vehicle_s"],
             walking_s=item["walking_s"],
@@ -563,20 +1103,33 @@ class TrackEngineService:
             legs=legs,
         )
 
-    def _parse_go_action(self, payload) -> GoAction | None:
+    def _parse_go_action(
+        self,
+        payload,
+        *,
+        timestamp_shift_s: int = 0,
+    ) -> GoAction | None:
         if payload is None:
             return None
         return GoAction(
             status=payload["status"],
             title=payload["title"],
             subtitle=payload["subtitle"],
-            due_at_ts=payload["due_at_ts"],
+            due_at_ts=payload["due_at_ts"] + timestamp_shift_s,
             due_in_s=payload["due_in_s"],
         )
 
-    def _parse_go_trip(self, payload) -> GoTrip:
+    def _parse_go_trip(
+        self,
+        payload,
+        *,
+        timestamp_shift_s: int = 0,
+    ) -> GoTrip:
         return GoTrip(
-            itinerary=self._parse_itinerary(payload["itinerary"]),
+            itinerary=self._parse_itinerary(
+                payload["itinerary"],
+                timestamp_shift_s=timestamp_shift_s,
+            ),
             route_chips=[
                 RouteChip(
                     kind=chip["kind"],
@@ -594,8 +1147,8 @@ class TrackEngineService:
                     kind=step["kind"],
                     title=step["title"],
                     subtitle=step["subtitle"],
-                    start_ts=step["start_ts"],
-                    end_ts=step["end_ts"],
+                    start_ts=step["start_ts"] + timestamp_shift_s,
+                    end_ts=step["end_ts"] + timestamp_shift_s,
                     route_id=step.get("route_id"),
                     route_name=step.get("route_name"),
                     color_hex=step.get("color_hex"),
@@ -614,15 +1167,18 @@ class TrackEngineService:
                     arrival_stop_name=transfer["arrival_stop_name"],
                     boarding_stop_id=transfer["boarding_stop_id"],
                     boarding_stop_name=transfer["boarding_stop_name"],
-                    arrival_ts=transfer["arrival_ts"],
-                    boarding_ts=transfer["boarding_ts"],
+                    arrival_ts=transfer["arrival_ts"] + timestamp_shift_s,
+                    boarding_ts=transfer["boarding_ts"] + timestamp_shift_s,
                     wait_s=transfer["wait_s"],
                     walk_s=transfer["walk_s"],
                     walk_meters=transfer["walk_meters"],
                 )
                 for transfer in payload.get("transfers", [])
             ],
-            next_action=self._parse_go_action(payload.get("next_action")),
+            next_action=self._parse_go_action(
+                payload.get("next_action"),
+                timestamp_shift_s=timestamp_shift_s,
+            ),
             status=payload["status"],
             leave_in_s=payload["leave_in_s"],
             arrive_in_s=payload["arrive_in_s"],
@@ -643,7 +1199,8 @@ class TrackEngineService:
                 "standalone C++ TrackEngine service."
             )
 
-        payload = self._remote_payload(request)
+        context = self._remote_payload_context(request)
+        payload = context.payload
 
         # ── Redis cache check ──
         cached_data = get_cached_plan(payload)
@@ -651,9 +1208,15 @@ class TrackEngineService:
             remote_version = cached_data.get("engine_version")
             if remote_version:
                 self._last_remote_engine_version = str(remote_version)
-            itineraries = [self._parse_itinerary(item) for item in cached_data.get("itineraries", [])]
+            itineraries = [
+                self._parse_itinerary(
+                    item,
+                    timestamp_shift_s=context.timestamp_shift_s,
+                )
+                for item in cached_data.get("itineraries", [])
+            ]
             if itineraries:
-                return itineraries, None
+                return itineraries, context.schedule_note
 
         try:
             with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
@@ -666,10 +1229,16 @@ class TrackEngineService:
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
 
-        itineraries = [self._parse_itinerary(item) for item in data.get("itineraries", [])]
+        itineraries = [
+            self._parse_itinerary(
+                item,
+                timestamp_shift_s=context.timestamp_shift_s,
+            )
+            for item in data.get("itineraries", [])
+        ]
         if itineraries:
             set_cached_plan(payload, data)
-            return itineraries, None
+            return itineraries, context.schedule_note
 
         # ---- next-service-day fallback ----
         schedule_note = self._try_future_days_plan(request)
@@ -704,7 +1273,8 @@ class TrackEngineService:
                 "standalone C++ TrackEngine service."
             )
 
-        payload = self._remote_payload(request, now_ts=now_ts)
+        context = self._remote_payload_context(request, now_ts=now_ts)
+        payload = context.payload
 
         # ── Redis cache check ──
         cached_data = get_cached_go(payload)
@@ -717,14 +1287,22 @@ class TrackEngineService:
                 return GoResponse(
                     engine_version=str(cached_data["engine_version"]),
                     requested_at_ts=int(cached_data["requested_at_ts"]),
-                    now_ts=int(cached_data["now_ts"]),
+                    now_ts=int(cached_data["now_ts"]) + context.timestamp_shift_s,
                     origin=request.origin,
                     destination=request.destination,
                     session_kind=str(cached_data["session_kind"]),
-                    primary_trip=self._parse_go_trip(primary),
+                    primary_trip=self._parse_go_trip(
+                        primary,
+                        timestamp_shift_s=context.timestamp_shift_s,
+                    ),
                     alternatives=[
-                        self._parse_go_trip(item) for item in cached_data.get("alternatives", [])
+                        self._parse_go_trip(
+                            item,
+                            timestamp_shift_s=context.timestamp_shift_s,
+                        )
+                        for item in cached_data.get("alternatives", [])
                     ],
+                    schedule_note=context.schedule_note,
                 )
 
         try:
@@ -745,18 +1323,26 @@ class TrackEngineService:
         go_response = GoResponse(
             engine_version=str(data["engine_version"]),
             requested_at_ts=int(data["requested_at_ts"]),
-            now_ts=int(data["now_ts"]),
+            now_ts=int(data["now_ts"]) + context.timestamp_shift_s,
             origin=request.origin,
             destination=request.destination,
             session_kind=str(data["session_kind"]),
             primary_trip=(
-                self._parse_go_trip(data["primary_trip"])
+                self._parse_go_trip(
+                    data["primary_trip"],
+                    timestamp_shift_s=context.timestamp_shift_s,
+                )
                 if data.get("primary_trip") is not None
                 else None
             ),
             alternatives=[
-                self._parse_go_trip(item) for item in data.get("alternatives", [])
+                self._parse_go_trip(
+                    item,
+                    timestamp_shift_s=context.timestamp_shift_s,
+                )
+                for item in data.get("alternatives", [])
             ],
+            schedule_note=context.schedule_note,
         )
 
         # ---- next-service-day fallback ----

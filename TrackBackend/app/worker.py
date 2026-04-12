@@ -57,7 +57,7 @@ async def check_gtfs_freshness(ctx: dict[str, Any]) -> dict[str, str]:
     TrackLogger.info("[ARQ] GTFS freshness check starting...", tag="ARQ")
 
     try:
-        results = await check_and_refresh_gtfs(full_check=False)
+        results = await check_and_refresh_gtfs(full_check=True)
         elapsed = time.perf_counter() - t0
         TrackLogger.info(
             f"[ARQ] GTFS check complete in {elapsed:.1f}s: {results}",

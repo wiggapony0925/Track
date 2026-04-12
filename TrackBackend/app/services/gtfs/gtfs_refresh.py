@@ -352,6 +352,22 @@ def _rebuild_schedule_db() -> bool:
                 rows = _ingest_csv(conn, csv_path, table_name, mapping)
                 total_rows += rows
 
+        # stop_modes powers fast mode-aware nearby-stop lookups in the
+        # planner. Rebuild it from the merged stop_times/trips/routes tables
+        # so dense areas like Penn retain representative bus + subway
+        # candidates instead of only the physically nearest stops.
+        conn.execute("DELETE FROM stop_modes")
+        conn.execute(
+            """
+            INSERT INTO stop_modes (stop_id, route_type)
+            SELECT DISTINCT st.stop_id, r.route_type
+            FROM stop_times st
+            JOIN trips t ON t.trip_id = st.trip_id
+            JOIN routes r ON r.route_id = t.route_id
+            WHERE r.route_type IS NOT NULL
+            """
+        )
+
         # Create indices
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_stop_times_stop ON stop_times(stop_id)"
@@ -383,6 +399,10 @@ def _rebuild_schedule_db() -> bool:
             "CREATE INDEX IF NOT EXISTS idx_calendar_service ON calendar(service_id)"
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_stops_name ON stops(stop_name)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_stop_modes_stop_type "
+            "ON stop_modes(stop_id, route_type)"
+        )
         conn.commit()
         conn.close()
 
@@ -514,6 +534,11 @@ def _create_db_schema(conn: sqlite3.Connection) -> None:
         monday INTEGER, tuesday INTEGER, wednesday INTEGER,
         thursday INTEGER, friday INTEGER, saturday INTEGER, sunday INTEGER,
         start_date TEXT, end_date TEXT
+    )""")
+    c.execute("DROP TABLE IF EXISTS stop_modes")
+    c.execute("""CREATE TABLE stop_modes (
+        stop_id TEXT,
+        route_type INTEGER
     )""")
     conn.commit()
 

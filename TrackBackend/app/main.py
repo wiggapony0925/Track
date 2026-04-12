@@ -485,7 +485,7 @@ async def _periodic_gtfs_check():
                 f"[GTFS] Periodic check starting (interval={_GTFS_CHECK_INTERVAL}s)",
                 tag="GTFS",
             )
-            await check_and_refresh_gtfs(full_check=False)
+            await check_and_refresh_gtfs(full_check=True)
         except asyncio.CancelledError:
             break
         except Exception as exc:

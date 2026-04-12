@@ -176,9 +176,6 @@ struct TripTimelineGridView: View {
 
     private func candleRow(_ trip: TripPlan) -> some View {
         VStack(spacing: 2) {
-            // "or" alternative route badges row (above the bars)
-            alternativesRow(trip)
-
             // Main timeline bars
             ZStack {
                 // Clean thin tick lines (not a full grid — just small marks)
@@ -205,85 +202,6 @@ struct TripTimelineGridView: View {
                 }
             }
             .frame(width: canvasWidth, height: barHeight)
-        }
-    }
-
-    // MARK: - Alternatives Row (Transit-style "or" badges above transit bars)
-
-    private func alternativesRow(_ trip: TripPlan) -> some View {
-        let transitLegs = trip.legs.filter { $0.isTransit }
-        let hasAlternatives = transitLegs.contains { leg in
-            !(alternativeRoutes(for: leg, in: trip) ?? []).isEmpty
-        }
-
-        return ZStack(alignment: .leading) {
-            if hasAlternatives {
-                ForEach(transitLegs) { leg in
-                    let alts = alternativeRoutes(for: leg, in: trip) ?? []
-                    if !alts.isEmpty {
-                        let startX = xPos(for: leg.departureTime)
-                        let endX = xPos(for: leg.arrivalTime)
-                        let legW = max(endX - startX, 42)
-                        let cx = startX + legW / 2
-
-                        if alts.count == 1 {
-                            HStack(spacing: 3) {
-                                Text("or")
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundStyle(AppTheme.Colors.textTertiary)
-                                RouteBadge(
-                                    routeID: alts[0],
-                                    size: .custom(20, 10),
-                                    mode: modeString(leg.mode)
-                                )
-                            }
-                            .position(x: cx, y: 10)
-                        } else {
-                            let allRoutes = [leg.routeId].compactMap { $0 } + alts
-                            HStack(spacing: 2) {
-                                ForEach(Array(allRoutes.prefix(4).enumerated()), id: \.offset) { _, routeId in
-                                    RouteBadge(
-                                        routeID: routeId,
-                                        size: .custom(20, 10),
-                                        mode: modeString(leg.mode)
-                                    )
-                                }
-                                if allRoutes.count > 4 {
-                                    Text("+")
-                                        .font(.system(size: 12, weight: .heavy, design: .rounded))
-                                        .foregroundStyle(AppTheme.Colors.textTertiary)
-                                }
-                            }
-                            .position(x: cx, y: 10)
-                        }
-                    }
-                }
-            }
-        }
-        .frame(width: canvasWidth, height: hasAlternatives ? 22 : 0)
-    }
-
-    /// Find alternative routes for a transit leg (same mode, different route)
-    private func alternativeRoutes(for leg: TripLeg, in trip: TripPlan) -> [String]? {
-        let transitChips = trip.routeChips.filter { !$0.isWalk && $0.routeId != nil }
-        guard let chipForLeg = transitChips.first(where: { $0.routeId == leg.routeId }) else {
-            return nil
-        }
-        let legRouteId: String? = chipForLeg.routeId
-        let legMode: String? = chipForLeg.mode
-        let matching = transitChips.filter { chip in
-            chip.routeId != legRouteId && chip.mode == legMode
-        }
-        let alts: [String] = matching.compactMap { $0.routeId }
-        return alts.isEmpty ? nil : Array(alts.prefix(3))
-    }
-
-    private func modeString(_ mode: TripLegMode) -> String? {
-        switch mode {
-        case .bus:  return "bus"
-        case .lirr: return "lirr"
-        case .mnr:  return "mnr"
-        default:    return nil
         }
     }
 

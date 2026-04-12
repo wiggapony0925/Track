@@ -18,12 +18,6 @@ struct TripResultCard: View {
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 0) {
-                // Transit-style route chips (above the bar)
-                if hasTransitAlternatives {
-                    routeChipsRow
-                        .padding(.bottom, 4)
-                }
-
                 // Proportional Gantt timeline bar
                 timelineBar
                     .padding(.bottom, 10)
@@ -35,62 +29,6 @@ struct TripResultCard: View {
             .padding(.vertical, 14)
         }
         .buttonStyle(TripCardButtonStyle())
-    }
-
-    // MARK: - Route Chips Row (Transit-style badges above transit legs)
-
-    private var hasTransitAlternatives: Bool {
-        trip.legs.contains { leg in
-            leg.isTransit && !(alternativeRoutes(for: leg) ?? []).isEmpty
-        }
-    }
-
-    private var routeChipsRow: some View {
-        GeometryReader { geo in
-            let segments = computeSegments(totalWidth: geo.size.width)
-
-            ZStack(alignment: .leading) {
-                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                    if segment.leg.isTransit {
-                        let alts = alternativeRoutes(for: segment.leg) ?? []
-                        if alts.count == 1 {
-                            // Single alternative: "or" + badge
-                            HStack(spacing: 3) {
-                                Text("or")
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundStyle(AppTheme.Colors.textTertiary)
-                                RouteBadge(
-                                    routeID: alts[0],
-                                    size: .custom(20, 10),
-                                    mode: modeString(segment.leg.mode)
-                                )
-                            }
-                            .offset(x: segment.offset + segment.width / 2 - 20)
-                        } else if alts.count > 1 {
-                            // Multiple alternatives: primary + alt badges + "+"
-                            let allRoutes = [segment.leg.routeId].compactMap { $0 } + alts
-                            HStack(spacing: 2) {
-                                ForEach(Array(allRoutes.prefix(4).enumerated()),
-                                        id: \.offset) { _, routeId in
-                                    RouteBadge(
-                                        routeID: routeId,
-                                        size: .custom(20, 10),
-                                        mode: modeString(segment.leg.mode)
-                                    )
-                                }
-                                if allRoutes.count > 4 {
-                                    Text("+")
-                                        .font(.system(size: 12, weight: .heavy, design: .rounded))
-                                        .foregroundStyle(AppTheme.Colors.textTertiary)
-                                }
-                            }
-                            .offset(x: segment.offset)
-                        }
-                    }
-                }
-            }
-        }
-        .frame(height: 24)
     }
 
     // MARK: - Timeline Bar (Gantt)
@@ -315,29 +253,6 @@ struct TripResultCard: View {
     }
 
     // MARK: - Helpers
-
-    /// Find alternative routes that serve the same stops as this leg
-    private func alternativeRoutes(for leg: TripLeg) -> [String]? {
-        // Use routeChips to find alternatives for this leg
-        let transitChips = trip.routeChips.filter { !$0.isWalk && $0.routeId != nil }
-        guard let chipForLeg = transitChips.first(where: { $0.routeId == leg.routeId }) else {
-            return nil
-        }
-        // Return other transit chips that share the same mode
-        let alts = transitChips
-            .filter { $0.routeId != chipForLeg.routeId && $0.mode == chipForLeg.mode }
-            .compactMap { $0.routeId }
-        return alts.isEmpty ? nil : Array(alts.prefix(3))
-    }
-
-    private func modeString(_ mode: TripLegMode) -> String? {
-        switch mode {
-        case .bus:  return "bus"
-        case .lirr: return "lirr"
-        case .mnr:  return "mnr"
-        default:    return nil
-        }
-    }
 
     private func legColor(_ leg: TripLeg) -> Color {
         if let hex = leg.routeColor, !hex.isEmpty {
