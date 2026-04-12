@@ -188,7 +188,7 @@ class PlanRequest:
     user_id: str | None = None
     depart_at_ts: int | None = None
     arrive_by_ts: int | None = None
-    max_transfers: int = 1
+    max_transfers: int = 2
     max_origin_walk_m: int = 1200
     max_destination_walk_m: int = 1200
     max_transfer_walk_m: int = 250

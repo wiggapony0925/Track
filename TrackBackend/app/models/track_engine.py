@@ -371,7 +371,7 @@ class EnginePlanRequest(BaseModel):
         description="Unix timestamp for latest acceptable arrival.",
     )
     max_transfers: int = Field(
-        1,
+        2,
         ge=0,
         le=3,
         description="Maximum number of transit transfers to allow.",
