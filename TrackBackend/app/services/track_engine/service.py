@@ -543,11 +543,11 @@ class TrackEngineService:
         self._last_remote_engine_version: str | None = None
         self.remote_engine_url = self._resolve_remote_engine_url()
         self.remote_engine_timeout_s = float(
-            os.environ.get("TRACK_ENGINE_TIMEOUT_S", "8")
+            os.environ.get("TRACK_ENGINE_TIMEOUT_S", "12")
         )
         # ── Circuit breaker ──
         self._engine_fail_ts: float = 0.0
-        self._ENGINE_CIRCUIT_COOLDOWN_S: float = 30.0
+        self._ENGINE_CIRCUIT_COOLDOWN_S: float = 10.0
         self.enable_realtime_enrichment = (
             os.environ.get("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "1")
             .strip()
@@ -1228,14 +1228,30 @@ class TrackEngineService:
                 f"TrackEngine circuit open – engine failed {since_fail:.0f}s ago"
             )
 
-        try:
-            with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
-                response = client.post(f"{self.remote_engine_url}/plan", json=payload)
-                response.raise_for_status()
-                data = response.json()
-        except httpx.HTTPError as exc:
-            self._engine_fail_ts = time.time()
-            raise RuntimeError(f"TrackEngine plan request failed: {exc}") from exc
+        last_exc: Exception | None = None
+        data: dict | None = None
+        for attempt in range(2):  # 1 initial + 1 retry
+            try:
+                with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
+                    response = client.post(f"{self.remote_engine_url}/plan", json=payload)
+                    if response.status_code == 503:
+                        # Engine itself reports unavailable — don't retry
+                        self._engine_fail_ts = time.time()
+                        raise RuntimeError(
+                            f"TrackEngine plan returned 503: {response.text[:200]}"
+                        )
+                    response.raise_for_status()
+                    data = response.json()
+                    break
+            except RuntimeError:
+                raise  # re-raise engine 503 immediately
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt == 0:
+                    time.sleep(0.5)
+                    continue
+                self._engine_fail_ts = time.time()
+                raise RuntimeError(f"TrackEngine plan request failed: {exc}") from exc
 
         self._engine_fail_ts = 0.0  # success — reset circuit
         remote_version = data.get("engine_version")
@@ -1330,14 +1346,30 @@ class TrackEngineService:
                 f"TrackEngine circuit open – engine failed {since_fail:.0f}s ago"
             )
 
-        try:
-            with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
-                response = client.post(f"{self.remote_engine_url}/go", json=payload)
-                response.raise_for_status()
-                data = response.json()
-        except httpx.HTTPError as exc:
-            self._engine_fail_ts = time.time()
-            raise RuntimeError(f"TrackEngine go request failed: {exc}") from exc
+        last_exc: Exception | None = None
+        data: dict | None = None
+        for attempt in range(2):  # 1 initial + 1 retry
+            try:
+                with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
+                    response = client.post(f"{self.remote_engine_url}/go", json=payload)
+                    if response.status_code == 503:
+                        # Engine itself reports unavailable — don't retry
+                        self._engine_fail_ts = time.time()
+                        raise RuntimeError(
+                            f"TrackEngine go returned 503: {response.text[:200]}"
+                        )
+                    response.raise_for_status()
+                    data = response.json()
+                    break
+            except RuntimeError:
+                raise  # re-raise engine 503 immediately
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt == 0:
+                    time.sleep(0.5)
+                    continue
+                self._engine_fail_ts = time.time()
+                raise RuntimeError(f"TrackEngine go request failed: {exc}") from exc
 
         self._engine_fail_ts = 0.0  # success — reset circuit
         remote_version = data.get("engine_version")
