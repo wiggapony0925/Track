@@ -740,8 +740,7 @@ final class PlanViewModel {
     // MARK: - Apple Maps Fallback
 
     /// When TrackEngine is unreachable, fall back to Apple Maps transit
-    /// directions via MKDirections. Results are converted into TripPlan
-    /// models so the existing results UI can display them seamlessly.
+    /// directions via AppleRoutingService.
     private func fallbackToAppleDirections() async {
         guard let destination else { return }
         guard let originCoord = resolvedCoordinate(for: origin),
@@ -752,174 +751,32 @@ final class PlanViewModel {
             return
         }
 
-        #if DEBUG
-        print("[Fallback] Attempting Apple Maps transit directions")
-        #endif
-
-        // MKPlacemark is deprecated in iOS 26.0
-        let sourceItem = MKMapItem(
-            location: CLLocation(latitude: originCoord.latitude, longitude: originCoord.longitude),
-            address: nil)
-        let destItem = MKMapItem(
-            location: CLLocation(latitude: destCoord.latitude, longitude: destCoord.longitude),
-            address: nil)
-
-        // Try transit first, then automobile as last resort
-        let transportTypes: [MKDirectionsTransportType] = [.transit, .automobile]
-        for transportType in transportTypes {
-            let request = MKDirections.Request()
-            request.source = sourceItem
-            request.destination = destItem
-            request.transportType = transportType
-            request.requestsAlternateRoutes = true
-
-            switch departureOption {
-            case .leaveNow:
-                request.departureDate = Date()
-            case .departAt(let date):
-                request.departureDate = date
-            case .arriveBy(let date):
-                request.arrivalDate = date
+        do {
+            let plans = try await AppleRoutingService.fetchTransitRoutes(
+                from: originCoord,
+                to: destCoord,
+                departureOption: departureOption,
+                originName: origin.displayName,
+                destinationName: destination.displayName
+            )
+            if !plans.isEmpty {
+                tripResults = plans
+                scheduleNote = nil
+                isUsingAppleFallback = true
+                errorMessage = nil
+                return
             }
-
-            let directions = MKDirections(request: request)
-            do {
-                let response = try await directions.calculate()
-                let plans = response.routes.prefix(4).map { route in
-                    appleRouteToTripPlan(route, isDriving: transportType == .automobile)
-                }
-                if !plans.isEmpty {
-                    tripResults = plans
-                    scheduleNote = nil
-                    isUsingAppleFallback = true
-                    errorMessage = nil
-                    #if DEBUG
-                    print("[Fallback] Apple Maps returned \(plans.count) routes via \(transportType == .transit ? "transit" : "driving")")
-                    #endif
-                    return
-                }
-            } catch {
-                #if DEBUG
-                print("[Fallback] Apple Maps \(transportType == .transit ? "transit" : "driving") failed: \(error.localizedDescription)")
-                #endif
-                continue
-            }
+        } catch {
+            #if DEBUG
+            print("[Fallback] Apple Maps transit failed: \(error.localizedDescription)")
+            #endif
         }
 
-        // Both transit and automobile failed
         tripResults = []
         scheduleNote = nil
         isUsingAppleFallback = false
         errorKind = .engineUnavailable
         errorMessage = "The routing engine is temporarily offline. Please try again shortly."
-    }
-
-    /// Convert an Apple Maps MKRoute into a TripPlan for the results UI.
-    private func appleRouteToTripPlan(_ route: MKRoute, isDriving: Bool = false) -> TripPlan {
-        let departDate: Date = switch departureOption {
-        case .leaveNow: Date()
-        case .departAt(let d): d
-        case .arriveBy: Date()
-        }
-        let arriveDate = departDate.addingTimeInterval(route.expectedTravelTime)
-        let durationMin = max(1, Int(route.expectedTravelTime / 60))
-
-        // Driving fallback: single leg, no steps parsing
-        if isDriving {
-            let leg = TripLeg(
-                mode: .bus,
-                routeId: "Drive",
-                routeName: "Drive",
-                routeColor: "4A90D9",
-                headsign: route.name.isEmpty ? "Via car" : route.name,
-                boardStopName: origin.displayName,
-                alightStopName: destination?.displayName ?? "Destination",
-                departureTime: departDate, arrivalTime: arriveDate,
-                numStops: 0, durationMinutes: durationMin
-            )
-            return TripPlan(
-                departureTime: departDate,
-                arrivalTime: arriveDate,
-                totalDurationMinutes: durationMin,
-                legs: [leg],
-                totalWalkMeters: 0,
-                numTransfers: 0
-            )
-        }
-
-        var legs: [TripLeg] = []
-        var totalWalkM: Double = 0
-        var transitLegCount = 0
-
-        let steps = route.steps.filter { !$0.instructions.isEmpty }
-        let totalDist = max(route.distance, 1.0)
-
-        if steps.count > 1 {
-            var cursor = departDate
-            for step in steps {
-                let frac = step.distance / totalDist
-                let dur = route.expectedTravelTime * frac
-                let end = cursor.addingTimeInterval(dur)
-                let durMin = max(1, Int(dur / 60))
-
-                let isWalk = step.transportType == .walking
-                    || step.instructions.localizedCaseInsensitiveContains("walk")
-
-                if isWalk {
-                    totalWalkM += step.distance
-                    legs.append(TripLeg(
-                        mode: .walk,
-                        routeId: nil, routeName: nil, routeColor: nil,
-                        headsign: nil,
-                        boardStopName: step.instructions,
-                        alightStopName: "",
-                        departureTime: cursor, arrivalTime: end,
-                        numStops: 0, durationMinutes: durMin,
-                        walkMeters: step.distance
-                    ))
-                } else {
-                    transitLegCount += 1
-                    let label = route.name.isEmpty ? "Transit" : route.name
-                    legs.append(TripLeg(
-                        mode: .subway,
-                        routeId: label,
-                        routeName: label,
-                        routeColor: "4A90D9",
-                        headsign: step.instructions,
-                        boardStopName: step.instructions,
-                        alightStopName: "",
-                        departureTime: cursor, arrivalTime: end,
-                        numStops: 0, durationMinutes: durMin
-                    ))
-                }
-                cursor = end
-            }
-        }
-
-        // Fallback: single transit leg when steps are unavailable
-        if legs.isEmpty {
-            let label = route.name.isEmpty ? "Transit" : route.name
-            legs.append(TripLeg(
-                mode: .bus,
-                routeId: label,
-                routeName: label,
-                routeColor: "4A90D9",
-                headsign: route.name,
-                boardStopName: origin.displayName,
-                alightStopName: destination?.displayName ?? "Destination",
-                departureTime: departDate, arrivalTime: arriveDate,
-                numStops: 0, durationMinutes: durationMin
-            ))
-        }
-
-        return TripPlan(
-            departureTime: departDate,
-            arrivalTime: arriveDate,
-            totalDurationMinutes: durationMin,
-            legs: legs,
-            totalWalkMeters: totalWalkM,
-            numTransfers: max(0, transitLegCount - 1)
-        )
     }
 
     private func friendlyError(for error: Error) -> (PlanErrorKind, String) {
