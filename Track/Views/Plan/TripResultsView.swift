@@ -242,21 +242,12 @@ struct TripResultsView: View {
                 // Space for the floating departure control bar
                 Spacer().frame(height: 24)
 
-                // Transit-style card rows
-                VStack(spacing: 0) {
-                    ForEach(Array(viewModel.tripResults.enumerated()), id: \.element.id) { index, trip in
-                        if index > 0 {
-                            Divider()
-                                .padding(.leading, 16)
-                        }
-
-                        TripResultCard(
-                            trip: trip,
-                            onTap: { selectedTrip = trip },
-                            isRecommended: index == 0
-                        )
-                    }
-                }
+                // Timeline grid — Transit-style horizontal Gantt chart
+                TripTimelineGridView(
+                    trips: viewModel.tripResults,
+                    onTripTap: { trip in selectedTrip = trip },
+                    recommendedIndex: 0
+                )
 
                 // Show more trips button (not available in Apple Maps fallback)
                 if !viewModel.tripResults.isEmpty && !viewModel.isUsingAppleFallback {

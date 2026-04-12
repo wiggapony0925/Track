@@ -1,6 +1,7 @@
-// Transit-style interactive timeline grid. Clean horizontal scroll
-// with time axis, colored candle bars, walk connectors, live "Now"
-// needle, and "Go at" info rows. No background grid clutter.
+// Transit-style interactive timeline grid. Horizontal scrollable
+// time-axis with proportional transit bars, dot-pattern walk segments,
+// transfer connectors, live "Now" needle, and paired info rows with
+// "Go in X min" countdown + real-time indicator.
 
 import SwiftUI
 import Combine
@@ -15,7 +16,8 @@ struct TripTimelineGridView: View {
     private let ticker = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
     // Layout
-    private let barHeight: CGFloat = 40
+    private let barHeight: CGFloat = 36
+    private let rowSpacing: CGFloat = 4
     private let pxPerMinute: CGFloat = 5.5
 
     // MARK: - Time Window
@@ -29,8 +31,7 @@ struct TripTimelineGridView: View {
         guard let latest = trips.map(\.arrivalTime).max() else {
             return Date().addingTimeInterval(3600)
         }
-        let ceiled = ceilTo(latest, minutes: intervalMinutes)
-        return ceiled.addingTimeInterval(TimeInterval(intervalMinutes * 60))
+        return ceilTo(latest, minutes: intervalMinutes)
     }
 
     private var windowDuration: TimeInterval {
@@ -38,7 +39,7 @@ struct TripTimelineGridView: View {
     }
 
     private var canvasWidth: CGFloat {
-        max(CGFloat(windowDuration / 60) * pxPerMinute, 500)
+        max(CGFloat(windowDuration / 60) * pxPerMinute, 300)
     }
 
     private var intervalMinutes: Int {
@@ -64,50 +65,51 @@ struct TripTimelineGridView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Single horizontal scroll for time axis + all candle bars
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    timeAxisRow
-                        .padding(.bottom, 4)
-
-                    ForEach(Array(trips.enumerated()), id: \.element.id) { index, trip in
-                        if index > 0 {
-                            Rectangle()
-                                .fill(AppTheme.Colors.borderSubtle.opacity(0.12))
-                                .frame(height: 1)
-                                .padding(.leading, 16)
-                        }
-
-                        candleRow(trip)
-                            .padding(.vertical, 8)
+        ScrollView(.horizontal, showsIndicators: false) {
+            ZStack(alignment: .topLeading) {
+                // Vertical gridlines spanning ALL rows (behind everything)
+                GeometryReader { _ in
+                    ForEach(timeMarkers, id: \.self) { marker in
+                        Rectangle()
+                            .fill(AppTheme.Colors.borderSubtle.opacity(0.1))
+                            .frame(width: 0.5)
+                            .offset(x: xPos(for: marker))
                     }
                 }
-                .frame(width: canvasWidth)
-            }
 
-            // Pinned info rows (always visible, not scrollable)
-            ForEach(Array(trips.enumerated()), id: \.element.id) { index, trip in
-                if index > 0 {
-                    Rectangle()
-                        .fill(AppTheme.Colors.borderSubtle.opacity(0.06))
-                        .frame(height: 1)
-                        .padding(.horizontal, 16)
-                }
+                VStack(alignment: .leading, spacing: 0) {
+                    // Time axis header
+                    timeAxisRow
+                        .padding(.bottom, 2)
 
-                Button { onTripTap(trip) } label: {
-                    infoRow(trip, isRecommended: index == recommendedIndex)
-                        .padding(.vertical, 6)
+                    // Each trip: candle bar + info row
+                    ForEach(Array(trips.enumerated()), id: \.element.id) { index, trip in
+                        if index > 0 {
+                            Divider()
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 2)
+                        }
+
+                        Button { onTripTap(trip) } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                candleRow(trip)
+                                    .padding(.bottom, 2)
+                                infoRow(trip, isRecommended: index == recommendedIndex)
+                            }
+                            .padding(.vertical, 6)
+                        }
+                        .buttonStyle(TimelineRowButtonStyle())
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 10)
+                        .animation(
+                            .spring(response: 0.4, dampingFraction: 0.85)
+                                .delay(Double(index) * 0.05),
+                            value: appeared
+                        )
+                    }
                 }
-                .buttonStyle(TimelineRowButtonStyle())
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 10)
-                .animation(
-                    .spring(response: 0.4, dampingFraction: 0.85)
-                        .delay(Double(index) * 0.05),
-                    value: appeared
-                )
             }
+            .frame(width: canvasWidth)
         }
         .onReceive(ticker) { _ in nowDate = Date() }
         .onAppear {
@@ -121,36 +123,33 @@ struct TripTimelineGridView: View {
 
     private var timeAxisRow: some View {
         ZStack(alignment: .leading) {
-            // Time labels
             ForEach(timeMarkers, id: \.self) { marker in
                 timeLabel(marker)
-                    .position(x: xPos(for: marker), y: 12)
+                    .position(x: xPos(for: marker), y: 10)
             }
 
-            // Tick marks under each label
             ForEach(timeMarkers, id: \.self) { marker in
                 Rectangle()
-                    .fill(AppTheme.Colors.textTertiary.opacity(0.2))
-                    .frame(width: 1, height: 6)
-                    .position(x: xPos(for: marker), y: 25)
+                    .fill(AppTheme.Colors.textTertiary.opacity(0.25))
+                    .frame(width: 1, height: 8)
+                    .position(x: xPos(for: marker), y: 24)
             }
 
-            // "Now" label
             if nowDate >= windowStart && nowDate <= windowEnd {
                 let nx = xPos(for: nowDate)
-                VStack(spacing: 2) {
+                VStack(spacing: 1) {
                     Text("Now")
-                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
                         .foregroundStyle(AppTheme.Colors.successGreen)
                     Circle()
                         .fill(AppTheme.Colors.successGreen)
-                        .frame(width: 6, height: 6)
-                        .shadow(color: AppTheme.Colors.successGreen.opacity(0.5), radius: 3)
+                        .frame(width: 5, height: 5)
+                        .shadow(color: AppTheme.Colors.successGreen.opacity(0.5), radius: 2)
                 }
-                .position(x: nx, y: 12)
+                .position(x: nx, y: 10)
             }
         }
-        .frame(height: 30)
+        .frame(height: 28)
     }
 
     private func timeLabel(_ date: Date) -> some View {
@@ -175,43 +174,52 @@ struct TripTimelineGridView: View {
     // MARK: - Candle Row
 
     private func candleRow(_ trip: TripPlan) -> some View {
-        VStack(spacing: 2) {
-            // Main timeline bars
-            ZStack {
-                // Clean thin tick lines (not a full grid — just small marks)
-                ForEach(timeMarkers, id: \.self) { marker in
-                    let x = xPos(for: marker)
-                    Rectangle()
-                        .fill(AppTheme.Colors.borderSubtle.opacity(0.1))
-                        .frame(width: 0.5, height: barHeight)
-                        .position(x: x, y: barHeight / 2)
-                }
-
-                // "Now" needle
-                if nowDate >= windowStart && nowDate <= windowEnd {
-                    let nx = xPos(for: nowDate)
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(AppTheme.Colors.successGreen.opacity(0.5))
-                        .frame(width: 2, height: barHeight + 4)
-                        .position(x: nx, y: barHeight / 2)
-                }
-
-                // Legs
-                ForEach(trip.legs) { leg in
-                    legView(leg)
-                }
+        ZStack {
+            // "Now" needle
+            if nowDate >= windowStart && nowDate <= windowEnd {
+                let nx = xPos(for: nowDate)
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(AppTheme.Colors.successGreen.opacity(0.5))
+                    .frame(width: 2, height: barHeight + 4)
+                    .position(x: nx, y: barHeight / 2)
             }
-            .frame(width: canvasWidth, height: barHeight)
+
+            // Transfer connector line
+            transferConnectorLine(trip)
+
+            // Legs
+            ForEach(trip.legs) { leg in
+                legView(leg, trip: trip)
+            }
         }
+        .frame(width: canvasWidth, height: barHeight)
+    }
+
+    /// Thin horizontal line connecting first transit start to last transit end.
+    private func transferConnectorLine(_ trip: TripPlan) -> some View {
+        let transitLegs = trip.legs.filter { $0.isTransit }
+        guard let first = transitLegs.first, let last = transitLegs.last else {
+            return AnyView(EmptyView())
+        }
+        let startX = xPos(for: first.departureTime)
+        let endX = xPos(for: last.arrivalTime)
+        let lineW = max(endX - startX, 0)
+        let cx = startX + lineW / 2
+        return AnyView(
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(AppTheme.Colors.textTertiary.opacity(0.22))
+                .frame(width: lineW, height: 3)
+                .position(x: cx, y: barHeight / 2)
+        )
     }
 
     // MARK: - Leg View
 
     @ViewBuilder
-    private func legView(_ leg: TripLeg) -> some View {
+    private func legView(_ leg: TripLeg, trip: TripPlan) -> some View {
         let startX = xPos(for: leg.departureTime)
         let endX = xPos(for: leg.arrivalTime)
-        let legW = max(endX - startX, leg.isTransit ? 42 : 24)
+        let legW = max(endX - startX, leg.isTransit ? 44 : 24)
         let cx = startX + legW / 2
         let cy = barHeight / 2
 
@@ -219,21 +227,9 @@ struct TripTimelineGridView: View {
             transitBar(leg, width: legW)
                 .position(x: cx, y: cy)
         } else {
-            walkSegment(leg, width: legW)
+            walkDots(leg, width: legW, trip: trip)
                 .position(x: cx, y: cy)
         }
-    }
-
-    /// Returns true when this walk leg is the very first or very last leg
-    /// (i.e. origin walk or destination walk), as opposed to a mid-trip transfer.
-    private func isEdgeWalk(_ leg: TripLeg) -> Bool {
-        guard let trip = trips.first(where: { $0.legs.contains(where: { $0.id == leg.id }) }) else {
-            return true
-        }
-        guard let idx = trip.legs.firstIndex(where: { $0.id == leg.id }) else {
-            return true
-        }
-        return idx == 0 || idx == trip.legs.count - 1
     }
 
     // MARK: - Transit Bar
@@ -242,11 +238,10 @@ struct TripTimelineGridView: View {
         let color = legColor(leg)
 
         return ZStack {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(color)
 
-            // Subtle glass highlight
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(
                     LinearGradient(
                         stops: [
@@ -257,10 +252,9 @@ struct TripTimelineGridView: View {
                     )
                 )
 
-            // Route label + vehicle icon (Transit-style)
             if let routeId = leg.routeId {
                 let txt = textColorForLeg(leg)
-                if width > 52 {
+                if width > 54 {
                     HStack(spacing: 4) {
                         Image(systemName: vehicleIcon(for: leg))
                             .font(.system(size: 13, weight: .bold))
@@ -269,7 +263,6 @@ struct TripTimelineGridView: View {
                     }
                     .foregroundStyle(txt)
                 } else if width > 36 {
-                    // Icon only or compact label
                     HStack(spacing: 2) {
                         Image(systemName: vehicleIcon(for: leg))
                             .font(.system(size: 11, weight: .bold))
@@ -280,13 +273,11 @@ struct TripTimelineGridView: View {
                     }
                     .foregroundStyle(txt)
                 } else {
-                    // Very narrow: icon only
                     Image(systemName: vehicleIcon(for: leg))
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(txt)
                 }
             } else {
-                // Generic transit icon when no route ID
                 Image(systemName: vehicleIcon(for: leg))
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
@@ -294,7 +285,6 @@ struct TripTimelineGridView: View {
         }
         .frame(width: width, height: barHeight)
         .shadow(color: color.opacity(0.3), radius: 5, y: 3)
-        // Alert indicator overlay
         .overlay(alignment: .bottomTrailing) {
             if !leg.alerts.isEmpty {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -306,7 +296,6 @@ struct TripTimelineGridView: View {
         }
     }
 
-    /// Vehicle icon matching Transit app style
     private func vehicleIcon(for leg: TripLeg) -> String {
         switch leg.mode {
         case .bus:     return "bus.fill"
@@ -317,24 +306,73 @@ struct TripTimelineGridView: View {
         }
     }
 
-    // MARK: - Walk Segment (walking icon with duration)
+    // MARK: - Walk Dots (• • • •)
 
-    private func walkSegment(_ leg: TripLeg, width: CGFloat) -> some View {
-        let edge = isEdgeWalk(leg)
+    /// Renders walk/transfer legs as horizontal dot patterns on the
+    /// connector line — matching Transit app style exactly.
+    private func walkDots(_ leg: TripLeg, width: CGFloat, trip: TripPlan) -> some View {
         let w = max(width, 24)
+        let dotSize: CGFloat = 5
+        let dotSpacing: CGFloat = 7
+        let totalDotWidth = dotSize + dotSpacing
+        let dotCount = max(2, min(Int(w / totalDotWidth), 6))
 
-        return VStack(spacing: 1) {
-            Image(systemName: "figure.walk")
-                .font(.system(size: edge ? 12 : 10, weight: .medium))
-                .foregroundStyle(AppTheme.Colors.textTertiary.opacity(edge ? 1.0 : 0.7))
-            if leg.durationMinutes > 0 && w > 22 {
-                Text(w > 40 ? "\(leg.durationMinutes) min" : "\(leg.durationMinutes)m")
-                    .font(.system(size: edge ? 10 : 9, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textTertiary.opacity(edge ? 1.0 : 0.7))
-                    .lineLimit(1)
+        return HStack(spacing: dotSpacing) {
+            ForEach(0..<dotCount, id: \.self) { _ in
+                Circle()
+                    .fill(AppTheme.Colors.textTertiary.opacity(0.5))
+                    .frame(width: dotSize, height: dotSize)
             }
         }
         .frame(width: w, height: barHeight)
+    }
+
+    // MARK: - Walk Summary Row
+
+    /// Shows "🚶 X min to E  ·  X min to dest" below the timeline bar.
+    @ViewBuilder
+    private func walkSummaryRow(_ trip: TripPlan) -> some View {
+        let descriptions = walkLegDescriptions(trip)
+        if !descriptions.isEmpty {
+            HStack(spacing: 4) {
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+
+                Text(descriptions.joined(separator: "  ·  "))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                    .lineLimit(1)
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func walkLegDescriptions(_ trip: TripPlan) -> [String] {
+        var descriptions: [String] = []
+        for (index, leg) in trip.legs.enumerated() {
+            guard leg.mode == .walk || leg.mode == .transfer,
+                  leg.durationMinutes > 0 else { continue }
+
+            if index == 0 {
+                if let next = trip.legs.dropFirst(index + 1).first(where: { $0.isTransit }) {
+                    descriptions.append("\(leg.durationMinutes) min to \(next.routeId ?? "stop")")
+                } else {
+                    descriptions.append("\(leg.durationMinutes) min walk")
+                }
+            } else if index == trip.legs.count - 1 {
+                descriptions.append("\(leg.durationMinutes) min to dest")
+            } else {
+                if let next = trip.legs.dropFirst(index + 1).first(where: { $0.isTransit }) {
+                    descriptions.append("\(leg.durationMinutes) min to \(next.routeId ?? "transfer")")
+                } else {
+                    descriptions.append("\(leg.durationMinutes) min transfer")
+                }
+            }
+        }
+        return descriptions
     }
 
     // MARK: - Info Row
@@ -342,9 +380,10 @@ struct TripTimelineGridView: View {
     private func infoRow(_ trip: TripPlan, isRecommended: Bool) -> some View {
         let seconds = trip.departureTime.timeIntervalSince(nowDate)
         let minutes = Int(seconds / 60)
+        let hasRealtime = trip.legs.contains { $0.liveStatus?.isRealtime == true }
 
         return HStack(alignment: .center, spacing: 0) {
-            goLabel(trip: trip, minutes: minutes)
+            goLabel(trip: trip, minutes: minutes, hasRealtime: hasRealtime)
 
             if isRecommended {
                 bestBadge
@@ -354,31 +393,45 @@ struct TripTimelineGridView: View {
             Spacer(minLength: 8)
 
             Text(trip.durationString)
-                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                .font(.system(size: 15, weight: .heavy, design: .rounded))
                 .foregroundStyle(AppTheme.Colors.textPrimary)
         }
         .padding(.horizontal, 16)
     }
 
     @ViewBuilder
-    private func goLabel(trip: TripPlan, minutes: Int) -> some View {
+    private func goLabel(trip: TripPlan, minutes: Int, hasRealtime: Bool) -> some View {
         if minutes <= 0 {
             HStack(spacing: 4) {
                 Text("Go")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
-                Text("now")
-                    .font(.system(size: 15, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.successGreen)
+                HStack(spacing: 2) {
+                    Text("now")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.successGreen)
+                    if hasRealtime {
+                        Image(systemName: "dot.radiowaves.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(AppTheme.Colors.successGreen)
+                    }
+                }
             }
         } else if minutes <= 120 {
             HStack(spacing: 4) {
                 Text("Go in")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
-                Text("\(minutes) min")
-                    .font(.system(size: 15, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.successGreen)
+                HStack(spacing: 2) {
+                    Text("\(minutes) min")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.successGreen)
+                    if hasRealtime {
+                        Image(systemName: "dot.radiowaves.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(AppTheme.Colors.successGreen)
+                    }
+                }
             }
         } else {
             Text("Departs \(trip.departureTimeString)")
@@ -466,6 +519,7 @@ private struct TimelineRowButtonStyle: ButtonStyle {
                           ? AppTheme.Colors.cardInset.opacity(0.3)
                           : Color.clear)
             )
-            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
