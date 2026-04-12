@@ -46,6 +46,10 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
     /// Set by the backend for subway express routes (A, B, D, E, 2-5, N, Q, Z,
     /// 6X, 7X, FX) and SBS/express/limited buses.
     var isExpress: Bool = false
+    /// Resolved backend brand color for this arrival's route.
+    var colorHex: String? = nil
+    /// Resolved backend bus service type for bus arrivals.
+    var busServiceType: String? = nil
 
     var isBus: Bool { mode == "bus" }
     var isLIRR: Bool { mode == "lirr" }
@@ -90,6 +94,8 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         case isRealTime = "is_real_time"
         case isCancelled = "is_cancelled"
         case isExpress = "is_express"
+        case colorHex = "color_hex"
+        case busServiceType = "bus_service_type"
     }
 
     /// Memberwise initializer (restores the auto-generated one that the
@@ -111,7 +117,9 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         distanceM: Double? = nil,
         isRealTime: Bool = false,
         isCancelled: Bool = false,
-        isExpress: Bool = false
+        isExpress: Bool = false,
+        colorHex: String? = nil,
+        busServiceType: String? = nil
     ) {
         self.routeId = routeId
         self.stopName = stopName
@@ -130,6 +138,8 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         self.isRealTime = isRealTime
         self.isCancelled = isCancelled
         self.isExpress = isExpress
+        self.colorHex = colorHex
+        self.busServiceType = busServiceType
     }
 
     init(from decoder: Decoder) throws {
@@ -151,6 +161,8 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         isRealTime = try c.decodeIfPresent(Bool.self, forKey: .isRealTime) ?? false
         isCancelled = try c.decodeIfPresent(Bool.self, forKey: .isCancelled) ?? false
         isExpress = try c.decodeIfPresent(Bool.self, forKey: .isExpress) ?? false
+        colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
+        busServiceType = try c.decodeIfPresent(String.self, forKey: .busServiceType)
     }
 }
 

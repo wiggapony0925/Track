@@ -8,6 +8,7 @@ schemas are organized separately in ``app.models.track_engine``.
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -264,6 +265,51 @@ class NearbyTransitArrival(BaseModel):
             "N, Q, Z, 6X, 7X, FX), SBS/express/limited buses."
         ),
     )
+    color_hex: str | None = Field(
+        None,
+        description="Resolved brand-correct route color for UI badges and chips.",
+    )
+    bus_service_type: str | None = Field(
+        None,
+        description=(
+            "Resolved bus service type when mode='bus' (e.g. 'Local', "
+            "'Limited', 'Select Bus Service', 'Express')."
+        ),
+    )
+
+    def model_post_init(self, __context: Any) -> None:
+        """Backfill brand metadata so every arrival carries the correct UI color."""
+        if self.color_hex:
+            return
+
+        mode = (self.mode or "").strip().lower()
+        route_id = (self.route_id or "").strip()
+        if not mode or not route_id:
+            return
+
+        from app.utils.brand import bus_color as _brand_bus_color
+        from app.utils.brand import mode_color as _brand_mode_color
+        from app.utils.transit_utils import get_subway_color
+
+        if mode == "bus":
+            from app.routers.nearby import _classify_bus_service_type
+
+            short_route_id = route_id
+            for prefix in ("MTA NYCT_", "MTA BUS_", "MTABC_"):
+                if short_route_id.upper().startswith(prefix):
+                    short_route_id = short_route_id[len(prefix):]
+                    break
+
+            svc = self.bus_service_type or _classify_bus_service_type(short_route_id)
+            self.bus_service_type = svc
+            self.color_hex = _brand_bus_color(svc)
+            return
+
+        if mode in {"subway", "lirr", "mnr"}:
+            self.color_hex = get_subway_color(route_id)
+            return
+
+        self.color_hex = _brand_mode_color(mode)
 
 
 class DirectionArrivals(BaseModel):

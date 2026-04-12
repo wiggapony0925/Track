@@ -403,6 +403,62 @@ enum AppTheme {
 
         /// Metro-North Railroad brand blue (darker).
         static let mnrBlue = Color(red: 0 / 255, green: 90 / 255, blue: 140 / 255)
+
+        static func lirrColor(for routeID: String) -> Color {
+            switch routeID.uppercased() {
+            case "1", "LIRR_1", "BABYLON", "BABYLON BRANCH":
+                return Color(red: 0 / 255, green: 152 / 255, blue: 95 / 255)
+            case "2", "LIRR_2", "HEMPSTEAD", "HEMPSTEAD BRANCH":
+                return Color(red: 206 / 255, green: 142 / 255, blue: 0 / 255)
+            case "3", "LIRR_3", "OYSTER BAY", "OYSTER BAY BRANCH":
+                return Color(red: 0 / 255, green: 175 / 255, blue: 63 / 255)
+            case "4", "LIRR_4", "RONKONKOMA", "RONKONKOMA BRANCH":
+                return Color(red: 166 / 255, green: 38 / 255, blue: 170 / 255)
+            case "5", "LIRR_5", "MONTAUK", "MONTAUK BRANCH":
+                return Color(red: 0 / 255, green: 178 / 255, blue: 169 / 255)
+            case "6", "LIRR_6", "LONG BEACH", "LONG BEACH BRANCH":
+                return Color(red: 255 / 255, green: 99 / 255, blue: 25 / 255)
+            case "7", "LIRR_7", "FAR ROCKAWAY", "FAR ROCKAWAY BRANCH":
+                return Color(red: 110 / 255, green: 50 / 255, blue: 25 / 255)
+            case "8", "LIRR_8", "WEST HEMPSTEAD", "WEST HEMPSTEAD BRANCH":
+                return Color(red: 0 / 255, green: 161 / 255, blue: 222 / 255)
+            case "9", "LIRR_9", "PORT WASHINGTON", "PORT WASHINGTON BRANCH":
+                return Color(red: 198 / 255, green: 12 / 255, blue: 48 / 255)
+            case "10", "LIRR_10", "PORT JEFFERSON", "PORT JEFFERSON BRANCH":
+                return Color(red: 0 / 255, green: 110 / 255, blue: 199 / 255)
+            case "11", "LIRR_11", "BELMONT PARK", "BELMONT PARK BRANCH":
+                return Color(red: 96 / 255, green: 38 / 255, blue: 158 / 255)
+            case "12", "LIRR_12", "CITY TERMINAL ZONE":
+                return Color(red: 77 / 255, green: 83 / 255, blue: 87 / 255)
+            case "13", "LIRR_13", "GREENPORT", "GREENPORT SERVICE", "GREENPORT BRANCH":
+                return Color(red: 166 / 255, green: 38 / 255, blue: 170 / 255)
+            default:
+                return lirrBlue
+            }
+        }
+
+        static func mnrColor(for routeID: String) -> Color {
+            switch routeID.uppercased() {
+            case "1", "MNR_1", "HUDSON", "HUDSON LINE":
+                return Color(red: 0 / 255, green: 155 / 255, blue: 58 / 255)
+            case "2", "MNR_2", "HARLEM", "HARLEM LINE":
+                return Color(red: 0 / 255, green: 57 / 255, blue: 166 / 255)
+            case "3", "MNR_3", "NEW HAVEN", "NEW HAVEN LINE":
+                return Color(red: 224 / 255, green: 0 / 255, blue: 52 / 255)
+            case "4", "MNR_4", "NEW CANAAN", "NEW CANAAN LINE":
+                return Color(red: 224 / 255, green: 0 / 255, blue: 52 / 255)
+            case "5", "MNR_5", "DANBURY", "DANBURY LINE":
+                return Color(red: 224 / 255, green: 0 / 255, blue: 52 / 255)
+            case "6", "MNR_6", "WATERBURY", "WATERBURY LINE":
+                return Color(red: 224 / 255, green: 0 / 255, blue: 52 / 255)
+            case "PASCACK VALLEY", "PASCACK VALLEY LINE":
+                return Color(red: 146 / 255, green: 61 / 255, blue: 151 / 255)
+            case "PORT JERVIS", "PORT JERVIS LINE":
+                return Color(red: 255 / 255, green: 121 / 255, blue: 0 / 255)
+            default:
+                return mnrBlue
+            }
+        }
     }
 
     // MARK: - Layout

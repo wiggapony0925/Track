@@ -235,9 +235,15 @@ struct TripTimelineView: View {
         case .bus:
             return AppTheme.BusColors.color(forServiceType: leg.busServiceType)
         case .lirr:
-            return AppTheme.CommuterRailColors.lirrBlue
+            if let hex = leg.routeColor, !hex.isEmpty {
+                return Color(hex: hex)
+            }
+            return AppTheme.CommuterRailColors.lirrColor(for: leg.routeId ?? leg.routeName ?? "")
         case .mnr:
-            return AppTheme.CommuterRailColors.mnrBlue
+            if let hex = leg.routeColor, !hex.isEmpty {
+                return Color(hex: hex)
+            }
+            return AppTheme.CommuterRailColors.mnrColor(for: leg.routeId ?? leg.routeName ?? "")
         case .walk, .transfer:
             return AppTheme.Colors.textTertiary
         }

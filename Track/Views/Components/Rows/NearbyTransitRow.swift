@@ -215,7 +215,9 @@ struct NearbyTransitRow: View {
                 routeID: arrival.displayName,
                 size: .custom(54, 22),
                 isBus: arrival.isBus,
-                mode: arrival.mode
+                hexColor: arrival.colorHex,
+                mode: arrival.mode,
+                busServiceType: arrival.busServiceType
             )
             .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
             .accessibilityHidden(true)

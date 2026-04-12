@@ -62,12 +62,22 @@ struct RouteBadge: View {
     /// Detects SBS (Select Bus Service) routes — prefers the backend
     /// `busServiceType` field, falling back to name-based detection.
     private var isSBS: Bool {
-        if let svc = busServiceType {
-            return svc.lowercased() == "select bus service"
+        resolvedBusServiceType?.lowercased() == "select bus service"
+    }
+
+    private var resolvedBusServiceType: String? {
+        if let svc = busServiceType, !svc.isEmpty {
+            return svc
         }
-        // Fallback: route names containing "SBS" or ending with "+"
         let upper = routeID.uppercased()
-        return upper.contains("SBS") || upper.hasSuffix("+")
+        if upper.contains("SBS") || upper.hasSuffix("+") {
+            return "Select Bus Service"
+        }
+        if upper.hasPrefix("BXM") || upper.hasPrefix("BM") || upper.hasPrefix("QM")
+            || upper.hasPrefix("SIM") || upper.hasPrefix("X") {
+            return "Express"
+        }
+        return nil
     }
 
     /// Display text for bus badges — strips "-SBS" / "+SBS" suffixes
@@ -103,11 +113,24 @@ struct RouteBadge: View {
             return Color(hex: hex)
         }
         // Use the service-type palette when the backend told us the type
-        if let svc = busServiceType {
+        if let svc = resolvedBusServiceType {
             return AppTheme.BusColors.color(forServiceType: svc)
         }
         // Fallback: cyan for SBS-looking names, local blue otherwise
         return isSBS ? AppTheme.BusColors.sbsCyan : AppTheme.BusColors.localBlue
+    }
+
+    private var commuterRailBackgroundColor: Color {
+        if let hex = hexColor {
+            return Color(hex: hex)
+        }
+        if isLIRR {
+            return AppTheme.CommuterRailColors.lirrColor(for: routeID)
+        }
+        if isMNR {
+            return AppTheme.CommuterRailColors.mnrColor(for: routeID)
+        }
+        return AppTheme.Colors.mtaBlue
     }
 
     private var backgroundColor: Color {
@@ -118,10 +141,10 @@ struct RouteBadge: View {
             return busBackgroundColor
         }
         if isLIRR {
-            return AppTheme.CommuterRailColors.lirrBlue
+            return commuterRailBackgroundColor
         }
         if isMNR {
-            return AppTheme.CommuterRailColors.mnrBlue
+            return commuterRailBackgroundColor
         }
         return AppTheme.SubwayColors.color(for: routeID)
     }

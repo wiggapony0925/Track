@@ -386,8 +386,16 @@ struct TripResultCard: View {
         switch leg.mode {
         case .subway:  return AppTheme.SubwayColors.color(for: leg.routeId ?? "")
         case .bus:     return AppTheme.BusColors.color(forServiceType: leg.busServiceType)
-        case .lirr:    return AppTheme.CommuterRailColors.lirrBlue
-        case .mnr:     return AppTheme.CommuterRailColors.mnrBlue
+        case .lirr:
+            if let hex = leg.routeColor, !hex.isEmpty {
+                return Color(hex: hex)
+            }
+            return AppTheme.CommuterRailColors.lirrColor(for: leg.routeId ?? leg.routeName ?? "")
+        case .mnr:
+            if let hex = leg.routeColor, !hex.isEmpty {
+                return Color(hex: hex)
+            }
+            return AppTheme.CommuterRailColors.mnrColor(for: leg.routeId ?? leg.routeName ?? "")
         default:
             if let hex = leg.routeColor, !hex.isEmpty {
                 return Color(hex: hex)
