@@ -1734,7 +1734,9 @@ struct RouteDetailSheet: View {
                 tripId: item.id,
                 stopId: nil,
                 isRealTime: false,
-                isCancelled: false
+                isCancelled: false,
+                colorHex: group.colorHex,
+                busServiceType: group.busServiceType
             ))
         }
 

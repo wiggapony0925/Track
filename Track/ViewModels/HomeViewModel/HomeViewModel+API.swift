@@ -42,13 +42,14 @@ extension HomeViewModel {
                 routeId: arrival.routeId,
                 displayName: arrival.displayName,
                 mode: arrival.mode,
-                colorHex: nil,
+                colorHex: arrival.colorHex,
                 directions: [
                     DirectionArrivalsResponse(
                         direction: arrival.direction,
                         arrivals: [arrival]
                     )
-                ]
+                ],
+                busServiceType: arrival.busServiceType
             )
             await selectGroupedRoute(minimalGroup, directionIndex: 0, userLocation: userLocation)
         }
@@ -311,7 +312,9 @@ extension HomeViewModel {
                     tripId: nil,
                     stopId: call.stopId,
                     distanceM: dist,
-                    isRealTime: vehicle.isRealtime
+                    isRealTime: vehicle.isRealtime,
+                    colorHex: currentGroup.colorHex,
+                    busServiceType: currentGroup.busServiceType
                 )
                 newArrivals.append(arrival)
             }
@@ -429,7 +432,11 @@ extension HomeViewModel {
             displayName: currentGroup.displayName,
             mode: currentGroup.mode,
             colorHex: currentGroup.colorHex,
-            directions: newDirections
+            directions: newDirections,
+            sortingKey: currentGroup.sortingKey,
+            alerts: currentGroup.alerts,
+            expressRoutes: currentGroup.expressRoutes,
+            busServiceType: currentGroup.busServiceType
         )
 
         #if DEBUG
@@ -572,7 +579,9 @@ extension HomeViewModel {
                     tripId: a.tripId,
                     stopId: a.stationID,
                     distanceM: dist,
-                    isRealTime: a.status.lowercased() != "scheduled"
+                    isRealTime: a.status.lowercased() != "scheduled",
+                    colorHex: currentGroup.colorHex,
+                    busServiceType: currentGroup.busServiceType
                 ))
         }
 
@@ -866,7 +875,11 @@ extension HomeViewModel {
             displayName: currentGroup.displayName,
             mode: currentGroup.mode,
             colorHex: currentGroup.colorHex,
-            directions: newDirections
+            directions: newDirections,
+            sortingKey: currentGroup.sortingKey,
+            alerts: currentGroup.alerts,
+            expressRoutes: currentGroup.expressRoutes,
+            busServiceType: currentGroup.busServiceType
         )
 
         #if DEBUG
@@ -2601,7 +2614,11 @@ extension HomeViewModel {
                 displayName: match.displayName,
                 mode: match.mode,
                 colorHex: match.colorHex ?? current.colorHex,
-                directions: mergedDirections
+                directions: mergedDirections,
+                sortingKey: match.sortingKey.isEmpty ? current.sortingKey : match.sortingKey,
+                alerts: match.alerts.isEmpty ? current.alerts : match.alerts,
+                expressRoutes: match.expressRoutes.isEmpty ? current.expressRoutes : match.expressRoutes,
+                busServiceType: match.busServiceType ?? current.busServiceType
             )
             self.selectedGroupedRoute = mergedGroup
         } else {

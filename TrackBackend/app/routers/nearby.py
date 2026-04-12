@@ -308,6 +308,63 @@ def _bus_color_for_service_type(service_type: str) -> str:
     """Return the MTA-standard hex color for a bus service type."""
     return _brand_bus_color(service_type)
 
+
+def _build_bus_route_color_lookup(routes) -> dict[str, str]:
+    """Build a flexible lookup of bus route identifiers to exact OBA colors."""
+    lookup: dict[str, str] = {}
+    for route in routes:
+        color = (getattr(route, "color", "") or "").strip()
+        if not color:
+            continue
+        color_hex = color if color.startswith("#") else f"#{color}"
+        route_id = (getattr(route, "id", "") or "").strip()
+        short_name = (getattr(route, "short_name", "") or "").strip()
+
+        keys = {
+            route_id.upper(),
+            short_name.upper(),
+            _normalize_route_display(short_name).upper(),
+        }
+        if route_id:
+            keys.add(_display_name(route_id).upper())
+            if "_" in route_id:
+                stripped = route_id.rsplit("_", 1)[-1]
+                keys.add(stripped.upper())
+                keys.add(_normalize_route_display(stripped).upper())
+
+        for key in keys:
+            if key:
+                lookup[key] = color_hex
+    return lookup
+
+
+def _lookup_bus_route_color(
+    route_id: str,
+    display_name: str,
+    color_lookup: dict[str, str] | None,
+) -> str | None:
+    """Return the exact OBA route color when available."""
+    if not color_lookup:
+        return None
+
+    candidates = [
+        route_id,
+        display_name,
+        _normalize_route_display(display_name),
+        _display_name(route_id),
+    ]
+    if "_" in route_id:
+        stripped = route_id.rsplit("_", 1)[-1]
+        candidates.extend([stripped, _normalize_route_display(stripped)])
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        color = color_lookup.get(candidate.upper())
+        if color:
+            return color
+    return None
+
 # Load tunable constants from settings.json → app_settings
 _PLACEHOLDER_MINUTES: int = get_settings().app_settings.placeholder_minutes
 _MAX_SCHEDULE_PER_DORMANT: int = get_settings().app_settings.max_schedule_per_dormant
@@ -647,7 +704,18 @@ async def _compute_and_cache_grouped(
             tag="NEARBY",
         )
         alert_index = _inline_alert_cache  # fall back to stale cache
-    grouped = _group_arrivals(flat, alert_index=alert_index)
+    try:
+        bus_route_color_lookup = _build_bus_route_color_lookup(
+            await get_all_bus_routes()
+        )
+    except Exception as exc:
+        TrackLogger.info(f"Bus route color lookup failed: {exc}", tag="NEARBY")
+        bus_route_color_lookup = {}
+    grouped = _group_arrivals(
+        flat,
+        alert_index=alert_index,
+        bus_color_lookup=bus_route_color_lookup,
+    )
 
     # ── Mark placeholder arrivals ──────────────────────────────────
     # Placeholders keep minutes_away=99 so the iOS `isPlaceholder`
@@ -1170,6 +1238,7 @@ async def nearby_inactive_routes(
     # which have stops ~1.3 km away.
     discovery_radius = min(effective_radius * 2, 5000)
     all_routes_in_area = _discover_routes_in_area(lat, lon, discovery_radius)
+    bus_route_color_lookup = _build_bus_route_color_lookup(await get_all_bus_routes())
 
     # Build InactiveRoute objects (before filtering by active — cache the full set)
     inactive_list: list[InactiveRoute] = []
@@ -1178,7 +1247,11 @@ async def nearby_inactive_routes(
         service_type = _classify_bus_service_type(display_name) if mode == "bus" else None
         color_hex = None
         if mode == "bus":
-            color_hex = _bus_color_for_service_type(service_type or "Local")
+            color_hex = _lookup_bus_route_color(
+                route_id=route_id,
+                display_name=display_name,
+                color_lookup=bus_route_color_lookup,
+            ) or _bus_color_for_service_type(service_type or "Local")
         elif color:
             color_hex = f"#{color}" if not color.startswith("#") else color
 
@@ -1906,6 +1979,7 @@ async def _get_inline_alerts() -> dict[str, list[InlineAlert]]:
 def _group_arrivals(
     flat: list[NearbyTransitArrival],
     alert_index: dict[str, list[InlineAlert]] | None = None,
+    bus_color_lookup: dict[str, str] | None = None,
 ) -> list[GroupedNearbyTransit]:
     """Collapse a flat arrival list into one entry per route.
 
@@ -1984,7 +2058,8 @@ def _group_arrivals(
         bus_svc: str | None = None  # set only for bus routes
         # Assign color: subway lines use the official palette,
         # LIRR/MNR use per-branch colors from routes.txt,
-        # bus routes use MTA service-type colors
+        # bus routes prefer the exact OBA route color and only then fall
+        # back to the service-type palette.
         if mode == "subway":
             color = get_subway_color(display)
         elif mode == "lirr":
@@ -1996,7 +2071,9 @@ def _group_arrivals(
             color = get_mnr_route_color(numeric_id)
         else:
             bus_svc = _classify_bus_service_type(display)
-            color = _bus_color_for_service_type(bus_svc)
+            color = _lookup_bus_route_color(route_id, display, bus_color_lookup)
+            if not color:
+                color = _bus_color_for_service_type(bus_svc)
 
         directions: list[DirectionArrivals] = []
         for direction, arrivals in dir_map.items():

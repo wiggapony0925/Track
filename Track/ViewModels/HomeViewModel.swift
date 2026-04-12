@@ -606,6 +606,19 @@ final class HomeViewModel {
                 byDirection[dirLabel, default: []].append(arrival)
             }
 
+            let colorHex: String? = {
+                switch mode {
+                case "subway":
+                    return AppTheme.SubwayColors.color(for: routeId).toHex()
+                case "lirr":
+                    return AppTheme.CommuterRailColors.lirrColor(for: routeId).toHex()
+                case "mnr":
+                    return AppTheme.CommuterRailColors.mnrColor(for: routeId).toHex()
+                default:
+                    return nil
+                }
+            }()
+
             let directions = byDirection.map {
                 direction, dirArrivals -> DirectionArrivalsResponse in
                 let nearbyArrivals =
@@ -634,13 +647,12 @@ final class HomeViewModel {
                             stopId: train.stationID,
                             distanceM: dist,
                             isRealTime: !train.isCancelled && train.status != "Scheduled",
-                            isCancelled: train.isCancelled
+                            isCancelled: train.isCancelled,
+                            colorHex: colorHex
                         )
                     }
                 return DirectionArrivalsResponse(direction: direction, arrivals: nearbyArrivals)
             }.sorted { $0.direction < $1.direction }
-
-            let colorHex: String? = mode == "subway" ? nil : nil
 
             // Resolve display name: use branch name lookup for commuter rail
             let displayName = BranchNames.resolveDisplayName(routeId: routeId, mode: mode)
