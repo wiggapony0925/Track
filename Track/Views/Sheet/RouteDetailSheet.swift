@@ -2549,14 +2549,19 @@ struct RouteDetailSheet: View {
     private func countdownChipRow(
         chips: [(arrival: NearbyTransitResponse, eta: SmartETA)]
     ) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let visibleChips = Array(chips.prefix(6))
+        let hasMore = chips.count > 6
+
+        return ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: 10) {
-                ForEach(Array(chips.enumerated()), id: \.element.arrival.id) { index, pair in
+                ForEach(Array(visibleChips.enumerated()), id: \.element.arrival.id) { index, pair in
                     arrivalCard(arrival: pair.arrival, index: index, eta: pair.eta)
                 }
 
                 // "See More" chip — opens the Departures tab
-                seeMoreChip
+                if hasMore {
+                    seeMoreChip(remainingCount: chips.count - 6)
+                }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
             .padding(.top, 8)
@@ -2568,27 +2573,33 @@ struct RouteDetailSheet: View {
 
     /// A trailing chip in the horizontal scroller that switches to the
     /// Departures tab so the user can browse the full schedule board.
-    private var seeMoreChip: some View {
+    /// Matches the size of a standard (non-first) ArrivalChipView (86×124, r18).
+    private func seeMoreChip(remainingCount: Int) -> some View {
         Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 selectedTab = .departures
             }
         } label: {
             VStack(spacing: 6) {
+                Spacer(minLength: 0)
                 Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(routeColor)
                 Text("See More")
-                    .font(.custom("Helvetica-Bold", fixedSize: 11))
+                    .font(.custom("Helvetica-Bold", fixedSize: 12))
                     .foregroundColor(routeColor)
+                Text("+\(remainingCount)")
+                    .font(.custom("Helvetica", fixedSize: 11))
+                    .foregroundColor(routeColor.opacity(0.6))
+                Spacer(minLength: 0)
             }
-            .frame(width: 72, height: 72)
+            .frame(width: 86, height: 124)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(routeColor.opacity(0.08))
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(routeColor.opacity(0.06))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(routeColor.opacity(0.15), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(routeColor.opacity(0.12), lineWidth: 0.5)
                     )
             )
         }

@@ -75,7 +75,16 @@ _CACHE_MAX_AGE_S = 6 * 3_600  # 6 hours
 _index: dict[str, RouteShape] | None = None
 # Prevents multiple concurrent coroutines from each firing an HTTP fetch
 # when the cache is cold (thundering-herd guard).
-_fetch_lock = asyncio.Lock()
+# Lazy — must be created inside the running event loop to avoid
+# "Lock is bound to a different event loop" errors with gunicorn workers.
+_fetch_lock: asyncio.Lock | None = None
+
+
+def _get_fetch_lock() -> asyncio.Lock:
+    global _fetch_lock
+    if _fetch_lock is None:
+        _fetch_lock = asyncio.Lock()
+    return _fetch_lock
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +414,7 @@ async def get_bus_open_data_shapes() -> dict[str, RouteShape]:
         return _index
 
     # Only one coroutine fetches; all others wait, then read the result.
-    async with _fetch_lock:
+    async with _get_fetch_lock():
         # Re-check after acquiring the lock — another coroutine may have
         # already populated _index while we were waiting.
         if _index is not None:

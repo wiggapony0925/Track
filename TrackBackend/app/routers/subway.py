@@ -80,8 +80,17 @@ router = APIRouter(tags=["subway"])
 #      startup and the in-memory cache is populated from it.
 _shapes_all_cache: AllSubwayLinesResponse | None = None
 _shapes_all_json_bytes: bytes | None = None  # pre-serialized JSON
-_shapes_all_lock = asyncio.Lock()
+# Lazy — must be created inside the running event loop to avoid
+# "Lock is bound to a different event loop" errors with gunicorn workers.
+_shapes_all_lock: asyncio.Lock | None = None
 _shapes_all_building = False  # True while pipeline is running
+
+
+def _get_shapes_all_lock() -> asyncio.Lock:
+    global _shapes_all_lock
+    if _shapes_all_lock is None:
+        _shapes_all_lock = asyncio.Lock()
+    return _shapes_all_lock
 
 # ── Disk cache versioning ──
 # Bump this whenever corridor_pipeline.py changes affect polyline output.
@@ -492,7 +501,7 @@ async def subway_shapes_all() -> Response:
             headers={"Retry-After": "15"},
         )
 
-    async with _shapes_all_lock:
+    async with _get_shapes_all_lock():
         # Double-check after acquiring lock
         if _shapes_all_json_bytes is not None:
             return Response(

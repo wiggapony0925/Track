@@ -79,7 +79,16 @@ _route_dir_index: dict[str, list[BusStop]] | None = None
 
 # Prevents multiple concurrent coroutines from each firing an independent
 # HTTP fetch when both indexes are None (thundering-herd guard).
-_fetch_lock = asyncio.Lock()
+# Lazy — must be created inside the running event loop to avoid
+# "Lock is bound to a different event loop" errors with gunicorn workers.
+_fetch_lock: asyncio.Lock | None = None
+
+
+def _get_fetch_lock() -> asyncio.Lock:
+    global _fetch_lock
+    if _fetch_lock is None:
+        _fetch_lock = asyncio.Lock()
+    return _fetch_lock
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +312,7 @@ async def _ensure_indexes() -> (
         return _stop_index, _route_dir_index
 
     # Only one coroutine fetches; all others wait here, then read the result.
-    async with _fetch_lock:
+    async with _get_fetch_lock():
         # Re-check after acquiring the lock — another coroutine may have
         # already populated the indexes while we were waiting.
         if _stop_index is not None and _route_dir_index is not None:

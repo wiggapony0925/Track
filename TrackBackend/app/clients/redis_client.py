@@ -15,6 +15,7 @@ feed_set(kind, url, data, ...)            — MTA feed SET."""
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -39,6 +40,7 @@ _MTA_PREFIX = "track:mta"
 
 _redis_client: Any = None
 _redis_init_attempted: bool = False
+_redis_loop_id: int | None = None  # track which event loop owns the client
 
 
 # ---------------------------------------------------------------------------
@@ -57,10 +59,19 @@ async def init_redis() -> None:
     Best-effort — if REDIS_URL is absent or the connection fails, all
     helpers quietly fall back to in-process caches (no crash).
     """
-    global _redis_client, _redis_init_attempted
-    if _redis_init_attempted:
+    global _redis_client, _redis_init_attempted, _redis_loop_id
+    # If a gunicorn worker is recycled, the event loop changes but
+    # module-level state persists.  Detect loop change and re-init.
+    try:
+        current_loop_id = id(asyncio.get_running_loop())
+    except RuntimeError:
+        current_loop_id = None
+    if _redis_init_attempted and current_loop_id == _redis_loop_id:
         return
+    # New loop (or first boot) — reset and reconnect
     _redis_init_attempted = True
+    _redis_loop_id = current_loop_id
+    _redis_client = None
 
     redis_url = os.getenv("REDIS_URL", "").strip()
 
