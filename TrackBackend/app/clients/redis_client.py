@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import os
 import time as _time
@@ -43,14 +44,70 @@ _redis_init_attempted: bool = False
 _redis_loop_id: int | None = None  # track which event loop owns the client
 
 
+def _current_loop_id() -> int | None:
+    """Return the active asyncio loop id, or None outside a running loop."""
+    try:
+        return id(asyncio.get_running_loop())
+    except RuntimeError:
+        return None
+
+
+async def _close_client(client: Any) -> None:
+    """Best-effort close for redis-py clients across versions."""
+    close = getattr(client, "aclose", None) or getattr(client, "close", None)
+    if close is None:
+        return
+    result = close()
+    if asyncio.iscoroutine(result):
+        await result
+
+
 # ---------------------------------------------------------------------------
 # Lifecycle
 # ---------------------------------------------------------------------------
 
 
 def get_client() -> Any:
-    """Return the live Redis client, or None if unavailable."""
-    return _redis_client
+    """Return the live Redis client for the current loop, or None.
+
+    redis-py async clients are loop-affine. Returning a client created on a
+    different event loop causes production errors like:
+    ``<asyncio.locks.Lock ...> is bound to a different event loop``.
+    Sync callers can't reconnect on their own, so they fail open here.
+    """
+    if _redis_client is None:
+        return None
+
+    current_loop_id = _current_loop_id()
+    if (
+        current_loop_id is None
+        or _redis_loop_id is None
+        or current_loop_id == _redis_loop_id
+    ):
+        return _redis_client
+    return None
+
+
+async def _get_client_for_current_loop() -> Any:
+    """Return a loop-safe Redis client, reconnecting on loop changes."""
+    client = get_client()
+    if client is not None:
+        return client
+
+    current_loop_id = _current_loop_id()
+    if (
+        _redis_client is not None
+        and current_loop_id is not None
+        and _redis_loop_id is not None
+        and current_loop_id != _redis_loop_id
+    ):
+        TrackLogger.info(
+            "[REDIS] Event loop changed — recycling shared client for the new loop",
+            tag="REDIS",
+        )
+        await init_redis()
+        return get_client()
+    return None
 
 
 async def init_redis() -> None:
@@ -62,16 +119,24 @@ async def init_redis() -> None:
     global _redis_client, _redis_init_attempted, _redis_loop_id
     # If a gunicorn worker is recycled, the event loop changes but
     # module-level state persists.  Detect loop change and re-init.
-    try:
-        current_loop_id = id(asyncio.get_running_loop())
-    except RuntimeError:
-        current_loop_id = None
+    current_loop_id = _current_loop_id()
     if _redis_init_attempted and current_loop_id == _redis_loop_id:
         return
+    old_client = _redis_client
+    old_loop_id = _redis_loop_id
     # New loop (or first boot) — reset and reconnect
     _redis_init_attempted = True
     _redis_loop_id = current_loop_id
     _redis_client = None
+
+    if (
+        old_client is not None
+        and old_loop_id is not None
+        and current_loop_id is not None
+        and old_loop_id != current_loop_id
+    ):
+        with contextlib.suppress(Exception):
+            await _close_client(old_client)
 
     redis_url = os.getenv("REDIS_URL", "").strip()
 
@@ -133,15 +198,17 @@ async def init_redis() -> None:
 
 async def close_redis() -> None:
     """Close the Redis connection at app shutdown."""
-    global _redis_client
+    global _redis_client, _redis_init_attempted, _redis_loop_id
     if _redis_client is None:
         return
     try:
-        await _redis_client.close()
+        await _close_client(_redis_client)
     except Exception:  # Broad catch intentional: best-effort shutdown cleanup.
         TrackLogger.debug("Redis close failed", exc_info=True)
     finally:
         _redis_client = None
+        _redis_init_attempted = False
+        _redis_loop_id = None
 
 
 # ---------------------------------------------------------------------------
@@ -168,12 +235,13 @@ async def cache_get(
             (value, 'stale') if within stale_ttl,
             (None,  None)    on miss or error.
     """
-    if _redis_client is None:
+    client = await _get_client_for_current_loop()
+    if client is None:
         return None, None
     key = _make_key(key_prefix, kind, identifier)
     s = cache_stats.bucket(kind)
     try:
-        raw = await _redis_client.get(key)
+        raw = await client.get(key)
         if not raw:
             s.miss += 1
             cache_stats.tick()
@@ -211,14 +279,15 @@ async def cache_set(
     data: Any,
 ) -> None:
     """SET to Redis with a JSON envelope (bus-style structured cache)."""
-    if _redis_client is None:
+    client = await _get_client_for_current_loop()
+    if client is None:
         return
     key = _make_key(key_prefix, kind, identifier)
     payload = {"fetched_at": _time.time(), "data": data}
     s = cache_stats.bucket(kind)
     try:
         serialized = json.dumps(payload)
-        await _redis_client.set(key, serialized, ex=max(1, int(stale_ttl)))
+        await client.set(key, serialized, ex=max(1, int(stale_ttl)))
         s.sets += 1
         if not s._first_set_logged:
             s._first_set_logged = True
@@ -262,12 +331,13 @@ async def feed_get(
             (value, "stale") when age <= stale_ttl,
             (None, None) on miss/error/expiry.
     """
-    if _redis_client is None:
+    client = await _get_client_for_current_loop()
+    if client is None:
         return None, None
     key = _feed_key(kind, url)
     s = cache_stats.bucket(kind)
     try:
-        raw = await _redis_client.get(key)
+        raw = await client.get(key)
         if not raw:
             s.miss += 1
             cache_stats.tick()
@@ -307,7 +377,8 @@ async def feed_set(
     Stores with Redis TTL = stale_ttl seconds so stale-if-error callers can
     still recover recent data after the fresh window expires.
     """
-    if _redis_client is None:
+    client = await _get_client_for_current_loop()
+    if client is None:
         return
     key = _feed_key(kind, url)
     encoded = base64.b64encode(data).decode("ascii") if is_bytes else data
@@ -315,7 +386,7 @@ async def feed_set(
     s = cache_stats.bucket(kind)
     try:
         serialized = json.dumps(payload)
-        await _redis_client.set(key, serialized, ex=max(1, int(stale_ttl)))
+        await client.set(key, serialized, ex=max(1, int(stale_ttl)))
         s.sets += 1
         if not s._first_set_logged:
             s._first_set_logged = True
@@ -352,12 +423,13 @@ async def engine_get(
 
     Returns ``(parsed_json, "fresh"|"stale")`` on hit, ``(None, None)`` on miss.
     """
-    if _redis_client is None:
+    client = await _get_client_for_current_loop()
+    if client is None:
         return None, None
     key = _engine_key(endpoint, cache_key)
     s = cache_stats.bucket(f"engine_{endpoint}")
     try:
-        raw = await _redis_client.get(key)
+        raw = await client.get(key)
         if not raw:
             s.miss += 1
             cache_stats.tick()
@@ -393,14 +465,15 @@ async def engine_set(
     stale_ttl: float,
 ) -> None:
     """SET a C++ engine response to Redis."""
-    if _redis_client is None:
+    client = await _get_client_for_current_loop()
+    if client is None:
         return
     key = _engine_key(endpoint, cache_key)
     payload = {"fetched_at": _time.time(), "data": data}
     s = cache_stats.bucket(f"engine_{endpoint}")
     try:
         serialized = json.dumps(payload)
-        await _redis_client.set(key, serialized, ex=max(1, int(stale_ttl)))
+        await client.set(key, serialized, ex=max(1, int(stale_ttl)))
         s.sets += 1
         if not s._first_set_logged:
             s._first_set_logged = True
