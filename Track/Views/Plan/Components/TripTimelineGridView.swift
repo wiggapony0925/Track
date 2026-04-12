@@ -317,44 +317,24 @@ struct TripTimelineGridView: View {
         }
     }
 
-    // MARK: - Walk Segment (Transit-style: dots for edges, connector for transfers)
+    // MARK: - Walk Segment (walking icon with duration)
 
     private func walkSegment(_ leg: TripLeg, width: CGFloat) -> some View {
         let edge = isEdgeWalk(leg)
+        let w = max(width, 24)
 
-        return Group {
-            if edge {
-                walkDots(width: max(width, 24))
-            } else {
-                walkConnector(width: max(width, 24))
+        return VStack(spacing: 1) {
+            Image(systemName: "figure.walk")
+                .font(.system(size: edge ? 12 : 10, weight: .medium))
+                .foregroundStyle(AppTheme.Colors.textTertiary.opacity(edge ? 1.0 : 0.7))
+            if leg.durationMinutes > 0 && w > 22 {
+                Text(w > 40 ? "\(leg.durationMinutes) min" : "\(leg.durationMinutes)m")
+                    .font(.system(size: edge ? 10 : 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary.opacity(edge ? 1.0 : 0.7))
+                    .lineLimit(1)
             }
         }
-        .frame(width: max(width, 24), height: barHeight)
-    }
-
-    // Gray dots for edge walks (start/end of trip)
-    private func walkDots(width: CGFloat) -> some View {
-        let dotSize: CGFloat = 5
-        let dotCount = max(2, min(Int(width / 10), 6))
-        let totalDotsWidth = CGFloat(dotCount) * dotSize
-        let spacing = dotCount > 1
-            ? max((width - totalDotsWidth) / CGFloat(dotCount - 1), 3)
-            : 0
-
-        return HStack(spacing: spacing) {
-            ForEach(0..<dotCount, id: \.self) { _ in
-                Circle()
-                    .fill(AppTheme.Colors.textTertiary.opacity(0.45))
-                    .frame(width: dotSize, height: dotSize)
-            }
-        }
-    }
-
-    // Gray connector line for mid-trip transfer walks
-    private func walkConnector(width: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 1.5)
-            .fill(AppTheme.Colors.textTertiary.opacity(0.3))
-            .frame(width: max(width - 6, 8), height: 3)
+        .frame(width: w, height: barHeight)
     }
 
     // MARK: - Info Row

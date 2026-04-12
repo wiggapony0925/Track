@@ -120,7 +120,13 @@ final class PlanViewModel {
         )
 
         do {
+            let startTime = CFAbsoluteTimeGetCurrent()
             let response = try await TrackAPI.fetchEngineGo(request: request)
+            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+            let ms = Int(elapsed * 1000)
+            #if DEBUG
+            print("[TrackEngine] \(ms)ms — \(response.tripPlans.count) trips")
+            #endif
             tripResults = response.tripPlans
             scheduleNote = response.scheduleNote
             if tripResults.isEmpty {

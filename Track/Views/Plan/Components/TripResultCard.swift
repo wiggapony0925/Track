@@ -23,7 +23,10 @@ struct TripResultCard: View {
 
                 // Proportional Gantt timeline bar
                 timelineBar
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 6)
+
+                // Contextual walk descriptions
+                walkSummaryRow
 
                 // "Go in X min" + duration row
                 infoRow
@@ -110,40 +113,45 @@ struct TripResultCard: View {
     private func segmentView(_ segment: SegmentInfo, index: Int, total: Int) -> some View {
         if segment.leg.mode == .walk || segment.leg.mode == .transfer {
             if index == 0 || index == total - 1 {
-                walkDots(width: segment.width)
+                walkSegment(width: segment.width, leg: segment.leg)
             } else {
-                walkConnector(width: segment.width)
+                walkConnector(width: segment.width, leg: segment.leg)
             }
         } else {
             transitPill(segment.leg, width: segment.width)
         }
     }
 
-    // Walk dots for edge walks (start/end of trip) — Transit-style gray circles
-    private func walkDots(width: CGFloat) -> some View {
-        let dotSize: CGFloat = 6
-        let dotCount = max(2, min(Int(width / 12), 7))
-        let totalDotsWidth = CGFloat(dotCount) * dotSize
-        let spacing = dotCount > 1
-            ? max((width - totalDotsWidth) / CGFloat(dotCount - 1), 4)
-            : 0
-
-        return HStack(spacing: spacing) {
-            ForEach(0..<dotCount, id: \.self) { _ in
-                Circle()
-                    .fill(AppTheme.Colors.textTertiary.opacity(0.5))
-                    .frame(width: dotSize, height: dotSize)
+    // Walk segment for edge walks — walking icon with duration
+    private func walkSegment(width: CGFloat, leg: TripLeg) -> some View {
+        VStack(spacing: 1) {
+            Image(systemName: "figure.walk")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppTheme.Colors.textTertiary)
+            if leg.durationMinutes > 0 {
+                Text(width > 44 ? "\(leg.durationMinutes) min" : "\(leg.durationMinutes)m")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                    .lineLimit(1)
             }
         }
         .frame(width: width, height: barHeight)
     }
 
-    // Gray connector line for mid-trip transfer walks
-    private func walkConnector(width: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 1.5)
-            .fill(AppTheme.Colors.textTertiary.opacity(0.3))
-            .frame(width: max(width - 4, 8), height: 3)
-            .frame(width: width, height: barHeight)
+    // Walk connector for mid-trip transfers — walking icon with duration
+    private func walkConnector(width: CGFloat, leg: TripLeg) -> some View {
+        VStack(spacing: 1) {
+            Image(systemName: "figure.walk")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.7))
+            if leg.durationMinutes > 0 && width > 22 {
+                Text("\(leg.durationMinutes)m")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.7))
+                    .lineLimit(1)
+            }
+        }
+        .frame(width: width, height: barHeight)
     }
 
     // Fully rounded transit pill — matches Transit app exactly
@@ -203,6 +211,56 @@ struct TripResultCard: View {
                     .offset(x: 4, y: 4)
             }
         }
+    }
+
+    // MARK: - Walk Summary
+
+    @ViewBuilder
+    private var walkSummaryRow: some View {
+        let descriptions = walkLegDescriptions
+        if !descriptions.isEmpty {
+            HStack(spacing: 4) {
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+
+                Text(descriptions.joined(separator: "  ·  "))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                    .lineLimit(1)
+
+                Spacer()
+            }
+            .padding(.bottom, 6)
+        }
+    }
+
+    private var walkLegDescriptions: [String] {
+        var descriptions: [String] = []
+        for (index, leg) in trip.legs.enumerated() {
+            guard leg.mode == .walk || leg.mode == .transfer,
+                  leg.durationMinutes > 0 else { continue }
+
+            if index == 0 {
+                // Walk to first transit
+                if let next = trip.legs.dropFirst(index + 1).first(where: { $0.isTransit }) {
+                    descriptions.append("\(leg.durationMinutes) min to \(next.routeId ?? "stop")")
+                } else {
+                    descriptions.append("\(leg.durationMinutes) min walk")
+                }
+            } else if index == trip.legs.count - 1 {
+                // Walk from last transit to destination
+                descriptions.append("\(leg.durationMinutes) min to dest")
+            } else {
+                // Mid-trip transfer walk
+                if let next = trip.legs.dropFirst(index + 1).first(where: { $0.isTransit }) {
+                    descriptions.append("\(leg.durationMinutes) min to \(next.routeId ?? "transfer")")
+                } else {
+                    descriptions.append("\(leg.durationMinutes) min transfer")
+                }
+            }
+        }
+        return descriptions
     }
 
     // MARK: - Info Row

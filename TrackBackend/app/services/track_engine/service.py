@@ -543,7 +543,7 @@ class TrackEngineService:
         self._last_remote_engine_version: str | None = None
         self.remote_engine_url = self._resolve_remote_engine_url()
         self.remote_engine_timeout_s = float(
-            os.environ.get("TRACK_ENGINE_TIMEOUT_S", "25")
+            os.environ.get("TRACK_ENGINE_TIMEOUT_S", "12")
         )
         self.enable_realtime_enrichment = (
             os.environ.get("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "1")
@@ -1220,9 +1220,9 @@ class TrackEngineService:
 
         last_exc: httpx.HTTPError | None = None
         data: dict | None = None
-        for attempt in range(3):
+        for attempt in range(2):
             if attempt > 0:
-                time.sleep(0.5 * attempt)  # 0.5s, 1.0s backoff
+                time.sleep(0.5)  # single 0.5s backoff
             try:
                 with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
                     response = client.post(f"{self.remote_engine_url}/plan", json=payload)
@@ -1232,7 +1232,7 @@ class TrackEngineService:
             except httpx.HTTPError as exc:
                 last_exc = exc
         if data is None:
-            raise RuntimeError(f"TrackEngine plan request failed after 3 attempts: {last_exc}") from last_exc
+            raise RuntimeError(f"TrackEngine plan request failed after 2 attempts: {last_exc}") from last_exc
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
@@ -1255,7 +1255,7 @@ class TrackEngineService:
         return [], None
 
     def _try_future_days_plan(
-        self, request: PlanRequest, *, max_lookahead: int = 7
+        self, request: PlanRequest, *, max_lookahead: int = 3
     ) -> tuple[list[Itinerary], str] | None:
         """Try up to *max_lookahead* future days, returning the first day with results."""
         today_ny = datetime.now(NY_TZ).date()
@@ -1263,7 +1263,7 @@ class TrackEngineService:
             future_date = today_ny + timedelta(days=offset)
             payload = self._future_day_payload(request, offset)
             try:
-                with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
+                with httpx.Client(timeout=min(self.remote_engine_timeout_s, 8.0)) as client:
                     resp = client.post(f"{self.remote_engine_url}/plan", json=payload)
                     resp.raise_for_status()
                     data = resp.json()
@@ -1315,9 +1315,9 @@ class TrackEngineService:
 
         last_exc: httpx.HTTPError | None = None
         data: dict | None = None
-        for attempt in range(3):
+        for attempt in range(2):
             if attempt > 0:
-                time.sleep(0.5 * attempt)  # 0.5s, 1.0s backoff
+                time.sleep(0.5)  # single 0.5s backoff
             try:
                 with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
                     response = client.post(f"{self.remote_engine_url}/go", json=payload)
@@ -1327,7 +1327,7 @@ class TrackEngineService:
             except httpx.HTTPError as exc:
                 last_exc = exc
         if data is None:
-            raise RuntimeError(f"TrackEngine go request failed after 3 attempts: {last_exc}") from last_exc
+            raise RuntimeError(f"TrackEngine go request failed after 2 attempts: {last_exc}") from last_exc
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
@@ -1369,7 +1369,7 @@ class TrackEngineService:
         return go_response
 
     def _try_future_days_go(
-        self, request: PlanRequest, *, now_ts: int, max_lookahead: int = 7
+        self, request: PlanRequest, *, now_ts: int, max_lookahead: int = 3
     ) -> GoResponse | None:
         """Try future days for the /go endpoint."""
         today_ny = datetime.now(NY_TZ).date()
@@ -1377,7 +1377,7 @@ class TrackEngineService:
             future_date = today_ny + timedelta(days=offset)
             payload = self._future_day_payload(request, offset, now_ts=now_ts)
             try:
-                with httpx.Client(timeout=self.remote_engine_timeout_s) as client:
+                with httpx.Client(timeout=min(self.remote_engine_timeout_s, 8.0)) as client:
                     resp = client.post(f"{self.remote_engine_url}/go", json=payload)
                     resp.raise_for_status()
                     data = resp.json()
