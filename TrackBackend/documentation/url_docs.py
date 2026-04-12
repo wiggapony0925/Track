@@ -1,4 +1,4 @@
-"""Upstream URL documentation tables rendered into the OpenAPI overview."""
+"""Upstream URL documentation rendered into the OpenAPI overview."""
 
 from __future__ import annotations
 
@@ -221,79 +221,104 @@ _ORDERED_URL_KEYS = [
 
 
 def render_upstream_urls(settings: Settings) -> str:
-    """Render all configured upstream URLs and their purpose as markdown tables."""
+    """Render all configured upstream URLs as readable markdown sections."""
     urls = settings.urls
     bus_endpoints = urls.bus_endpoints
 
     sections: list[str] = [
-        "#### Exact configured URLs from settings.json",
+        "## Heart of the Data",
         "",
-        "| Config key | Exact configured value | Why we use it | Main UI purpose | Failure impact |",
-        "|------------|------------------------|---------------|-----------------|----------------|",
+        "This section is generated from `TrackBackend/settings.json`. It documents the exact upstream addresses the backend depends on, which app surface each one powers, and what failure mode the client should expect if that dependency degrades.",
+        "",
+        "### Realtime rail feeds",
     ]
 
     for key in _ORDERED_URL_KEYS:
+        if key == "alerts_json":
+            sections.extend(["", "### Alert and accessibility feeds"])
+        elif key == "bus_siri_base":
+            sections.extend(["", "### Bus platform base hosts"])
+        elif key == "mta_colors_api":
+            sections.extend(["", "### Shared enrichment services"])
+        elif key == "bus_open_data_routes_api":
+            sections.extend(["", "### Open-data geometry feeds"])
         value = getattr(urls, key)
         why, ui, impact = _URL_DOCS[key]
-        sections.append(row(f"urls.{key}", value or "(not configured)", why, ui, impact))
+        sections.extend(
+            render_entry(
+                key=f"urls.{key}",
+                value=value or "(not configured)",
+                why=why,
+                ui=ui,
+                impact=impact,
+            )
+        )
 
     if bus_endpoints is not None:
         sections.extend(
             [
                 "",
-                "#### Effective bus endpoint URLs",
+                "### Effective bus endpoint URLs",
                 "",
-                "| Config key | Exact configured value | Why we use it | Main UI purpose | Failure impact |",
-                "|------------|------------------------|---------------|-----------------|----------------|",
+                "These paths are combined with the configured SIRI or OBA base host above. They are the request shapes the backend actually issues when building bus route metadata, nearby stop discovery, live stop arrivals, and moving vehicle maps.",
             ]
         )
-        sections.append(
-            row(
-                "urls.bus_endpoints.vehicle_monitoring",
-                join_url(urls.bus_siri_base, bus_endpoints.vehicle_monitoring),
-                *_BUS_ENDPOINT_DOCS["vehicle_monitoring"],
+        sections.extend(
+            render_entry(
+                key="urls.bus_endpoints.vehicle_monitoring",
+                value=join_url(urls.bus_siri_base, bus_endpoints.vehicle_monitoring),
+                why=_BUS_ENDPOINT_DOCS["vehicle_monitoring"][0],
+                ui=_BUS_ENDPOINT_DOCS["vehicle_monitoring"][1],
+                impact=_BUS_ENDPOINT_DOCS["vehicle_monitoring"][2],
             )
         )
-        sections.append(
-            row(
-                "urls.bus_endpoints.stop_monitoring",
-                join_url(urls.bus_siri_base, bus_endpoints.stop_monitoring),
-                *_BUS_ENDPOINT_DOCS["stop_monitoring"],
+        sections.extend(
+            render_entry(
+                key="urls.bus_endpoints.stop_monitoring",
+                value=join_url(urls.bus_siri_base, bus_endpoints.stop_monitoring),
+                why=_BUS_ENDPOINT_DOCS["stop_monitoring"][0],
+                ui=_BUS_ENDPOINT_DOCS["stop_monitoring"][1],
+                impact=_BUS_ENDPOINT_DOCS["stop_monitoring"][2],
             )
         )
         routes_for_agency = bus_endpoints.routes_for_agency
         if isinstance(routes_for_agency, str):
             routes_for_agency = [routes_for_agency]
         for index, path in enumerate(routes_for_agency):
-            sections.append(
-                row(
-                    f"urls.bus_endpoints.routes_for_agency[{index}]",
-                    join_url(urls.bus_oba_base, path),
-                    *_ROUTES_FOR_AGENCY_DOC,
+            sections.extend(
+                render_entry(
+                    key=f"urls.bus_endpoints.routes_for_agency[{index}]",
+                    value=join_url(urls.bus_oba_base, path),
+                    why=_ROUTES_FOR_AGENCY_DOC[0],
+                    ui=_ROUTES_FOR_AGENCY_DOC[1],
+                    impact=_ROUTES_FOR_AGENCY_DOC[2],
                 )
             )
-        sections.append(
-            row(
-                "urls.bus_endpoints.stops_for_route",
-                join_url(urls.bus_oba_base, bus_endpoints.stops_for_route),
-                *_BUS_ENDPOINT_DOCS["stops_for_route"],
+        sections.extend(
+            render_entry(
+                key="urls.bus_endpoints.stops_for_route",
+                value=join_url(urls.bus_oba_base, bus_endpoints.stops_for_route),
+                why=_BUS_ENDPOINT_DOCS["stops_for_route"][0],
+                ui=_BUS_ENDPOINT_DOCS["stops_for_route"][1],
+                impact=_BUS_ENDPOINT_DOCS["stops_for_route"][2],
             )
         )
-        sections.append(
-            row(
-                "urls.bus_endpoints.stops_near_location",
-                join_url(urls.bus_oba_base, bus_endpoints.stops_near_location),
-                *_BUS_ENDPOINT_DOCS["stops_near_location"],
+        sections.extend(
+            render_entry(
+                key="urls.bus_endpoints.stops_near_location",
+                value=join_url(urls.bus_oba_base, bus_endpoints.stops_near_location),
+                why=_BUS_ENDPOINT_DOCS["stops_near_location"][0],
+                ui=_BUS_ENDPOINT_DOCS["stops_near_location"][1],
+                impact=_BUS_ENDPOINT_DOCS["stops_near_location"][2],
             )
         )
 
     sections.extend(
         [
             "",
-            "#### Static GTFS bundle URLs",
+            "### Static GTFS bundle URLs",
             "",
-            "| Config key | Exact configured value | Why we use it | Main UI purpose | Failure impact |",
-            "|------------|------------------------|---------------|-----------------|----------------|",
+            "These bundles rebuild the local schedule and geometry datasets used across the app when realtime is unavailable or a route has no active trip updates.",
         ]
     )
     for key, value in urls.gtfs_static_feeds.items():
@@ -305,7 +330,15 @@ def render_upstream_urls(settings: Settings) -> str:
                 "That feed's static data cannot refresh.",
             ),
         )
-        sections.append(row(f"urls.gtfs_static_feeds.{key}", value, why, ui, impact))
+        sections.extend(
+            render_entry(
+                key=f"urls.gtfs_static_feeds.{key}",
+                value=value,
+                why=why,
+                ui=ui,
+                impact=impact,
+            )
+        )
 
     return "\n".join(sections)
 
@@ -317,9 +350,17 @@ def join_url(base: str, path: str) -> str:
     return f"{base.rstrip('/')}/{path.lstrip('/')}"
 
 
-def row(key: str, value: str, why: str, ui: str, impact: str) -> str:
-    """Render one markdown row."""
-    return f"| `{key}` | `{escape_pipes(value)}` | {why} | {ui} | {impact} |"
+def render_entry(key: str, value: str, why: str, ui: str, impact: str) -> list[str]:
+    """Render one upstream dependency block."""
+    safe_value = escape_pipes(value)
+    return [
+        "",
+        f"#### `{key}`",
+        f"- **Exact configured value:** {safe_value}",
+        f"- **Why we use it:** {why}",
+        f"- **Main UI purpose:** {ui}",
+        f"- **If it fails:** {impact}",
+    ]
 
 
 def escape_pipes(value: str) -> str:

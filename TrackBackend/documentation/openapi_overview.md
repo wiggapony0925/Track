@@ -34,7 +34,7 @@ accessibility banners, and developer diagnostics.
 
 ### Upstream dependency map
 
-The section below is generated directly from `TrackBackend/settings.json`, so the OpenAPI dashboard always reflects the exact configured upstream URLs and path fragments the backend depends on.
+The section below is the operational heart of the backend. It is generated directly from `TrackBackend/settings.json`, so the OpenAPI dashboard always reflects the exact configured upstream URLs and path fragments the service depends on in production.
 
 {{UPSTREAM_URLS_TABLE}}
 
