@@ -132,9 +132,13 @@ def get_subway_color(line_id: str) -> str:
     if not line_id:
         return _DEFAULT_ROUTE_COLOR
 
-    # 1. Direct subway lookup (covers all numbered, lettered, shuttles, SIR)
-    if line_id in SUBWAY_COLORS:
-        return SUBWAY_COLORS[line_id]
+    # 1. Direct subway lookup with hardcoded fallback safety net.
+    if line_id in SUBWAY_COLORS or line_id in {
+        "1", "2", "3", "4", "5", "5X", "6", "6X", "7", "7X",
+        "A", "B", "C", "D", "E", "F", "FS", "FX", "G", "GS", "H",
+        "J", "L", "M", "N", "Q", "R", "S", "SI", "SIR", "SR", "T", "W", "Z",
+    }:
+        return subway_color(line_id)
 
     # 2. Prefixed rail IDs (LIRR_1, MNR_1 …)
     if line_id.startswith("LIRR_"):

@@ -77,12 +77,61 @@ else:
     # Fallback — should never happen in a properly-deployed environment.
     _colors = {}
 
-SUBWAY_COLORS: dict[str, str] = _colors.get("subway", {})
+_FALLBACK_SUBWAY_COLORS: dict[str, str] = {
+    "1": "#D82233",
+    "2": "#D82233",
+    "3": "#D82233",
+    "4": "#009952",
+    "5": "#009952",
+    "5X": "#009952",
+    "6": "#009952",
+    "6X": "#009952",
+    "7": "#9A38A1",
+    "7X": "#9A38A1",
+    "A": "#0062CF",
+    "B": "#EB6800",
+    "C": "#0062CF",
+    "D": "#EB6800",
+    "E": "#0062CF",
+    "F": "#EB6800",
+    "FS": "#7C858C",
+    "FX": "#EB6800",
+    "G": "#799534",
+    "GS": "#7C858C",
+    "H": "#7C858C",
+    "J": "#8E5C33",
+    "L": "#7C858C",
+    "M": "#EB6800",
+    "N": "#F6BC26",
+    "Q": "#F6BC26",
+    "R": "#F6BC26",
+    "S": "#7C858C",
+    "SI": "#08179C",
+    "SIR": "#08179C",
+    "SR": "#7C858C",
+    "T": "#008EB7",
+    "W": "#F6BC26",
+    "Z": "#8E5C33",
+}
+
+_RAW_SUBWAY_COLORS: dict[str, str] = _colors.get("subway", {})
+SUBWAY_COLORS: dict[str, str] = {
+    **_FALLBACK_SUBWAY_COLORS,
+    **_RAW_SUBWAY_COLORS,
+}
 SUBWAY_TEXT_COLORS: dict[str, str] = _colors.get("subway_text_color", {})
 BUS_COLORS: dict[str, str] = _colors.get("bus", {})
 LIRR_COLORS: dict[str, str] = _colors.get("commuter_rail", {}).get("lirr", {})
 MNR_COLORS: dict[str, str] = _colors.get("commuter_rail", {}).get("mnr", {})
 MODE_DEFAULTS: dict[str, str] = _colors.get("mode_defaults", {})
+
+_missing_subway_color_keys = sorted(set(_FALLBACK_SUBWAY_COLORS) - set(_RAW_SUBWAY_COLORS))
+if _missing_subway_color_keys:
+    _log.warning(
+        "🎨 brand_colors.json missing %d subway color entries; using built-in fallback for: %s",
+        len(_missing_subway_color_keys),
+        ", ".join(_missing_subway_color_keys),
+    )
 
 # ── planner defaults ─────────────────────────────────────────────────
 
@@ -101,9 +150,8 @@ METRO_NORTH_BRANCHES: list[str] = PLANNER_DEFAULTS.get(
 
 def subway_color(route_id: str) -> str:
     """Return the brand hex for a subway route, e.g. ``'#D82233'``."""
-    return SUBWAY_COLORS.get(
-        route_id.upper(), MODE_DEFAULTS.get("subway", "#0062CF")
-    )
+    key = route_id.upper()
+    return SUBWAY_COLORS.get(key, MODE_DEFAULTS.get("subway", "#0062CF"))
 
 
 def bus_color(service_type: str | None = None) -> str:
