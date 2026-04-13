@@ -66,6 +66,7 @@ class TransitLeg:
     walk_meters: float = 0.0
     bus_service_type: str | None = None
     ada_accessible: bool | None = None
+    crowding: str | None = None
     live_status: LegLiveStatus | None = None
     alerts: list[ServiceAlertSummary] = field(default_factory=list)
 
@@ -135,6 +136,7 @@ class GoTransfer:
     wait_s: int
     walk_s: int
     walk_meters: float
+    safety: str = "unknown"
 
 
 @dataclass(slots=True)
@@ -166,6 +168,7 @@ class GoTrip:
     reliability_score: int = 100
     ranking_score: float = 0.0
     disruption_level: str = "normal"
+    confidence: int = 100
     service_alerts: list[ServiceAlertSummary] = field(default_factory=list)
 
 

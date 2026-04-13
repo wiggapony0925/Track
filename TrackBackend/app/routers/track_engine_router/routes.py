@@ -75,6 +75,7 @@ def _leg_model(leg) -> EngineTripLeg:
         walk_meters=leg.walk_meters,
         bus_service_type=getattr(leg, "bus_service_type", None),
         ada_accessible=getattr(leg, "ada_accessible", None),
+        crowding=getattr(leg, "crowding", None),
         live_status=_leg_live_status_model(leg.live_status),
         alerts=[_service_alert_model(alert) for alert in leg.alerts],
     )
@@ -172,6 +173,7 @@ def _go_transfer_model(transfer) -> EngineGoTransfer:
         wait_s=transfer.wait_s,
         walk_s=transfer.walk_s,
         walk_meters=transfer.walk_meters,
+        safety=getattr(transfer, "safety", "unknown"),
     )
 
 
@@ -205,6 +207,7 @@ def _go_trip_model(go_trip) -> EngineGoTrip:
         reliability_score=go_trip.reliability_score,
         ranking_score=go_trip.ranking_score,
         disruption_level=go_trip.disruption_level,
+        confidence=getattr(go_trip, "confidence", 100),
         service_alerts=[
             _service_alert_model(alert) for alert in go_trip.service_alerts
         ],

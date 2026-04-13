@@ -167,6 +167,11 @@ struct TripPlan: Identifiable, Codable, Equatable {
     /// Whether all subway stations in this trip are wheelchair-accessible.
     /// `nil` when no subway legs are present.
     var accessible: Bool? = nil
+    /// 0-100 unified confidence score combining RT quality, transfer safety,
+    /// crowding, disruptions, and accessibility.
+    var confidence: Int = 100
+    /// Transfer metadata with safety analysis.
+    var transfers: [TripTransfer] = []
 
     var departureTimeString: String {
         Self.timeFormatter.string(from: departureTime)
@@ -218,6 +223,9 @@ struct TripLeg: Identifiable, Codable, Equatable {
     /// Whether boarding/alighting stops on this leg are wheelchair-accessible.
     /// `nil` for walk/bus legs; `true`/`false` for subway legs.
     let adaAccessible: Bool?
+    /// Predicted crowding level: empty, some, busy, or very_busy.
+    /// `nil` for walk legs.
+    let crowding: String?
     let liveStatus: TripLegLiveStatus?
     let alerts: [TripServiceAlert]
 
@@ -240,6 +248,7 @@ struct TripLeg: Identifiable, Codable, Equatable {
         walkMeters: Double = 0,
         busServiceType: String? = nil,
         adaAccessible: Bool? = nil,
+        crowding: String? = nil,
         liveStatus: TripLegLiveStatus? = nil,
         alerts: [TripServiceAlert] = []
     ) {
@@ -261,6 +270,7 @@ struct TripLeg: Identifiable, Codable, Equatable {
         self.walkMeters = walkMeters
         self.busServiceType = busServiceType
         self.adaAccessible = adaAccessible
+        self.crowding = crowding
         self.liveStatus = liveStatus
         self.alerts = alerts
     }
@@ -395,6 +405,43 @@ struct TripServiceAlert: Codable, Equatable, Identifiable {
             return 2
         default:
             return 1
+        }
+    }
+}
+
+/// Transfer metadata with real-time safety analysis.
+struct TripTransfer: Codable, Equatable, Identifiable {
+    let fromRouteName: String
+    let toRouteName: String
+    let arrivalStopName: String
+    let boardingStopName: String
+    let waitSeconds: Int
+    let walkSeconds: Int
+    let walkMeters: Double
+    /// Connection safety given real-time delays:
+    /// `safe` (≥5 min buffer), `tight` (2-5 min), `at_risk` (0-2 min),
+    /// `missed` (incoming arrives after connecting departs), `unknown` (no RT data).
+    let safety: String
+
+    var id: String {
+        [fromRouteName, toRouteName, arrivalStopName].joined(separator: ":")
+    }
+
+    var isSafe: Bool { safety == "safe" || safety == "unknown" }
+    var isAtRisk: Bool { safety == "at_risk" || safety == "missed" }
+
+    var safetyIcon: String {
+        switch safety {
+        case "safe":
+            return "checkmark.circle.fill"
+        case "tight":
+            return "exclamationmark.triangle"
+        case "at_risk":
+            return "exclamationmark.triangle.fill"
+        case "missed":
+            return "xmark.circle.fill"
+        default:
+            return "questionmark.circle"
         }
     }
 }
@@ -796,6 +843,7 @@ struct EngineGoResponseDTO: Codable, Equatable {
 struct EngineGoTripDTO: Codable, Equatable {
     let itinerary: EngineItineraryDTO
     let routeChips: [EngineRouteChipDTO]
+    let transfers: [EngineGoTransferDTO]?
     let nextAction: EngineGoActionDTO?
     let status: String
     let leaveInS: Int
@@ -803,11 +851,13 @@ struct EngineGoTripDTO: Codable, Equatable {
     let reliabilityScore: Int
     let rankingScore: Double
     let disruptionLevel: String
+    let confidence: Int?
     let serviceAlerts: [EngineServiceAlertDTO]
 
     enum CodingKeys: String, CodingKey {
         case itinerary
         case routeChips = "route_chips"
+        case transfers
         case nextAction = "next_action"
         case status
         case leaveInS = "leave_in_s"
@@ -815,6 +865,7 @@ struct EngineGoTripDTO: Codable, Equatable {
         case reliabilityScore = "reliability_score"
         case rankingScore = "ranking_score"
         case disruptionLevel = "disruption_level"
+        case confidence
         case serviceAlerts = "service_alerts"
     }
 
@@ -836,7 +887,9 @@ struct EngineGoTripDTO: Codable, Equatable {
             serviceAlerts: serviceAlerts.map { $0.toTripServiceAlert() },
             leaveInSeconds: leaveInS,
             arriveInSeconds: arriveInS,
-            accessible: itinerary.accessible
+            accessible: itinerary.accessible,
+            confidence: confidence ?? 100,
+            transfers: (transfers ?? []).map { $0.toTripTransfer() }
         )
     }
 }
@@ -881,6 +934,7 @@ struct EngineTripLegDTO: Codable, Equatable {
     let walkMeters: Double
     let busServiceType: String?
     let adaAccessible: Bool?
+    let crowding: String?
     let liveStatus: EngineLegLiveStatusDTO?
     let alerts: [EngineServiceAlertDTO]
 
@@ -902,6 +956,7 @@ struct EngineTripLegDTO: Codable, Equatable {
         case walkMeters = "walk_meters"
         case busServiceType = "bus_service_type"
         case adaAccessible = "ada_accessible"
+        case crowding
         case liveStatus = "live_status"
         case alerts
     }
@@ -926,8 +981,45 @@ struct EngineTripLegDTO: Codable, Equatable {
             walkMeters: walkMeters,
             busServiceType: busServiceType,
             adaAccessible: adaAccessible,
+            crowding: crowding,
             liveStatus: liveStatus?.toTripLegLiveStatus(),
             alerts: alerts.map { $0.toTripServiceAlert() }
+        )
+    }
+}
+
+/// Transfer metadata parsed from the Go response.
+struct EngineGoTransferDTO: Codable, Equatable {
+    let fromRouteName: String
+    let toRouteName: String
+    let arrivalStopName: String
+    let boardingStopName: String
+    let waitS: Int
+    let walkS: Int
+    let walkMeters: Double
+    let safety: String?
+
+    enum CodingKeys: String, CodingKey {
+        case fromRouteName = "from_route_name"
+        case toRouteName = "to_route_name"
+        case arrivalStopName = "arrival_stop_name"
+        case boardingStopName = "boarding_stop_name"
+        case waitS = "wait_s"
+        case walkS = "walk_s"
+        case walkMeters = "walk_meters"
+        case safety
+    }
+
+    func toTripTransfer() -> TripTransfer {
+        TripTransfer(
+            fromRouteName: fromRouteName,
+            toRouteName: toRouteName,
+            arrivalStopName: arrivalStopName,
+            boardingStopName: boardingStopName,
+            waitSeconds: waitS,
+            walkSeconds: walkS,
+            walkMeters: walkMeters,
+            safety: safety ?? "unknown"
         )
     }
 }

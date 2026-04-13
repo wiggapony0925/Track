@@ -335,6 +335,11 @@ class EngineTripLeg(BaseModel):
         description="Whether the boarding/alighting stops on this leg are wheelchair-accessible. "
                     "null for walk/bus legs; true/false for subway legs based on MTA ADA data.",
     )
+    crowding: str | None = Field(
+        None,
+        description="Predicted crowding level based on time-of-day ridership patterns: "
+                    "empty, some, busy, or very_busy. null for walk legs.",
+    )
     alerts: list[EngineServiceAlert] = Field(
         default_factory=list,
         description="Active service alerts relevant to this leg.",
@@ -455,6 +460,12 @@ class EngineGoTransfer(BaseModel):
     wait_s: int = Field(..., description="Pure wait time before the next vehicle.")
     walk_s: int = Field(..., description="Walking time inside the transfer.")
     walk_meters: float = Field(..., description="Walking distance for the transfer.")
+    safety: str = Field(
+        "unknown",
+        description="Transfer connection safety: safe (≥5 min buffer), tight (2-5 min), "
+                    "at_risk (0-2 min), missed (negative — incoming train arrives after "
+                    "connecting train departs), or unknown (no RT data).",
+    )
 
 
 class EngineGoAction(BaseModel):
@@ -718,6 +729,12 @@ class EngineGoTrip(BaseModel):
     disruption_level: str = Field(
         "normal",
         description="normal, watch, or disrupted based on live conditions.",
+    )
+    confidence: int = Field(
+        100,
+        description="0-100 unified confidence score combining realtime data quality, "
+                    "transfer safety, crowding, disruption severity, and accessibility. "
+                    "Higher = more reliable trip.",
     )
     service_alerts: list[EngineServiceAlert] = Field(
         default_factory=list,

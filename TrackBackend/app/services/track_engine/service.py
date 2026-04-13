@@ -55,6 +55,63 @@ from app.utils.brand import (
 
 NY_TZ = ZoneInfo("America/New_York")
 
+# ── Crowding lookup tables ──────────────────────────────────────────
+# Index = hour (0-23).  O(1) array lookup, no branching.
+# Levels: "empty" / "some" / "busy" / "very_busy"
+#
+# fmt: off
+_CROWDING_SUBWAY_WEEKDAY: list[str] = [
+    #  0       1       2       3       4       5       6
+    "empty","empty","empty","empty","empty","empty","empty",
+    #  7           8            9
+    "very_busy","very_busy","very_busy",
+    # 10     11     12     13     14     15
+    "some","some","some","some","some","some",
+    # 16          17           18
+    "very_busy","very_busy","very_busy",
+    # 19     20     21
+    "some","some","some",
+    # 22      23
+    "empty","empty",
+]
+_CROWDING_SUBWAY_WEEKEND: list[str] = [
+    "empty","empty","empty","empty","empty","empty","empty",  # 0-6
+    "empty","empty","empty","empty",                          # 7-10
+    "some","some","some","some","some","some","some","some","some",  # 11-19
+    "busy","busy","busy",                                     # 20-22
+    "empty",                                                  # 23
+]
+_CROWDING_BUS_WEEKDAY: list[str] = [
+    "empty","empty","empty","empty","empty","empty","empty",  # 0-6
+    "busy","busy",                                            # 7-8
+    "some","some","some","some","some","some","some",          # 9-15
+    "busy","busy","busy",                                     # 16-18
+    "empty","empty","empty","empty","empty",                   # 19-23
+]
+_CROWDING_BUS_WEEKEND: list[str] = [
+    "empty","empty","empty","empty","empty","empty","empty",  # 0-6
+    "empty","empty","empty",                                  # 7-9
+    "some","some","some","some","some","some","some","some","some",  # 10-18
+    "empty","empty","empty","empty","empty",                  # 19-23
+]
+_CROWDING_RAIL_WEEKDAY: list[str] = [
+    "some","some","some","some","some","some",                # 0-5
+    "very_busy","very_busy","very_busy","very_busy",          # 6-9
+    "some","some","some","some","some","some",                # 10-15
+    "very_busy","very_busy","very_busy","very_busy",          # 16-19
+    "some","some","some","some",                              # 20-23
+]
+_CROWDING_RAIL_WEEKEND: list[str] = ["some"] * 24
+
+# Nested dict: mode → is_weekday → 24-element hour list
+_CROWDING: dict[str, dict[bool, list[str]]] = {
+    "subway": {True: _CROWDING_SUBWAY_WEEKDAY, False: _CROWDING_SUBWAY_WEEKEND},
+    "bus":    {True: _CROWDING_BUS_WEEKDAY,    False: _CROWDING_BUS_WEEKEND},
+    "lirr":   {True: _CROWDING_RAIL_WEEKDAY,   False: _CROWDING_RAIL_WEEKEND},
+    "mnr":    {True: _CROWDING_RAIL_WEEKDAY,   False: _CROWDING_RAIL_WEEKEND},
+}
+# fmt: on
+
 
 @dataclass(slots=True)
 class StopRecord:
@@ -2007,6 +2064,230 @@ class TrackEngineService:
                 score += 300.0
         return round(score, 2)
 
+    # ------------------------------------------------------------------
+    # Transfer safety analysis  (no competitor does this well)
+    # ------------------------------------------------------------------
+
+    def _analyze_transfer_safety(self, trip: GoTrip) -> None:
+        """Evaluate each transfer's connection safety given real-time delays.
+
+        Sets ``GoTransfer.safety`` to one of:
+        * ``safe``   – ≥5 min buffer after accounting for incoming delay
+        * ``tight``  – 2-5 min buffer
+        * ``at_risk`` – 0-2 min buffer; connection may be missed
+        * ``missed`` – negative buffer; incoming train arrives after next departs
+        * ``unknown`` – no real-time data to judge
+        """
+        if not trip.transfers:
+            return
+
+        transit_legs = [leg for leg in trip.itinerary.legs if leg.mode != "walk"]
+
+        for transfer in trip.transfers:
+            # Find the incoming leg that feeds this transfer
+            incoming_leg = None
+            for leg in transit_legs:
+                if (leg.alight_stop_id == transfer.arrival_stop_id
+                        and leg.arrival_ts <= transfer.arrival_ts + 60):
+                    incoming_leg = leg
+
+            incoming_delay_s = 0
+            has_rt = False
+            if incoming_leg and incoming_leg.live_status:
+                ls = incoming_leg.live_status
+                if ls.status != "no_data":
+                    has_rt = True
+                    incoming_delay_s = max(ls.delay_s or 0, 0)
+
+            if not has_rt:
+                transfer.safety = "unknown"
+                continue
+
+            # Effective buffer = scheduled wait minus how late the incoming leg is
+            effective_buffer_s = transfer.wait_s - incoming_delay_s
+
+            if effective_buffer_s >= 300:
+                transfer.safety = "safe"
+            elif effective_buffer_s >= 120:
+                transfer.safety = "tight"
+            elif effective_buffer_s >= 0:
+                transfer.safety = "at_risk"
+            else:
+                transfer.safety = "missed"
+
+    # ------------------------------------------------------------------
+    # Crowding prediction  (time-of-day heuristic for NYC transit)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _estimate_crowding(trip: GoTrip) -> None:
+        """Predict crowding on each transit leg using NYC ridership patterns.
+
+        O(1) table lookup per leg — no branching.
+        Levels: ``empty`` / ``some`` / ``busy`` / ``very_busy``
+        """
+        for leg in trip.itinerary.legs:
+            table = _CROWDING.get(leg.mode)
+            if table is None:          # walk or unknown mode
+                continue
+            dt = datetime.fromtimestamp(leg.departure_ts, NY_TZ)
+            leg.crowding = table[dt.weekday() < 5][dt.hour]
+
+    # ------------------------------------------------------------------
+    # Confidence scoring  (unified intelligence score)
+    # ------------------------------------------------------------------
+
+    def _compute_confidence(self, trip: GoTrip) -> int:
+        """Compute a 0-100 confidence score that unifies:
+        - Realtime data quality  (feeds alive and matching?)
+        - Transfer safety        (tight / at_risk / missed?)
+        - Disruption severity    (cancelled legs, severe alerts?)
+        - Crowding pressure      (very_busy legs?)
+        - Accessibility          (inaccessible for mobility-impaired?)
+
+        Google shows "usually X min late".  Transit shows countdowns.
+        Track's confidence gives the rider a single, honest answer:
+        "How much should I trust this trip plan right now?"
+        """
+        score = 100.0
+
+        transit_legs = [leg for leg in trip.itinerary.legs if leg.mode != "walk"]
+
+        # ── Realtime data quality ──
+        for leg in transit_legs:
+            ls = leg.live_status
+            if ls is None or ls.status == "no_data":
+                score -= 5
+            elif ls.status == "cancelled":
+                score -= 40
+            elif ls.status == "delayed":
+                delay = max(ls.delay_s or 0, 0)
+                if delay > 600:
+                    score -= 20
+                elif delay > 300:
+                    score -= 12
+                elif delay > 120:
+                    score -= 6
+            elif ls.status == "scheduled":
+                score -= 3  # scheduled-only, no live confirmation
+
+        # ── Transfer safety ──
+        for transfer in trip.transfers:
+            if transfer.safety == "missed":
+                score -= 35
+            elif transfer.safety == "at_risk":
+                score -= 18
+            elif transfer.safety == "tight":
+                score -= 8
+
+        # ── Crowding pressure ──
+        for leg in transit_legs:
+            if leg.crowding == "very_busy":
+                score -= 4
+            elif leg.crowding == "busy":
+                score -= 2
+
+        # ── Severe alerts ──
+        for alert in trip.service_alerts:
+            if alert.severity == "severe":
+                score -= 15
+            elif alert.severity == "warning":
+                score -= 5
+
+        # ── Accessibility gap ──
+        if trip.itinerary.accessible is False:
+            score -= 3
+
+        return max(0, min(100, int(round(score))))
+
+    # ------------------------------------------------------------------
+    # Disruption-aware re-routing  (two-pass engine calls)
+    # ------------------------------------------------------------------
+
+    def _disruption_reroute(
+        self,
+        response: GoResponse,
+        request: PlanRequest,
+        *,
+        now_ts: int,
+    ) -> GoResponse:
+        """When the primary trip has cancelled or missed-connection legs,
+        request extra alternatives from the engine with a shifted departure.
+
+        This is the #1 feature Google/Transit App have that basic engines lack:
+        instead of just telling the user "your trip is disrupted", we find them
+        a working alternative automatically.
+        """
+        primary = response.primary_trip
+        if primary is None:
+            return response
+
+        # Check if primary trip is severely disrupted
+        has_cancellation = any(
+            leg.live_status is not None and leg.live_status.status == "cancelled"
+            for leg in primary.itinerary.legs
+            if leg.mode != "walk"
+        )
+        has_missed = any(
+            transfer.safety == "missed" for transfer in primary.transfers
+        )
+        if not has_cancellation and not has_missed:
+            return response
+
+        # Collect disrupted route IDs to identify which alternatives avoid them
+        disrupted_routes: set[str] = set()
+        for leg in primary.itinerary.legs:
+            if leg.mode == "walk":
+                continue
+            if (leg.live_status and leg.live_status.status == "cancelled"):
+                disrupted_routes.add(self._normalize_route_key(leg.route_id))
+
+        # Request more itineraries with a +3min departure offset
+        from copy import copy
+        reroute_request = copy(request)
+        reroute_request.num_itineraries = max(request.num_itineraries, 5)
+        offset_ts = (request.depart_at_ts or now_ts) + 180
+        reroute_request.depart_at_ts = offset_ts
+        reroute_request.record_recent = False
+
+        try:
+            extra_itineraries, _ = self._remote_plan(reroute_request)
+        except Exception:
+            return response  # engine unavailable — keep original results
+
+        if not extra_itineraries:
+            return response
+
+        # Filter: keep itineraries that do NOT use the disrupted routes
+        surviving: list[GoTrip] = []
+        for itin in extra_itineraries:
+            uses_disrupted = False
+            for leg in itin.legs:
+                if leg.mode == "walk":
+                    continue
+                if self._normalize_route_key(leg.route_id) in disrupted_routes:
+                    uses_disrupted = True
+                    break
+            if not uses_disrupted:
+                go_trip = GoTrip(itinerary=itin, status="upcoming")
+                surviving.append(go_trip)
+
+        if not surviving:
+            return response
+
+        # Merge: add surviving clean alternatives, remove duplicates
+        existing_ids = {
+            alt.itinerary.itinerary_id for alt in response.alternatives
+        }
+        if response.primary_trip:
+            existing_ids.add(response.primary_trip.itinerary.itinerary_id)
+        for clean_trip in surviving[:3]:
+            if clean_trip.itinerary.itinerary_id not in existing_ids:
+                response.alternatives.append(clean_trip)
+                existing_ids.add(clean_trip.itinerary.itinerary_id)
+
+        return response
+
     def _enrich_trip(
         self,
         trip: GoTrip,
@@ -2054,6 +2335,22 @@ class TrackEngineService:
         trip.reliability_score = self._reliability_score(trip)
         trip.disruption_level = self._disruption_level(trip)
         trip.ranking_score = self._ranking_score(trip, priority=priority)
+
+        # ── New intelligence layers ──
+        self._estimate_crowding(trip)
+        self._analyze_transfer_safety(trip)
+        trip.confidence = self._compute_confidence(trip)
+
+        # Factor transfer safety into ranking: unsafe transfers are strongly
+        # penalised so the rider sees solid alternatives first.
+        for transfer in trip.transfers:
+            if transfer.safety == "missed":
+                trip.ranking_score += 1200.0
+            elif transfer.safety == "at_risk":
+                trip.ranking_score += 400.0
+            elif transfer.safety == "tight":
+                trip.ranking_score += 120.0
+
         return trip
 
     async def _enrich_go_response(
@@ -2137,6 +2434,15 @@ class TrackEngineService:
             go_itineraries.append(alt.itinerary)
         if go_itineraries:
             self._tag_ada_accessibility(go_itineraries)
+
+        # Disruption-aware re-routing: when the primary trip has a cancelled
+        # leg or a missed transfer, automatically fetch clean alternatives
+        # from the engine using a shifted departure time.
+        with suppress(Exception):
+            response = self._disruption_reroute(
+                response, request, now_ts=session_now_ts,
+            )
+
         # When accessibility is prioritised, swap primary if a better option exists
         if getattr(request, "accessibility_priority", False) and response.alternatives:
             if (response.primary_trip is not None
