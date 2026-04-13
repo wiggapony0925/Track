@@ -182,12 +182,14 @@ struct StopDetailClient: Sendable {
     var fetchSubwayArrivals: @Sendable (String) async throws -> [TrainArrival]
     var fetchLIRRArrivals: @Sendable () async throws -> [TrainArrival]
     var fetchMNRArrivals: @Sendable () async throws -> [TrainArrival]
+    var fetchStationAccessibility: @Sendable ([String], String?) async throws -> StationAccessibility?
 
     nonisolated static let live = StopDetailClient(
         fetchBusArrivals: { try await TrackAPI.fetchBusArrivals(stopID: $0) },
         fetchSubwayArrivals: { try await TrackAPI.fetchSubwayArrivals(lineID: $0) },
         fetchLIRRArrivals: { try await TrackAPI.fetchLIRRArrivals() },
-        fetchMNRArrivals: { try await TrackAPI.fetchMNRArrivals() }
+        fetchMNRArrivals: { try await TrackAPI.fetchMNRArrivals() },
+        fetchStationAccessibility: { try await TrackAPI.fetchStationAccessibility(stopIDs: $0, name: $1) }
     )
 }
 
@@ -226,6 +228,7 @@ final class StopDetailViewModel {
     var errorMessage: String?
     var sections: [DepartureSection] = []
     var accessibilityOutages: [ElevatorStatus] = []
+    var stationAccessibility: StationAccessibility?
     var lastUpdated: Date?
 
     private let client: StopDetailClient
@@ -258,6 +261,26 @@ final class StopDetailViewModel {
     }
 
     var accessibilityHeadline: String {
+        // Use rich station accessibility data when available
+        if let ada = stationAccessibility {
+            if ada.outageCount > 0 {
+                let outages = ada.outageCount == 1
+                    ? "1 elevator/escalator out of service."
+                    : "\(ada.outageCount) elevators/escalators out of service."
+                return outages
+            }
+            switch ada.adaStatus {
+            case 1:
+                return "Fully accessible — all elevators in service."
+            case 2:
+                let direction = ada.adaNotes.isEmpty ? "one direction" : ada.adaNotes
+                return "Partially accessible — \(direction)."
+            default:
+                return "This station is not ADA-accessible."
+            }
+        }
+
+        // Fallback to legacy outage matching
         if accessibilityOutages.isEmpty {
             switch selection.kind {
             case .bus:
@@ -289,16 +312,31 @@ final class StopDetailViewModel {
         )
 
         do {
-            switch selection.kind {
-            case .bus:
-                sections = try await loadBusSections()
-            case .subway:
-                sections = try await loadSubwaySections()
-            case .lirr:
-                sections = try await loadCommuterRailSections(mode: .lirr)
-            case .mnr:
-                sections = try await loadCommuterRailSections(mode: .mnr)
-            }
+            // Fetch departures and station accessibility in parallel
+            async let departuresTask: [DepartureSection] = {
+                switch selection.kind {
+                case .bus:
+                    return try await loadBusSections()
+                case .subway:
+                    return try await loadSubwaySections()
+                case .lirr:
+                    return try await loadCommuterRailSections(mode: .lirr)
+                case .mnr:
+                    return try await loadCommuterRailSections(mode: .mnr)
+                }
+            }()
+            async let accessibilityTask: StationAccessibility? = {
+                // Only fetch station accessibility for subway/rail (not bus)
+                guard selection.kind != .bus else { return nil }
+                return try? await client.fetchStationAccessibility(
+                    selection.stopIDs,
+                    selection.name
+                )
+            }()
+
+            let (deps, ada) = try await (departuresTask, accessibilityTask)
+            sections = deps
+            stationAccessibility = ada
             lastUpdated = Date()
         } catch {
             sections = []

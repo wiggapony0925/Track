@@ -330,6 +330,11 @@ class EngineTripLeg(BaseModel):
         None,
         description="Realtime signal for this leg when live data matched it.",
     )
+    ada_accessible: bool | None = Field(
+        None,
+        description="Whether the boarding/alighting stops on this leg are wheelchair-accessible. "
+                    "null for walk/bus legs; true/false for subway legs based on MTA ADA data.",
+    )
     alerts: list[EngineServiceAlert] = Field(
         default_factory=list,
         description="Active service alerts relevant to this leg.",
@@ -350,6 +355,11 @@ class EngineItinerary(BaseModel):
     walk_meters: float = Field(..., description="Total walking distance in meters.")
     score: float = Field(..., description="Internal itinerary score.")
     summary: str = Field(..., description="Compact summary for recent-trip cards.")
+    accessible: bool | None = Field(
+        None,
+        description="Whether all subway stations in this itinerary are wheelchair-accessible. "
+                    "null when no subway legs are present; false if any station lacks ADA access.",
+    )
     legs: list[EngineTripLeg] = Field(..., description="Ordered itinerary legs.")
 
 

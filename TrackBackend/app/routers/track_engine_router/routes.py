@@ -74,6 +74,7 @@ def _leg_model(leg) -> EngineTripLeg:
         stop_count=leg.stop_count,
         walk_meters=leg.walk_meters,
         bus_service_type=getattr(leg, "bus_service_type", None),
+        ada_accessible=getattr(leg, "ada_accessible", None),
         live_status=_leg_live_status_model(leg.live_status),
         alerts=[_service_alert_model(alert) for alert in leg.alerts],
     )
@@ -92,6 +93,7 @@ def _itinerary_model(itinerary) -> EngineItinerary:
         walk_meters=itinerary.walk_meters,
         score=itinerary.score,
         summary=itinerary.summary,
+        accessible=getattr(itinerary, "accessible", None),
         legs=[_leg_model(leg) for leg in itinerary.legs],
     )
 

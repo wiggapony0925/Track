@@ -1071,7 +1071,72 @@ class SupabaseManager: ObservableObject {
             throw SupabaseError.upsertFailed
         }
     }
-    
+
+    // MARK: - Trip Configurations
+
+    /// Fetch the user's trip configuration from Supabase.
+    func fetchTripConfiguration() async throws -> CloudTripConfiguration? {
+        guard let userId = currentUser?.id else { return nil }
+
+        let finalURL = try components(for: "rest/v1/trip_configurations", queryItems: [
+            URLQueryItem(name: "user_id", value: "eq.\(userId.uuidString)"),
+            URLQueryItem(name: "select", value: "user_id,priority,mode_subway,mode_bus,mode_lirr,mode_mnr,accessibility_priority,walk_preference")
+        ])
+
+        var request = URLRequest(url: finalURL)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.networkError
+        }
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw SupabaseError.unauthorized
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw SupabaseError.networkError
+        }
+        let results = try supabaseDecoder.decode([CloudTripConfiguration].self, from: data)
+        return results.first
+    }
+
+    /// Save (upsert) the user's trip configuration to Supabase.
+    func saveTripConfiguration(_ config: CloudTripConfiguration) async throws {
+        guard currentUser != nil else { throw SupabaseError.unauthorized }
+
+        let url = baseURL.appendingPathComponent("rest/v1/trip_configurations")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+        request.setValue(
+            "return=representation,resolution=merge-duplicates",
+            forHTTPHeaderField: "Prefer"
+        )
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        request.httpBody = try supabaseEncoder.encode(config)
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let body = String(data: data, encoding: .utf8) ?? "<non-UTF8>"
+            AppLogger.shared.log(
+                "SUPABASE",
+                message: "saveTripConfiguration failed — HTTP \(statusCode): \(body)"
+            )
+            throw SupabaseError.upsertFailed
+        }
+    }
+
     // MARK: - Commute Patterns
     
     /// Sync a commute pattern to cloud (upsert)

@@ -164,6 +164,9 @@ struct TripPlan: Identifiable, Codable, Equatable {
     var serviceAlerts: [TripServiceAlert] = []
     var leaveInSeconds: Int? = nil
     var arriveInSeconds: Int? = nil
+    /// Whether all subway stations in this trip are wheelchair-accessible.
+    /// `nil` when no subway legs are present.
+    var accessible: Bool? = nil
 
     var departureTimeString: String {
         Self.timeFormatter.string(from: departureTime)
@@ -212,6 +215,9 @@ struct TripLeg: Identifiable, Codable, Equatable {
     let durationMinutes: Int
     let walkMeters: Double
     let busServiceType: String?
+    /// Whether boarding/alighting stops on this leg are wheelchair-accessible.
+    /// `nil` for walk/bus legs; `true`/`false` for subway legs.
+    let adaAccessible: Bool?
     let liveStatus: TripLegLiveStatus?
     let alerts: [TripServiceAlert]
 
@@ -233,6 +239,7 @@ struct TripLeg: Identifiable, Codable, Equatable {
         durationMinutes: Int,
         walkMeters: Double = 0,
         busServiceType: String? = nil,
+        adaAccessible: Bool? = nil,
         liveStatus: TripLegLiveStatus? = nil,
         alerts: [TripServiceAlert] = []
     ) {
@@ -253,6 +260,7 @@ struct TripLeg: Identifiable, Codable, Equatable {
         self.durationMinutes = durationMinutes
         self.walkMeters = walkMeters
         self.busServiceType = busServiceType
+        self.adaAccessible = adaAccessible
         self.liveStatus = liveStatus
         self.alerts = alerts
     }
@@ -733,6 +741,8 @@ struct EngineGoRequestPayload: Encodable, Equatable {
     let modes: [String]
     let recordRecent: Bool
     let nowTS: Int?
+    let priority: String?
+    let accessibilityPriority: Bool?
 
     enum CodingKeys: String, CodingKey {
         case origin
@@ -749,6 +759,8 @@ struct EngineGoRequestPayload: Encodable, Equatable {
         case modes
         case recordRecent = "record_recent"
         case nowTS = "now_ts"
+        case priority
+        case accessibilityPriority = "accessibility_priority"
     }
 }
 
@@ -823,7 +835,8 @@ struct EngineGoTripDTO: Codable, Equatable {
             disruptionLevel: disruptionLevel,
             serviceAlerts: serviceAlerts.map { $0.toTripServiceAlert() },
             leaveInSeconds: leaveInS,
-            arriveInSeconds: arriveInS
+            arriveInSeconds: arriveInS,
+            accessible: itinerary.accessible
         )
     }
 }
@@ -835,6 +848,7 @@ struct EngineItineraryDTO: Codable, Equatable {
     let totalDurationS: Int
     let transferCount: Int
     let walkMeters: Double
+    let accessible: Bool?
     let legs: [EngineTripLegDTO]
 
     enum CodingKeys: String, CodingKey {
@@ -844,6 +858,7 @@ struct EngineItineraryDTO: Codable, Equatable {
         case totalDurationS = "total_duration_s"
         case transferCount = "transfer_count"
         case walkMeters = "walk_meters"
+        case accessible
         case legs
     }
 }
@@ -865,6 +880,7 @@ struct EngineTripLegDTO: Codable, Equatable {
     let stopCount: Int
     let walkMeters: Double
     let busServiceType: String?
+    let adaAccessible: Bool?
     let liveStatus: EngineLegLiveStatusDTO?
     let alerts: [EngineServiceAlertDTO]
 
@@ -885,6 +901,7 @@ struct EngineTripLegDTO: Codable, Equatable {
         case stopCount = "stop_count"
         case walkMeters = "walk_meters"
         case busServiceType = "bus_service_type"
+        case adaAccessible = "ada_accessible"
         case liveStatus = "live_status"
         case alerts
     }
@@ -908,6 +925,7 @@ struct EngineTripLegDTO: Codable, Equatable {
             durationMinutes: max(1, Int(round(Double(max(arrivalTS - departureTS, 60)) / 60.0))),
             walkMeters: walkMeters,
             busServiceType: busServiceType,
+            adaAccessible: adaAccessible,
             liveStatus: liveStatus?.toTripLegLiveStatus(),
             alerts: alerts.map { $0.toTripServiceAlert() }
         )

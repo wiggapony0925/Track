@@ -213,6 +213,138 @@ struct ElevatorStatus: Identifiable, Codable {
     }
 }
 
+// MARK: - Station Accessibility (ADA + Equipment)
+
+/// Outage details for a specific piece of equipment.
+struct EquipmentOutage: Codable {
+    let since: String?
+    let estimatedReturn: String?
+    let reason: String?
+
+    enum CodingKeys: String, CodingKey {
+        case since
+        case estimatedReturn = "estimated_return"
+        case reason
+    }
+}
+
+/// A single elevator or escalator at a station with in-service status.
+struct EquipmentDetail: Identifiable, Codable {
+    var id: String { equipmentId }
+
+    let equipmentId: String
+    let equipmentType: String
+    let shortDescription: String
+    let serving: String
+    let isAda: Bool
+    let isActive: Bool
+    let lines: String
+    let alternativeRoute: String
+    let outage: EquipmentOutage?
+
+    enum CodingKeys: String, CodingKey {
+        case equipmentId = "equipment_id"
+        case equipmentType = "equipment_type"
+        case shortDescription = "short_description"
+        case serving
+        case isAda = "is_ada"
+        case isActive = "is_active"
+        case lines
+        case alternativeRoute = "alternative_route"
+        case outage
+    }
+
+    /// Human-readable equipment type label.
+    var typeLabel: String {
+        switch equipmentType {
+        case "EL": return "Elevator"
+        case "ES": return "Escalator"
+        default: return equipmentType
+        }
+    }
+
+    /// Compact display name: prefer short description, fall back to serving.
+    var displayName: String {
+        if !shortDescription.isEmpty { return shortDescription }
+        if !serving.isEmpty { return serving }
+        return typeLabel
+    }
+}
+
+/// Full accessibility profile for a station, returned by /accessibility/station.
+struct StationAccessibility: Codable {
+    let stationName: String
+    let gtfsStopId: String
+    let adaStatus: Int
+    let adaNotes: String
+    let adaNorthbound: Bool
+    let adaSouthbound: Bool
+    let equipment: [EquipmentDetail]
+    let outageCount: Int
+    let totalElevators: Int
+    let totalEscalators: Int
+    let nextAccessibleNorth: String
+    let nextAccessibleSouth: String
+
+    enum CodingKeys: String, CodingKey {
+        case stationName = "station_name"
+        case gtfsStopId = "gtfs_stop_id"
+        case adaStatus = "ada_status"
+        case adaNotes = "ada_notes"
+        case adaNorthbound = "ada_northbound"
+        case adaSouthbound = "ada_southbound"
+        case equipment
+        case outageCount = "outage_count"
+        case totalElevators = "total_elevators"
+        case totalEscalators = "total_escalators"
+        case nextAccessibleNorth = "next_accessible_north"
+        case nextAccessibleSouth = "next_accessible_south"
+    }
+
+    /// Human-readable ADA status label.
+    var adaLabel: String {
+        switch adaStatus {
+        case 1: return "Accessible"
+        case 2: return "Partially Accessible"
+        default: return "Not Accessible"
+        }
+    }
+
+    /// SF Symbol name for the ADA status.
+    var adaIconName: String {
+        switch adaStatus {
+        case 1: return "figure.roll"
+        case 2: return "figure.roll"
+        default: return "xmark.circle"
+        }
+    }
+
+    /// Active elevators at this station.
+    var activeElevators: [EquipmentDetail] {
+        equipment.filter { $0.equipmentType == "EL" && $0.isActive }
+    }
+
+    /// Active escalators at this station.
+    var activeEscalators: [EquipmentDetail] {
+        equipment.filter { $0.equipmentType == "ES" && $0.isActive }
+    }
+
+    /// Equipment with outages.
+    var outages: [EquipmentDetail] {
+        equipment.filter { !$0.isActive }
+    }
+
+    /// All ADA-pathway elevators (most critical for wheelchair users).
+    var adaElevators: [EquipmentDetail] {
+        equipment.filter { $0.equipmentType == "EL" && $0.isAda }
+    }
+
+    /// True if all ADA-pathway elevators are in service.
+    var allAdaElevatorsActive: Bool {
+        adaElevators.allSatisfy(\.isActive)
+    }
+}
+
 /// A normalized MTA bus route returned by /bus/routes.
 struct BusRoute: Identifiable, Codable {
     let id: String

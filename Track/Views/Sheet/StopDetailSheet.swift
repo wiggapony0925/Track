@@ -144,13 +144,9 @@ struct StopDetailSheet: View {
                 }
 
                 infoPill(
-                    icon: viewModel.accessibilityOutages.isEmpty
-                        ? "checkmark.circle.fill"
-                        : "exclamationmark.triangle.fill",
+                    icon: accessibilityPillIcon,
                     title: accessibilitySummaryPillText,
-                    tint: viewModel.accessibilityOutages.isEmpty
-                        ? AppTheme.Colors.successGreen
-                        : AppTheme.Colors.alertRed
+                    tint: accessibilityPillTint
                 )
 
                 if viewModel.hasRealtimeDepartures {
@@ -199,62 +195,317 @@ struct StopDetailSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionHeader(
                 title: "Accessibility",
-                subtitle: viewModel.accessibilityOutages.isEmpty ? "Status looks clear" : "Advisories"
+                subtitle: accessibilitySectionSubtitle
             )
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
-                    Image(systemName: viewModel.accessibilityOutages.isEmpty
-                          ? "checkmark.circle.fill"
-                          : "exclamationmark.triangle.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(viewModel.accessibilityOutages.isEmpty
-                                         ? AppTheme.Colors.successGreen
-                                         : AppTheme.Colors.alertRed)
+            // ADA Status Badge Card
+            if let ada = viewModel.stationAccessibility {
+                adaStatusCard(ada)
+            }
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(viewModel.accessibilityHeadline)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-                        Text(accessibilityBodyText)
-                            .font(.system(size: 12, weight: .medium))
+            // Equipment Status Card (elevators & escalators)
+            if let ada = viewModel.stationAccessibility, !ada.equipment.isEmpty {
+                equipmentCard(ada)
+            } else if !viewModel.accessibilityOutages.isEmpty {
+                // Fallback: legacy outage display for bus stops or when rich data unavailable
+                legacyOutagesCard
+            } else if viewModel.stationAccessibility == nil {
+                // Fallback: simple headline for bus or when accessibility data isn't loaded
+                legacyStatusCard
+            }
+        }
+    }
+
+    private func adaStatusCard(_ ada: StationAccessibility) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // ADA badge row
+            HStack(spacing: 10) {
+                Image(systemName: ada.adaIconName)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(adaStatusColor(ada.adaStatus))
+                    .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ada.adaLabel)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+
+                    if ada.adaStatus == 2, !ada.adaNotes.isEmpty {
+                        Text(ada.adaNotes)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    } else if ada.adaStatus == 0 {
+                        Text("This station does not have step-free access.")
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary)
                     }
                 }
 
-                if !viewModel.accessibilityOutages.isEmpty {
-                    VStack(spacing: 10) {
-                        ForEach(Array(viewModel.accessibilityOutages.enumerated()), id: \.offset) { index, outage in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(outage.equipmentType)
-                                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                                    .foregroundColor(AppTheme.Colors.alertRed)
-                                    .textCase(.uppercase)
-                                    .tracking(0.8)
+                Spacer()
+            }
 
-                                Text(outage.description)
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(AppTheme.Colors.textPrimary)
+            // Direction accessibility (for partially accessible)
+            if ada.adaStatus == 2 {
+                HStack(spacing: 16) {
+                    directionBadge(
+                        label: "Northbound",
+                        accessible: ada.adaNorthbound
+                    )
+                    directionBadge(
+                        label: "Southbound",
+                        accessible: ada.adaSouthbound
+                    )
+                }
+            }
 
-                                if let outageSince = outage.outageSince,
-                                   !outageSince.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text("Out since \(outageSince)")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(AppTheme.Colors.textSecondary)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+            // Next accessible station info
+            if ada.adaStatus == 0 || ada.adaStatus == 2 {
+                if !ada.nextAccessibleNorth.isEmpty || !ada.nextAccessibleSouth.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("NEAREST ACCESSIBLE")
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                            .tracking(0.8)
 
-                            if index != viewModel.accessibilityOutages.count - 1 {
-                                Divider()
-                                    .overlay(AppTheme.Colors.borderSubtle)
-                            }
+                        if !ada.nextAccessibleNorth.isEmpty {
+                            Label(ada.nextAccessibleNorth, systemImage: "arrow.up")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textPrimary)
+                        }
+                        if !ada.nextAccessibleSouth.isEmpty {
+                            Label(ada.nextAccessibleSouth, systemImage: "arrow.down")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textPrimary)
                         }
                     }
                 }
             }
-            .padding(14)
-            .trackCardBackground(cornerRadius: 16)
+        }
+        .padding(14)
+        .trackCardBackground(cornerRadius: 16)
+    }
+
+    @ViewBuilder
+    private func equipmentCard(_ ada: StationAccessibility) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Equipment summary header
+            HStack(spacing: 8) {
+                if ada.totalElevators > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.arrow.down.square.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Text("\(ada.activeElevators.count)/\(ada.totalElevators) elevators")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                    }
+                }
+                if ada.totalEscalators > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "stairs")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                        Text("\(ada.activeEscalators.count)/\(ada.totalEscalators) escalators")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                    }
+                }
+                Spacer()
+            }
+
+            // Individual equipment items
+            ForEach(Array(ada.equipment.enumerated()), id: \.element.id) { index, eq in
+                equipmentRow(eq)
+
+                if index < ada.equipment.count - 1 {
+                    Divider()
+                        .overlay(AppTheme.Colors.borderSubtle)
+                }
+            }
+        }
+        .padding(14)
+        .trackCardBackground(cornerRadius: 16)
+    }
+
+    private func equipmentRow(_ eq: EquipmentDetail) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                // Status indicator dot
+                Circle()
+                    .fill(eq.isActive ? AppTheme.Colors.successGreen : AppTheme.Colors.alertRed)
+                    .frame(width: 8, height: 8)
+
+                // Equipment type + ADA badge
+                HStack(spacing: 6) {
+                    Text(eq.typeLabel)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundColor(eq.isActive ? AppTheme.Colors.textPrimary : AppTheme.Colors.alertRed)
+                        .textCase(.uppercase)
+                        .tracking(0.6)
+
+                    if eq.isAda {
+                        Text("ADA")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(AppTheme.Colors.mtaBlue)
+                            )
+                    }
+                }
+
+                Spacer()
+
+                Text(eq.isActive ? "In Service" : "Out of Service")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(eq.isActive ? AppTheme.Colors.successGreen : AppTheme.Colors.alertRed)
+            }
+
+            // Description
+            Text(eq.displayName)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Outage details
+            if let outage = eq.outage {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let reason = outage.reason, !reason.isEmpty {
+                        Text("Reason: \(reason)")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    if let since = outage.since, !since.isEmpty {
+                        Text("Out since \(since)")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
+                    if let est = outage.estimatedReturn, !est.isEmpty {
+                        Text("Est. return: \(est)")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                    }
+                }
+            }
+
+            // Alternative route for out-of-service ADA equipment
+            if !eq.isActive, eq.isAda, !eq.alternativeRoute.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("TRAVEL ALTERNATIVE")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.alertRed)
+                        .tracking(0.6)
+
+                    Text(eq.alternativeRoute)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 2)
+            }
+        }
+    }
+
+    private func directionBadge(label: String, accessible: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: accessible ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(accessible ? AppTheme.Colors.successGreen : AppTheme.Colors.alertRed)
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill((accessible ? AppTheme.Colors.successGreen : AppTheme.Colors.alertRed).opacity(0.1))
+        )
+    }
+
+    /// Legacy outage card — used for bus stops or when rich accessibility data isn't available.
+    private var legacyOutagesCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.alertRed)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(viewModel.accessibilityHeadline)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    Text(accessibilityBodyText)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+
+            VStack(spacing: 10) {
+                ForEach(Array(viewModel.accessibilityOutages.enumerated()), id: \.offset) { index, outage in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(outage.equipmentType)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.alertRed)
+                            .textCase(.uppercase)
+                            .tracking(0.8)
+
+                        Text(outage.description)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+
+                        if let outageSince = outage.outageSince,
+                           !outageSince.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text("Out since \(outageSince)")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if index != viewModel.accessibilityOutages.count - 1 {
+                        Divider()
+                            .overlay(AppTheme.Colors.borderSubtle)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .trackCardBackground(cornerRadius: 16)
+    }
+
+    /// Simple status card for when no rich data is available and no outages.
+    private var legacyStatusCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: viewModel.accessibilityOutages.isEmpty
+                      ? "checkmark.circle.fill"
+                      : "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(viewModel.accessibilityOutages.isEmpty
+                                     ? AppTheme.Colors.successGreen
+                                     : AppTheme.Colors.alertRed)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(viewModel.accessibilityHeadline)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    Text(accessibilityBodyText)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+        }
+        .padding(14)
+        .trackCardBackground(cornerRadius: 16)
+    }
+
+    private func adaStatusColor(_ status: Int) -> Color {
+        switch status {
+        case 1: return AppTheme.Colors.successGreen
+        case 2: return .orange
+        default: return AppTheme.Colors.alertRed
         }
     }
 
@@ -359,6 +610,17 @@ struct StopDetailSheet: View {
     }
 
     private var accessibilityBodyText: String {
+        if let ada = viewModel.stationAccessibility {
+            if ada.outageCount > 0 {
+                return "Check elevator status before heading out."
+            }
+            switch ada.adaStatus {
+            case 1: return "All elevators and escalators are operating normally."
+            case 2: return "Accessible in one direction — see details below."
+            default: return "Step-free access is not available at this station."
+            }
+        }
+
         switch selection.kind {
         case .bus:
             return viewModel.accessibilityOutages.isEmpty
@@ -372,10 +634,48 @@ struct StopDetailSheet: View {
     }
 
     private var accessibilitySummaryPillText: String {
+        if let ada = viewModel.stationAccessibility {
+            if ada.outageCount > 0 {
+                return "\(ada.outageCount) outage\(ada.outageCount == 1 ? "" : "s")"
+            }
+            return ada.adaLabel
+        }
         if viewModel.accessibilityOutages.isEmpty {
             return "Status clear"
         }
         return "\(viewModel.accessibilityOutages.count) alert\(viewModel.accessibilityOutages.count == 1 ? "" : "s")"
+    }
+
+    private var accessibilityPillIcon: String {
+        if let ada = viewModel.stationAccessibility {
+            if ada.outageCount > 0 { return "exclamationmark.triangle.fill" }
+            return ada.adaIconName
+        }
+        return viewModel.accessibilityOutages.isEmpty
+            ? "checkmark.circle.fill"
+            : "exclamationmark.triangle.fill"
+    }
+
+    private var accessibilityPillTint: Color {
+        if let ada = viewModel.stationAccessibility {
+            if ada.outageCount > 0 { return AppTheme.Colors.alertRed }
+            return adaStatusColor(ada.adaStatus)
+        }
+        return viewModel.accessibilityOutages.isEmpty
+            ? AppTheme.Colors.successGreen
+            : AppTheme.Colors.alertRed
+    }
+
+    private var accessibilitySectionSubtitle: String {
+        if let ada = viewModel.stationAccessibility {
+            if ada.outageCount > 0 { return "Equipment outages" }
+            switch ada.adaStatus {
+            case 1: return "Fully accessible"
+            case 2: return "Partially accessible"
+            default: return "Not ADA-accessible"
+            }
+        }
+        return viewModel.accessibilityOutages.isEmpty ? "Status looks clear" : "Advisories"
     }
 
     private var liveSummaryPillText: String {

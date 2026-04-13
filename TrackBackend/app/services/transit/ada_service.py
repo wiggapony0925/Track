@@ -346,6 +346,33 @@ def _build_equipment_detail(raw: dict[str, Any]) -> EquipmentDetail:
     )
 
 
+def lookup_ada_batch(stop_ids: list[str]) -> dict[str, int]:
+    """Synchronous batch ADA lookup from the in-memory cache.
+
+    Accepts GTFS stop IDs (e.g. ``"127N"``, ``"127S"``, ``"127"``) and
+    returns a dict mapping each *base* stop ID to its ``ada_status``
+    (0 = not accessible, 1 = fully, 2 = partially).  IDs not found in
+    the cache are omitted from the result.
+
+    This intentionally reads the cache dict directly — it is only useful
+    *after* the cache has been populated at startup or by a prior async
+    call.  It never triggers a network fetch.
+    """
+    result: dict[str, int] = {}
+    for raw_id in stop_ids:
+        clean = raw_id.strip().upper()
+        if not clean:
+            continue
+        # Strip directional N/S suffix to get the base stop ID
+        base = clean
+        if len(clean) > 1 and clean[-1] in ("N", "S") and clean[:-1].isalnum():
+            base = clean[:-1]
+        record = _ada_by_stop_id.get(base)
+        if record is not None:
+            result[base] = record["ada_status"]
+    return result
+
+
 async def get_station_accessibility(
     stop_ids: list[str] | None = None,
     station_name: str | None = None,

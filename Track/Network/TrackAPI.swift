@@ -831,6 +831,35 @@ struct TrackAPI {
         return try decoder.decode([ElevatorStatus].self, from: data)
     }
 
+    /// Fetches the full accessibility profile for a station, including ADA
+    /// status and all elevator/escalator equipment with live in-service status.
+    ///
+    /// - Parameters:
+    ///   - stopIDs: GTFS stop IDs (e.g. ["127", "127N", "127S"]).
+    ///   - name: Station display name for fallback matching.
+    /// - Returns: Decoded `StationAccessibility`, or `nil` if station not found.
+    static func fetchStationAccessibility(
+        stopIDs: [String] = [],
+        name: String? = nil
+    ) async throws -> StationAccessibility? {
+        var params: [(String, String)] = []
+        if !stopIDs.isEmpty {
+            params.append(("stop_ids", stopIDs.joined(separator: ",")))
+        }
+        if let name, !name.isEmpty {
+            params.append(("name", name))
+        }
+        guard !params.isEmpty else { return nil }
+
+        let query = params.map { "\($0.0)=\($0.1.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? $0.1)" }.joined(separator: "&")
+        do {
+            let data = try await get(path: "/accessibility/station?\(query)")
+            return try decoder.decode(StationAccessibility.self, from: data)
+        } catch TrackAPIError.serverError(statusCode: 404) {
+            return nil
+        }
+    }
+
     /// Fetches upcoming LIRR arrivals from the GTFS-Realtime feed.
     ///
     /// - Returns: Array of decoded `TrainArrival` objects.

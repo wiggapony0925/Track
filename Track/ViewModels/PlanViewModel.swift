@@ -52,12 +52,17 @@ final class PlanViewModel {
     var isResolvingLocation = false
     var isSavingPlace = false
 
+    /// Trip settings (modes, walking, accessibility, priority).
+    /// Loaded from Supabase on configure; mutated by TripSettingsSheet.
+    var tripConfiguration: CloudTripConfiguration = CloudTripConfiguration.makeDefault(userId: UUID())
+
     // MARK: - Private
 
     private var modelContext: ModelContext?
     private var locationManager: LocationManager?
     private var searchTask: Task<Void, Never>?
     private var bootstrapTask: Task<Void, Never>?
+    private var configSaveTask: Task<Void, Never>?
     private var didConfigure = false
 
     // MARK: - Setup
@@ -69,8 +74,14 @@ final class PlanViewModel {
         guard !didConfigure else { return }
         didConfigure = true
 
+        // Seed the user ID for the default config
+        if let uid = currentUserID, let uuid = UUID(uuidString: uid) {
+            tripConfiguration = .makeDefault(userId: uuid)
+        }
+
         bootstrapTask = Task {
             await refreshPlannerData()
+            await loadTripConfiguration()
         }
     }
 
@@ -103,21 +114,25 @@ final class PlanViewModel {
         errorMessage = nil
         showResults = true
 
+        let tc = tripConfiguration
+        let modes = tc.enabledModes.isEmpty ? ["subway", "bus", "lirr", "mnr"] : tc.enabledModes
         let request = EngineGoRequestPayload(
             origin: originPayload,
             destination: destinationPayload,
             userID: currentUserID,
             departAtTS: departureOption.departureTimestamp,
             arriveByTS: departureOption.arrivalTimestamp,
-            maxTransfers: 2,
-            maxOriginWalkM: 1400,
-            maxDestinationWalkM: 1200,
-            maxTransferWalkM: 350,
+            maxTransfers: tc.maxTransfers,
+            maxOriginWalkM: tc.maxOriginWalkMeters,
+            maxDestinationWalkM: tc.maxDestinationWalkMeters,
+            maxTransferWalkM: tc.maxTransferWalkMeters,
             searchWindowMinutes: 180,
             numItineraries: 4,
-            modes: ["subway", "bus", "lirr", "mnr"],
+            modes: modes,
             recordRecent: currentUserID != nil,
-            nowTS: Int(Date().timeIntervalSince1970)
+            nowTS: Int(Date().timeIntervalSince1970),
+            priority: tc.priority,
+            accessibilityPriority: tc.accessibilityPriority
         )
 
         do {
@@ -170,21 +185,25 @@ final class PlanViewModel {
 
         isLoadingMore = true
 
+        let tc = tripConfiguration
+        let modes = tc.enabledModes.isEmpty ? ["subway", "bus", "lirr", "mnr"] : tc.enabledModes
         let request = EngineGoRequestPayload(
             origin: originPayload,
             destination: destinationPayload,
             userID: nil,
             departAtTS: cursor,
             arriveByTS: nil,
-            maxTransfers: 2,
-            maxOriginWalkM: 1400,
-            maxDestinationWalkM: 1200,
-            maxTransferWalkM: 350,
+            maxTransfers: tc.maxTransfers,
+            maxOriginWalkM: tc.maxOriginWalkMeters,
+            maxDestinationWalkM: tc.maxDestinationWalkMeters,
+            maxTransferWalkM: tc.maxTransferWalkMeters,
             searchWindowMinutes: 180,
             numItineraries: 4,
-            modes: ["subway", "bus", "lirr", "mnr"],
+            modes: modes,
             recordRecent: false,
-            nowTS: Int(Date().timeIntervalSince1970)
+            nowTS: Int(Date().timeIntervalSince1970),
+            priority: tc.priority,
+            accessibilityPriority: tc.accessibilityPriority
         )
 
         do {
@@ -497,6 +516,50 @@ final class PlanViewModel {
 
     func savedLocation(for category: SavedLocationCategory) -> SavedLocation? {
         savedLocations.first { $0.resolvedCategory == category }
+    }
+
+    // MARK: - Trip Configuration
+
+    /// Load trip configuration from Supabase (or use defaults).
+    func loadTripConfiguration() async {
+        guard let uid = currentUserID, let uuid = UUID(uuidString: uid) else { return }
+        do {
+            if let saved = try await SupabaseManager.shared.fetchTripConfiguration() {
+                tripConfiguration = saved
+            } else {
+                tripConfiguration = .makeDefault(userId: uuid)
+            }
+        } catch {
+            #if DEBUG
+            print("[TripConfig] Failed to load: \(error.localizedDescription)")
+            #endif
+            tripConfiguration = .makeDefault(userId: uuid)
+        }
+    }
+
+    /// Save trip configuration to Supabase.
+    func saveTripConfiguration() async {
+        guard currentUserID != nil else { return }
+        do {
+            try await SupabaseManager.shared.saveTripConfiguration(tripConfiguration)
+            #if DEBUG
+            print("[TripConfig] Saved to cloud")
+            #endif
+        } catch {
+            #if DEBUG
+            print("[TripConfig] Save failed: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
+    /// Debounced save — waits 600ms after the last change before persisting.
+    func saveTripConfigurationDebounced() {
+        configSaveTask?.cancel()
+        configSaveTask = Task {
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            await saveTripConfiguration()
+        }
     }
 
     // MARK: - Private

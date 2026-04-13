@@ -10,6 +10,7 @@ struct TripResultsView: View {
     @State private var selectedTrip: TripPlan?
     @State private var appeared = false
     @State private var headerPulse = false
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -35,11 +36,22 @@ struct TripResultsView: View {
                     }
                 }
             }
+        }
+            .animation(AppTheme.Animation.snappy, value: showSettings)
             .navigationBarHidden(true)
             .sheet(item: $selectedTrip) { trip in
                 TripDetailSheet(trip: trip)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showSettings) {
+                TripSettingsSheet(
+                    config: $viewModel.tripConfiguration,
+                    onApply: {
+                        viewModel.saveTripConfigurationDebounced()
+                        Task { await viewModel.planTrip() }
+                    }
+                )
             }
             .onAppear {
                 withAnimation(.easeOut(duration: 0.5).delay(0.15)) {
@@ -49,7 +61,6 @@ struct TripResultsView: View {
                     headerPulse = true
                 }
             }
-        }
     }
 
     // MARK: - Header
@@ -138,8 +149,8 @@ struct TripResultsView: View {
                 .buttonStyle(ResultsButtonStyle())
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 30) // extra space for overlap
+            .padding(.top, 20)
+            .padding(.bottom, 34) // extra space for overlap
         }
         .background(
             ZStack {
@@ -172,7 +183,7 @@ struct TripResultsView: View {
         }
     }
 
-    // Floating control bar: Leave now + refresh + X
+    // Floating control bar: Leave now + settings + refresh + X
     private var departureControlBar: some View {
         HStack(spacing: 10) {
             // Leave now / departure chip
@@ -201,6 +212,22 @@ struct TripResultsView: View {
                 Task { await viewModel.planTrip() }
             } label: {
                 Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                    .frame(width: 34, height: 34)
+                    .background(
+                        Circle()
+                            .fill(AppTheme.Colors.cardBackground)
+                            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+                    )
+            }
+            .buttonStyle(ResultsButtonStyle())
+
+            // Settings
+            Button {
+                showSettings = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
                     .frame(width: 34, height: 34)

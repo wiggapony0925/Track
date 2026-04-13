@@ -2129,6 +2129,24 @@ class TrackEngineService:
                 response = asyncio.run(
                     self._enrich_go_response(response, priority=user_priority)
                 )
+        # Tag ADA accessibility on go trips
+        go_itineraries = []
+        if response.primary_trip is not None:
+            go_itineraries.append(response.primary_trip.itinerary)
+        for alt in response.alternatives:
+            go_itineraries.append(alt.itinerary)
+        if go_itineraries:
+            self._tag_ada_accessibility(go_itineraries)
+        # When accessibility is prioritised, swap primary if a better option exists
+        if getattr(request, "accessibility_priority", False) and response.alternatives:
+            if (response.primary_trip is not None
+                    and not response.primary_trip.itinerary.accessible):
+                for i, alt in enumerate(response.alternatives):
+                    if alt.itinerary.accessible is True:
+                        # Swap: promote the first accessible alternative
+                        response.alternatives[i] = response.primary_trip
+                        response.primary_trip = alt
+                        break
         if request.user_id and request.record_recent and response.primary_trip is not None:
             self.store.record_recent_trip(
                 request.user_id,
@@ -2480,8 +2498,78 @@ class TrackEngineService:
         )
         return ordered[:limit]
 
+    # ------------------------------------------------------------------
+    # ADA accessibility tagging for itineraries
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _tag_ada_accessibility(itineraries: list[Itinerary]) -> None:
+        """Tag each subway leg with ``ada_accessible`` and each itinerary
+        with ``accessible`` using the in-memory ADA cache.
+
+        Bus and walk legs are left as ``None`` (street-level, generally
+        accessible).  Subway, LIRR, and Metro-North stops are checked
+        against the MTA Stations CSV.
+        """
+        from app.services.transit.ada_service import lookup_ada_batch
+
+        # Collect all subway/rail stop IDs across all itineraries
+        stop_ids: set[str] = set()
+        for itin in itineraries:
+            for leg in itin.legs:
+                if leg.mode in ("subway",):
+                    stop_ids.add(leg.board_stop_id)
+                    stop_ids.add(leg.alight_stop_id)
+
+        if not stop_ids:
+            return
+
+        ada_map = lookup_ada_batch(list(stop_ids))
+
+        for itin in itineraries:
+            has_subway = False
+            all_accessible = True
+            for leg in itin.legs:
+                if leg.mode not in ("subway",):
+                    continue
+                has_subway = True
+                # Strip N/S suffix for lookup
+                board_base = leg.board_stop_id.rstrip("NSns")
+                alight_base = leg.alight_stop_id.rstrip("NSns")
+                board_ada = ada_map.get(board_base.upper())
+                alight_ada = ada_map.get(alight_base.upper())
+                # Accessible if ADA status is 1 (full) or 2 (partial)
+                board_ok = board_ada is not None and board_ada >= 1
+                alight_ok = alight_ada is not None and alight_ada >= 1
+                leg.ada_accessible = board_ok and alight_ok
+                if not leg.ada_accessible:
+                    all_accessible = False
+            if has_subway:
+                itin.accessible = all_accessible
+
+    @staticmethod
+    def _rerank_for_accessibility(itineraries: list[Itinerary]) -> list[Itinerary]:
+        """Re-sort itineraries so fully accessible trips come first.
+
+        Never removes itineraries — only reorders.  Accessible trips
+        keep their relative order; inaccessible ones are appended after.
+        """
+        accessible: list[Itinerary] = []
+        rest: list[Itinerary] = []
+        for itin in itineraries:
+            if itin.accessible is True:
+                accessible.append(itin)
+            else:
+                rest.append(itin)
+        return accessible + rest
+
     def plan(self, request: PlanRequest) -> tuple[list, str | None]:
         itineraries, schedule_note = self._remote_plan(request)
+        # Tag ADA accessibility on all results so iOS always has the data
+        self._tag_ada_accessibility(itineraries)
+        # When the user prioritises accessibility, push accessible trips first
+        if getattr(request, "accessibility_priority", False):
+            itineraries = self._rerank_for_accessibility(itineraries)
         if request.user_id and request.record_recent and itineraries:
             self.store.record_recent_trip(
                 request.user_id,

@@ -65,6 +65,7 @@ class TransitLeg:
     stop_count: int
     walk_meters: float = 0.0
     bus_service_type: str | None = None
+    ada_accessible: bool | None = None
     live_status: LegLiveStatus | None = None
     alerts: list[ServiceAlertSummary] = field(default_factory=list)
 
@@ -84,6 +85,7 @@ class Itinerary:
     walk_meters: float
     score: float
     summary: str
+    accessible: bool | None = None
     legs: list[TransitLeg] = field(default_factory=list)
 
 
