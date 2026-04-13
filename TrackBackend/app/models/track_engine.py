@@ -591,6 +591,14 @@ class EnginePlanRequest(BaseModel):
         True,
         description="Whether to record the best itinerary into recent trips when user_id is provided.",
     )
+    priority: str | None = Field(
+        None,
+        description="Routing priority: quick (default), fewer_transfers, or less_walking.",
+    )
+    accessibility_priority: bool = Field(
+        False,
+        description="When true, prefer wheelchair-accessible stations/stops.",
+    )
 
     @model_validator(mode="after")
     def _validate_times(self):

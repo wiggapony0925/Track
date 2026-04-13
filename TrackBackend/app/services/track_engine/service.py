@@ -1014,6 +1014,10 @@ class TrackEngineService:
         }
         if now_ts is not None:
             payload["now_ts"] = now_ts
+        if getattr(request, "priority", None):
+            payload["priority"] = request.priority
+        if getattr(request, "accessibility_priority", False):
+            payload["accessibility_priority"] = True
         return payload
 
     @staticmethod
@@ -1084,6 +1088,10 @@ class TrackEngineService:
         }
         if adjusted_now_ts is not None:
             payload["now_ts"] = adjusted_now_ts
+        if getattr(request, "priority", None):
+            payload["priority"] = request.priority
+        if getattr(request, "accessibility_priority", False):
+            payload["accessibility_priority"] = True
         return RemotePayloadContext(
             payload=payload,
             schedule_note=schedule_note,
@@ -1958,12 +1966,26 @@ class TrackEngineService:
                 score -= 8
         return max(0, min(100, score))
 
-    def _ranking_score(self, trip: GoTrip) -> float:
+    def _ranking_score(
+        self,
+        trip: GoTrip,
+        *,
+        priority: str | None = None,
+    ) -> float:
+        # Adjust weights based on user priority preference
+        transfer_weight = 480.0
+        walk_weight = 0.45
+        wait_weight = 0.25
+        if priority == "fewer_transfers":
+            transfer_weight = 1200.0  # much stronger penalty per transfer
+        elif priority == "less_walking":
+            walk_weight = 1.5  # triple walking penalty
+
         score = (
             float(trip.itinerary.total_duration_s)
-            + trip.itinerary.transfer_count * 480.0
-            + trip.itinerary.walking_s * 0.45
-            + trip.itinerary.waiting_s * 0.25
+            + trip.itinerary.transfer_count * transfer_weight
+            + trip.itinerary.walking_s * walk_weight
+            + trip.itinerary.waiting_s * wait_weight
         )
         for leg in trip.itinerary.legs:
             if leg.mode == "walk":
@@ -1993,6 +2015,7 @@ class TrackEngineService:
         subway_arrivals_by_key: dict[str, list[Any]],
         rail_arrivals_by_mode: dict[str, list[Any]],
         bus_arrivals_by_stop: dict[str, list[Any]],
+        priority: str | None = None,
     ) -> GoTrip:
         for leg in trip.itinerary.legs:
             if leg.mode == "walk":
@@ -2030,10 +2053,15 @@ class TrackEngineService:
         )
         trip.reliability_score = self._reliability_score(trip)
         trip.disruption_level = self._disruption_level(trip)
-        trip.ranking_score = self._ranking_score(trip)
+        trip.ranking_score = self._ranking_score(trip, priority=priority)
         return trip
 
-    async def _enrich_go_response(self, response: GoResponse) -> GoResponse:
+    async def _enrich_go_response(
+        self,
+        response: GoResponse,
+        *,
+        priority: str | None = None,
+    ) -> GoResponse:
         trips = [
             trip
             for trip in [response.primary_trip, *response.alternatives]
@@ -2052,7 +2080,7 @@ class TrackEngineService:
             for trip in trips:
                 trip.reliability_score = self._reliability_score(trip)
                 trip.disruption_level = self._disruption_level(trip)
-                trip.ranking_score = self._ranking_score(trip)
+                trip.ranking_score = self._ranking_score(trip, priority=priority)
             response.primary_trip = trips[0]
             response.alternatives = trips[1:]
             return response
@@ -2077,6 +2105,7 @@ class TrackEngineService:
                     subway_arrivals_by_key=subway_arrivals_by_key,
                     rail_arrivals_by_mode=rail_arrivals_by_mode,
                     bus_arrivals_by_stop=bus_arrivals_by_stop,
+                    priority=priority,
                 )
                 for trip in trips
             ],
@@ -2094,9 +2123,12 @@ class TrackEngineService:
     def go(self, request: PlanRequest, *, now_ts: int | None = None) -> GoResponse:
         session_now_ts = now_ts or int(time.time())
         response = self._remote_go(request, now_ts=session_now_ts)
+        user_priority = getattr(request, "priority", None)
         if self.enable_realtime_enrichment:
             with suppress(Exception):
-                response = asyncio.run(self._enrich_go_response(response))
+                response = asyncio.run(
+                    self._enrich_go_response(response, priority=user_priority)
+                )
         if request.user_id and request.record_recent and response.primary_trip is not None:
             self.store.record_recent_trip(
                 request.user_id,
