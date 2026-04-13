@@ -7,7 +7,8 @@ A high-performance Python proxy API for the **Track** iOS app. It ingests raw MT
 - **Python 3.11+**
 - **FastAPI** — Lightning-fast async web framework
 - **Pydantic** — Data validation and settings management
-- **HTTPX** — Async HTTP client for MTA feeds
+- **HTTPX** — Async HTTP client for MTA feeds (connection-pooled, shared `AsyncClient`)
+- **aiosqlite** — Async SQLite access for GTFS schedule lookups (connection-pooled)
 - **gtfs-realtime-bindings** — Protobuf decoder for GTFS-Realtime feeds
 
 ## Quick Start
@@ -28,6 +29,52 @@ The API will be available at `http://127.0.0.1:8000`. Auto-generated docs are at
 pip install pytest pytest-asyncio httpx
 python -m pytest tests/ -v
 ```
+
+## Performance Architecture
+
+### SQLite Connection Pool (`ScheduleDBPool`)
+
+The GTFS schedule database (`transit_schedule.db`) is queried on nearly every request — nearby routes, bus schedule fallback, stop search, and service window checks. Previously, every query opened a fresh `aiosqlite.connect()` and closed it after use. Under load (especially `/nearby/grouped` which fires 50+ concurrent queries via `asyncio.gather`), this caused:
+
+- Thread creation overhead (~2–5ms per connection)
+- File handle churn (open/close on every call)
+- Contention when dozens of coroutines hit the storage layer simultaneously
+
+**Solution:** A shared connection pool (`app/services/transit/db_pool.py`) keeps **8 pre-opened SQLite connections** on an `asyncio.Queue`. Query methods borrow a connection, use it, and return it — no open/close overhead per request.
+
+```
+┌─────────────────────────────────────────────────┐
+│  ScheduleDBPool  (asyncio.Queue, size=8)        │
+│                                                 │
+│  open()   → Pre-opens 8 connections at startup  │
+│             WAL mode + read_uncommitted=1       │
+│  acquire() → Borrows a connection (async ctx)   │
+│             Returns it when done                │
+│             Self-heals broken connections        │
+│  close()  → Drains all connections at shutdown  │
+└─────────────────────────────────────────────────┘
+```
+
+**Lifecycle integration:**
+- `startup` event in `lifecycle.py` → `await schedule_pool.open()`
+- `shutdown` event in `lifecycle.py` → `await schedule_pool.close()`
+
+**Files using the pool:**
+
+| File | Methods |
+|------|---------|
+| `schedule_service.py` | `get_scheduled_arrivals_async`, `get_line_schedule_async`, `get_headsigns_for_route_async` |
+| `nearby.py` | `_discover_routes_in_area` |
+| `service.py` (ScheduleRepository) | `search_stops`, `service_window_for_mode`, `has_nearby_stop_for_mode`, `nearby_route_ids_for_mode`, `route_has_service_on_date` |
+
+**Test safety:** When the pool hasn't been opened (e.g. during unit tests), `acquire()` falls back to a standalone `aiosqlite.connect()` so tests run without any pool setup.
+
+### HTTP Connection Pool (httpx)
+
+Upstream HTTP calls (MTA GTFS-RT, SIRI, OBA, TrackEngine) use a shared `httpx.AsyncClient` with connection pooling:
+- `max_connections=20`, `max_keepalive_connections=10`
+- Lazy-initialized, closed at shutdown
+- Retry logic via `tenacity` for TrackEngine calls
 
 ## 🏪 Track API Marketplace
 

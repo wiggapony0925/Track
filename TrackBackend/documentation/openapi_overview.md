@@ -56,5 +56,10 @@ Responses include `Cache-Control` headers tuned per endpoint:
 | Alerts & accessibility | 30–60 s | 300 s |
 | Nearby (grouped) | 5–12 s | 30–120 s |
 
+### Connection pooling
+The backend uses two connection pools to eliminate per-request overhead:
+- **SQLite pool** — 8 pre-opened `aiosqlite` connections for GTFS schedule queries (WAL mode, self-healing). See `app/services/transit/db_pool.py`.
+- **HTTP pool** — shared `httpx.AsyncClient` with 20 max connections for all upstream MTA/SIRI/OBA/TrackEngine calls.
+
 ### Rate limits
 No explicit per-user rate limit is documented for trusted Track clients. Endpoints intended for operational control remain restricted to `localhost` only.

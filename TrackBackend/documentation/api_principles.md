@@ -21,6 +21,15 @@ This API is designed for a mobile client that needs fast, resilient, explainable
 - **Operational/admin endpoints** should favor accuracy over long caching.
 - **The portal docs should explain freshness expectations** so new developers understand whether an endpoint is static, semi-static, realtime, or warmup-gated.
 
+### Connection pooling
+The backend pools both database and HTTP connections to minimize per-request overhead:
+
+- **SQLite (GTFS schedule):** 8 pre-opened `aiosqlite` connections managed by `ScheduleDBPool` (`app/services/transit/db_pool.py`). Connections use WAL mode and `read_uncommitted=1` for maximum read concurrency. The pool self-heals broken connections and falls back to standalone connections during tests.
+- **HTTP (upstream feeds):** A shared `httpx.AsyncClient` with `max_connections=20` and `max_keepalive_connections=10` avoids TCP/TLS handshake overhead on every MTA/SIRI/OBA call.
+- **TrackEngine:** Uses the same shared HTTP client with `tenacity` retry decorators for resilience.
+
+When adding new database or HTTP call sites, always use the existing pools rather than opening standalone connections.
+
 ### Reading order for new developers
 1. Read the overview and upstream dependency tables.
 2. Read the tag-to-surface matrix below.

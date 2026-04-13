@@ -597,7 +597,7 @@ struct HomeView: View {
             ManageFavoritesView(
                 sheetNavigator: sheetNavigator,
                 groupedTransit: viewModel.groupedTransit,
-                userLocation: locationManager.currentLocation,
+                userLocation: viewModel.referenceLocation ?? locationManager.currentLocation,
                 onSelect: { group, directionIndex in
                     sheetNavigator.navigate(
                         to: .routeDetail(
