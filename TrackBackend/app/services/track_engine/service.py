@@ -11,6 +11,7 @@ import sqlite3
 import tempfile
 import threading
 import time
+import contextlib
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -246,9 +247,17 @@ class ScheduleRepository:
         return conn
 
     async def _connect(self) -> aiosqlite.Connection:
+        """Standalone connection — only used when pool is unavailable."""
         conn = await aiosqlite.connect(str(self.db_path), timeout=30)
         conn.row_factory = aiosqlite.Row
         return conn
+
+    @contextlib.asynccontextmanager
+    async def _acquire(self):
+        """Borrow a pooled connection; falls back to standalone connect."""
+        from app.services.transit.db_pool import schedule_pool
+        async with schedule_pool.acquire() as conn:
+            yield conn
 
     def ensure_query_indexes(self) -> None:
         with self._prepare_lock:
@@ -292,8 +301,7 @@ class ScheduleRepository:
         lowered = query.strip().lower()
         if not lowered:
             return []
-        conn = await self._connect()
-        try:
+        async with self._acquire() as conn:
             try:
                 cursor = await conn.execute(
                     """
@@ -326,8 +334,6 @@ class ScheduleRepository:
                 if "no such table" in str(exc).lower():
                     return []
                 raise
-        finally:
-            await conn.close()
         return [
             StopRecord(
                 stop_id=str(row["stop_id"]),
@@ -380,8 +386,7 @@ class ScheduleRepository:
         if route_filter is None:
             return None
 
-        conn = await self._connect()
-        try:
+        async with self._acquire() as conn:
             try:
                 cursor = await conn.execute(
                     f"""
@@ -408,8 +413,6 @@ class ScheduleRepository:
                 row = await cursor.fetchone()
             except sqlite3.OperationalError:
                 row = None
-        finally:
-            await conn.close()
 
         window: ScheduleWindow | None = None
         if row is not None:
@@ -436,8 +439,7 @@ class ScheduleRepository:
             return False
 
         lat_delta, lon_delta = bounding_box_degrees(radius_m, lat)
-        conn = await self._connect()
-        try:
+        async with self._acquire() as conn:
             try:
                 cursor = await conn.execute(
                     f"""
@@ -481,8 +483,6 @@ class ScheduleRepository:
                     ),
                 )
                 rows = await cursor.fetchall()
-        finally:
-            await conn.close()
 
         for row in rows:
             distance = haversine_m(
@@ -508,32 +508,30 @@ class ScheduleRepository:
             return []
 
         lat_delta, lon_delta = bounding_box_degrees(radius_m, lat)
-        conn = await self._connect()
-        try:
-            cursor = await conn.execute(
-                f"""
-                SELECT DISTINCT s.stop_id, s.stop_lat, s.stop_lon, t.route_id
-                FROM stops s
-                JOIN stop_times st ON st.stop_id = s.stop_id
-                JOIN trips t ON t.trip_id = st.trip_id
-                JOIN routes r ON r.route_id = t.route_id
-                WHERE s.stop_lat BETWEEN ? AND ?
-                  AND s.stop_lon BETWEEN ? AND ?
-                  AND {route_filter}
-                LIMIT 5000
-                """,
-                (
-                    lat - lat_delta,
-                    lat + lat_delta,
-                    lon - lon_delta,
-                    lon + lon_delta,
-                ),
-            )
-            rows = await cursor.fetchall()
-        except sqlite3.OperationalError:
-            return []
-        finally:
-            await conn.close()
+        async with self._acquire() as conn:
+            try:
+                cursor = await conn.execute(
+                    f"""
+                    SELECT DISTINCT s.stop_id, s.stop_lat, s.stop_lon, t.route_id
+                    FROM stops s
+                    JOIN stop_times st ON st.stop_id = s.stop_id
+                    JOIN trips t ON t.trip_id = st.trip_id
+                    JOIN routes r ON r.route_id = t.route_id
+                    WHERE s.stop_lat BETWEEN ? AND ?
+                      AND s.stop_lon BETWEEN ? AND ?
+                      AND {route_filter}
+                    LIMIT 5000
+                    """,
+                    (
+                        lat - lat_delta,
+                        lat + lat_delta,
+                        lon - lon_delta,
+                        lon + lon_delta,
+                    ),
+                )
+                rows = await cursor.fetchall()
+            except sqlite3.OperationalError:
+                return []
 
         route_ids: set[str] = set()
         for row in rows:
@@ -560,54 +558,52 @@ class ScheduleRepository:
         weekday_column = weekday_columns[target_date.weekday()]
         date_value = target_date.strftime("%Y%m%d")
 
-        conn = await self._connect()
-        try:
-            cursor = await conn.execute(
-                f"""
-                WITH route_services AS (
-                    SELECT DISTINCT service_id
-                    FROM trips
-                    WHERE route_id = ?
-                ),
-                removed AS (
-                    SELECT service_id
-                    FROM calendar_dates
-                    WHERE date = ? AND exception_type = 2
-                ),
-                added AS (
-                    SELECT service_id
-                    FROM calendar_dates
-                    WHERE date = ? AND exception_type = 1
+        async with self._acquire() as conn:
+            try:
+                cursor = await conn.execute(
+                    f"""
+                    WITH route_services AS (
+                        SELECT DISTINCT service_id
+                        FROM trips
+                        WHERE route_id = ?
+                    ),
+                    removed AS (
+                        SELECT service_id
+                        FROM calendar_dates
+                        WHERE date = ? AND exception_type = 2
+                    ),
+                    added AS (
+                        SELECT service_id
+                        FROM calendar_dates
+                        WHERE date = ? AND exception_type = 1
+                    )
+                    SELECT 1
+                    FROM (
+                        SELECT a.service_id
+                        FROM added a
+                        JOIN route_services rs ON rs.service_id = a.service_id
+                        UNION
+                        SELECT c.service_id
+                        FROM calendar c
+                        JOIN route_services rs ON rs.service_id = c.service_id
+                        WHERE c.{weekday_column} = 1
+                          AND c.start_date <= ?
+                          AND c.end_date >= ?
+                          AND c.service_id NOT IN (SELECT service_id FROM removed)
+                    )
+                    LIMIT 1
+                    """,
+                    (
+                        route_id,
+                        date_value,
+                        date_value,
+                        date_value,
+                        date_value,
+                    ),
                 )
-                SELECT 1
-                FROM (
-                    SELECT a.service_id
-                    FROM added a
-                    JOIN route_services rs ON rs.service_id = a.service_id
-                    UNION
-                    SELECT c.service_id
-                    FROM calendar c
-                    JOIN route_services rs ON rs.service_id = c.service_id
-                    WHERE c.{weekday_column} = 1
-                      AND c.start_date <= ?
-                      AND c.end_date >= ?
-                      AND c.service_id NOT IN (SELECT service_id FROM removed)
-                )
-                LIMIT 1
-                """,
-                (
-                    route_id,
-                    date_value,
-                    date_value,
-                    date_value,
-                    date_value,
-                ),
-            )
-            row = await cursor.fetchone()
-        except sqlite3.OperationalError:
-            return False
-        finally:
-            await conn.close()
+                row = await cursor.fetchone()
+            except sqlite3.OperationalError:
+                return False
         return row is not None
 
 

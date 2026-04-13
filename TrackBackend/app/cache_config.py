@@ -27,13 +27,16 @@ import json
 import logging
 from pathlib import Path
 
+from app.config import _strip_json_comments
+
 _SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
 
 
 def _load_cache_overrides() -> dict:
     """Load the optional ``cache`` section from settings.json."""
     try:
-        raw = json.loads(_SETTINGS_PATH.read_text(encoding="utf-8"))
+        text = _SETTINGS_PATH.read_text(encoding="utf-8")
+        raw = json.loads(_strip_json_comments(text))
         return raw.get("cache", {})
     except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError):
         # settings.json missing or malformed — use built-in defaults

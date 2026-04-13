@@ -1303,7 +1303,7 @@ async def _discover_routes_in_area(
 ) -> dict[str, tuple[str, str | None, int]]:
     """Return display_name → (route_id, route_color, route_type) for all GTFS routes
     serving stops within radius_m of (lat, lon)."""
-    import aiosqlite
+    from app.services.transit.db_pool import schedule_pool
 
     db_path = Path("app/data/transit_schedule.db")
     if not db_path.exists():
@@ -1316,8 +1316,7 @@ async def _discover_routes_in_area(
     lon_span = radius_m / _prov.meters_per_deg_lon
 
     try:
-        conn = await aiosqlite.connect(str(db_path))
-        try:
+        async with schedule_pool.acquire() as conn:
             cursor = await conn.execute(
                 """
                 SELECT DISTINCT
@@ -1336,8 +1335,6 @@ async def _discover_routes_in_area(
                 if short_name:
                     result[short_name] = (route_id, color, rtype or 0)
             return result
-        finally:
-            await conn.close()
     except Exception as exc:
         TrackLogger.info(f"Inactive route discovery failed: {exc}", exc_info=True)
         return {}

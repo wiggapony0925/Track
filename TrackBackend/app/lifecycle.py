@@ -46,6 +46,10 @@ def register_lifecycle(app: FastAPI) -> None:
         await ensure_data_available()
         await rebuild_schedule_db_if_missing()
 
+        # Open the shared aiosqlite connection pool BEFORE services start
+        from app.services.transit.db_pool import schedule_pool
+        await schedule_pool.open()
+
         TrackLogger.section("SERVICES")
         await _redis.init_redis()
         from app.clients.weather_client import get_current_weather
@@ -93,6 +97,10 @@ def register_lifecycle(app: FastAPI) -> None:
         from app.services.track_engine.integration import get_engine_service
         with contextlib.suppress(Exception):
             await get_engine_service().close()
+        # Close the aiosqlite connection pool
+        from app.services.transit.db_pool import schedule_pool
+        with contextlib.suppress(Exception):
+            await schedule_pool.close()
         cache_stats.flush()
         await _redis.close_redis()
 
