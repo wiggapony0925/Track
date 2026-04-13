@@ -307,14 +307,15 @@ struct RouteDetailSheet: View {
 
     /// Route color from the group data or the theme palette.
     private var routeColor: Color {
+        if group.isBus {
+            return AppTheme.BusColors.color(forServiceType: group.busServiceType)
+        }
         if let hex = group.colorHex {
             return Color(hex: hex)
         }
         if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
         if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
-        return group.isBus
-            ? AppTheme.BusColors.color(forServiceType: group.busServiceType)
-            : AppTheme.SubwayColors.color(for: group.displayName)
+        return AppTheme.SubwayColors.color(for: group.displayName)
     }
 
     /// The name of the currently selected direction, used to match headsigns in RouteShape.

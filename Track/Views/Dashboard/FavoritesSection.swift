@@ -242,11 +242,14 @@ struct FavoriteCard: View {
     // MARK: Helpers
 
     private var routeColor: Color {
+        if favorite.mode == "bus" {
+            return AppTheme.BusColors.color(forServiceType: matchedGroup?.busServiceType)
+        }
         if let hex = matchedGroup?.colorHex { return Color(hex: hex) }
         switch favorite.mode {
         case "lirr": return AppTheme.CommuterRailColors.lirrBlue
         case "mnr":  return AppTheme.CommuterRailColors.mnrBlue
-        case "bus":  return AppTheme.Colors.mtaBlue
+        case "bus":  return AppTheme.BusColors.color(forServiceType: matchedGroup?.busServiceType)
         default:     return AppTheme.SubwayColors.color(for: favorite.routeDisplayName)
         }
     }

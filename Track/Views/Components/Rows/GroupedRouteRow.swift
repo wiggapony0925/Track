@@ -44,14 +44,15 @@ struct  GroupedRouteRow: View {
 
     /// Route color derived from group data or theme defaults.
     private var routeColor: Color {
+        if group.isBus {
+            return AppTheme.BusColors.color(forServiceType: group.busServiceType)
+        }
         if let hex = group.colorHex {
             return Color(hex: hex)
         }
         if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
         if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
-        return group.isBus
-            ? AppTheme.BusColors.color(forServiceType: group.busServiceType)
-            : AppTheme.SubwayColors.color(for: group.displayName)
+        return AppTheme.SubwayColors.color(for: group.displayName)
     }
 
     private var isFavoritePresentation: Bool {

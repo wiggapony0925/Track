@@ -224,12 +224,15 @@ struct MapControlsOverlay: View {
 
     /// Color of the currently selected route.
     private var selectedRouteColor: Color {
+        if let group = viewModel.selectedGroupedRoute, group.isBus {
+            return AppTheme.BusColors.color(forServiceType: group.busServiceType)
+        }
         if let group = viewModel.selectedGroupedRoute, let hex = group.colorHex {
             return Color(hex: hex)
         }
         if let group = viewModel.selectedGroupedRoute {
             return group.isBus
-                ? AppTheme.Colors.mtaBlue
+                ? AppTheme.BusColors.color(forServiceType: group.busServiceType)
                 : AppTheme.SubwayColors.color(for: group.displayName)
         }
         return AppTheme.Colors.mtaBlue

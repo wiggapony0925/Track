@@ -92,6 +92,9 @@ struct MapLibreTrackMapView: View {
     // MARK: - Computed Properties
 
     private var selectedRouteColor: Color {
+        if let group = viewModel.selectedGroupedRoute, group.isBus {
+            return AppTheme.BusColors.color(forServiceType: group.busServiceType)
+        }
         if let group = viewModel.selectedGroupedRoute, let hex = group.colorHex {
             return Color(hex: hex)
         }
@@ -99,7 +102,8 @@ struct MapLibreTrackMapView: View {
             if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
             if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
             return group.isBus
-                ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: group.displayName)
+                ? AppTheme.BusColors.color(forServiceType: group.busServiceType)
+                : AppTheme.SubwayColors.color(for: group.displayName)
         }
         return AppTheme.Colors.mtaBlue
     }

@@ -109,9 +109,6 @@ struct RouteBadge: View {
     /// Bus background color — uses hex when available, then service type,
     /// then name-based SBS detection, else local blue.
     private var busBackgroundColor: Color {
-        if let hex = hexColor {
-            return Color(hex: hex)
-        }
         // Use the service-type palette when the backend told us the type
         if let svc = resolvedBusServiceType {
             return AppTheme.BusColors.color(forServiceType: svc)
@@ -134,11 +131,11 @@ struct RouteBadge: View {
     }
 
     private var backgroundColor: Color {
-        if let hex = hexColor {
-            return Color(hex: hex)
-        }
         if resolvedIsBus {
             return busBackgroundColor
+        }
+        if let hex = hexColor {
+            return Color(hex: hex)
         }
         if isLIRR {
             return commuterRailBackgroundColor
