@@ -589,3 +589,119 @@ async def get_broken_elevators() -> list[ElevatorStatus]:
 
     TrackLogger.data(f"Elevator/escalator outages: {len(results)} out of service")
     return results
+
+
+# ---------------------------------------------------------------------------
+# Vehicle Position parsing — extract live train positions from GTFS-RT feeds
+# ---------------------------------------------------------------------------
+from app.models import TransitVehicle as _TransitVehicle
+
+_VEHICLE_CACHE: dict[str, tuple[float, list[_TransitVehicle]]] = {}
+_VEHICLE_CACHE_TTL = 15.0
+
+
+_VEHICLE_STATUS_MAP = {
+    0: "INCOMING_AT",
+    1: "STOPPED_AT",
+    2: "IN_TRANSIT_TO",
+}
+
+
+def _parse_vehicle_positions_sync(
+    raw: bytes,
+    line_id: str,
+    mode: str = "subway",
+    color_fn=None,
+) -> list[_TransitVehicle]:
+    """Extract VehiclePosition entities from a GTFS-RT feed — CPU-bound, runs in thread."""
+    feed = gtfs_realtime_pb2.FeedMessage()
+    feed.ParseFromString(raw)
+
+    vehicles: list[_TransitVehicle] = []
+
+    for entity in feed.entity:
+        if not entity.HasField("vehicle"):
+            continue
+        vp = entity.vehicle
+        if not vp.HasField("position"):
+            continue
+
+        route_id = vp.trip.route_id if vp.trip.HasField("route_id") else ""
+        trip_id = vp.trip.trip_id if vp.trip.HasField("trip_id") else None
+        vehicle_id = vp.vehicle.id if vp.HasField("vehicle") and vp.vehicle.id else (trip_id or entity.id)
+
+        lat = vp.position.latitude
+        lon = vp.position.longitude
+        bearing = vp.position.bearing if vp.position.bearing else None
+        speed = None
+        if vp.position.speed > 0:
+            speed = round(vp.position.speed * 2.23694, 1)  # m/s → mph
+
+        stop_id = vp.stop_id if vp.stop_id else None
+        stop_name_resolved = get_stop_name(stop_id) if stop_id else None
+        if stop_name_resolved in (None, "Unknown", stop_id) and stop_id:
+            base = stop_id[:-1] if len(stop_id) > 1 and stop_id[-1] in "NS" else stop_id
+            resolved = get_stop_name(base)
+            if resolved != "Unknown":
+                stop_name_resolved = resolved
+
+        status_enum = vp.current_status if vp.HasField("current_status") else 2
+        status_str = _VEHICLE_STATUS_MAP.get(status_enum, "IN_TRANSIT_TO")
+
+        timestamp = vp.timestamp if vp.timestamp else None
+
+        color = None
+        if color_fn and route_id:
+            color = color_fn(route_id)
+
+        vehicles.append(_TransitVehicle(
+            vehicle_id=vehicle_id,
+            route_id=route_id,
+            trip_id=trip_id,
+            lat=lat,
+            lon=lon,
+            bearing=bearing,
+            speed_mph=speed,
+            current_stop_id=stop_id,
+            current_stop_name=stop_name_resolved,
+            status=status_str,
+            mode=mode,
+            timestamp=timestamp,
+            color_hex=color,
+        ))
+
+    return vehicles
+
+
+async def get_vehicle_positions_for_line(
+    line_id: str,
+    *,
+    mode: str = "subway",
+    color_fn=None,
+) -> list[_TransitVehicle]:
+    """Fetch live vehicle positions for a subway line from GTFS-RT.
+
+    Returns cached positions if polled within the last 15 seconds.
+    """
+    url = get_feed_url(line_id)
+    if url is None:
+        return []
+
+    cache_key = f"{url}:{mode}"
+    cached = _VEHICLE_CACHE.get(cache_key)
+    if cached is not None:
+        ts, vehicles = cached
+        if _time.time() - ts < _VEHICLE_CACHE_TTL:
+            return list(vehicles)
+
+    raw = await fetch_protobuf(url)
+    loop = asyncio.get_running_loop()
+    vehicles = await loop.run_in_executor(
+        None, _parse_vehicle_positions_sync, raw, line_id, mode, color_fn
+    )
+
+    _VEHICLE_CACHE[cache_key] = (_time.time(), vehicles)
+
+    TrackLogger.data(f"Vehicle positions {mode}/{line_id}: {len(vehicles)} vehicles")
+    return vehicles
+

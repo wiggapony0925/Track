@@ -767,6 +767,27 @@ class BusVehicle(BaseModel):
     )
 
 
+class TransitVehicle(BaseModel):
+    """A live subway or commuter rail vehicle position from GTFS-RT."""
+
+    vehicle_id: str = Field(..., description="GTFS vehicle ID (or trip_id).")
+    route_id: str = Field(..., description="GTFS route ID (e.g. 'A', 'LIRR').")
+    trip_id: str | None = Field(None, description="GTFS trip ID.")
+    lat: float = Field(..., description="Vehicle latitude (WGS 84).")
+    lon: float = Field(..., description="Vehicle longitude (WGS 84).")
+    bearing: float | None = Field(None, description="Vehicle heading in degrees.")
+    speed_mph: float | None = Field(None, description="Current speed in mph.")
+    current_stop_id: str | None = Field(None, description="ID of current or next stop.")
+    current_stop_name: str | None = Field(None, description="Name of current or next stop.")
+    status: str = Field(
+        "IN_TRANSIT_TO",
+        description="GTFS VehicleStopStatus: INCOMING_AT, STOPPED_AT, IN_TRANSIT_TO.",
+    )
+    mode: str = Field("subway", description="Transit mode (subway, lirr, mnr).")
+    timestamp: int | None = Field(None, description="Unix timestamp of position report.")
+    color_hex: str | None = Field(None, description="Brand color for the route.")
+
+
 class DirectionShape(BaseModel):
     """Polylines and stops for one direction of a route."""
 

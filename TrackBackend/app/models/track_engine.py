@@ -346,6 +346,35 @@ class EngineTripLeg(BaseModel):
     )
 
 
+class EngineLegFare(BaseModel):
+    """Fare for a single transit leg."""
+
+    mode: str = Field(..., description="subway, bus, express_bus, rail, walk.")
+    route_id: str = Field(..., description="Route identifier for the leg.")
+    fare_cents: int = Field(..., description="Fare in US cents for this leg.")
+    is_free_transfer: bool = Field(False, description="Whether this leg was a free transfer.")
+    fare_media: str = Field("omny", description="Payment method (omny, metrocard).")
+
+
+class EngineFareEstimate(BaseModel):
+    """Fare estimate for a complete trip."""
+
+    total_cents: int = Field(..., description="Total fare in US cents.")
+    currency: str = Field("USD", description="Currency code.")
+    description: str = Field("", description="Human-readable fare summary.")
+    legs: list[EngineLegFare] = Field(default_factory=list, description="Per-leg fare breakdown.")
+    free_transfers_used: int = Field(0, description="Number of free transfers applied.")
+
+
+class EngineEnvironmentalImpact(BaseModel):
+    """CO₂ savings and calorie burn compared to driving."""
+
+    co2_saved_grams: int = Field(0, description="Grams of CO₂ saved vs driving.")
+    calories_burned: int = Field(0, description="Approx calories burned from walking legs.")
+    walk_meters: float = Field(0.0, description="Total walking distance contributing to calories.")
+    equivalent_car_co2_grams: int = Field(0, description="CO₂ a car would emit for the same trip.")
+
+
 class EngineItinerary(BaseModel):
     """A complete itinerary."""
 
@@ -366,6 +395,11 @@ class EngineItinerary(BaseModel):
                     "null when no subway legs are present; false if any station lacks ADA access.",
     )
     legs: list[EngineTripLeg] = Field(..., description="Ordered itinerary legs.")
+    fare: EngineFareEstimate | None = Field(None, description="Trip fare estimate.")
+    environmental_impact: EngineEnvironmentalImpact | None = Field(
+        None,
+        description="CO₂ savings and calorie burn for this trip.",
+    )
 
 
 class EngineRouteChip(BaseModel):

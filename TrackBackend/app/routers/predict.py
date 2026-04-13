@@ -52,6 +52,10 @@ from app.models import RESP_400, RESP_403, ReloadModelResponse
 from app.utils.logger import TrackLogger
 from app.utils.metrics import ML_PREDICTION_FACTOR, ML_PREDICTIONS_TOTAL
 
+# ── Day-of-week labels (match recency_model convention: Mon=2…Sun=1) ──────
+_DOW_LABELS = {2: "Monday", 3: "Tuesday", 4: "Wednesday", 5: "Thursday",
+               6: "Friday", 7: "Saturday", 1: "Sunday"}
+
 router = APIRouter(tags=["predict"])
 
 
@@ -168,6 +172,49 @@ class DelayPrediction(BaseModel):
         "clear",
         description="Weather condition used for prediction (e.g. 'clear', 'rain', 'snow').",
     )
+
+
+# ── Delay-history models ─────────────────────────────────────────────────
+class DelayPattern(BaseModel):
+    """One delay-pattern bucket (one combination of day + hour)."""
+
+    day_of_week: str = Field(..., description="Day name, e.g. 'Monday'.")
+    hour: int = Field(..., ge=0, le=23, description="Hour of day (0-23).")
+    avg_delay_seconds: float = Field(
+        ..., description="Mean delay in seconds (positive = late, negative = early)."
+    )
+    observation_count: int = Field(
+        ..., description="Number of observations used."
+    )
+    pattern_text: str = Field(
+        ...,
+        description="Human-readable summary, e.g. 'Usually 2 min late'.",
+    )
+
+
+class DelayHistoryResponse(BaseModel):
+    """Aggregated delay-history patterns for a route + stop."""
+
+    route_id: str
+    stop_id: str
+    patterns: list[DelayPattern]
+    data_window_hours: int = Field(
+        25,
+        description="How far back observations go (limited by Redis TTL).",
+    )
+
+
+def _pattern_text(avg_s: float) -> str:
+    """Convert average delay seconds to a human summary."""
+    abs_s = abs(avg_s)
+    if abs_s < 30:
+        return "On time"
+    mins = abs_s / 60
+    if mins < 1:
+        label = f"{int(abs_s)}s"
+    else:
+        label = f"{mins:.0f} min"
+    return f"Usually {label} {'late' if avg_s > 0 else 'early'}"
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────
@@ -419,6 +466,101 @@ async def predict_delay(
 def _is_rush(hour: int, dow: int) -> bool:
     is_weekday = 2 <= dow <= 6
     return is_weekday and (hour in range(7, 10) or hour in range(17, 20))
+
+
+# ── Historical delay patterns endpoint ────────────────────────────────────
+_HISTORY_OBS_PREFIX = "track:recency:obs"
+
+
+@router.get(
+    "/predict/history",
+    response_model=DelayHistoryResponse,
+    summary="Historical delay patterns",
+    description=(
+        "Returns aggregated delay patterns for a route + stop across all "
+        "available day/hour buckets. Data spans up to ~25 hours (limited by "
+        "Redis observation TTL). Each bucket shows the average delay and "
+        "a human-readable pattern like 'Usually 2 min late'."
+    ),
+    responses={**RESP_400},
+)
+async def delay_history(
+    route_id: str = Query(
+        ..., description="Route identifier, e.g. '7', 'A', 'SIR'."
+    ),
+    stop_id: str = Query(
+        ..., description="GTFS stop ID, e.g. '726S'."
+    ),
+    dow: int | None = Query(
+        None,
+        ge=1,
+        le=7,
+        description="Day-of-week filter (Mon=2…Sat=7, Sun=1). Omit for all days.",
+    ),
+    hour: int | None = Query(
+        None,
+        ge=0,
+        le=23,
+        description="Hour-of-day filter (0-23). Omit for all hours.",
+    ),
+) -> DelayHistoryResponse:
+    """Scan Redis observation buckets and aggregate into delay patterns."""
+    client = _redis.get_client()
+    if client is None:
+        return DelayHistoryResponse(
+            route_id=route_id, stop_id=stop_id, patterns=[]
+        )
+
+    # Normalise route the same way recency_model does
+    route = route_id.upper()
+    if "_" in route:
+        route = route.split("_")[-1]
+
+    # Build the set of (dow, hour) pairs to scan
+    dows = [dow] if dow is not None else [1, 2, 3, 4, 5, 6, 7]
+    hours = [hour] if hour is not None else list(range(24))
+
+    pairs = [(d, h) for d in dows for h in hours]
+    keys = [f"{_HISTORY_OBS_PREFIX}:{route}:{stop_id}:{d}:{h}" for d, h in pairs]
+
+    # Pipeline-fetch all ZSETs in one round-trip
+    patterns: list[DelayPattern] = []
+    try:
+        pipe = client.pipeline(transaction=False)
+        for k in keys:
+            pipe.zrangebyscore(k, "-inf", "+inf", withscores=False)
+        results = await pipe.execute()
+
+        for (d, h), values in zip(pairs, results):
+            if not values:
+                continue
+            errors = [float(v) for v in values]
+            avg = sum(errors) / len(errors)
+            patterns.append(
+                DelayPattern(
+                    day_of_week=_DOW_LABELS.get(d, str(d)),
+                    hour=h,
+                    avg_delay_seconds=round(avg, 1),
+                    observation_count=len(errors),
+                    pattern_text=_pattern_text(avg),
+                )
+            )
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        TrackLogger.warning(
+            f"[PREDICT HISTORY] Redis error: {exc}", tag="ML"
+        )
+
+    # Sort by day-of-week then hour for deterministic output
+    dow_order = {2: 0, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 1: 6}
+    patterns.sort(key=lambda p: (dow_order.get(
+        next((k for k, v in _DOW_LABELS.items() if v == p.day_of_week), 0), 99
+    ), p.hour))
+
+    return DelayHistoryResponse(
+        route_id=route_id,
+        stop_id=stop_id,
+        patterns=patterns,
+    )
 
 
 @router.post(

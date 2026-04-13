@@ -55,6 +55,11 @@ struct TripDetailSheet: View {
                         .padding(.top, 20)
                         .padding(.horizontal, 16)
 
+                    // Environmental impact (CO₂ + calories)
+                    environmentalImpactView
+                        .padding(.top, 12)
+                        .padding(.horizontal, 16)
+
                     // Action buttons
                     actionButtons
                         .padding(.top, 24)
@@ -385,9 +390,15 @@ struct TripDetailSheet: View {
                 Text("Estimated Fare")
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
-                Text("$2.90 with OMNY/MetroCard")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                if let fare = trip.fare {
+                    Text(fare.description.isEmpty ? fare.formattedTotal : fare.description)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                } else {
+                    Text("$2.90 with OMNY")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                }
             }
 
             Spacer()
@@ -401,6 +412,53 @@ struct TripDetailSheet: View {
                         .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.2), lineWidth: 0.5)
                 )
         )
+    }
+
+    // MARK: - Environmental Impact
+
+    @ViewBuilder
+    private var environmentalImpactView: some View {
+        if let impact = trip.environmentalImpact, (impact.co2SavedGrams > 0 || impact.caloriesBurned > 0) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.1))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: "leaf.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.green)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Environmental Impact")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                    HStack(spacing: 12) {
+                        if impact.co2SavedGrams > 0 {
+                            Label(impact.formattedCO2, systemImage: "cloud.fill")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(AppTheme.Colors.textTertiary)
+                        }
+                        if impact.caloriesBurned > 0 {
+                            Label(impact.formattedCalories, systemImage: "flame.fill")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AppTheme.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.2), lineWidth: 0.5)
+                    )
+            )
+        }
     }
 
     // MARK: - Action Buttons

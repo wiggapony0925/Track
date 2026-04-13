@@ -2516,6 +2516,10 @@ extension HomeViewModel {
         goMode.activateGoMode(routeName: routeName, routeColor: routeColor)
     }
 
+    func setAlightStop(id: String, name: String, lat: Double, lon: Double) {
+        goMode.setAlightStop(id: id, name: name, lat: lat, lon: lon)
+    }
+
     func deactivateGoMode() {
         goMode.deactivateGoMode()
     }

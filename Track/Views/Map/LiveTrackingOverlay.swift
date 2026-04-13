@@ -22,6 +22,11 @@ struct LiveTrackingOverlay: View {
     let passedStopIds: Set<String>
     var onGetOff: (() -> Void)?
 
+    /// When true, shows a pulsing "Approaching your stop" banner.
+    var isApproachingDestination: Bool = false
+    /// Name of the alight stop (shown in the approaching banner).
+    var alightStopName: String?
+
     @State private var pulseScale: CGFloat = 1.0
 
     var body: some View {
@@ -31,6 +36,12 @@ struct LiveTrackingOverlay: View {
                 .fill(AppTheme.Colors.borderSubtle)
                 .frame(width: 36, height: 4)
                 .padding(.top, 8)
+
+            // Approaching-destination banner (slides in when approaching)
+            if isApproachingDestination {
+                approachingBanner
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
 
             // Route header (extracted to reduce body type-check time)
             routeHeaderRow
@@ -145,6 +156,32 @@ struct LiveTrackingOverlay: View {
         }
         .padding(.horizontal, AppTheme.Layout.margin)
         .padding(.top, 12)
+    }
+
+    @ViewBuilder
+    private var approachingBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "bell.badge.fill")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.white)
+                .symbolEffect(.pulse)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Get Ready!")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundColor(.white)
+                Text("Approaching \(alightStopName ?? "your stop")")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.vertical, 10)
+        .background(AppTheme.Colors.alertRed.gradient)
+        .accessibilityLabel("Approaching \(alightStopName ?? "your stop"). Prepare to get off.")
     }
 
     @ViewBuilder

@@ -72,6 +72,38 @@ class TransitLeg:
 
 
 @dataclass(slots=True)
+class FareEstimate:
+    """Fare estimate for a trip or leg."""
+
+    total_cents: int
+    currency: str = "USD"
+    description: str = ""
+    legs: list[LegFare] = field(default_factory=list)
+    free_transfers_used: int = 0
+
+
+@dataclass(slots=True)
+class LegFare:
+    """Fare for a single leg within the trip."""
+
+    mode: str
+    route_id: str
+    fare_cents: int
+    is_free_transfer: bool = False
+    fare_media: str = "omny"
+
+
+@dataclass(slots=True)
+class EnvironmentalImpact:
+    """CO₂ savings and calorie burn for a trip."""
+
+    co2_saved_grams: int = 0
+    calories_burned: int = 0
+    walk_meters: float = 0.0
+    equivalent_car_co2_grams: int = 0
+
+
+@dataclass(slots=True)
 class Itinerary:
     """A full trip plan from origin to destination."""
 
@@ -88,6 +120,8 @@ class Itinerary:
     summary: str
     accessible: bool | None = None
     legs: list[TransitLeg] = field(default_factory=list)
+    fare: FareEstimate | None = None
+    environmental_impact: EnvironmentalImpact | None = None
 
 
 @dataclass(slots=True)

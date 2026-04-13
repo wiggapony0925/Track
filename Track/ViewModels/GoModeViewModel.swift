@@ -6,6 +6,7 @@ import CoreLocation
 import Foundation
 import MapKit
 import SwiftUI
+@preconcurrency import UserNotifications
 
 @Observable
 @MainActor
@@ -28,6 +29,32 @@ final class GoModeViewModel {
     /// Transit ETA computed via MKDirections (minutes remaining).
     var transitEtaMinutes: Int?
 
+    // MARK: - Get-Off Notification State
+
+    /// The stop ID where the user should alight (from TripLeg.alightStopId).
+    var alightStopId: String?
+
+    /// Human-readable name of the alight stop.
+    var alightStopName: String?
+
+    /// Coordinates of the alight stop (for distance checking).
+    var alightStopCoordinate: CLLocationCoordinate2D?
+
+    /// Whether the get-off notification has already been fired this session.
+    /// Prevents duplicate alerts.
+    private var getOffNotificationFired = false
+
+    /// Whether the user is "approaching" their destination (within warning radius).
+    /// Published so the UI can show a visual alert banner.
+    var isApproachingDestination = false
+
+    /// Distance threshold for the "approaching" warning (meters).
+    /// One stop early ≈ 300-400m for subway, 200m for bus.
+    private static let approachWarningRadius: CLLocationDistance = 400
+
+    /// Distance threshold for the "arrive now" notification (meters).
+    private static let arriveRadius: CLLocationDistance = 150
+
     // MARK: - Activation
 
     /// Activates "GO" mode for the currently selected route.
@@ -42,6 +69,18 @@ final class GoModeViewModel {
         goModeRouteName = routeName
         goModeRouteColor = routeColor
         passedStopIds = []
+        getOffNotificationFired = false
+        isApproachingDestination = false
+    }
+
+    /// Sets the destination stop for get-off notifications.
+    /// Call after `activateGoMode` when a `TripLeg` provides alight info.
+    func setAlightStop(id: String, name: String, lat: Double, lon: Double) {
+        alightStopId = id
+        alightStopName = name
+        alightStopCoordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        getOffNotificationFired = false
+        isApproachingDestination = false
     }
 
     /// Deactivates "GO" mode and returns to the normal map view.
@@ -51,6 +90,11 @@ final class GoModeViewModel {
         goModeRouteColor = nil
         passedStopIds = []
         transitEtaMinutes = nil
+        alightStopId = nil
+        alightStopName = nil
+        alightStopCoordinate = nil
+        getOffNotificationFired = false
+        isApproachingDestination = false
     }
 
     // MARK: - Stop Tracking
@@ -102,6 +146,67 @@ final class GoModeViewModel {
             } else {
                 // No bearing data — fall back to proximity only
                 passedStopIds.insert(stop.id)
+            }
+        }
+
+        // Check proximity to alight (get-off) stop
+        checkGetOffProximity(userLocation: loc)
+    }
+
+    // MARK: - Get-Off Proximity Check
+
+    /// Checks whether the user is approaching or has arrived at their
+    /// alight stop and fires a local notification when appropriate.
+    private func checkGetOffProximity(userLocation: CLLocation) {
+        guard let coord = alightStopCoordinate, !getOffNotificationFired else { return }
+
+        let alightLoc = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+        let distance = userLocation.distance(from: alightLoc)
+
+        if distance <= Self.arriveRadius {
+            // Arrived — fire notification and set flag
+            isApproachingDestination = true
+            getOffNotificationFired = true
+            fireGetOffNotification(isNow: true)
+        } else if distance <= Self.approachWarningRadius && !isApproachingDestination {
+            // Approaching — fire early warning
+            isApproachingDestination = true
+            fireGetOffNotification(isNow: false)
+        }
+    }
+
+    /// Sends a local notification telling the user to prepare to get off
+    /// or to get off now.
+    private func fireGetOffNotification(isNow: Bool) {
+        let routeLabel = goModeRouteName ?? "Transit"
+        let stopLabel = alightStopName ?? "your stop"
+
+        let content = UNMutableNotificationContent()
+        content.categoryIdentifier = "GET_OFF_ALERT"
+
+        if isNow {
+            content.title = "Get Off Now!"
+            content.body = "You've arrived at \(stopLabel) on the \(routeLabel)."
+            content.sound = .defaultCritical
+        } else {
+            content.title = "Approaching \(stopLabel)"
+            content.body = "Prepare to get off the \(routeLabel) at the next stop."
+            content.sound = .default
+        }
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let identifier = isNow ? "get-off-now" : "get-off-approaching"
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: trigger
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                #if DEBUG
+                print("[GO_MODE] Get-off notification failed: \(error.localizedDescription)")
+                #endif
             }
         }
     }

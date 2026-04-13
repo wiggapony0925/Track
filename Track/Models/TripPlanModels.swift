@@ -172,6 +172,10 @@ struct TripPlan: Identifiable, Codable, Equatable {
     var confidence: Int = 100
     /// Transfer metadata with safety analysis.
     var transfers: [TripTransfer] = []
+    /// Fare estimate for the trip (nil if unavailable).
+    var fare: TripFareEstimate? = nil
+    /// CO₂ savings and calorie burn for the trip.
+    var environmentalImpact: TripEnvironmentalImpact? = nil
 
     var departureTimeString: String {
         Self.timeFormatter.string(from: departureTime)
@@ -200,6 +204,78 @@ struct TripPlan: Identifiable, Codable, Equatable {
         return formatter
     }()
 }
+
+// MARK: - Fare Estimate
+
+struct TripLegFare: Codable, Equatable {
+    let mode: String
+    let routeId: String
+    let fareCents: Int
+    let isFreeTransfer: Bool
+    let fareMedia: String
+
+    enum CodingKeys: String, CodingKey {
+        case mode
+        case routeId = "route_id"
+        case fareCents = "fare_cents"
+        case isFreeTransfer = "is_free_transfer"
+        case fareMedia = "fare_media"
+    }
+}
+
+struct TripFareEstimate: Codable, Equatable {
+    let totalCents: Int
+    let currency: String
+    let description: String
+    let legs: [TripLegFare]
+    let freeTransfersUsed: Int
+
+    enum CodingKeys: String, CodingKey {
+        case totalCents = "total_cents"
+        case currency
+        case description
+        case legs
+        case freeTransfersUsed = "free_transfers_used"
+    }
+
+    /// Formatted fare string, e.g. "$2.90"
+    var formattedTotal: String {
+        let dollars = Double(totalCents) / 100.0
+        return String(format: "$%.2f", dollars)
+    }
+}
+
+// MARK: - Environmental Impact
+
+struct TripEnvironmentalImpact: Codable, Equatable {
+    let co2SavedGrams: Int
+    let caloriesBurned: Int
+    let walkMeters: Double
+    let equivalentCarCo2Grams: Int
+
+    enum CodingKeys: String, CodingKey {
+        case co2SavedGrams = "co2_saved_grams"
+        case caloriesBurned = "calories_burned"
+        case walkMeters = "walk_meters"
+        case equivalentCarCo2Grams = "equivalent_car_co2_grams"
+    }
+
+    /// Formatted CO₂ saved, e.g. "120g CO₂ saved"
+    var formattedCO2: String {
+        if co2SavedGrams >= 1000 {
+            let kg = Double(co2SavedGrams) / 1000.0
+            return String(format: "%.1f kg CO₂ saved", kg)
+        }
+        return "\(co2SavedGrams)g CO₂ saved"
+    }
+
+    /// Formatted calorie burn, e.g. "25 cal"
+    var formattedCalories: String {
+        "\(caloriesBurned) cal"
+    }
+}
+
+// MARK: - Trip Leg
 
 struct TripLeg: Identifiable, Codable, Equatable {
     var id = UUID()
@@ -889,7 +965,9 @@ struct EngineGoTripDTO: Codable, Equatable {
             arriveInSeconds: arriveInS,
             accessible: itinerary.accessible,
             confidence: confidence ?? 100,
-            transfers: (transfers ?? []).map { $0.toTripTransfer() }
+            transfers: (transfers ?? []).map { $0.toTripTransfer() },
+            fare: itinerary.fare,
+            environmentalImpact: itinerary.environmentalImpact
         )
     }
 }
@@ -903,6 +981,8 @@ struct EngineItineraryDTO: Codable, Equatable {
     let walkMeters: Double
     let accessible: Bool?
     let legs: [EngineTripLegDTO]
+    let fare: TripFareEstimate?
+    let environmentalImpact: TripEnvironmentalImpact?
 
     enum CodingKeys: String, CodingKey {
         case itineraryID = "itinerary_id"
@@ -913,6 +993,8 @@ struct EngineItineraryDTO: Codable, Equatable {
         case walkMeters = "walk_meters"
         case accessible
         case legs
+        case fare
+        case environmentalImpact = "environmental_impact"
     }
 }
 

@@ -2025,6 +2025,8 @@ final class HomeViewModel {
     var passedStopIds: Set<String> { goMode.passedStopIds }
     var transitEtaMinutes: Int? { goMode.transitEtaMinutes }
     var walkingRoute: MKRoute? { goMode.walkingRoute }
+    var isApproachingDestination: Bool { goMode.isApproachingDestination }
+    var alightStopName: String? { goMode.alightStopName }
 
     let repository = TransitRepository()
 

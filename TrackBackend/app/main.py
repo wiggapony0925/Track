@@ -16,6 +16,7 @@ from documentation.render_openapi import build_api_description
 from documentation.tag_docs import OPENAPI_TAGS
 from app.routers import (
     bus,
+    departures,
     lirr,
     mnr,
     nearby,
@@ -57,6 +58,7 @@ app.include_router(mnr.router)
 app.include_router(status.router)
 app.include_router(bus.router)
 app.include_router(nearby.router)
+app.include_router(departures.router)
 app.include_router(predict.router)
 app.include_router(weather.router)
 app.include_router(track_engine_router.router)

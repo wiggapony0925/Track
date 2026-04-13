@@ -150,12 +150,23 @@ final class PlanViewModel {
                 errorMessage = emptyResultsMessage()
             } else {
                 errorMessage = nil
+                // Cache trip plans for offline access
+                OfflineCacheManager.shared.cacheTripPlans(tripResults)
             }
             await refreshPlannerData()
         } catch {
             let (kind, message) = friendlyError(for: error)
             if kind == .engineUnavailable {
                 await fallbackToAppleDirections()
+            } else if !OfflineCacheManager.shared.isOnline,
+                      let cached = OfflineCacheManager.shared.getCachedTripPlans(),
+                      !cached.isEmpty {
+                // Offline fallback — show last cached plans with a note
+                tripResults = cached
+                scheduleNote = nil
+                let age = OfflineCacheManager.shared.getTripPlanCacheAge() ?? "recently"
+                errorMessage = "You're offline. Showing cached plans from \(age)."
+                errorKind = nil
             } else {
                 tripResults = []
                 scheduleNote = nil

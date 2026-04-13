@@ -61,6 +61,7 @@ from app.utils.transit_utils import (
     get_subway_color,
     resolve_subway_feed_key,
 )
+from app.services.gtfs.realtime_parser import get_vehicle_positions_for_line
 
 router = APIRouter(tags=["subway"])
 
@@ -852,6 +853,51 @@ async def subway_arrivals(
             tag="SUBWAY",
         )
         response.headers["X-Track-Degraded"] = "subway-arrivals-fallback"
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Subway vehicle positions
+# ---------------------------------------------------------------------------
+
+from app.models import TransitVehicle
+
+
+@router.get(
+    "/subway/vehicles/{line_id}",
+    response_model=list[TransitVehicle],
+    summary="Live subway vehicle positions",
+    description=(
+        "Returns live GPS positions for all trains on a subway line, "
+        "extracted from the same GTFS-RT feed used for arrivals. "
+        "Positions are cached for 15 seconds."
+    ),
+)
+async def subway_vehicles(
+    line_id: str,
+    response: Response,
+) -> list[TransitVehicle]:
+    """Return vehicle positions for the given subway line."""
+    clean_id = clean_route_id(line_id)
+    if resolve_subway_feed_key(clean_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown subway line: {line_id}",
+        )
+    try:
+        vehicles = await get_vehicle_positions_for_line(
+            clean_id,
+            mode="subway",
+            color_fn=get_subway_color,
+        )
+        # Filter to the requested line
+        filtered = [v for v in vehicles if v.route_id.upper() == clean_id.upper()]
+        response.headers["Cache-Control"] = "public, max-age=15"
+        return filtered
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[SUBWAY] /vehicles/{line_id}: {exc}", tag="SUBWAY"
+        )
         return []
 
 

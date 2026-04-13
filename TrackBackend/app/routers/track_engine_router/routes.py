@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse
 
 from app.models.track_engine import (
     EngineCalendarEventInput,
+    EngineEnvironmentalImpact,
+    EngineFareEstimate,
     EngineGoAction,
     EngineGoRequest,
     EngineGoResponse,
@@ -19,6 +21,7 @@ from app.models.track_engine import (
     EngineGoTrip,
     EngineHealth,
     EngineItinerary,
+    EngineLegFare,
     EngineLegLiveStatus,
     EnginePlanRequest,
     EnginePlanResponse,
@@ -81,6 +84,38 @@ def _leg_model(leg) -> EngineTripLeg:
     )
 
 
+def _fare_model(fare) -> EngineFareEstimate | None:
+    if fare is None:
+        return None
+    return EngineFareEstimate(
+        total_cents=fare.total_cents,
+        currency=fare.currency,
+        description=fare.description,
+        legs=[
+            EngineLegFare(
+                mode=lf.mode,
+                route_id=lf.route_id,
+                fare_cents=lf.fare_cents,
+                is_free_transfer=lf.is_free_transfer,
+                fare_media=lf.fare_media,
+            )
+            for lf in fare.legs
+        ],
+        free_transfers_used=fare.free_transfers_used,
+    )
+
+
+def _environmental_model(impact) -> EngineEnvironmentalImpact | None:
+    if impact is None:
+        return None
+    return EngineEnvironmentalImpact(
+        co2_saved_grams=impact.co2_saved_grams,
+        calories_burned=impact.calories_burned,
+        walk_meters=impact.walk_meters,
+        equivalent_car_co2_grams=impact.equivalent_car_co2_grams,
+    )
+
+
 def _itinerary_model(itinerary) -> EngineItinerary:
     return EngineItinerary(
         itinerary_id=itinerary.itinerary_id,
@@ -96,6 +131,8 @@ def _itinerary_model(itinerary) -> EngineItinerary:
         summary=itinerary.summary,
         accessible=getattr(itinerary, "accessible", None),
         legs=[_leg_model(leg) for leg in itinerary.legs],
+        fare=_fare_model(getattr(itinerary, "fare", None)),
+        environmental_impact=_environmental_model(getattr(itinerary, "environmental_impact", None)),
     )
 
 

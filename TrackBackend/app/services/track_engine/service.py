@@ -33,6 +33,8 @@ from app.config import get_settings
 
 from .domain import (
     CalendarEvent,
+    EnvironmentalImpact,
+    FareEstimate,
     GoAction,
     GoResponse,
     GoStep,
@@ -40,6 +42,7 @@ from .domain import (
     GoTrip,
     HealthStatus,
     Itinerary,
+    LegFare,
     LegLiveStatus,
     LocationInput,
     PlanRequest,
@@ -2144,6 +2147,188 @@ class TrackEngineService:
             leg.crowding = table[dt.weekday() < 5][dt.hour]
 
     # ------------------------------------------------------------------
+    # Fare estimation
+    # ------------------------------------------------------------------
+
+    # MTA fare rules (2024/2025):
+    #   - Subway + local bus: $2.90 (OMNY / MetroCard)
+    #   - Express bus: $7.00
+    #   - Free transfers: subway↔bus and bus↔bus within 2 hours
+    #   - LIRR / MNR: zone-based, approximate at $5.75 peak / $4.25 off-peak
+    _BASE_FARE_CENTS = 290
+    _EXPRESS_BUS_FARE_CENTS = 700
+    _LIRR_PEAK_CENTS = 575
+    _LIRR_OFF_PEAK_CENTS = 425
+    _MNR_PEAK_CENTS = 575
+    _MNR_OFF_PEAK_CENTS = 425
+    _TRANSFER_WINDOW_S = 7200  # 2 hours
+    _PEAK_HOURS = set(range(6, 10)) | set(range(16, 20))
+
+    @staticmethod
+    def _estimate_fare(trip: GoTrip) -> None:
+        """Attach MTA fare estimate to the trip itinerary.
+
+        Applies free-transfer rules (subway↔bus / bus↔bus within 2 h).
+        LIRR/MNR use simple peak/off-peak approximation.
+        """
+        itin = trip.itinerary
+        transit_legs = [leg for leg in itin.legs if leg.mode != "walk"]
+        if not transit_legs:
+            itin.fare = FareEstimate(total_cents=0, description="Walking — no transit fare")
+            return
+
+        leg_fares: list[LegFare] = []
+        total_cents = 0
+        free_transfers = 0
+
+        # Track the first fare-paying timestamp for free-transfer window
+        first_paid_ts: int | None = None
+        first_paid_mode: str | None = None  # "subway" or "bus"
+
+        for leg in transit_legs:
+            mode = leg.mode
+            route_id = leg.route_id or ""
+            is_express_bus = (
+                mode == "bus"
+                and getattr(leg, "bus_service_type", None) == "express"
+            )
+
+            if is_express_bus:
+                fare_cents = 700  # Express bus — no free transfer
+                is_free = False
+                first_paid_ts = leg.departure_ts
+                first_paid_mode = None  # express resets transfer chain
+            elif mode in {"subway", "bus"}:
+                fare_cents = 290
+                is_free = False
+
+                # Check free-transfer eligibility
+                if first_paid_ts is not None:
+                    within_window = (leg.departure_ts - first_paid_ts) < 7200
+                    eligible_pair = (
+                        # subway → bus, bus → subway, bus → bus
+                        (first_paid_mode == "subway" and mode == "bus")
+                        or (first_paid_mode == "bus" and mode in {"subway", "bus"})
+                    )
+                    if within_window and eligible_pair:
+                        fare_cents = 0
+                        is_free = True
+                        free_transfers += 1
+
+                if not is_free:
+                    first_paid_ts = leg.departure_ts
+                    first_paid_mode = mode
+            elif mode == "lirr":
+                dt = datetime.fromtimestamp(leg.departure_ts, NY_TZ)
+                if dt.weekday() < 5 and dt.hour in EngineService._PEAK_HOURS:
+                    fare_cents = 575
+                else:
+                    fare_cents = 425
+                is_free = False
+                first_paid_ts = leg.departure_ts
+                first_paid_mode = None
+            elif mode == "mnr":
+                dt = datetime.fromtimestamp(leg.departure_ts, NY_TZ)
+                if dt.weekday() < 5 and dt.hour in EngineService._PEAK_HOURS:
+                    fare_cents = 575
+                else:
+                    fare_cents = 425
+                is_free = False
+                first_paid_ts = leg.departure_ts
+                first_paid_mode = None
+            else:
+                fare_cents = 0
+                is_free = False
+
+            total_cents += fare_cents
+            leg_fares.append(LegFare(
+                mode=mode,
+                route_id=route_id,
+                fare_cents=fare_cents,
+                is_free_transfer=is_free,
+            ))
+
+        # Build description
+        dollars = total_cents / 100
+        parts: list[str] = []
+        if free_transfers:
+            parts.append(f"includes {free_transfers} free transfer{'s' if free_transfers > 1 else ''}")
+        desc = f"${dollars:.2f} with OMNY"
+        if parts:
+            desc += f" ({', '.join(parts)})"
+
+        itin.fare = FareEstimate(
+            total_cents=total_cents,
+            description=desc,
+            legs=leg_fares,
+            free_transfers_used=free_transfers,
+        )
+
+    # ------------------------------------------------------------------
+    # Environmental impact (CO₂ savings + calorie burn)
+    # ------------------------------------------------------------------
+
+    # Average CO₂ per passenger-km (grams):
+    #   Car: ~192 g/km  |  Subway: ~35 g/km  |  Bus: ~89 g/km
+    #   Walking / cycling: 0
+    # Calorie burn: ~50 kcal per km walked (avg adult)
+    _CO2_CAR_G_PER_KM = 192
+    _CO2_SUBWAY_G_PER_KM = 35
+    _CO2_BUS_G_PER_KM = 89
+    _CO2_RAIL_G_PER_KM = 40
+    _CALORIES_PER_KM_WALK = 50
+
+    # Rough average transit speed (km/h) for distance estimation from duration
+    _AVG_SPEED: dict[str, float] = {
+        "subway": 30.0,
+        "bus": 15.0,
+        "lirr": 55.0,
+        "mnr": 50.0,
+    }
+
+    @staticmethod
+    def _estimate_environmental_impact(trip: GoTrip) -> None:
+        """Attach CO₂ savings and calorie estimates to the itinerary.
+
+        Compares transit trip to driving the same distance.
+        """
+        itin = trip.itinerary
+        walk_m = itin.walk_meters or 0.0
+
+        transit_co2_g = 0.0
+        car_distance_km = walk_m / 1000.0  # walking portion counted as car distance too
+
+        for leg in itin.legs:
+            if leg.mode == "walk":
+                continue
+            # Estimate distance from in-vehicle duration × average speed
+            duration_h = leg.duration_s / 3600.0
+            speed = EngineService._AVG_SPEED.get(leg.mode, 20.0)
+            distance_km = duration_h * speed
+            car_distance_km += distance_km
+
+            if leg.mode == "subway":
+                transit_co2_g += distance_km * 35
+            elif leg.mode == "bus":
+                transit_co2_g += distance_km * 89
+            elif leg.mode in {"lirr", "mnr"}:
+                transit_co2_g += distance_km * 40
+
+        car_co2_g = car_distance_km * 192
+        saved = max(0, int(car_co2_g - transit_co2_g))
+
+        # Calories: walking only
+        walk_km = walk_m / 1000.0
+        calories = int(walk_km * 50)
+
+        itin.environmental_impact = EnvironmentalImpact(
+            co2_saved_grams=saved,
+            calories_burned=calories,
+            walk_meters=walk_m,
+            equivalent_car_co2_grams=int(car_co2_g),
+        )
+
+    # ------------------------------------------------------------------
     # Confidence scoring  (unified intelligence score)
     # ------------------------------------------------------------------
 
@@ -2349,6 +2534,8 @@ class TrackEngineService:
         # ── New intelligence layers ──
         self._estimate_crowding(trip)
         self._analyze_transfer_safety(trip)
+        self._estimate_fare(trip)
+        self._estimate_environmental_impact(trip)
         trip.confidence = self._compute_confidence(trip)
 
         # Factor transfer safety into ranking: unsafe transfers are strongly

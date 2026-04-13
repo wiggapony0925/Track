@@ -44,6 +44,8 @@ final class OfflineCacheManager: ObservableObject {
         static let flattenedPolylines = "cached_flattened_polylines"
         static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp"
         static let flattenedPipelineHash = "cached_flattened_pipeline_hash"
+        static let tripPlans = "cached_trip_plans"
+        static let tripPlansCachedAt = "cached_trip_plans_timestamp"
     }
 
     /// Bump this whenever the station consolidation logic or hash
@@ -371,6 +373,46 @@ final class OfflineCacheManager: ObservableObject {
         try? FileManager.default.removeItem(at: dir)
     }
 
+    // MARK: - Offline Trip Plans
+
+    /// Cache trip plans so the user can view their last planned trips
+    /// when the device is offline (e.g. in a subway tunnel).
+    /// Only the most recent batch is kept (previous plans are replaced).
+    func cacheTripPlans(_ plans: [TripPlan]) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(plans) else { return }
+        userDefaults.set(data, forKey: CacheKey.tripPlans)
+        userDefaults.set(Date(), forKey: CacheKey.tripPlansCachedAt)
+    }
+
+    /// Retrieve the last cached trip plans. Returns nil if nothing is cached.
+    func getCachedTripPlans() -> [TripPlan]? {
+        guard let data = userDefaults.data(forKey: CacheKey.tripPlans) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode([TripPlan].self, from: data)
+    }
+
+    /// Age of the cached trip plans in human-readable format, or nil if uncached.
+    func getTripPlanCacheAge() -> String? {
+        guard let cachedAt = userDefaults.object(forKey: CacheKey.tripPlansCachedAt) as? Date else {
+            return nil
+        }
+        let elapsed = Date().timeIntervalSince(cachedAt)
+        if elapsed < 60 { return "< 1 min ago" }
+        if elapsed < 3600 { return "\(Int(elapsed / 60)) min ago" }
+        return "\(Int(elapsed / 3600)) hr ago"
+    }
+
+    /// Whether cached trip plans are still reasonably fresh (< 2 hours).
+    func isTripPlanCacheValid() -> Bool {
+        guard let cachedAt = userDefaults.object(forKey: CacheKey.tripPlansCachedAt) as? Date else {
+            return false
+        }
+        return Date().timeIntervalSince(cachedAt) < 7200  // 2 hours
+    }
+
     // MARK: - Helpers
     
     private func cacheKey(forMode mode: String) -> String {
@@ -406,6 +448,8 @@ final class OfflineCacheManager: ObservableObject {
         userDefaults.removeObject(forKey: CacheKey.subwayShapesCachedAt)
         userDefaults.removeObject(forKey: CacheKey.flattenedPolylinesCachedAt)
         userDefaults.removeObject(forKey: CacheKey.flattenedPipelineHash)
+        userDefaults.removeObject(forKey: CacheKey.tripPlans)
+        userDefaults.removeObject(forKey: CacheKey.tripPlansCachedAt)
         if let dir = flattenedCacheDirectory() {
             try? FileManager.default.removeItem(at: dir)
         }
