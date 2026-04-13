@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import aiosqlite
+
 from app.models import TrackArrival
 from app.services.transit.station_lookup import get_stop_info, get_stop_name
 from app.utils.logger import TrackLogger
@@ -272,10 +274,50 @@ class ScheduleService:
         route_id: str | None = None,
         limit: int = 10,
     ) -> list[TrackArrival]:
-        """Async wrapper that runs the blocking SQLite query off the event loop."""
-        return await asyncio.to_thread(
-            self.get_scheduled_arrivals, stop_id, route_id, limit
-        )
+        """Native-async version using aiosqlite — no thread-pool overhead."""
+        if not self.db_path.exists():
+            return []
+
+        now = datetime.now(tz=_NY)
+        current_date = now.strftime("%Y%m%d")
+        current_time_str = now.strftime("%H:%M:%S")
+        tomorrow = now + timedelta(days=1)
+        tomorrow_date = tomorrow.strftime("%Y%m%d")
+
+        conn = await aiosqlite.connect(str(self.db_path))
+        conn.row_factory = aiosqlite.Row
+        try:
+            active_services = await self._resolve_active_services_async(
+                conn, current_date
+            )
+            arrivals: list[TrackArrival] = []
+
+            if active_services:
+                arrivals = await self._query_stop_times_async(
+                    conn, stop_id, active_services, current_time_str,
+                    route_id, limit, day_offset=0,
+                )
+
+            if len(arrivals) < limit:
+                tomorrow_services = await self._resolve_active_services_async(
+                    conn, tomorrow_date
+                )
+                if tomorrow_services:
+                    remaining = limit - len(arrivals)
+                    next_day = await self._query_stop_times_async(
+                        conn, stop_id, tomorrow_services, "00:00:00",
+                        route_id, remaining, day_offset=1,
+                    )
+                    arrivals.extend(next_day)
+
+            return arrivals
+        except Exception as e:
+            TrackLogger.error(
+                f"Schedule query failed: {e}", tag="SCHEDULE", exc_info=True
+            )
+            return []
+        finally:
+            await conn.close()
 
     # ── Route-wide schedule query (for chip backfill) ──────────────
 
@@ -341,8 +383,50 @@ class ScheduleService:
     async def get_line_schedule_async(
         self, route_id: str, limit: int = 200
     ) -> list[TrackArrival]:
-        """Async wrapper for ``get_line_schedule``."""
-        return await asyncio.to_thread(self.get_line_schedule, route_id, limit)
+        """Native-async version using aiosqlite — no thread-pool overhead."""
+        if not self.db_path.exists():
+            return []
+
+        now = datetime.now(tz=_NY)
+        current_date = now.strftime("%Y%m%d")
+        current_time_str = now.strftime("%H:%M:%S")
+        tomorrow = now + timedelta(days=1)
+        tomorrow_date = tomorrow.strftime("%Y%m%d")
+
+        conn = await aiosqlite.connect(str(self.db_path))
+        conn.row_factory = aiosqlite.Row
+        try:
+            active_services = await self._resolve_active_services_async(
+                conn, current_date
+            )
+            arrivals: list[TrackArrival] = []
+
+            if active_services:
+                arrivals = await self._query_route_stop_times_async(
+                    conn, active_services, current_time_str, route_id, limit,
+                )
+
+            if len(arrivals) < limit:
+                tomorrow_services = await self._resolve_active_services_async(
+                    conn, tomorrow_date
+                )
+                if tomorrow_services:
+                    remaining = limit - len(arrivals)
+                    next_day = await self._query_route_stop_times_async(
+                        conn, tomorrow_services, "00:00:00", route_id, remaining,
+                        day_offset=1,
+                    )
+                    arrivals.extend(next_day)
+
+            return arrivals
+        except Exception as e:
+            TrackLogger.error(
+                f"Line schedule query failed for {route_id}: {e}",
+                tag="SCHEDULE", exc_info=True,
+            )
+            return []
+        finally:
+            await conn.close()
 
     def _query_route_stop_times(
         self,
@@ -518,6 +602,256 @@ class ScheduleService:
             return {}
         finally:
             conn.close()
+
+    # ── Async helper methods (aiosqlite) ──────────────────────────
+
+    async def _resolve_active_services_async(
+        self,
+        conn: aiosqlite.Connection,
+        current_date: str,
+    ) -> list[str]:
+        """Async clone of ``_resolve_active_services`` using aiosqlite."""
+        now = datetime.now(tz=_NY)
+
+        # Strategy 1: calendar.txt
+        day_col = _WEEKDAY_COLUMNS.get(now.weekday(), "monday")
+        try:
+            cursor = await conn.execute(
+                f"SELECT service_id FROM calendar "
+                f"WHERE {day_col} = 1 AND start_date <= ? AND end_date >= ?",
+                (current_date, current_date),
+            )
+            calendar_active = {r[0] for r in await cursor.fetchall()}
+        except Exception:
+            calendar_active = set()
+
+        # Strategy 2: calendar_dates
+        cursor = await conn.execute(
+            "SELECT service_id, exception_type FROM calendar_dates WHERE date = ?",
+            (current_date,),
+        )
+        rows = await cursor.fetchall()
+        added = {r[0] for r in rows if r[1] == 1}
+        removed = {r[0] for r in rows if r[1] == 2}
+
+        # Strategy 3: name heuristic fallback
+        if not calendar_active:
+            day_keyword = _WEEKDAY_KEYWORDS[now.weekday()]
+            cursor = await conn.execute(
+                "SELECT DISTINCT service_id FROM trips WHERE service_id LIKE ?",
+                (f"%{day_keyword}%",),
+            )
+            name_matched = {r[0] for r in await cursor.fetchall()}
+        else:
+            name_matched = set()
+
+        active = (calendar_active | name_matched | added) - removed
+        return list(active)
+
+    async def _query_stop_times_async(
+        self,
+        conn: aiosqlite.Connection,
+        stop_id: str,
+        active_services: list[str],
+        time_from: str,
+        route_id: str | None,
+        limit: int,
+        *,
+        day_offset: int = 0,
+    ) -> list[TrackArrival]:
+        """Async clone of ``_query_stop_times`` using aiosqlite."""
+        route_filter = ""
+        route_params: list = []
+        if route_id:
+            route_filter = (
+                "AND (t.route_id = ? COLLATE NOCASE"
+                " OR t.route_id LIKE (? || '+%') COLLATE NOCASE"
+                " OR t.route_id LIKE (? || '-%') COLLATE NOCASE"
+                " OR t.route_id IN"
+                "   (SELECT route_id FROM routes"
+                "    WHERE route_short_name = ? COLLATE NOCASE"
+                "       OR route_short_name LIKE (? || '-%') COLLATE NOCASE))"
+            )
+            route_params = [route_id, route_id, route_id, route_id, route_id]
+
+        query = """
+            SELECT
+                t.route_id,
+                st.stop_id,
+                st.arrival_time,
+                t.trip_headsign,
+                t.direction_id,
+                t.trip_id
+            FROM stop_times st
+            JOIN trips t ON st.trip_id = t.trip_id
+            WHERE st.stop_id = ?
+            AND t.service_id IN ({})
+            {}
+            AND st.arrival_time >= ?
+            GROUP BY t.route_id, st.arrival_time
+            ORDER BY st.arrival_time ASC
+            LIMIT ?
+        """.format(",".join(["?"] * len(active_services)), route_filter)
+
+        params = [stop_id, *active_services, *route_params, time_from, limit]
+        cursor = await conn.execute(query, params)
+        rows = await cursor.fetchall()
+
+        arrivals: list[TrackArrival] = []
+        for row in rows:
+            r_id, s_id, arr_time, headsign, direction_id, trip_id = row
+            minutes, arrival_ts = self._calculate_timing(
+                arr_time, day_offset=day_offset
+            )
+            direction = "N" if direction_id == 0 else "S"
+            arrivals.append(
+                TrackArrival(
+                    route_id=r_id,
+                    station=s_id,
+                    station_name=get_stop_name(s_id),
+                    direction=direction,
+                    destination=headsign,
+                    minutes_away=minutes,
+                    arrival_ts=arrival_ts,
+                    status="Scheduled",
+                    trip_id=trip_id,
+                    stop_lat=(
+                        stop_info.lat
+                        if (stop_info := get_stop_info(s_id))
+                        else None
+                    ),
+                    stop_lon=stop_info.lon if stop_info else None,
+                )
+            )
+        return arrivals
+
+    async def _query_route_stop_times_async(
+        self,
+        conn: aiosqlite.Connection,
+        active_services: list[str],
+        time_from: str,
+        route_id: str,
+        limit: int,
+        *,
+        day_offset: int = 0,
+    ) -> list[TrackArrival]:
+        """Async clone of ``_query_route_stop_times`` using aiosqlite."""
+        route_filter = (
+            "AND (t.route_id = ? COLLATE NOCASE"
+            " OR t.route_id LIKE (? || '+%') COLLATE NOCASE"
+            " OR t.route_id LIKE (? || '-%') COLLATE NOCASE"
+            " OR t.route_id IN"
+            "   (SELECT route_id FROM routes"
+            "    WHERE route_short_name = ? COLLATE NOCASE"
+            "       OR route_short_name LIKE (? || '-%') COLLATE NOCASE))"
+        )
+        route_params = [route_id, route_id, route_id, route_id, route_id]
+
+        query = """
+            SELECT
+                t.route_id,
+                st.stop_id,
+                st.arrival_time,
+                t.trip_headsign,
+                t.direction_id,
+                t.trip_id
+            FROM stop_times st
+            JOIN trips t ON st.trip_id = t.trip_id
+            WHERE t.service_id IN ({})
+            {}
+            AND st.arrival_time >= ?
+            GROUP BY t.route_id, st.stop_id, st.arrival_time
+            ORDER BY st.arrival_time ASC
+            LIMIT ?
+        """.format(",".join(["?"] * len(active_services)), route_filter)
+
+        params = [*active_services, *route_params, time_from, limit]
+        cursor = await conn.execute(query, params)
+        rows = await cursor.fetchall()
+
+        arrivals: list[TrackArrival] = []
+        for row in rows:
+            r_id, s_id, arr_time, headsign, direction_id, trip_id = row
+            minutes, arrival_ts = self._calculate_timing(
+                arr_time, day_offset=day_offset
+            )
+            direction = "N" if direction_id == 0 else "S"
+            arrivals.append(
+                TrackArrival(
+                    route_id=r_id,
+                    station=s_id,
+                    station_name=get_stop_name(s_id),
+                    direction=direction,
+                    destination=headsign,
+                    minutes_away=minutes,
+                    arrival_ts=arrival_ts,
+                    status="Scheduled",
+                    trip_id=trip_id,
+                    stop_lat=(
+                        stop_info.lat
+                        if (stop_info := get_stop_info(s_id))
+                        else None
+                    ),
+                    stop_lon=stop_info.lon if stop_info else None,
+                )
+            )
+        return arrivals
+
+    async def get_headsigns_for_route_async(
+        self,
+        route_id: str,
+        direction_id: int | None = None,
+    ) -> dict[int, str]:
+        """Native-async version of ``get_headsigns_for_route`` using aiosqlite."""
+        if not self.db_path.exists():
+            return {}
+
+        conn = await aiosqlite.connect(str(self.db_path))
+        conn.row_factory = aiosqlite.Row
+        try:
+            route_filter = (
+                "(t.route_id = ? COLLATE NOCASE"
+                " OR t.route_id LIKE (? || '+%') COLLATE NOCASE"
+                " OR t.route_id LIKE (? || '-%') COLLATE NOCASE"
+                " OR t.route_id IN"
+                "   (SELECT route_id FROM routes"
+                "    WHERE route_short_name = ? COLLATE NOCASE"
+                "       OR route_short_name LIKE (? || '-%') COLLATE NOCASE))"
+            )
+            params: list = [route_id, route_id, route_id, route_id, route_id]
+
+            dir_filter = ""
+            if direction_id is not None:
+                dir_filter = "AND t.direction_id = ?"
+                params.append(direction_id)
+
+            query = f"""
+                SELECT t.direction_id, t.trip_headsign, COUNT(*) as cnt
+                FROM trips t
+                WHERE {route_filter}
+                {dir_filter}
+                AND t.trip_headsign IS NOT NULL
+                AND t.trip_headsign != ''
+                GROUP BY t.direction_id, t.trip_headsign
+                ORDER BY t.direction_id, cnt DESC
+            """
+
+            cursor = await conn.execute(query, params)
+            rows = await cursor.fetchall()
+
+            result: dict[int, str] = {}
+            for d_id, headsign, _cnt in rows:
+                if d_id not in result and headsign and headsign.strip():
+                    result[d_id] = headsign.strip()
+
+            return result
+        except Exception as e:
+            TrackLogger.error(
+                f"Headsign lookup failed for {route_id}: {e}", tag="SCHEDULE"
+            )
+            return {}
+        finally:
+            await conn.close()
 
 
 # Singleton instance

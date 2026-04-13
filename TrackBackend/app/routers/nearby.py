@@ -1237,7 +1237,7 @@ async def nearby_inactive_routes(
     # benefits from being more inclusive so users see routes like QM1/QM17
     # which have stops ~1.3 km away.
     discovery_radius = min(effective_radius * 2, 5000)
-    all_routes_in_area = _discover_routes_in_area(lat, lon, discovery_radius)
+    all_routes_in_area = await _discover_routes_in_area(lat, lon, discovery_radius)
     bus_route_color_lookup = _build_bus_route_color_lookup(await get_all_bus_routes())
 
     # Build InactiveRoute objects (before filtering by active — cache the full set)
@@ -1298,12 +1298,12 @@ def _filter_inactive_json(jb: bytes, active_routes: str | None) -> list[Inactive
     return [r for r in all_routes if r.display_name.upper() not in active_set]
 
 
-def _discover_routes_in_area(
+async def _discover_routes_in_area(
     lat: float, lon: float, radius_m: int,
 ) -> dict[str, tuple[str, str | None, int]]:
     """Return display_name → (route_id, route_color, route_type) for all GTFS routes
     serving stops within radius_m of (lat, lon)."""
-    import sqlite3
+    import aiosqlite
 
     db_path = Path("app/data/transit_schedule.db")
     if not db_path.exists():
@@ -1316,27 +1316,28 @@ def _discover_routes_in_area(
     lon_span = radius_m / _prov.meters_per_deg_lon
 
     try:
-        conn = sqlite3.connect(db_path)
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT DISTINCT
-                r.route_id, r.route_short_name, r.route_color, r.route_type
-            FROM stops s
-            JOIN stop_times st ON st.stop_id = s.stop_id
-            JOIN trips t ON t.trip_id = st.trip_id
-            JOIN routes r ON r.route_id = t.route_id
-            WHERE s.stop_lat BETWEEN ? AND ?
-              AND s.stop_lon BETWEEN ? AND ?
-            """,
-            (lat - lat_span, lat + lat_span, lon - lon_span, lon + lon_span),
-        )
-        result: dict[str, tuple[str, str | None, int]] = {}
-        for route_id, short_name, color, rtype in cur.fetchall():
-            if short_name:
-                result[short_name] = (route_id, color, rtype or 0)
-        conn.close()
-        return result
+        conn = await aiosqlite.connect(str(db_path))
+        try:
+            cursor = await conn.execute(
+                """
+                SELECT DISTINCT
+                    r.route_id, r.route_short_name, r.route_color, r.route_type
+                FROM stops s
+                JOIN stop_times st ON st.stop_id = s.stop_id
+                JOIN trips t ON t.trip_id = st.trip_id
+                JOIN routes r ON r.route_id = t.route_id
+                WHERE s.stop_lat BETWEEN ? AND ?
+                  AND s.stop_lon BETWEEN ? AND ?
+                """,
+                (lat - lat_span, lat + lat_span, lon - lon_span, lon + lon_span),
+            )
+            result: dict[str, tuple[str, str | None, int]] = {}
+            for route_id, short_name, color, rtype in await cursor.fetchall():
+                if short_name:
+                    result[short_name] = (route_id, color, rtype or 0)
+            return result
+        finally:
+            await conn.close()
     except Exception as exc:
         TrackLogger.info(f"Inactive route discovery failed: {exc}", exc_info=True)
         return {}

@@ -1048,14 +1048,14 @@ class TrackEngineService:
 
         for offset in range(7, 36, 7):
             past_date = requested_date - timedelta(days=offset)
-            if has_service(past_date):
+            if await has_service(past_date):
                 return past_date, (
                     f"Using latest available bus schedule from "
                     f"{self._format_schedule_date(past_date)}"
                 )
 
             future_date = requested_date + timedelta(days=offset)
-            if has_service(future_date):
+            if await has_service(future_date):
                 return future_date, (
                     f"Using next available bus schedule from "
                     f"{self._format_schedule_date(future_date)}"
@@ -1063,14 +1063,14 @@ class TrackEngineService:
 
         for offset in range(1, 15):
             past_date = requested_date - timedelta(days=offset)
-            if has_service(past_date):
+            if await has_service(past_date):
                 return past_date, (
                     f"Using latest available bus schedule from "
                     f"{self._format_schedule_date(past_date)}"
                 )
 
             future_date = requested_date + timedelta(days=offset)
-            if has_service(future_date):
+            if await has_service(future_date):
                 return future_date, (
                     f"Using next available bus schedule from "
                     f"{self._format_schedule_date(future_date)}"
