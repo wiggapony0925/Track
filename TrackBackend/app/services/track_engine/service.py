@@ -19,7 +19,14 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import aiosqlite
 import httpx
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.config import get_settings
 
@@ -189,7 +196,13 @@ def service_date_for_timestamp(timestamp_s: int):
 
 
 class ScheduleRepository:
-    """Tiny SQLite helper used only for stop search and engine health."""
+    """Async SQLite helper for stop search and engine health.
+
+    Uses ``aiosqlite`` so queries run in a background thread and never block
+    the asyncio event loop.  The ``ensure_query_indexes`` method stays
+    synchronous because it is called once at startup (before any event loop
+    may be running).
+    """
 
     _INDEXES: dict[str, str] = {
         "idx_stop_times_trip_seq": (
@@ -226,9 +239,15 @@ class ScheduleRepository:
         self._service_window_lock = threading.Lock()
         self._service_window_cache: dict[str, ScheduleWindow | None] = {}
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect_sync(self) -> sqlite3.Connection:
+        """Synchronous connection — used only for startup index creation."""
         conn = sqlite3.connect(self.db_path, timeout=30, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        return conn
+
+    async def _connect(self) -> aiosqlite.Connection:
+        conn = await aiosqlite.connect(str(self.db_path), timeout=30)
+        conn.row_factory = aiosqlite.Row
         return conn
 
     def ensure_query_indexes(self) -> None:
@@ -236,7 +255,7 @@ class ScheduleRepository:
             if self._prepared:
                 return
             self._prepare_error = None
-            conn = self._connect()
+            conn = self._connect_sync()
             try:
                 for sql in self._INDEXES.values():
                     try:
@@ -269,14 +288,14 @@ class ScheduleRepository:
     def prepared_index_names(self) -> tuple[str, ...]:
         return tuple(self._INDEXES)
 
-    def search_stops(self, query: str, limit: int = 12) -> list[StopRecord]:
+    async def search_stops(self, query: str, limit: int = 12) -> list[StopRecord]:
         lowered = query.strip().lower()
         if not lowered:
             return []
-        conn = self._connect()
+        conn = await self._connect()
         try:
             try:
-                rows = conn.execute(
+                cursor = await conn.execute(
                     """
                     SELECT stop_id, stop_name, stop_lat, stop_lon
                     FROM stops
@@ -301,17 +320,14 @@ class ScheduleRepository:
                         lowered,
                         limit,
                     ),
-                ).fetchall()
+                )
+                rows = await cursor.fetchall()
             except sqlite3.OperationalError as exc:
-                # Some production snapshots may temporarily lack the GTFS stops
-                # table while the main backend is still bootstrapping data.
-                # Search should still work for saved places/recents instead of
-                # failing the entire request with a 500.
                 if "no such table" in str(exc).lower():
                     return []
                 raise
         finally:
-            conn.close()
+            await conn.close()
         return [
             StopRecord(
                 stop_id=str(row["stop_id"]),
@@ -354,7 +370,7 @@ class ScheduleRepository:
             return "(sm.route_type = 2)"
         return None
 
-    def service_window_for_mode(self, mode: str) -> ScheduleWindow | None:
+    async def service_window_for_mode(self, mode: str) -> ScheduleWindow | None:
         normalized = mode.strip().lower()
         with self._service_window_lock:
             if normalized in self._service_window_cache:
@@ -364,10 +380,10 @@ class ScheduleRepository:
         if route_filter is None:
             return None
 
-        conn = self._connect()
+        conn = await self._connect()
         try:
             try:
-                row = conn.execute(
+                cursor = await conn.execute(
                     f"""
                     WITH mode_service_ids AS (
                         SELECT DISTINCT t.service_id
@@ -388,11 +404,12 @@ class ScheduleRepository:
                     SELECT MIN(start_date) AS earliest, MAX(end_date) AS latest
                     FROM ranges
                     """
-                ).fetchone()
+                )
+                row = await cursor.fetchone()
             except sqlite3.OperationalError:
                 row = None
         finally:
-            conn.close()
+            await conn.close()
 
         window: ScheduleWindow | None = None
         if row is not None:
@@ -405,7 +422,7 @@ class ScheduleRepository:
             self._service_window_cache[normalized] = window
         return window
 
-    def has_nearby_stop_for_mode(
+    async def has_nearby_stop_for_mode(
         self,
         *,
         lat: float,
@@ -419,10 +436,10 @@ class ScheduleRepository:
             return False
 
         lat_delta, lon_delta = bounding_box_degrees(radius_m, lat)
-        conn = self._connect()
+        conn = await self._connect()
         try:
             try:
-                rows = conn.execute(
+                cursor = await conn.execute(
                     f"""
                     SELECT s.stop_lat, s.stop_lon
                     FROM stops s
@@ -438,12 +455,13 @@ class ScheduleRepository:
                         lon - lon_delta,
                         lon + lon_delta,
                     ),
-                ).fetchall()
+                )
+                rows = await cursor.fetchall()
             except sqlite3.OperationalError:
                 route_join_filter = self._route_filter_sql(normalized_mode)
                 if route_join_filter is None:
                     return False
-                rows = conn.execute(
+                cursor = await conn.execute(
                     f"""
                     SELECT DISTINCT s.stop_lat, s.stop_lon
                     FROM stops s
@@ -461,9 +479,10 @@ class ScheduleRepository:
                         lon - lon_delta,
                         lon + lon_delta,
                     ),
-                ).fetchall()
+                )
+                rows = await cursor.fetchall()
         finally:
-            conn.close()
+            await conn.close()
 
         for row in rows:
             distance = haversine_m(
@@ -476,7 +495,7 @@ class ScheduleRepository:
                 return True
         return False
 
-    def nearby_route_ids_for_mode(
+    async def nearby_route_ids_for_mode(
         self,
         *,
         lat: float,
@@ -489,9 +508,9 @@ class ScheduleRepository:
             return []
 
         lat_delta, lon_delta = bounding_box_degrees(radius_m, lat)
-        conn = self._connect()
+        conn = await self._connect()
         try:
-            rows = conn.execute(
+            cursor = await conn.execute(
                 f"""
                 SELECT DISTINCT s.stop_id, s.stop_lat, s.stop_lon, t.route_id
                 FROM stops s
@@ -509,11 +528,12 @@ class ScheduleRepository:
                     lon - lon_delta,
                     lon + lon_delta,
                 ),
-            ).fetchall()
+            )
+            rows = await cursor.fetchall()
         except sqlite3.OperationalError:
             return []
         finally:
-            conn.close()
+            await conn.close()
 
         route_ids: set[str] = set()
         for row in rows:
@@ -527,7 +547,7 @@ class ScheduleRepository:
                 route_ids.add(str(row["route_id"]))
         return sorted(route_ids)
 
-    def route_has_service_on_date(self, route_id: str, target_date: date) -> bool:
+    async def route_has_service_on_date(self, route_id: str, target_date: date) -> bool:
         weekday_columns = (
             "monday",
             "tuesday",
@@ -540,9 +560,9 @@ class ScheduleRepository:
         weekday_column = weekday_columns[target_date.weekday()]
         date_value = target_date.strftime("%Y%m%d")
 
-        conn = self._connect()
+        conn = await self._connect()
         try:
-            row = conn.execute(
+            cursor = await conn.execute(
                 f"""
                 WITH route_services AS (
                     SELECT DISTINCT service_id
@@ -582,11 +602,12 @@ class ScheduleRepository:
                     date_value,
                     date_value,
                 ),
-            ).fetchone()
+            )
+            row = await cursor.fetchone()
         except sqlite3.OperationalError:
             return False
         finally:
-            conn.close()
+            await conn.close()
         return row is not None
 
 
@@ -631,17 +652,107 @@ class TrackEngineService:
         self.alert_timeout_s = float(
             os.environ.get("TRACK_ENGINE_ALERT_TIMEOUT_S", "4.0")
         )
+        # ── Lazy-initialized shared async HTTP client (connection-pooled) ──
+        self._http: httpx.AsyncClient | None = None
+        self._http_loop: asyncio.AbstractEventLoop | None = None
+        self._http_limits = httpx.Limits(
+            max_connections=20,
+            max_keepalive_connections=10,
+            keepalive_expiry=30,
+        )
 
-    def _engine_health_probe(self) -> bool:
+    @property
+    def http(self) -> httpx.AsyncClient:
+        """Lazy-init the async HTTP client bound to the running event loop.
+
+        If the event loop changed (e.g. between TestClient requests),
+        discard the old client and create a fresh one.
+        """
+        loop = asyncio.get_running_loop()
+        if (
+            self._http is None
+            or self._http.is_closed
+            or self._http_loop is not loop
+        ):
+            self._http = httpx.AsyncClient(
+                timeout=self.remote_engine_timeout,
+                limits=self._http_limits,
+            )
+            self._http_loop = loop
+        return self._http
+
+    async def close(self) -> None:
+        """Gracefully close the shared HTTP connection pool."""
+        if self._http is not None and not self._http.is_closed:
+            await self._http.aclose()
+
+    async def _engine_health_probe(self) -> bool:
         """Quick /health ping to check if the engine is reachable (half-open circuit)."""
         if not self.remote_engine_url:
             return False
         try:
-            with httpx.Client(timeout=httpx.Timeout(connect=3.0, read=3.0, write=3.0, pool=3.0)) as client:
-                resp = client.get(f"{self.remote_engine_url}/health")
-                return resp.status_code == 200
+            resp = await self.http.get(
+                f"{self.remote_engine_url}/health",
+                timeout=httpx.Timeout(connect=3.0, read=3.0, write=3.0, pool=3.0),
+            )
+            return resp.status_code == 200
         except Exception:
             return False
+
+    async def _engine_post(self, endpoint: str, payload: dict, *, label: str = "") -> dict:
+        """POST to the C++ engine with automatic retries and circuit-breaker logic.
+
+        Uses tenacity for exponential backoff.  The circuit breaker (half-open
+        health probe) is checked *before* the retry loop starts; individual
+        503 responses trip the breaker immediately and are not retried.
+        """
+        tag = label or endpoint.lstrip("/")
+        # ── Circuit breaker: fail instantly if engine went down recently ──
+        since_fail = time.time() - self._engine_fail_ts
+        if self._engine_fail_ts and since_fail < self._ENGINE_CIRCUIT_COOLDOWN_S:
+            if not await self._engine_health_probe():
+                raise RuntimeError(
+                    f"TrackEngine circuit open – engine failed {since_fail:.0f}s ago, health probe failed"
+                )
+
+        @retry(
+            stop=stop_after_attempt(self._ENGINE_MAX_RETRIES),
+            wait=wait_exponential(
+                multiplier=self._ENGINE_BACKOFF_BASE_S,
+                min=self._ENGINE_BACKOFF_BASE_S,
+                max=self._ENGINE_BACKOFF_BASE_S * 4,
+            ),
+            retry=retry_if_exception_type(
+                (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError)
+            ),
+            reraise=True,
+        )
+        async def _do_post() -> dict:
+            response = await self.http.post(
+                f"{self.remote_engine_url}{endpoint}",
+                json=payload,
+                timeout=self.remote_engine_timeout,
+            )
+            if response.status_code == 503:
+                self._engine_fail_ts = time.time()
+                raise RuntimeError(
+                    f"TrackEngine {tag} returned 503: {response.text[:200]}"
+                )
+            response.raise_for_status()
+            return response.json()
+
+        try:
+            data = await _do_post()
+        except RuntimeError:
+            raise
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError) as exc:
+            self._engine_fail_ts = time.time()
+            raise RuntimeError(
+                f"TrackEngine {tag} failed after {self._ENGINE_MAX_RETRIES} attempts: {exc}"
+            ) from exc
+
+        self._engine_fail_ts = 0.0  # success — reset circuit
+        return data
 
     def _resolve_remote_engine_url(self) -> str | None:
         explicit = (
@@ -768,7 +879,7 @@ class TrackEngineService:
     def planner_version(self) -> str:
         return self._last_remote_engine_version or self.VERSION
 
-    def health(self) -> HealthStatus:
+    async def health(self) -> HealthStatus:
         schedule_db_error = None
         try:
             self.prepare()
@@ -783,10 +894,12 @@ class TrackEngineService:
         if self.remote_engine_url:
             routing_backend = "cpp_remote"
             try:
-                with httpx.Client(timeout=min(self.remote_engine_timeout_s, 5.0)) as client:
-                    response = client.get(f"{self.remote_engine_url}/health")
-                    response.raise_for_status()
-                    payload = response.json()
+                response = await self.http.get(
+                    f"{self.remote_engine_url}/health",
+                    timeout=min(self.remote_engine_timeout_s, 5.0),
+                )
+                response.raise_for_status()
+                payload = response.json()
                 remote_healthy = bool(payload.get("ready", True))
                 remote_version = payload.get("version")
                 if remote_version:
@@ -870,12 +983,12 @@ class TrackEngineService:
                 return candidate
         return None
 
-    def _location_needs_bus(self, location: LocationInput, *, radius_m: int) -> bool:
+    async def _location_needs_bus(self, location: LocationInput, *, radius_m: int) -> bool:
         if location.lat is None or location.lon is None:
             return False
 
         capped_radius = max(300, min(radius_m, 1_200))
-        bus_nearby = self.repository.has_nearby_stop_for_mode(
+        bus_nearby = await self.repository.has_nearby_stop_for_mode(
             lat=location.lat,
             lon=location.lon,
             radius_m=capped_radius,
@@ -884,18 +997,17 @@ class TrackEngineService:
         if not bus_nearby:
             return False
 
-        rail_nearby = any(
-            self.repository.has_nearby_stop_for_mode(
+        for rail_mode in ("subway", "lirr", "mnr"):
+            if await self.repository.has_nearby_stop_for_mode(
                 lat=location.lat,
                 lon=location.lon,
                 radius_m=capped_radius,
-                mode=mode,
-            )
-            for mode in ("subway", "lirr", "mnr")
-        )
-        return not rail_nearby
+                mode=rail_mode,
+            ):
+                return False
+        return True
 
-    def _candidate_bus_routes(self, request: PlanRequest) -> list[str]:
+    async def _candidate_bus_routes(self, request: PlanRequest) -> list[str]:
         routes: set[str] = set()
         locations = (
             (request.origin, request.max_origin_walk_m),
@@ -905,10 +1017,10 @@ class TrackEngineService:
             if location.lat is None or location.lon is None:
                 continue
             capped_radius = max(300, min(radius_m, 1_200))
-            if not self._location_needs_bus(location, radius_m=capped_radius):
+            if not await self._location_needs_bus(location, radius_m=capped_radius):
                 continue
             routes.update(
-                self.repository.nearby_route_ids_for_mode(
+                await self.repository.nearby_route_ids_for_mode(
                     lat=location.lat,
                     lon=location.lon,
                     radius_m=capped_radius,
@@ -917,24 +1029,22 @@ class TrackEngineService:
             )
         return sorted(routes)
 
-    def _fallback_bus_schedule_date(
+    async def _fallback_bus_schedule_date(
         self,
         route_ids: list[str],
         requested_date: date,
     ) -> tuple[date, str] | None:
         if not route_ids:
             return None
-        if any(
-            self.repository.route_has_service_on_date(route_id, requested_date)
-            for route_id in route_ids
-        ):
-            return None
+        for route_id in route_ids:
+            if await self.repository.route_has_service_on_date(route_id, requested_date):
+                return None
 
-        def has_service(candidate_date: date) -> bool:
-            return any(
-                self.repository.route_has_service_on_date(route_id, candidate_date)
-                for route_id in route_ids
-            )
+        async def has_service(candidate_date: date) -> bool:
+            for route_id in route_ids:
+                if await self.repository.route_has_service_on_date(route_id, candidate_date):
+                    return True
+            return False
 
         for offset in range(7, 36, 7):
             past_date = requested_date - timedelta(days=offset)
@@ -967,7 +1077,7 @@ class TrackEngineService:
                 )
         return None
 
-    def _stale_bus_schedule_override(
+    async def _stale_bus_schedule_override(
         self,
         request: PlanRequest,
         query_ts: int,
@@ -975,11 +1085,11 @@ class TrackEngineService:
         if "bus" not in request.modes:
             return None
         if not (
-            self._location_needs_bus(
+            await self._location_needs_bus(
                 request.origin,
                 radius_m=request.max_origin_walk_m,
             )
-            or self._location_needs_bus(
+            or await self._location_needs_bus(
                 request.destination,
                 radius_m=request.max_destination_walk_m,
             )
@@ -987,14 +1097,14 @@ class TrackEngineService:
             return None
 
         requested_date = service_date_for_timestamp(query_ts)
-        route_override = self._fallback_bus_schedule_date(
-            self._candidate_bus_routes(request),
+        route_override = await self._fallback_bus_schedule_date(
+            await self._candidate_bus_routes(request),
             requested_date,
         )
         if route_override is not None:
             return route_override
 
-        bus_window = self.repository.service_window_for_mode("bus")
+        bus_window = await self.repository.service_window_for_mode("bus")
         if bus_window is None:
             return None
         if bus_window.start_date <= requested_date <= bus_window.end_date:
@@ -1082,7 +1192,7 @@ class TrackEngineService:
         """Build a human-readable schedule note like 'Next trips available Monday, Apr 14'."""
         return f"Next trips available {future_date.strftime('%A, %b')} {future_date.day}"
 
-    def _remote_payload_context(
+    async def _remote_payload_context(
         self,
         request: PlanRequest,
         *,
@@ -1095,7 +1205,7 @@ class TrackEngineService:
         schedule_note = None
         timestamp_shift_s = 0
 
-        override = self._stale_bus_schedule_override(request, query_ts)
+        override = await self._stale_bus_schedule_override(request, query_ts)
         if override is not None:
             adjusted_date, schedule_note = override
             adjusted_query_ts = self._shift_timestamp_to_date(query_ts, adjusted_date)
@@ -1337,7 +1447,7 @@ class TrackEngineService:
             arrive_label=payload["arrive_label"],
         )
 
-    def _remote_plan(self, request: PlanRequest) -> tuple[list[Itinerary], str | None]:
+    async def _remote_plan(self, request: PlanRequest) -> tuple[list[Itinerary], str | None]:
         """Plan trip, falling back to upcoming days when today has no service.
 
         Returns ``(itineraries, schedule_note)`` where *schedule_note* is
@@ -1349,7 +1459,7 @@ class TrackEngineService:
                 "standalone C++ TrackEngine service."
             )
 
-        context = self._remote_payload_context(request)
+        context = await self._remote_payload_context(request)
         payload = context.payload
 
         # ── Redis cache check ──
@@ -1368,58 +1478,7 @@ class TrackEngineService:
             if itineraries:
                 return itineraries, context.schedule_note
 
-        # ── Circuit breaker: fail instantly if engine went down recently ──
-        since_fail = time.time() - self._engine_fail_ts
-        if self._engine_fail_ts and since_fail < self._ENGINE_CIRCUIT_COOLDOWN_S:
-            # Half-open: probe /health before fully rejecting
-            if not self._engine_health_probe():
-                raise RuntimeError(
-                    f"TrackEngine circuit open – engine failed {since_fail:.0f}s ago, health probe failed"
-                )
-            # Health probe passed — engine is back, continue
-
-        last_exc: Exception | None = None
-        data: dict | None = None
-        for attempt in range(self._ENGINE_MAX_RETRIES):
-            try:
-                with httpx.Client(timeout=self.remote_engine_timeout) as client:
-                    response = client.post(f"{self.remote_engine_url}/plan", json=payload)
-                    if response.status_code == 503:
-                        self._engine_fail_ts = time.time()
-                        raise RuntimeError(
-                            f"TrackEngine plan returned 503: {response.text[:200]}"
-                        )
-                    response.raise_for_status()
-                    data = response.json()
-                    break
-            except RuntimeError:
-                raise
-            except httpx.ConnectError as exc:
-                last_exc = exc
-                if attempt < self._ENGINE_MAX_RETRIES - 1:
-                    backoff = self._ENGINE_BACKOFF_BASE_S * (2 ** attempt)
-                    time.sleep(backoff)
-                    continue
-                self._engine_fail_ts = time.time()
-                raise RuntimeError(f"TrackEngine plan connect failed after {attempt + 1} attempts: {exc}") from exc
-            except httpx.TimeoutException as exc:
-                last_exc = exc
-                if attempt < self._ENGINE_MAX_RETRIES - 1:
-                    backoff = self._ENGINE_BACKOFF_BASE_S * (2 ** attempt)
-                    time.sleep(backoff)
-                    continue
-                self._engine_fail_ts = time.time()
-                raise RuntimeError(f"TrackEngine plan timed out after {attempt + 1} attempts: {exc}") from exc
-            except httpx.HTTPError as exc:
-                last_exc = exc
-                if attempt < self._ENGINE_MAX_RETRIES - 1:
-                    backoff = self._ENGINE_BACKOFF_BASE_S * (2 ** attempt)
-                    time.sleep(backoff)
-                    continue
-                self._engine_fail_ts = time.time()
-                raise RuntimeError(f"TrackEngine plan request failed after {attempt + 1} attempts: {exc}") from exc
-
-        self._engine_fail_ts = 0.0  # success — reset circuit
+        data = await self._engine_post("/plan", payload, label="plan")
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
@@ -1437,12 +1496,12 @@ class TrackEngineService:
 
         # ---- next-service-day fallback ----
         if self._engine_fail_ts == 0.0:
-            schedule_note = self._try_future_days_plan(request)
+            schedule_note = await self._try_future_days_plan(request)
             if schedule_note is not None:
                 return schedule_note
         return [], None
 
-    def _try_future_days_plan(
+    async def _try_future_days_plan(
         self, request: PlanRequest, *, max_lookahead: int = 3
     ) -> tuple[list[Itinerary], str] | None:
         """Try up to *max_lookahead* future days, returning the first day with results."""
@@ -1451,10 +1510,13 @@ class TrackEngineService:
             future_date = today_ny + timedelta(days=offset)
             payload = self._future_day_payload(request, offset)
             try:
-                with httpx.Client(timeout=min(self.remote_engine_timeout_s, 8.0)) as client:
-                    resp = client.post(f"{self.remote_engine_url}/plan", json=payload)
-                    resp.raise_for_status()
-                    data = resp.json()
+                resp = await self.http.post(
+                    f"{self.remote_engine_url}/plan",
+                    json=payload,
+                    timeout=min(self.remote_engine_timeout_s, 8.0),
+                )
+                resp.raise_for_status()
+                data = resp.json()
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 503:
                     return None  # engine down — stop immediately
@@ -1466,14 +1528,14 @@ class TrackEngineService:
                 return items, self._schedule_note_for_date(future_date)
         return None
 
-    def _remote_go(self, request: PlanRequest, *, now_ts: int) -> GoResponse:
+    async def _remote_go(self, request: PlanRequest, *, now_ts: int) -> GoResponse:
         if not self.remote_engine_url:
             raise RuntimeError(
                 "TRACK_ENGINE_URL is not configured. Routing now runs only in the "
                 "standalone C++ TrackEngine service."
             )
 
-        context = self._remote_payload_context(request, now_ts=now_ts)
+        context = await self._remote_payload_context(request, now_ts=now_ts)
         payload = context.payload
 
         # ── Redis cache check ──
@@ -1505,58 +1567,7 @@ class TrackEngineService:
                     schedule_note=context.schedule_note,
                 )
 
-        # ── Circuit breaker: fail instantly if engine went down recently ──
-        since_fail = time.time() - self._engine_fail_ts
-        if self._engine_fail_ts and since_fail < self._ENGINE_CIRCUIT_COOLDOWN_S:
-            # Half-open: probe /health before fully rejecting
-            if not self._engine_health_probe():
-                raise RuntimeError(
-                    f"TrackEngine circuit open – engine failed {since_fail:.0f}s ago, health probe failed"
-                )
-            # Health probe passed — engine is back, continue
-
-        last_exc: Exception | None = None
-        data: dict | None = None
-        for attempt in range(self._ENGINE_MAX_RETRIES):
-            try:
-                with httpx.Client(timeout=self.remote_engine_timeout) as client:
-                    response = client.post(f"{self.remote_engine_url}/go", json=payload)
-                    if response.status_code == 503:
-                        self._engine_fail_ts = time.time()
-                        raise RuntimeError(
-                            f"TrackEngine go returned 503: {response.text[:200]}"
-                        )
-                    response.raise_for_status()
-                    data = response.json()
-                    break
-            except RuntimeError:
-                raise
-            except httpx.ConnectError as exc:
-                last_exc = exc
-                if attempt < self._ENGINE_MAX_RETRIES - 1:
-                    backoff = self._ENGINE_BACKOFF_BASE_S * (2 ** attempt)
-                    time.sleep(backoff)
-                    continue
-                self._engine_fail_ts = time.time()
-                raise RuntimeError(f"TrackEngine go connect failed after {attempt + 1} attempts: {exc}") from exc
-            except httpx.TimeoutException as exc:
-                last_exc = exc
-                if attempt < self._ENGINE_MAX_RETRIES - 1:
-                    backoff = self._ENGINE_BACKOFF_BASE_S * (2 ** attempt)
-                    time.sleep(backoff)
-                    continue
-                self._engine_fail_ts = time.time()
-                raise RuntimeError(f"TrackEngine go timed out after {attempt + 1} attempts: {exc}") from exc
-            except httpx.HTTPError as exc:
-                last_exc = exc
-                if attempt < self._ENGINE_MAX_RETRIES - 1:
-                    backoff = self._ENGINE_BACKOFF_BASE_S * (2 ** attempt)
-                    time.sleep(backoff)
-                    continue
-                self._engine_fail_ts = time.time()
-                raise RuntimeError(f"TrackEngine go request failed after {attempt + 1} attempts: {exc}") from exc
-
-        self._engine_fail_ts = 0.0  # success — reset circuit
+        data = await self._engine_post("/go", payload, label="go")
         remote_version = data.get("engine_version")
         if remote_version:
             self._last_remote_engine_version = str(remote_version)
@@ -1593,12 +1604,12 @@ class TrackEngineService:
         # ---- next-service-day fallback ----
         if go_response.primary_trip is None and not go_response.alternatives:
             if self._engine_fail_ts == 0.0:
-                fallback = self._try_future_days_go(request, now_ts=now_ts)
+                fallback = await self._try_future_days_go(request, now_ts=now_ts)
                 if fallback is not None:
                     return fallback
         return go_response
 
-    def _try_future_days_go(
+    async def _try_future_days_go(
         self, request: PlanRequest, *, now_ts: int, max_lookahead: int = 3
     ) -> GoResponse | None:
         """Try future days for the /go endpoint."""
@@ -1607,10 +1618,13 @@ class TrackEngineService:
             future_date = today_ny + timedelta(days=offset)
             payload = self._future_day_payload(request, offset, now_ts=now_ts)
             try:
-                with httpx.Client(timeout=min(self.remote_engine_timeout_s, 8.0)) as client:
-                    resp = client.post(f"{self.remote_engine_url}/go", json=payload)
-                    resp.raise_for_status()
-                    data = resp.json()
+                resp = await self.http.post(
+                    f"{self.remote_engine_url}/go",
+                    json=payload,
+                    timeout=min(self.remote_engine_timeout_s, 8.0),
+                )
+                resp.raise_for_status()
+                data = resp.json()
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 503:
                     return None  # engine down — stop immediately
@@ -2204,7 +2218,7 @@ class TrackEngineService:
     # Disruption-aware re-routing  (two-pass engine calls)
     # ------------------------------------------------------------------
 
-    def _disruption_reroute(
+    async def _disruption_reroute(
         self,
         response: GoResponse,
         request: PlanRequest,
@@ -2251,7 +2265,7 @@ class TrackEngineService:
         reroute_request.record_recent = False
 
         try:
-            extra_itineraries, _ = self._remote_plan(reroute_request)
+            extra_itineraries, _ = await self._remote_plan(reroute_request)
         except Exception:
             return response  # engine unavailable — keep original results
 
@@ -2417,15 +2431,13 @@ class TrackEngineService:
         response.alternatives = ranked_trips[1:]
         return response
 
-    def go(self, request: PlanRequest, *, now_ts: int | None = None) -> GoResponse:
+    async def go(self, request: PlanRequest, *, now_ts: int | None = None) -> GoResponse:
         session_now_ts = now_ts or int(time.time())
-        response = self._remote_go(request, now_ts=session_now_ts)
+        response = await self._remote_go(request, now_ts=session_now_ts)
         user_priority = getattr(request, "priority", None)
         if self.enable_realtime_enrichment:
             with suppress(Exception):
-                response = asyncio.run(
-                    self._enrich_go_response(response, priority=user_priority)
-                )
+                response = await self._enrich_go_response(response, priority=user_priority)
         # Tag ADA accessibility on go trips
         go_itineraries = []
         if response.primary_trip is not None:
@@ -2439,7 +2451,7 @@ class TrackEngineService:
         # leg or a missed transfer, automatically fetch clean alternatives
         # from the engine using a shifted departure time.
         with suppress(Exception):
-            response = self._disruption_reroute(
+            response = await self._disruption_reroute(
                 response, request, now_ts=session_now_ts,
             )
 
@@ -2466,7 +2478,7 @@ class TrackEngineService:
             )
         return response
 
-    def search(
+    async def search(
         self,
         *,
         query: str,
@@ -2547,7 +2559,7 @@ class TrackEngineService:
 
         try:
             stop_results = (
-                self.repository.search_stops(query, limit=limit * 2)
+                await self.repository.search_stops(query, limit=limit * 2)
                 if schedule_ready
                 else []
             )
@@ -2869,8 +2881,8 @@ class TrackEngineService:
                 rest.append(itin)
         return accessible + rest
 
-    def plan(self, request: PlanRequest) -> tuple[list, str | None]:
-        itineraries, schedule_note = self._remote_plan(request)
+    async def plan(self, request: PlanRequest) -> tuple[list, str | None]:
+        itineraries, schedule_note = await self._remote_plan(request)
         # Tag ADA accessibility on all results so iOS always has the data
         self._tag_ada_accessibility(itineraries)
         # When the user prioritises accessibility, push accessible trips first

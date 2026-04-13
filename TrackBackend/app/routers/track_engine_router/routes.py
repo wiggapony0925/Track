@@ -223,9 +223,9 @@ def _go_trip_model(go_trip) -> EngineGoTrip:
         "search indexes prepared by the backend, and remote C++ engine health."
     ),
 )
-def engine_health() -> EngineHealth:
+async def engine_health() -> EngineHealth:
     try:
-        health = get_engine_service().health()
+        health = await get_engine_service().health()
         return EngineHealth(
             version=health.version,
             schedule_db_path=health.schedule_db_path,
@@ -286,7 +286,7 @@ def download_engine_schedule_artifact(request: Request) -> FileResponse:
         "bias results toward the rider's current area."
     ),
 )
-def search_engine_places(
+async def search_engine_places(
     q: str = Query(..., min_length=1, description="Search query."),
     user_id: str | None = Query(
         None,
@@ -296,7 +296,7 @@ def search_engine_places(
     lon: float | None = Query(None, description="Optional current longitude."),
     limit: int = Query(12, ge=1, le=50, description="Maximum number of results."),
 ) -> list[EngineSearchResult]:
-    results = get_engine_service().search(
+    results = await get_engine_service().search(
         query=q,
         user_id=user_id,
         near_lat=lat,
@@ -594,7 +594,7 @@ def get_engine_recommendations(
         "into recent trips for planner shortcuts."
     ),
 )
-def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
+async def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
     service = get_engine_service()
     request = PlanRequest(
         origin=_location_input_from_payload(payload.origin),
@@ -614,7 +614,7 @@ def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
         accessibility_priority=payload.accessibility_priority,
     )
     try:
-        itineraries, schedule_note = service.plan(request)
+        itineraries, schedule_note = await service.plan(request)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - production safety net
@@ -643,7 +643,7 @@ def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
         "transfer timing, aggregated alerts, and a 'next action' block on top of the core planner result."
     ),
 )
-def build_go_trip(payload: EngineGoRequest) -> EngineGoResponse:
+async def build_go_trip(payload: EngineGoRequest) -> EngineGoResponse:
     service = get_engine_service()
     request = PlanRequest(
         origin=_location_input_from_payload(payload.origin),
@@ -663,7 +663,7 @@ def build_go_trip(payload: EngineGoRequest) -> EngineGoResponse:
         accessibility_priority=payload.accessibility_priority,
     )
     try:
-        go_response = service.go(request, now_ts=payload.now_ts)
+        go_response = await service.go(request, now_ts=payload.now_ts)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # pragma: no cover - production safety net

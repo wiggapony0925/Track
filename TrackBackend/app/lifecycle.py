@@ -89,6 +89,10 @@ def register_lifecycle(app: FastAPI) -> None:
             _app_state.feed_refresh_task.cancel()
         if _app_state.arq_pool:
             await _app_state.arq_pool.close()
+        # Close the shared httpx connection pool
+        from app.services.track_engine.integration import get_engine_service
+        with contextlib.suppress(Exception):
+            await get_engine_service().close()
         cache_stats.flush()
         await _redis.close_redis()
 

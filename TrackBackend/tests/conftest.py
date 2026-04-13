@@ -29,12 +29,12 @@ def _pretend_warmed_up():
     is False. In tests, feeds aren't loaded; setting this flag lets
     endpoint tests run against mocked data without hitting the gate.
     """
-    import app.main as _main
+    import app.lifecycle as _lifecycle
 
-    orig = _main._app_state.warmup_complete
-    _main._app_state.warmup_complete = True
+    orig = _lifecycle._app_state.warmup_complete
+    _lifecycle._app_state.warmup_complete = True
     yield
-    _main._app_state.warmup_complete = orig
+    _lifecycle._app_state.warmup_complete = orig
 
 
 def _do_clear():

@@ -29,7 +29,7 @@ def _empty_db(path: Path) -> None:
     sqlite3.connect(path).close()
 
 
-def test_go_enrichment_reranks_live_trip_above_delayed_trip(
+async def test_go_enrichment_reranks_live_trip_above_delayed_trip(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -117,7 +117,10 @@ def test_go_enrichment_reranks_live_trip_above_delayed_trip(
         primary_trip=bad_trip,
         alternatives=[good_trip],
     )
-    monkeypatch.setattr(service, "_remote_go", lambda request, now_ts: remote_response)
+    async def _fake_remote_go(request, *, now_ts):
+        return remote_response
+
+    monkeypatch.setattr(service, "_remote_go", _fake_remote_go)
 
     async def fake_get_alerts():
         return [
@@ -211,7 +214,7 @@ def test_go_enrichment_reranks_live_trip_above_delayed_trip(
         depart_at_ts=_timestamp(8, 0),
         num_itineraries=2,
     )
-    response = service.go(request, now_ts=_timestamp(7, 58))
+    response = await service.go(request, now_ts=_timestamp(7, 58))
 
     assert response.primary_trip is not None
     assert response.primary_trip.itinerary.itinerary_id == "good-trip"
