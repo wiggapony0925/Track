@@ -9,8 +9,9 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models import RESP_502, ElevatorStatus, TransitAlert
+from app.models import RESP_502, ElevatorStatus, StationAccessibility, TransitAlert
 from app.services.gtfs.realtime_parser import get_alerts, get_broken_elevators
+from app.services.transit.ada_service import get_station_accessibility
 from app.utils.logger import TrackLogger
 
 # Strong references to fire-and-forget tasks so the GC won't collect them.
@@ -171,7 +172,8 @@ async def route_status(
     for alert in alerts_list:
         if not alert.alert_type:
             continue
-        for route_id in alert.route_ids:
+        routes = alert.affected_routes or ([alert.route_id] if alert.route_id else [])
+        for route_id in routes:
             current = worst.get(route_id)
             if current is None or alert.sort_order > current[0]:
                 worst[route_id] = (alert.sort_order, alert.alert_type)
@@ -257,3 +259,67 @@ async def accessibility() -> list[ElevatorStatus]:
     # rather than blocking.  The next request after the fetch completes
     # will return the populated cache.
     return []
+
+
+@router.get(
+    "/accessibility/station",
+    response_model=StationAccessibility,
+    summary="Get station accessibility profile",
+    description=(
+        "Returns the full ADA accessibility profile for a station: "
+        "ADA status (0=not accessible, 1=fully, 2=partially), direction notes, "
+        "all elevators and escalators with their current in-service/out-of-service status, "
+        "outage details, and travel alternatives. "
+        "Provide GTFS stop IDs (preferred) or station name for matching."
+    ),
+    responses={
+        404: {"description": "Station not found in accessibility datasets."},
+        **RESP_502,
+    },
+)
+async def station_accessibility(
+    stop_ids: str | None = Query(
+        default=None,
+        description=(
+            "Comma-separated GTFS stop IDs to look up "
+            "(e.g. '127,127N,127S'). Direction suffixes are handled automatically."
+        ),
+        examples=["127,127N,127S", "L06"],
+    ),
+    name: str | None = Query(
+        default=None,
+        description="Station display name for fallback matching (e.g. 'Times Sq-42 St').",
+        examples=["Times Sq-42 St", "1 Av"],
+    ),
+) -> StationAccessibility:
+    """Return the full accessibility profile for a single station.
+
+    Resolves by GTFS stop IDs first (stripping N/S direction suffixes),
+    then falls back to fuzzy station-name matching.  Includes ADA status
+    from the MTA Subway Stations CSV and the live elevator/escalator
+    equipment inventory merged with current outage data.
+    """
+    ids = [s.strip() for s in stop_ids.split(",") if s.strip()] if stop_ids else None
+
+    if not ids and not name:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one of 'stop_ids' or 'name'.",
+        )
+
+    try:
+        result = await get_station_accessibility(stop_ids=ids, station_name=name)
+    except Exception as exc:
+        TrackLogger.error(
+            f"[ADA] Station accessibility lookup failed: {exc}",
+            tag="ADA",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Station not found (stop_ids={stop_ids}, name={name}).",
+        )
+    return result

@@ -90,6 +90,10 @@
     "mnr_alerts_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts.json",
     // this api url is for: fetching elevator and escalator outage data surfaced in accessibility banners and station detail UI.
     "elevators_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene.json",
+    // this api url is for: fetching the full inventory of elevators and escalators (active + inactive) at each station.
+    "elevators_equipment_json": "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fnyct_ene_equipments.json",
+    // this api url is for: downloading the canonical MTA Subway Stations CSV with ADA accessibility status per GTFS stop ID.
+    "mta_stations_csv": "https://data.ny.gov/api/views/39hk-dx4f/rows.csv?accessType=DOWNLOAD",
     // this api url is for: the SIRI base URL used for live bus stop monitoring and vehicle monitoring in nearby buses, route detail, and map tracking UI.
     "bus_siri_base": "https://bustime.mta.info/api/siri",
     // this api url is for: the OBA base URL used for route lists, stops-for-route, and nearby bus stop discovery powering the bus UI.

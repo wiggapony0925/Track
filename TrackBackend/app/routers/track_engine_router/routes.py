@@ -605,6 +605,8 @@ def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
         num_itineraries=payload.num_itineraries,
         modes=tuple(payload.modes),
         record_recent=payload.record_recent,
+        priority=payload.priority,
+        accessibility_priority=payload.accessibility_priority,
     )
     try:
         itineraries, schedule_note = service.plan(request)
@@ -652,6 +654,8 @@ def build_go_trip(payload: EngineGoRequest) -> EngineGoResponse:
         num_itineraries=payload.num_itineraries,
         modes=tuple(payload.modes),
         record_recent=payload.record_recent,
+        priority=payload.priority,
+        accessibility_priority=payload.accessibility_priority,
     )
     try:
         go_response = service.go(request, now_ts=payload.now_ts)

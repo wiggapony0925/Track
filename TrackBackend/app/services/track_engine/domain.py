@@ -203,6 +203,8 @@ class PlanRequest:
     num_itineraries: int = _PD.get("num_itineraries", 3)
     modes: tuple[str, ...] = ("subway", "bus", "lirr", "mnr")
     record_recent: bool = True
+    priority: str | None = None
+    accessibility_priority: bool = False
 
 
 @dataclass(slots=True)

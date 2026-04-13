@@ -91,6 +91,8 @@ class Urls(BaseModel):
     lirr_alerts_json: str = ""
     mnr_alerts_json: str = ""
     elevators_json: str
+    elevators_equipment_json: str = ""
+    mta_stations_csv: str = ""
     bus_siri_base: str = ""
     bus_oba_base: str = ""
     mta_colors_api: str = ""

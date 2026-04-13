@@ -137,6 +137,104 @@ class ElevatorStatus(BaseModel):
     )
 
 
+# ---------------------------------------------------------------------------
+# Station Accessibility (ADA + full equipment inventory)
+# ---------------------------------------------------------------------------
+
+
+class EquipmentOutage(BaseModel):
+    """Outage details for a specific piece of equipment."""
+
+    since: str | None = Field(None, description="When the outage began.")
+    estimated_return: str | None = Field(
+        None, description="Estimated return to service date."
+    )
+    reason: str | None = Field(None, description="Reason for the outage.")
+
+
+class EquipmentDetail(BaseModel):
+    """A single elevator or escalator at a station with its current status."""
+
+    equipment_id: str = Field(
+        ..., description="MTA equipment identifier (e.g. 'EL293')."
+    )
+    equipment_type: str = Field(
+        ..., description="'EL' (elevator) or 'ES' (escalator)."
+    )
+    short_description: str = Field(
+        "", description="Short name for display (e.g. 'Street to platform')."
+    )
+    serving: str = Field(
+        "", description="Full description of what the equipment serves."
+    )
+    is_ada: bool = Field(
+        False, description="Whether this equipment is part of an ADA-accessible pathway."
+    )
+    is_active: bool = Field(
+        True, description="Whether the equipment is currently in service."
+    )
+    lines: str = Field(
+        "", description="Lines served by this equipment."
+    )
+    alternative_route: str = Field(
+        "", description="Travel alternatives when this equipment is out of service."
+    )
+    outage: EquipmentOutage | None = Field(
+        None, description="Outage details if equipment is out of service."
+    )
+
+
+class StationAccessibility(BaseModel):
+    """Full accessibility profile for a station or station complex."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "station_name": "Times Sq-42 St",
+                    "gtfs_stop_id": "127",
+                    "ada_status": 1,
+                    "ada_notes": "",
+                    "ada_northbound": True,
+                    "ada_southbound": True,
+                    "equipment": [],
+                    "outage_count": 0,
+                    "total_elevators": 4,
+                    "total_escalators": 2,
+                    "next_accessible_north": "",
+                    "next_accessible_south": "",
+                }
+            ]
+        }
+    )
+
+    station_name: str = Field("", description="Station display name.")
+    gtfs_stop_id: str = Field("", description="GTFS stop ID from the MTA stations dataset.")
+    ada_status: int = Field(
+        0,
+        description="ADA accessibility: 0=not accessible, 1=fully accessible, 2=partially accessible.",
+    )
+    ada_notes: str = Field(
+        "",
+        description="Direction notes for partially accessible stations (e.g. 'Uptown only').",
+    )
+    ada_northbound: bool = Field(False, description="Whether the northbound direction is accessible.")
+    ada_southbound: bool = Field(False, description="Whether the southbound direction is accessible.")
+    equipment: list[EquipmentDetail] = Field(
+        default_factory=list,
+        description="All elevators and escalators at this station with current status.",
+    )
+    outage_count: int = Field(0, description="Number of equipment items currently out of service.")
+    total_elevators: int = Field(0, description="Total elevators at this station.")
+    total_escalators: int = Field(0, description="Total escalators at this station.")
+    next_accessible_north: str = Field(
+        "", description="Nearest ADA-accessible station in the northbound direction."
+    )
+    next_accessible_south: str = Field(
+        "", description="Nearest ADA-accessible station in the southbound direction."
+    )
+
+
 class BusRoute(BaseModel):
     """A normalized bus route from the OBA API."""
 
