@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import gzip
+import logging
 import math
 import os
 import shutil
@@ -63,6 +64,8 @@ from app.utils.brand import (
     mode_color as _brand_mode_color,
     subway_color as _brand_subway_color,
 )
+
+logger = logging.getLogger("track.engine_service")
 
 NY_TZ = ZoneInfo("America/New_York")
 
@@ -1143,10 +1146,15 @@ class TrackEngineService:
         queries for the future service day.  We pick 8 AM local as a
         reasonable departure time for the lookahead query.
         """
-        today_ny = datetime.now(NY_TZ).date()
+        now_ny = datetime.now(NY_TZ)
+        today_ny = now_ny.date()
         future_date = today_ny + timedelta(days=day_offset)
-        future_8am = datetime.combine(future_date, time_value(8, 0), tzinfo=NY_TZ)
-        future_ts = int(future_8am.timestamp())
+        # Use the current time-of-day (floored to the hour) so the
+        # fallback shows trips near the user's actual planning time
+        # rather than always defaulting to 8 AM.
+        hour = max(now_ny.hour, 5)  # clamp before 5 AM to avoid empty late-night windows
+        future_depart = datetime.combine(future_date, time_value(hour, 0), tzinfo=NY_TZ)
+        future_ts = int(future_depart.timestamp())
         future_midnight = datetime.combine(future_date, time_value.min, tzinfo=NY_TZ)
 
         payload = {
@@ -1203,6 +1211,13 @@ class TrackEngineService:
         adjusted_now_ts = now_ts
         schedule_note = None
         timestamp_shift_s = 0
+
+        # "Leave now": both timestamps are None.  Promote query_ts so the
+        # engine always receives an explicit departure time — avoids edge
+        # cases where null depart_at_ts + stale-bus date shift produces
+        # zero itineraries.
+        if depart_at_ts is None and arrive_by_ts is None:
+            depart_at_ts = query_ts
 
         override = await self._stale_bus_schedule_override(request, query_ts)
         if override is not None:
@@ -1602,6 +1617,16 @@ class TrackEngineService:
 
         # ---- next-service-day fallback ----
         if go_response.primary_trip is None and not go_response.alternatives:
+            logger.warning(
+                "[GO] Engine returned 0 itineraries — origin=%s dest=%s "
+                "query_ts=%s depart_at_ts=%s modes=%s schedule_note=%s",
+                request.origin.label,
+                request.destination.label,
+                payload.get("query_ts"),
+                payload.get("depart_at_ts"),
+                payload.get("modes"),
+                context.schedule_note,
+            )
             if self._engine_fail_ts == 0.0:
                 fallback = await self._try_future_days_go(request, now_ts=now_ts)
                 if fallback is not None:
