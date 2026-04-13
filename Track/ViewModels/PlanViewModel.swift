@@ -166,7 +166,6 @@ final class PlanViewModel {
                 scheduleNote = nil
                 let age = OfflineCacheManager.shared.getTripPlanCacheAge() ?? "recently"
                 errorMessage = "You're offline. Showing cached plans from \(age)."
-                errorKind = nil
             } else {
                 tripResults = []
                 scheduleNote = nil
