@@ -1247,11 +1247,7 @@ async def nearby_inactive_routes(
         service_type = _classify_bus_service_type(display_name) if mode == "bus" else None
         color_hex = None
         if mode == "bus":
-            color_hex = _lookup_bus_route_color(
-                route_id=route_id,
-                display_name=display_name,
-                color_lookup=bus_route_color_lookup,
-            ) or _bus_color_for_service_type(service_type or "Local")
+            color_hex = _bus_color_for_service_type(service_type or "Local")
         elif color:
             color_hex = f"#{color}" if not color.startswith("#") else color
 
@@ -2058,8 +2054,8 @@ def _group_arrivals(
         bus_svc: str | None = None  # set only for bus routes
         # Assign color: subway lines use the official palette,
         # LIRR/MNR use per-branch colors from routes.txt,
-        # bus routes prefer the exact OBA route color and only then fall
-        # back to the service-type palette.
+        # and bus routes use the canonical service-type palette so local
+        # buses stay blue, SBS stays cyan, limited stays purple, etc.
         if mode == "subway":
             color = get_subway_color(display)
         elif mode == "lirr":
@@ -2071,9 +2067,7 @@ def _group_arrivals(
             color = get_mnr_route_color(numeric_id)
         else:
             bus_svc = _classify_bus_service_type(display)
-            color = _lookup_bus_route_color(route_id, display, bus_color_lookup)
-            if not color:
-                color = _bus_color_for_service_type(bus_svc)
+            color = _bus_color_for_service_type(bus_svc)
 
         directions: list[DirectionArrivals] = []
         for direction, arrivals in dir_map.items():
