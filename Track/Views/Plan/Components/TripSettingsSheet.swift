@@ -1,6 +1,6 @@
-// Trip settings — bottom sheet matching the app's theme.
-// Presented via .sheet from TripResultsView with an "Apply"
-// button that re-plans trips and dismisses.
+// Trip settings — premium bottom sheet matching the Track design system.
+// Glass-frosted surface, gradient accents, animated selections,
+// and consistent depth with TripDetailSheet and PlanView.
 
 import SwiftUI
 
@@ -17,81 +17,140 @@ struct TripSettingsSheet: View {
     @State private var modeMnr = false
     @State private var accessibility = false
     @State private var walkSlider: Float = 0.5
+    @State private var appeared = false
+
+    private var noModeSelected: Bool {
+        !modeSubway && !modeBus && !modeLirr && !modeMnr
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            dragHandle
-
-            // Title bar
-            HStack {
-                Text("Trip Settings")
-                    .font(AppTheme.Typography.sheetTitle)
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 18)
-
-            Divider()
-                .overlay(AppTheme.Colors.borderSubtle.opacity(0.4))
-
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 24) {
-                    // ── Priority ──
-                    settingsSection("Priority") {
-                        priorityPicker
-                    }
-
-                    // ── Transportation ──
-                    settingsSection("Transportation") {
-                        modeToggles
-                    }
-
-                    // ── Walking ──
-                    settingsSection("Walking Distance") {
-                        walkingSlider
-                    }
-
-                    // ── Accessibility ──
-                    settingsSection("Accessibility") {
-                        accessibilityToggle
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-            }
-
-            Spacer(minLength: 0)
-
-            applyButton
-                .padding(.horizontal, 20)
-                .padding(.bottom, 28)
+        NavigationStack {
+            sheetContent
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { toolbarContent }
         }
-        .background(AppTheme.Colors.background)
         .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
         .presentationCornerRadius(32)
-        .onAppear {
-            // Seed local state from binding
-            priority = config.resolvedPriority
-            modeSubway = config.modeSubway
-            modeBus = config.modeBus
-            modeLirr = config.modeLirr
-            modeMnr = config.modeMnr
-            accessibility = config.accessibilityPriority
-            walkSlider = config.walkPreference
+        .onAppear { seedLocalState() }
+    }
+
+    // MARK: - Sheet Content
+
+    private var sheetContent: some View {
+        ZStack {
+            sheetBackground
+            settingsScroll
+            floatingApply
         }
     }
 
-    // MARK: - Drag Handle
+    private var sheetBackground: some View {
+        ZStack {
+            AppTheme.Colors.background.ignoresSafeArea()
+            AppTheme.Gradients.screenSheen.ignoresSafeArea()
+        }
+    }
 
-    private var dragHandle: some View {
-        Capsule()
-            .fill(AppTheme.Colors.textTertiary.opacity(0.25))
-            .frame(width: 36, height: 5)
-            .padding(.top, 10)
+    private var settingsScroll: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: AppTheme.Spacing.section) {
+                settingsCard("Route Priority", icon: "arrow.triangle.branch") {
+                    priorityPicker
+                }
+                settingsCard("Transportation", icon: "tram.fill") {
+                    modeToggles
+                }
+                settingsCard("Walking Distance", icon: "figure.walk") {
+                    walkingSlider
+                }
+                settingsCard("Accessibility", icon: "figure.roll") {
+                    accessibilityToggle
+                }
+                Spacer(minLength: 100)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    private var floatingApply: some View {
+        VStack {
+            Spacer()
+            applyButton
+                .padding(.horizontal, 20)
+                .padding(.bottom, 28)
+                .background(applyFadeGradient)
+        }
+    }
+
+    private var applyFadeGradient: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: 0.0),
+                .init(color: AppTheme.Colors.background.opacity(0.85), location: 0.25),
+                .init(color: AppTheme.Colors.background, location: 1.0),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: 120)
+        .allowsHitTesting(false)
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            dismissButton
+        }
+        ToolbarItem(placement: .principal) {
+            titleLabel
+        }
+    }
+
+    private var dismissButton: some View {
+        Button { dismiss() } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(AppTheme.Colors.textSecondary)
+                .frame(width: 32, height: 32)
+                .background(
+                    Circle()
+                        .fill(AppTheme.Colors.cardElevated)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.3), lineWidth: 0.5)
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var titleLabel: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "slider.horizontal.3")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(AppTheme.Colors.accent)
+            Text("Trip Settings")
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textPrimary)
+        }
+    }
+
+    private func seedLocalState() {
+        priority = config.resolvedPriority
+        modeSubway = config.modeSubway
+        modeBus = config.modeBus
+        modeLirr = config.modeLirr
+        modeMnr = config.modeMnr
+        accessibility = config.accessibilityPriority
+        walkSlider = config.walkPreference
+        withAnimation(.easeOut(duration: 0.5).delay(0.1)) {
+            appeared = true
+        }
     }
 
     // MARK: - Apply Button
@@ -102,33 +161,44 @@ struct TripSettingsSheet: View {
             onApply()
             dismiss()
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 14, weight: .bold))
-                Text("Apply & Search")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [AppTheme.Colors.accent, AppTheme.Colors.accentDeep],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        )
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
-            )
-            .shadow(color: AppTheme.Colors.accent.opacity(0.35), radius: 12, y: 6)
+            applyButtonLabel
         }
         .buttonStyle(SettingsButtonStyle())
-        .disabled(!modeSubway && !modeBus && !modeLirr && !modeMnr)
-        .opacity(!modeSubway && !modeBus && !modeLirr && !modeMnr ? 0.4 : 1)
+        .disabled(noModeSelected)
+        .opacity(noModeSelected ? 0.35 : 1)
+        .animation(AppTheme.Animation.snappy, value: noModeSelected)
+    }
+
+    private var applyButtonLabel: some View {
+        let borderGradient = LinearGradient(
+            stops: [
+                .init(color: .white.opacity(0.22), location: 0.0),
+                .init(color: .white.opacity(0.06), location: 1.0),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        return HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 15, weight: .bold))
+                .symbolEffect(.pulse, options: .repeating, isActive: !noModeSelected)
+            Text("Apply & Search")
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 17)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AppTheme.Gradients.accent)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(borderGradient, lineWidth: 0.75)
+        )
+        .shadow(color: AppTheme.Colors.accent.opacity(0.4), radius: 16, y: 8)
+        .shadow(color: AppTheme.Colors.accentDeep.opacity(0.2), radius: 6, y: 3)
     }
 
     // MARK: - Priority Picker
@@ -136,54 +206,75 @@ struct TripSettingsSheet: View {
     private var priorityPicker: some View {
         HStack(spacing: 8) {
             ForEach(TripPriority.allCases) { p in
-                Button {
-                    withAnimation(AppTheme.Animation.snappy) {
-                        priority = p
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: p.icon)
-                            .font(.system(size: 11, weight: .bold))
-                        Text(p.label)
-                            .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    }
-                    .foregroundStyle(priority == p ? .white : AppTheme.Colors.textSecondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(
-                                priority == p
-                                    ? AnyShapeStyle(
-                                        LinearGradient(
-                                            colors: [AppTheme.Colors.accent, AppTheme.Colors.accentDeep],
-                                            startPoint: .topLeading, endPoint: .bottomTrailing
-                                        )
-                                    )
-                                    : AnyShapeStyle(AppTheme.Colors.cardInset)
-                            )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(
-                                priority == p
-                                    ? .white.opacity(0.15)
-                                    : AppTheme.Colors.borderSubtle.opacity(0.2),
-                                lineWidth: 0.5
-                            )
-                    )
-                }
-                .buttonStyle(SettingsButtonStyle())
+                priorityButton(for: p, isSelected: priority == p)
             }
+        }
+    }
+
+    private func priorityButton(for p: TripPriority, isSelected: Bool) -> some View {
+        Button {
+            withAnimation(AppTheme.Animation.snappy) {
+                priority = p
+            }
+        } label: {
+            priorityButtonLabel(p: p, isSelected: isSelected)
+        }
+        .buttonStyle(SettingsButtonStyle())
+    }
+
+    private func priorityButtonLabel(p: TripPriority, isSelected: Bool) -> some View {
+        VStack(spacing: 7) {
+            priorityIconCircle(p: p, isSelected: isSelected)
+
+            Text(p.label)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(
+                    isSelected ? AppTheme.Colors.accent : AppTheme.Colors.textSecondary
+                )
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(isSelected ? AppTheme.Colors.accentTint.opacity(0.6) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(
+                    isSelected ? AppTheme.Colors.accent.opacity(0.18) : Color.clear,
+                    lineWidth: 0.75
+                )
+        )
+    }
+
+    private func priorityIconCircle(p: TripPriority, isSelected: Bool) -> some View {
+        let gradient: LinearGradient = isSelected
+            ? AppTheme.Gradients.accent
+            : LinearGradient(
+                colors: [AppTheme.Colors.cardElevated, AppTheme.Colors.cardInset],
+                startPoint: .top, endPoint: .bottom
+            )
+        let borderColor = isSelected ? Color.white.opacity(0.2) : AppTheme.Colors.borderSubtle.opacity(0.3)
+        let shadowColor = isSelected ? AppTheme.Colors.accent.opacity(0.35) : Color.clear
+
+        return ZStack {
+            Circle()
+                .fill(gradient)
+                .frame(width: 40, height: 40)
+                .overlay(Circle().strokeBorder(borderColor, lineWidth: 0.75))
+                .shadow(color: shadowColor, radius: 8, y: 3)
+
+            Image(systemName: p.icon)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(isSelected ? .white : AppTheme.Colors.textTertiary)
         }
     }
 
     // MARK: - Mode Toggles
 
     private var modeToggles: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
                 modeChip(
                     label: "Subway",
                     icon: "tram.fill",
@@ -193,36 +284,46 @@ struct TripSettingsSheet: View {
                 modeChip(
                     label: "Bus",
                     icon: "bus.fill",
-                    color: Color(red: 0, green: 0.47, blue: 0.78),
+                    color: AppTheme.BusColors.localBlue,
                     isOn: $modeBus
                 )
             }
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 modeChip(
                     label: "LIRR",
                     icon: "train.side.front.car",
-                    color: AppTheme.Colors.successGreen,
+                    color: AppTheme.CommuterRailColors.lirrBlue,
                     isOn: $modeLirr
                 )
                 modeChip(
                     label: "Metro-North",
                     icon: "train.side.front.car",
-                    color: Color(red: 0, green: 0.33, blue: 0.58),
+                    color: AppTheme.CommuterRailColors.mnrBlue,
                     isOn: $modeMnr
                 )
             }
 
             // Warn if nothing is selected
-            if !modeSubway && !modeBus && !modeLirr && !modeMnr {
-                HStack(spacing: 6) {
+            if noModeSelected {
+                HStack(spacing: 7) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                     Text("Select at least one mode")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                 }
                 .foregroundStyle(AppTheme.Colors.warningYellow)
-                .padding(.top, 4)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppTheme.Colors.warningYellow.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(AppTheme.Colors.warningYellow.opacity(0.15), lineWidth: 0.5)
+                        )
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.95)).combined(with: .move(edge: .top)))
             }
         }
     }
@@ -230,107 +331,133 @@ struct TripSettingsSheet: View {
     private func modeChip(
         label: String, icon: String, color: Color, isOn: Binding<Bool>
     ) -> some View {
-        Button {
+        let active = isOn.wrappedValue
+        return Button {
             withAnimation(AppTheme.Animation.snappy) {
                 isOn.wrappedValue.toggle()
             }
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(isOn.wrappedValue ? color : AppTheme.Colors.textTertiary)
-
-                Text(label)
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
-                    .foregroundStyle(isOn.wrappedValue ? AppTheme.Colors.textPrimary : AppTheme.Colors.textTertiary)
-
-                Spacer()
-
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isOn.wrappedValue ? color : AppTheme.Colors.cardInset)
-                        .frame(width: 22, height: 22)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .strokeBorder(
-                                    isOn.wrappedValue ? color.opacity(0.6) : AppTheme.Colors.borderSubtle.opacity(0.3),
-                                    lineWidth: 1
-                                )
-                        )
-
-                    if isOn.wrappedValue {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .black))
-                            .foregroundStyle(.white)
-                    }
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(
-                        isOn.wrappedValue
-                            ? color.opacity(0.08)
-                            : AppTheme.Colors.cardInset.opacity(0.5)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(
-                                isOn.wrappedValue
-                                    ? color.opacity(0.2)
-                                    : AppTheme.Colors.borderSubtle.opacity(0.15),
-                                lineWidth: 0.5
-                            )
-                    )
-            )
+            modeChipLabel(label: label, icon: icon, color: color, active: active)
         }
         .buttonStyle(SettingsButtonStyle())
+    }
+
+    private func modeChipLabel(label: String, icon: String, color: Color, active: Bool) -> some View {
+        let badgeFill = active ? color : AppTheme.Colors.cardInset
+        let badgeBorder = active ? Color.white.opacity(0.15) : AppTheme.Colors.borderSubtle.opacity(0.2)
+        let badgeShadow = active ? color.opacity(0.3) : Color.clear
+        let checkFill = active ? color : AppTheme.Colors.cardInset
+        let checkBorder = active ? color.opacity(0.5) : AppTheme.Colors.borderSubtle.opacity(0.3)
+        let chipTint = active ? color.opacity(0.06) : Color.clear
+        let chipBorder = active ? color.opacity(0.18) : AppTheme.Colors.borderSubtle.opacity(0.12)
+
+        return HStack(spacing: 10) {
+            // Mode icon badge
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(badgeFill)
+                    .frame(width: 30, height: 30)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(badgeBorder, lineWidth: 0.5)
+                    )
+                    .shadow(color: badgeShadow, radius: 4, y: 2)
+
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(active ? .white : AppTheme.Colors.textTertiary)
+            }
+
+            Text(label)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(active ? AppTheme.Colors.textPrimary : AppTheme.Colors.textTertiary)
+                .lineLimit(1)
+
+            Spacer()
+
+            // Checkmark indicator
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(checkFill)
+                    .frame(width: 24, height: 24)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(checkBorder, lineWidth: 1)
+                    )
+
+                if active {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(.white)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppTheme.Colors.cardElevated)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(chipTint)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(chipBorder, lineWidth: 0.75)
+                )
+        )
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.04), radius: 4, y: 2)
     }
 
     // MARK: - Walking Slider
 
     private var walkingSlider: some View {
-        VStack(spacing: 10) {
-            HStack {
-                Image(systemName: "figure.stand")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
-                Text("Less")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
-
-                Spacer()
+        VStack(spacing: 14) {
+            // Walking label pill
+            HStack(spacing: 8) {
+                Image(systemName: walkingIcon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AppTheme.Colors.accent)
+                    .contentTransition(.symbolEffect(.replace))
 
                 Text(walkingLabel)
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
                     .contentTransition(.numericText())
 
                 Spacer()
 
-                Text("More")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                Text(walkingDistance)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textTertiary)
-                Image(systemName: "figure.walk")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                    .contentTransition(.numericText())
             }
 
-            Slider(value: $walkSlider, in: 0...1, step: 0.1) {
-                Text("Walking")
+            // Slider with end labels
+            VStack(spacing: 6) {
+                Slider(value: $walkSlider, in: 0...1, step: 0.1) {
+                    Text("Walking")
+                }
+                .tint(AppTheme.Colors.accent)
+
+                HStack {
+                    Text("Less walking")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                    Spacer()
+                    Text("More walking")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                }
             }
-            .tint(AppTheme.Colors.accent)
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(AppTheme.Colors.cardInset.opacity(0.5))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.15), lineWidth: 0.5)
-                )
-        )
+    }
+
+    private var walkingIcon: String {
+        if walkSlider < 0.25 { return "figure.stand" }
+        if walkSlider < 0.65 { return "figure.walk" }
+        return "figure.run"
     }
 
     private var walkingLabel: String {
@@ -347,6 +474,12 @@ struct TripSettingsSheet: View {
         }
     }
 
+    private var walkingDistance: String {
+        let meters = Int(400 + (walkSlider * 2100))
+        let blocks = Int(round(Double(meters) / 80.0))
+        return "~\(blocks) blocks"
+    }
+
     // MARK: - Accessibility Toggle
 
     private var accessibilityToggle: some View {
@@ -355,86 +488,130 @@ struct TripSettingsSheet: View {
                 accessibility.toggle()
             }
         } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "figure.roll")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(
-                        accessibility
-                            ? AppTheme.Colors.accent
-                            : AppTheme.Colors.textTertiary
-                    )
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Accessibility Priority")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
-                    Text("Prefer wheelchair-accessible stations")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(AppTheme.Colors.textTertiary)
-                }
-
-                Spacer()
-
-                ZStack {
-                    Capsule()
-                        .fill(accessibility ? AppTheme.Colors.accent : AppTheme.Colors.cardInset)
-                        .frame(width: 44, height: 26)
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(
-                                    accessibility
-                                        ? AppTheme.Colors.accent.opacity(0.5)
-                                        : AppTheme.Colors.borderSubtle.opacity(0.25),
-                                    lineWidth: 1
-                                )
-                        )
-
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 20, height: 20)
-                        .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
-                        .offset(x: accessibility ? 9 : -9)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(
-                        accessibility
-                            ? AppTheme.Colors.accent.opacity(0.06)
-                            : AppTheme.Colors.cardInset.opacity(0.5)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(
-                                accessibility
-                                    ? AppTheme.Colors.accent.opacity(0.15)
-                                    : AppTheme.Colors.borderSubtle.opacity(0.15),
-                                lineWidth: 0.5
-                            )
-                    )
-            )
+            accessibilityButtonContent
         }
         .buttonStyle(SettingsButtonStyle())
     }
 
-    // MARK: - Helpers
+    private var accessibilityButtonContent: some View {
+        HStack(spacing: 12) {
+            accessibilityIconBadge
+            accessibilityLabels
+            Spacer()
+            accessibilitySwitch
+        }
+    }
 
-    private func settingsSection<Content: View>(
+    private var accessibilityIconBadge: some View {
+        let gradient: LinearGradient = accessibility
+            ? AppTheme.Gradients.accent
+            : LinearGradient(
+                colors: [AppTheme.Colors.cardElevated, AppTheme.Colors.cardInset],
+                startPoint: .top, endPoint: .bottom
+            )
+        let borderColor = accessibility ? Color.white.opacity(0.18) : AppTheme.Colors.borderSubtle.opacity(0.25)
+        let shadowColor = accessibility ? AppTheme.Colors.accent.opacity(0.3) : Color.clear
+
+        return ZStack {
+            Circle()
+                .fill(gradient)
+                .frame(width: 38, height: 38)
+                .overlay(Circle().strokeBorder(borderColor, lineWidth: 0.75))
+                .shadow(color: shadowColor, radius: 6, y: 3)
+
+            Image(systemName: "figure.roll")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(accessibility ? .white : AppTheme.Colors.textTertiary)
+        }
+    }
+
+    private var accessibilityLabels: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Wheelchair Accessible")
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textPrimary)
+            Text("Prefer accessible stations & elevators")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(AppTheme.Colors.textTertiary)
+        }
+    }
+
+    private var accessibilitySwitch: some View {
+        let trackGradient: LinearGradient = accessibility
+            ? AppTheme.Gradients.accent
+            : LinearGradient(
+                colors: [AppTheme.Colors.cardInset, AppTheme.Colors.cardInset],
+                startPoint: .leading, endPoint: .trailing
+            )
+        let trackBorder = accessibility ? Color.white.opacity(0.15) : AppTheme.Colors.borderSubtle.opacity(0.25)
+
+        return ZStack {
+            Capsule()
+                .fill(trackGradient)
+                .frame(width: 48, height: 28)
+                .overlay(Capsule().strokeBorder(trackBorder, lineWidth: 0.75))
+
+            Circle()
+                .fill(.white)
+                .frame(width: 22, height: 22)
+                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                .offset(x: accessibility ? 10 : -10)
+        }
+    }
+
+    // MARK: - Settings Card Container
+
+    private func settingsCard<Content: View>(
         _ title: String,
+        icon: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(AppTheme.Typography.sectionHeader)
-                .foregroundStyle(AppTheme.Colors.textTertiary)
-                .textCase(.uppercase)
-                .tracking(0.8)
-                .padding(.leading, 4)
-
+        VStack(alignment: .leading, spacing: 14) {
+            settingsCardHeader(title: title, icon: icon)
             content()
         }
+        .padding(16)
+        .background(settingsCardBackground)
+        .opacity(appeared ? 1 : 0)
+        .offset(y: appeared ? 0 : 12)
+    }
+
+    private func settingsCardHeader(title: String, icon: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(AppTheme.Colors.accent)
+
+            Text(title.uppercased())
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textTertiary)
+                .tracking(1.0)
+        }
+        .padding(.leading, 4)
+    }
+
+    private var settingsCardBackground: some View {
+        let borderGradient = LinearGradient(
+            stops: [
+                .init(color: AppTheme.Colors.glassHighlight.opacity(0.12), location: 0.0),
+                .init(color: AppTheme.Colors.borderSubtle.opacity(0.08), location: 1.0),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        return RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(AppTheme.Colors.cardBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(AppTheme.Gradients.chromeHighlight)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(borderGradient, lineWidth: 0.75)
+            )
+            .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 8, y: 4)
+            .shadow(color: AppTheme.Colors.shadowStrong.opacity(0.03), radius: 16, y: 8)
     }
 
     /// Push local edits back to the binding.
@@ -454,8 +631,8 @@ struct TripSettingsSheet: View {
 private struct SettingsButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.75 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }

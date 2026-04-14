@@ -1204,6 +1204,7 @@ class TrackEngineService:
         request: PlanRequest,
         *,
         now_ts: int | None = None,
+        skip_stale_override: bool = False,
     ) -> RemotePayloadContext:
         query_ts = self._query_timestamp(request)
         depart_at_ts = request.depart_at_ts
@@ -1219,21 +1220,22 @@ class TrackEngineService:
         if depart_at_ts is None and arrive_by_ts is None:
             depart_at_ts = query_ts
 
-        override = await self._stale_bus_schedule_override(request, query_ts)
-        if override is not None:
-            adjusted_date, schedule_note = override
-            adjusted_query_ts = self._shift_timestamp_to_date(query_ts, adjusted_date)
-            timestamp_shift_s = query_ts - adjusted_query_ts
-            query_ts = adjusted_query_ts
-            if depart_at_ts is not None:
-                depart_at_ts = self._shift_timestamp_to_date(depart_at_ts, adjusted_date)
-            if arrive_by_ts is not None:
-                arrive_by_ts = self._shift_timestamp_to_date(arrive_by_ts, adjusted_date)
-            if adjusted_now_ts is not None:
-                adjusted_now_ts = self._shift_timestamp_to_date(
-                    adjusted_now_ts,
-                    adjusted_date,
-                )
+        if not skip_stale_override:
+            override = await self._stale_bus_schedule_override(request, query_ts)
+            if override is not None:
+                adjusted_date, schedule_note = override
+                adjusted_query_ts = self._shift_timestamp_to_date(query_ts, adjusted_date)
+                timestamp_shift_s = query_ts - adjusted_query_ts
+                query_ts = adjusted_query_ts
+                if depart_at_ts is not None:
+                    depart_at_ts = self._shift_timestamp_to_date(depart_at_ts, adjusted_date)
+                if arrive_by_ts is not None:
+                    arrive_by_ts = self._shift_timestamp_to_date(arrive_by_ts, adjusted_date)
+                if adjusted_now_ts is not None:
+                    adjusted_now_ts = self._shift_timestamp_to_date(
+                        adjusted_now_ts,
+                        adjusted_date,
+                    )
 
         service_day_yyyymmdd, service_weekday, service_day_midnight_ts = (
             self._service_day_context(query_ts)
@@ -1475,6 +1477,43 @@ class TrackEngineService:
 
         context = await self._remote_payload_context(request)
         payload = context.payload
+        stale_override_active = context.schedule_note is not None
+
+        # ── If stale-bus override shifted the date, try the REAL date first ──
+        # MTA runs late into the night; the engine may still find trips today
+        # even though the static GTFS schedule data is expired.
+        if stale_override_active:
+            real_context = await self._remote_payload_context(
+                request, skip_stale_override=True
+            )
+            real_payload = real_context.payload
+
+            # Redis cache check for the real (unshifted) request
+            cached_data = get_cached_plan(real_payload)
+            if cached_data is not None:
+                remote_version = cached_data.get("engine_version")
+                if remote_version:
+                    self._last_remote_engine_version = str(remote_version)
+                itineraries = [
+                    self._parse_itinerary(item)
+                    for item in cached_data.get("itineraries", [])
+                ]
+                if itineraries:
+                    return itineraries, None  # real date — no schedule note
+
+            data = await self._engine_post("/plan", real_payload, label="plan")
+            remote_version = data.get("engine_version")
+            if remote_version:
+                self._last_remote_engine_version = str(remote_version)
+
+            itineraries = [
+                self._parse_itinerary(item)
+                for item in data.get("itineraries", [])
+            ]
+            if itineraries:
+                set_cached_plan(real_payload, data)
+                return itineraries, None  # real date — no schedule note
+            # Real date returned nothing — fall through to shifted payload below.
 
         # ── Redis cache check ──
         cached_data = get_cached_plan(payload)

@@ -207,9 +207,9 @@ struct TripResultsView: View {
             }
             .buttonStyle(.plain)
 
-            // Refresh
+            // Refresh — always bypass cache
             Button {
-                Task { await viewModel.planTrip() }
+                Task { await viewModel.planTrip(forceRefresh: true) }
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 12, weight: .bold))
@@ -663,7 +663,7 @@ struct TripResultsView: View {
             }
 
             Button {
-                Task { await viewModel.planTrip() }
+                Task { await viewModel.planTrip(forceRefresh: true) }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.clockwise")

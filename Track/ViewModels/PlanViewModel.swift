@@ -65,6 +65,64 @@ final class PlanViewModel {
     private var configSaveTask: Task<Void, Never>?
     private var didConfigure = false
 
+    // MARK: - Trip Result Cache
+
+    /// In-memory cache entry for a single trip search result.
+    private struct TripCacheEntry {
+        let plans: [TripPlan]
+        let scheduleNote: String?
+        let timestamp: Date
+        /// Cache is valid for 2 minutes — transit data is real-time.
+        var isValid: Bool { Date().timeIntervalSince(timestamp) < 120 }
+    }
+
+    /// Recent trip results keyed by an O/D + settings hash.
+    /// Keeps up to 6 entries (most recent unique searches).
+    private var tripCache: [String: TripCacheEntry] = [:]
+    private let maxCacheEntries = 6
+
+    /// Build a deterministic cache key from the current search parameters.
+    private func tripCacheKey(
+        origin: EngineLocationPayloadRequest,
+        destination: EngineLocationPayloadRequest
+    ) -> String {
+        let tc = tripConfiguration
+
+        // For "Leave now", bucket time into 2-minute windows so the same
+        // search within ~2 min hits cache instead of calling the engine.
+        let timePart: String
+        switch departureOption {
+        case .leaveNow:
+            let bucket = Int(Date().timeIntervalSince1970) / 120
+            timePart = "now_\(bucket)"
+        case .departAt(let d):
+            timePart = "dep_\(Int(d.timeIntervalSince1970))"
+        case .arriveBy(let d):
+            timePart = "arr_\(Int(d.timeIntervalSince1970))"
+        }
+
+        let parts: [String] = [
+            String(format: "%.5f,%.5f", origin.lat, origin.lon),
+            String(format: "%.5f,%.5f", destination.lat, destination.lon),
+            timePart,
+            tc.priority,
+            tc.enabledModes.sorted().joined(separator: ","),
+            "w\(Int(tc.walkPreference * 100))",
+            tc.accessibilityPriority ? "ada" : "std",
+        ]
+        return parts.joined(separator: "|")
+    }
+
+    /// Prune oldest entries if cache exceeds max size.
+    private func pruneTripCache() {
+        guard tripCache.count > maxCacheEntries else { return }
+        let sorted = tripCache.sorted { $0.value.timestamp < $1.value.timestamp }
+        let excess = tripCache.count - maxCacheEntries
+        for (key, _) in sorted.prefix(excess) {
+            tripCache.removeValue(forKey: key)
+        }
+    }
+
     // MARK: - Setup
 
     func configure(modelContext: ModelContext, locationManager: LocationManager) {
@@ -95,7 +153,7 @@ final class PlanViewModel {
         self.destination = oldOrigin == .currentLocation ? nil : oldOrigin
     }
 
-    func planTrip() async {
+    func planTrip(forceRefresh: Bool = false) async {
         guard let destination else { return }
         guard let originPayload = payload(for: origin) else {
             errorMessage = "Current location is still loading."
@@ -107,6 +165,20 @@ final class PlanViewModel {
             errorMessage = "Choose a destination with a valid location."
             showResults = true
             tripResults = []
+            return
+        }
+
+        // Check cache first (skip for explicit refresh)
+        let cacheKey = tripCacheKey(origin: originPayload, destination: destinationPayload)
+        if !forceRefresh, let cached = tripCache[cacheKey], cached.isValid {
+            tripResults = cached.plans
+            scheduleNote = cached.scheduleNote
+            errorMessage = cached.plans.isEmpty ? emptyResultsMessage() : nil
+            if cached.plans.isEmpty { errorKind = .noResults }
+            showResults = true
+            #if DEBUG
+            print("[TripCache] HIT — \(cached.plans.count) trips (age: \(Int(Date().timeIntervalSince(cached.timestamp)))s)")
+            #endif
             return
         }
 
@@ -153,6 +225,13 @@ final class PlanViewModel {
                 // Cache trip plans for offline access
                 OfflineCacheManager.shared.cacheTripPlans(tripResults)
             }
+            // Store in session cache
+            tripCache[cacheKey] = TripCacheEntry(
+                plans: response.tripPlans,
+                scheduleNote: response.scheduleNote,
+                timestamp: Date()
+            )
+            pruneTripCache()
             await refreshPlannerData()
         } catch {
             let (kind, message) = friendlyError(for: error)
