@@ -46,6 +46,7 @@ final class OfflineCacheManager: ObservableObject {
         static let flattenedPipelineHash = "cached_flattened_pipeline_hash"
         static let tripPlans = "cached_trip_plans"
         static let tripPlansCachedAt = "cached_trip_plans_timestamp"
+        static let commutePlanIndex = "cached_commute_plan_index"
     }
 
     /// Bump this whenever the station consolidation logic or hash
@@ -413,6 +414,144 @@ final class OfflineCacheManager: ObservableObject {
         return Date().timeIntervalSince(cachedAt) < 7200  // 2 hours
     }
 
+    // MARK: - Smart Commute Pre-Fetch Cache
+
+    /// Index entry for a pre-fetched commute trip plan.
+    struct CommutePlanEntry: Codable {
+        let key: String
+        let originLabel: String
+        let originLat: Double
+        let originLon: Double
+        let destinationLabel: String
+        let destinationLat: Double
+        let destinationLon: Double
+        let cachedAt: Date
+        let planCount: Int
+    }
+
+    /// Build a deterministic cache key for an origin/destination pair.
+    /// Uses 4-decimal (~11 m) coordinate bucketing so nearby requests hit cache.
+    static func commuteKey(
+        originLat: Double, originLon: Double,
+        destLat: Double, destLon: Double
+    ) -> String {
+        String(format: "%.4f,%.4f->%.4f,%.4f",
+               originLat, originLon, destLat, destLon)
+    }
+
+    /// Cache trip plans for a specific O/D pair.
+    func cacheCommutePlans(
+        key: String,
+        originLabel: String, originLat: Double, originLon: Double,
+        destinationLabel: String, destLat: Double, destLon: Double,
+        plans: [TripPlan]
+    ) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(plans) else { return }
+
+        // Store the plans under a per-key UserDefaults key
+        let storageKey = "commute_plans_\(key)"
+        userDefaults.set(data, forKey: storageKey)
+
+        // Update the index
+        var index = loadCommuteIndex()
+        index.removeAll { $0.key == key }
+        index.append(CommutePlanEntry(
+            key: key,
+            originLabel: originLabel,
+            originLat: originLat,
+            originLon: originLon,
+            destinationLabel: destinationLabel,
+            destinationLat: destLat,
+            destinationLon: destLon,
+            cachedAt: Date(),
+            planCount: plans.count
+        ))
+
+        // Keep at most 10 commute pairs cached
+        if index.count > 10 {
+            let sorted = index.sorted { $0.cachedAt < $1.cachedAt }
+            let pruned = sorted.prefix(index.count - 10)
+            for entry in pruned {
+                userDefaults.removeObject(forKey: "commute_plans_\(entry.key)")
+            }
+            index = Array(sorted.dropFirst(index.count - 10))
+        }
+
+        saveCommuteIndex(index)
+    }
+
+    /// Retrieve cached plans for a specific O/D key. Returns nil if missing or stale (> 2 hours).
+    func getCachedCommutePlans(key: String) -> [TripPlan]? {
+        let index = loadCommuteIndex()
+        guard let entry = index.first(where: { $0.key == key }) else { return nil }
+        guard Date().timeIntervalSince(entry.cachedAt) < 7200 else { return nil }  // 2 hours
+
+        let storageKey = "commute_plans_\(key)"
+        guard let data = userDefaults.data(forKey: storageKey) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode([TripPlan].self, from: data)
+    }
+
+    /// Find the best-matching cached commute plans for a coordinate pair.
+    /// Uses ~500 m tolerance for fuzzy matching.
+    func findCachedCommutePlans(
+        originLat: Double, originLon: Double,
+        destLat: Double, destLon: Double
+    ) -> (plans: [TripPlan], age: String)? {
+        // Try exact key first
+        let exactKey = Self.commuteKey(
+            originLat: originLat, originLon: originLon,
+            destLat: destLat, destLon: destLon
+        )
+        if let plans = getCachedCommutePlans(key: exactKey), !plans.isEmpty {
+            let entry = loadCommuteIndex().first { $0.key == exactKey }
+            let age = entry.map { formatAge($0.cachedAt) } ?? "recently"
+            return (plans, age)
+        }
+
+        // Fuzzy match: find closest entry within ~500 m
+        let index = loadCommuteIndex()
+        let tolerance = 0.005  // ~500 m in degrees
+        for entry in index.sorted(by: { $0.cachedAt > $1.cachedAt }) {
+            guard Date().timeIntervalSince(entry.cachedAt) < 7200 else { continue }
+            let originClose = abs(entry.originLat - originLat) < tolerance
+                && abs(entry.originLon - originLon) < tolerance
+            let destClose = abs(entry.destinationLat - destLat) < tolerance
+                && abs(entry.destinationLon - destLon) < tolerance
+            if originClose && destClose {
+                if let plans = getCachedCommutePlans(key: entry.key), !plans.isEmpty {
+                    return (plans, formatAge(entry.cachedAt))
+                }
+            }
+        }
+        return nil
+    }
+
+    /// All currently cached commute index entries (for pre-fetch deduplication).
+    func cachedCommuteKeys() -> [CommutePlanEntry] {
+        loadCommuteIndex().filter { Date().timeIntervalSince($0.cachedAt) < 7200 }
+    }
+
+    private func loadCommuteIndex() -> [CommutePlanEntry] {
+        guard let data = userDefaults.data(forKey: CacheKey.commutePlanIndex) else { return [] }
+        return (try? JSONDecoder().decode([CommutePlanEntry].self, from: data)) ?? []
+    }
+
+    private func saveCommuteIndex(_ index: [CommutePlanEntry]) {
+        guard let data = try? JSONEncoder().encode(index) else { return }
+        userDefaults.set(data, forKey: CacheKey.commutePlanIndex)
+    }
+
+    private func formatAge(_ date: Date) -> String {
+        let elapsed = Date().timeIntervalSince(date)
+        if elapsed < 60 { return "< 1 min ago" }
+        if elapsed < 3600 { return "\(Int(elapsed / 60)) min ago" }
+        return "\(Int(elapsed / 3600)) hr ago"
+    }
+
     // MARK: - Helpers
     
     private func cacheKey(forMode mode: String) -> String {
@@ -450,6 +589,11 @@ final class OfflineCacheManager: ObservableObject {
         userDefaults.removeObject(forKey: CacheKey.flattenedPipelineHash)
         userDefaults.removeObject(forKey: CacheKey.tripPlans)
         userDefaults.removeObject(forKey: CacheKey.tripPlansCachedAt)
+        // Clear commute pre-fetch cache
+        for entry in loadCommuteIndex() {
+            userDefaults.removeObject(forKey: "commute_plans_\(entry.key)")
+        }
+        userDefaults.removeObject(forKey: CacheKey.commutePlanIndex)
         if let dir = flattenedCacheDirectory() {
             try? FileManager.default.removeItem(at: dir)
         }

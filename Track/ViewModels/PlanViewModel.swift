@@ -51,6 +51,8 @@ final class PlanViewModel {
     let locationSearchService = LocationSearchService()
     var isResolvingLocation = false
     var isSavingPlace = false
+    /// Whether the user has already loaded additional trips for the current search.
+    var didLoadMore = false
 
     /// Trip settings (modes, walking, accessibility, priority).
     /// Loaded from Supabase on configure; mutated by TripSettingsSheet.
@@ -102,8 +104,8 @@ final class PlanViewModel {
         }
 
         let parts: [String] = [
-            String(format: "%.5f,%.5f", origin.lat, origin.lon),
-            String(format: "%.5f,%.5f", destination.lat, destination.lon),
+            String(format: "%.5f,%.5f", origin.lat ?? 0, origin.lon ?? 0),
+            String(format: "%.5f,%.5f", destination.lat ?? 0, destination.lon ?? 0),
             timePart,
             tc.priority,
             tc.enabledModes.sorted().joined(separator: ","),
@@ -175,6 +177,7 @@ final class PlanViewModel {
             scheduleNote = cached.scheduleNote
             errorMessage = cached.plans.isEmpty ? emptyResultsMessage() : nil
             if cached.plans.isEmpty { errorKind = .noResults }
+            didLoadMore = false
             showResults = true
             #if DEBUG
             print("[TripCache] HIT — \(cached.plans.count) trips (age: \(Int(Date().timeIntervalSince(cached.timestamp)))s)")
@@ -185,6 +188,7 @@ final class PlanViewModel {
         isLoading = true
         errorMessage = nil
         showResults = true
+        didLoadMore = false
 
         let tc = tripConfiguration
         let modes = tc.enabledModes.isEmpty ? ["subway", "bus", "lirr", "mnr"] : tc.enabledModes
@@ -222,8 +226,25 @@ final class PlanViewModel {
                 errorMessage = emptyResultsMessage()
             } else {
                 errorMessage = nil
-                // Cache trip plans for offline access
+                // Cache trip plans for offline access (generic last-viewed)
                 OfflineCacheManager.shared.cacheTripPlans(tripResults)
+                // Also cache by O/D pair for smart offline matching
+                let commuteKey = OfflineCacheManager.commuteKey(
+                    originLat: originPayload.lat ?? 0,
+                    originLon: originPayload.lon ?? 0,
+                    destLat: destinationPayload.lat ?? 0,
+                    destLon: destinationPayload.lon ?? 0
+                )
+                OfflineCacheManager.shared.cacheCommutePlans(
+                    key: commuteKey,
+                    originLabel: originPayload.label,
+                    originLat: originPayload.lat ?? 0,
+                    originLon: originPayload.lon ?? 0,
+                    destinationLabel: destinationPayload.label,
+                    destLat: destinationPayload.lat ?? 0,
+                    destLon: destinationPayload.lon ?? 0,
+                    plans: tripResults
+                )
             }
             // Store in session cache
             tripCache[cacheKey] = TripCacheEntry(
@@ -237,14 +258,31 @@ final class PlanViewModel {
             let (kind, message) = friendlyError(for: error)
             if kind == .engineUnavailable {
                 await fallbackToAppleDirections()
-            } else if !OfflineCacheManager.shared.isOnline,
-                      let cached = OfflineCacheManager.shared.getCachedTripPlans(),
-                      !cached.isEmpty {
-                // Offline fallback — show last cached plans with a note
-                tripResults = cached
-                scheduleNote = nil
-                let age = OfflineCacheManager.shared.getTripPlanCacheAge() ?? "recently"
-                errorMessage = "You're offline. Showing cached plans from \(age)."
+            } else if !OfflineCacheManager.shared.isOnline {
+                // Smart offline fallback — try O/D-matched plans first, then generic
+                let oLat = originPayload.lat ?? 0
+                let oLon = originPayload.lon ?? 0
+                let dLat = destinationPayload.lat ?? 0
+                let dLon = destinationPayload.lon ?? 0
+                if let match = OfflineCacheManager.shared.findCachedCommutePlans(
+                    originLat: oLat, originLon: oLon,
+                    destLat: dLat, destLon: dLon
+                ) {
+                    tripResults = match.plans
+                    scheduleNote = nil
+                    errorMessage = "You're offline. Showing cached plans from \(match.age)."
+                } else if let cached = OfflineCacheManager.shared.getCachedTripPlans(),
+                          !cached.isEmpty {
+                    tripResults = cached
+                    scheduleNote = nil
+                    let age = OfflineCacheManager.shared.getTripPlanCacheAge() ?? "recently"
+                    errorMessage = "You're offline. Showing cached plans from \(age)."
+                } else {
+                    tripResults = []
+                    scheduleNote = nil
+                    errorKind = kind
+                    errorMessage = "You're offline with no cached trips."
+                }
             } else {
                 tripResults = []
                 scheduleNote = nil
@@ -287,7 +325,7 @@ final class PlanViewModel {
             maxDestinationWalkM: tc.maxDestinationWalkMeters,
             maxTransferWalkM: tc.maxTransferWalkMeters,
             searchWindowMinutes: 180,
-            numItineraries: 4,
+            numItineraries: 3,
             modes: modes,
             recordRecent: false,
             nowTS: Int(Date().timeIntervalSince1970),
@@ -318,6 +356,7 @@ final class PlanViewModel {
             // Silently fail — user still sees existing results
         }
 
+        didLoadMore = true
         isLoadingMore = false
     }
 
@@ -991,6 +1030,168 @@ final class PlanViewModel {
             return "subway"
         }
         return "bus"
+    }
+
+    // MARK: - Smart Commute Pre-Fetch
+
+    /// Background pre-fetch trip plans for the user's frequent O/D pairs.
+    /// Uses saved places (home/work) + recent trips to build pairs,
+    /// then fetches plans for any that aren't already cached.
+    /// Call this after the initial data load, on a low-priority task.
+    func prefetchCommutePlans() async {
+        guard let userID = currentUserID else { return }
+        guard OfflineCacheManager.shared.isOnline else { return }
+
+        // Build candidate O/D pairs from saved places + recent trips
+        var pairs: [(originLabel: String, oLat: Double, oLon: Double,
+                      destLabel: String, dLat: Double, dLon: Double)] = []
+
+        // 1) Current location → each saved place (home, work, etc.)
+        if let coord = currentLocationCoordinate {
+            for place in savedLocations {
+                pairs.append((
+                    originLabel: "Current location",
+                    oLat: coord.latitude, oLon: coord.longitude,
+                    destLabel: place.name,
+                    dLat: place.latitude, dLon: place.longitude
+                ))
+                // Also reverse: saved place → current location
+                pairs.append((
+                    originLabel: place.name,
+                    oLat: place.latitude, oLon: place.longitude,
+                    destLabel: "Current location",
+                    dLat: coord.latitude, dLon: coord.longitude
+                ))
+            }
+        }
+
+        // 2) Between saved places (home ↔ work)
+        let keyPlaces = savedLocations.filter {
+            let cat = SavedLocationCategory(rawValue: $0.category)
+            return cat == .home || cat == .work || cat == .school
+        }
+        for i in 0..<keyPlaces.count {
+            for j in 0..<keyPlaces.count where i != j {
+                pairs.append((
+                    originLabel: keyPlaces[i].name,
+                    oLat: keyPlaces[i].latitude, oLon: keyPlaces[i].longitude,
+                    destLabel: keyPlaces[j].name,
+                    dLat: keyPlaces[j].latitude, dLon: keyPlaces[j].longitude
+                ))
+            }
+        }
+
+        // 3) Top recent trips (up to 4 most recent unique O/D pairs)
+        let recentPairs = savedTrips.prefix(4)
+        for trip in recentPairs {
+            pairs.append((
+                originLabel: trip.originName,
+                oLat: trip.originLat, oLon: trip.originLon,
+                destLabel: trip.destinationName,
+                dLat: trip.destinationLat, dLon: trip.destinationLon
+            ))
+        }
+
+        // Deduplicate by commute key
+        var seen = Set<String>()
+        let alreadyCached = Set(
+            OfflineCacheManager.shared.cachedCommuteKeys().map(\.key)
+        )
+        var uniquePairs = pairs.filter { pair in
+            let key = OfflineCacheManager.commuteKey(
+                originLat: pair.oLat, originLon: pair.oLon,
+                destLat: pair.dLat, destLon: pair.dLon
+            )
+            guard !alreadyCached.contains(key) else { return false }
+            return seen.insert(key).inserted
+        }
+
+        // Cap at 3 pre-fetches to avoid competing with active user requests
+        uniquePairs = Array(uniquePairs.prefix(3))
+
+        guard !uniquePairs.isEmpty else {
+            #if DEBUG
+            print("[Prefetch] All commute pairs already cached — skipping")
+            #endif
+            return
+        }
+
+        #if DEBUG
+        print("[Prefetch] Pre-fetching \(uniquePairs.count) commute plans...")
+        #endif
+
+        let tc = tripConfiguration
+        let modes = tc.enabledModes.isEmpty
+            ? ["subway", "bus", "lirr", "mnr"]
+            : tc.enabledModes
+
+        for (index, pair) in uniquePairs.enumerated() {
+            // Stagger fetches to avoid competing with active user requests
+            if index > 0 {
+                try? await Task.sleep(for: .milliseconds(800))
+            }
+            guard !Task.isCancelled else { break }
+            guard OfflineCacheManager.shared.isOnline else { break }
+
+            let request = EngineGoRequestPayload(
+                origin: EngineLocationPayloadRequest(
+                    label: pair.originLabel,
+                    lat: pair.oLat, lon: pair.oLon,
+                    stopID: nil, address: nil
+                ),
+                destination: EngineLocationPayloadRequest(
+                    label: pair.destLabel,
+                    lat: pair.dLat, lon: pair.dLon,
+                    stopID: nil, address: nil
+                ),
+                userID: userID,
+                departAtTS: Int(Date().timeIntervalSince1970),
+                arriveByTS: nil,
+                maxTransfers: tc.maxTransfers,
+                maxOriginWalkM: tc.maxOriginWalkMeters,
+                maxDestinationWalkM: tc.maxDestinationWalkMeters,
+                maxTransferWalkM: tc.maxTransferWalkMeters,
+                searchWindowMinutes: 180,
+                numItineraries: 3,
+                modes: modes,
+                recordRecent: false,
+                nowTS: Int(Date().timeIntervalSince1970),
+                priority: tc.priority,
+                accessibilityPriority: tc.accessibilityPriority
+            )
+
+            do {
+                let response = try await TrackAPI.fetchEngineGo(request: request)
+                let plans = response.tripPlans
+                guard !plans.isEmpty else { continue }
+
+                let key = OfflineCacheManager.commuteKey(
+                    originLat: pair.oLat, originLon: pair.oLon,
+                    destLat: pair.dLat, destLon: pair.dLon
+                )
+                OfflineCacheManager.shared.cacheCommutePlans(
+                    key: key,
+                    originLabel: pair.originLabel,
+                    originLat: pair.oLat, originLon: pair.oLon,
+                    destinationLabel: pair.destLabel,
+                    destLat: pair.dLat, destLon: pair.dLon,
+                    plans: plans
+                )
+                #if DEBUG
+                print("[Prefetch] Cached \(plans.count) plans: \(pair.originLabel) → \(pair.destLabel)")
+                #endif
+            } catch {
+                #if DEBUG
+                print("[Prefetch] Failed \(pair.originLabel) → \(pair.destLabel): \(error.localizedDescription)")
+                #endif
+                // Non-fatal — continue with next pair
+            }
+        }
+
+        #if DEBUG
+        let total = OfflineCacheManager.shared.cachedCommuteKeys().count
+        print("[Prefetch] Done. \(total) commute pairs cached for offline use.")
+        #endif
     }
 }
 

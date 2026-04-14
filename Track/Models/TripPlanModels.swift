@@ -542,9 +542,9 @@ enum DepartureOption: Equatable {
         case .leaveNow:
             return "Leave now"
         case .departAt(let date):
-            return "Depart \(Self.shortTime(date))"
+            return "Depart \(Self.contextualTime(date))"
         case .arriveBy(let date):
-            return "Arrive \(Self.shortTime(date))"
+            return "Arrive \(Self.contextualTime(date))"
         }
     }
 
@@ -565,6 +565,20 @@ enum DepartureOption: Equatable {
     private static func shortTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
+        return formatter.string(from: date)
+    }
+
+    private static func contextualTime(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            return shortTime(date)
+        }
+        if calendar.isDateInTomorrow(date) {
+            return "Tomorrow, \(shortTime(date))"
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, h:mm a"
         return formatter.string(from: date)
     }
 }

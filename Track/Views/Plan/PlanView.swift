@@ -94,6 +94,12 @@ struct PlanView: View {
                     animatePulse = true
                 }
             }
+            .task {
+                // Pre-fetch commute plans in background after a short delay
+                // so the UI loads first and critical requests take priority.
+                try? await Task.sleep(for: .seconds(3))
+                await viewModel.prefetchCommutePlans()
+            }
             .sheet(isPresented: $viewModel.showDestinationSearch) {
                 DestinationSearchView(viewModel: viewModel, isOrigin: false)
             }

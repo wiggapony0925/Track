@@ -35,6 +35,10 @@ struct TripResultsView: View {
                         resultsList
                     }
                 }
+
+                if !viewModel.isLoading && !viewModel.tripResults.isEmpty {
+                    floatingSettingsButton
+                }
             }
         }
             .animation(AppTheme.Animation.snappy, value: showSettings)
@@ -68,63 +72,64 @@ struct TripResultsView: View {
     private var resultsHeader: some View {
         VStack(spacing: 0) {
             // Origin / Destination pill fields + swap button
-            HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
                 // Dots column
-                VStack(spacing: 4) {
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 8, height: 8)
-                    Rectangle()
-                        .fill(.white.opacity(0.35))
-                        .frame(width: 2, height: 18)
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 8, height: 8)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.black.opacity(0.12))
+                        .frame(width: 42)
+
+                    VStack(spacing: 6) {
+                        Image(systemName: "location.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.95))
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(.white.opacity(0.3))
+                            .frame(width: 3, height: 24)
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(.white.opacity(0.9))
+                            .frame(width: 14, height: 14)
+                    }
                 }
+                .frame(height: 114)
 
                 // Pill fields
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     // Origin pill
                     HStack(spacing: 8) {
-                        Image(systemName: originIcon)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.6))
                         Text(viewModel.origin.displayName)
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .font(.system(size: 17, weight: .heavy, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
                     .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(.white.opacity(0.15))
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color.black.opacity(0.16))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.08), lineWidth: 1)
                             )
                     )
 
                     // Destination pill
                     HStack(spacing: 8) {
-                        Image(systemName: "mappin")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.6))
                         Text(viewModel.destination?.displayName ?? "Destination")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .font(.system(size: 17, weight: .heavy, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
                     .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(.white.opacity(0.15))
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color.black.opacity(0.16))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                    .strokeBorder(.white.opacity(0.08), lineWidth: 1)
                             )
                     )
                 }
@@ -137,30 +142,40 @@ struct TripResultsView: View {
                     }
                 } label: {
                     Image(systemName: "arrow.up.arrow.down")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 20, weight: .heavy))
                         .foregroundStyle(.white)
-                        .frame(width: 38, height: 38)
+                        .frame(width: 44, height: 44)
                         .background(
                             Circle()
-                                .fill(.white.opacity(0.15))
-                                .overlay(Circle().strokeBorder(.white.opacity(0.1), lineWidth: 0.5))
+                                .fill(Color.black.opacity(0.14))
+                                .overlay(Circle().strokeBorder(.white.opacity(0.08), lineWidth: 1))
                         )
                 }
                 .buttonStyle(ResultsButtonStyle())
             }
             .padding(.horizontal, 16)
-            .padding(.top, 20)
-            .padding(.bottom, 34) // extra space for overlap
+            .padding(.top, 18)
+            .padding(.bottom, 36) // extra space for overlap
         }
         .background(
             ZStack {
                 LinearGradient(
                     stops: [
                         .init(color: AppTheme.Colors.accent, location: 0),
-                        .init(color: AppTheme.Colors.accentDeep, location: 0.65),
+                        .init(color: AppTheme.Colors.accentDeep, location: 0.55),
                         .init(color: AppTheme.Colors.accentDeep.opacity(0.95), location: 1),
                     ],
                     startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.0),
+                        Color.black.opacity(0.08),
+                        Color.black.opacity(0.16),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
 
                 Circle()
@@ -179,7 +194,7 @@ struct TripResultsView: View {
         // Control bar overlapping the header/content boundary
         .overlay(alignment: .bottom) {
             departureControlBar
-                .offset(y: 18)
+                .offset(y: 16)
         }
     }
 
@@ -192,17 +207,21 @@ struct TripResultsView: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "clock.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                     Text(viewModel.departureTimeLabel)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .heavy, design: .rounded))
                 }
-                .foregroundStyle(AppTheme.Colors.textPrimary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
                 .background(
                     Capsule()
-                        .fill(AppTheme.Colors.cardBackground)
-                        .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+                        .fill(Color(red: 0.22, green: 0.22, blue: 0.25))
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                        )
+                        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
                 )
             }
             .buttonStyle(.plain)
@@ -212,29 +231,14 @@ struct TripResultsView: View {
                 Task { await viewModel.planTrip(forceRefresh: true) }
             } label: {
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-                    .frame(width: 34, height: 34)
+                    .font(.system(size: 17, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
                     .background(
                         Circle()
-                            .fill(AppTheme.Colors.cardBackground)
-                            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
-                    )
-            }
-            .buttonStyle(ResultsButtonStyle())
-
-            // Settings
-            Button {
-                showSettings = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-                    .frame(width: 34, height: 34)
-                    .background(
-                        Circle()
-                            .fill(AppTheme.Colors.cardBackground)
-                            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+                            .fill(Color(red: 0.22, green: 0.22, blue: 0.25))
+                            .overlay(Circle().strokeBorder(.white.opacity(0.08), lineWidth: 1))
+                            .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
                     )
             }
             .buttonStyle(ResultsButtonStyle())
@@ -247,18 +251,46 @@ struct TripResultsView: View {
                 dismiss()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 18, weight: .heavy))
                     .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 46, height: 46)
                     .background(
                         Circle()
                             .fill(AppTheme.Colors.alertRed)
-                            .shadow(color: AppTheme.Colors.alertRed.opacity(0.3), radius: 6, y: 2)
+                            .overlay(Circle().strokeBorder(.white.opacity(0.08), lineWidth: 1))
+                            .shadow(color: AppTheme.Colors.alertRed.opacity(0.34), radius: 10, y: 4)
                     )
             }
             .buttonStyle(ResultsButtonStyle())
         }
         .padding(.horizontal, 16)
+    }
+
+    private var floatingSettingsButton: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 20, weight: .heavy))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .frame(width: 58, height: 58)
+                        .background(
+                            Circle()
+                                .fill(Color(red: 0.22, green: 0.22, blue: 0.25).opacity(0.96))
+                                .overlay(Circle().strokeBorder(.white.opacity(0.08), lineWidth: 1))
+                                .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
+                        )
+                }
+                .buttonStyle(ResultsButtonStyle())
+                .padding(.trailing, 18)
+                .padding(.bottom, 102)
+            }
+        }
+        .ignoresSafeArea(edges: .bottom)
     }
 
     // MARK: - Results List
@@ -273,11 +305,12 @@ struct TripResultsView: View {
                 TripTimelineGridView(
                     trips: viewModel.tripResults,
                     onTripTap: { trip in selectedTrip = trip },
-                    recommendedIndex: 0
+                    recommendedIndex: 0,
+                    departureOption: viewModel.departureOption
                 )
 
-                // Show more trips button (not available in Apple Maps fallback)
-                if !viewModel.tripResults.isEmpty && !viewModel.isUsingAppleFallback {
+                // Show more trips button — one-shot; disappears after use
+                if !viewModel.tripResults.isEmpty && !viewModel.isUsingAppleFallback && !viewModel.didLoadMore {
                     showMoreTripsButton
                         .padding(.top, 12)
                         .disabled(viewModel.isLoadingMore)
@@ -313,11 +346,15 @@ struct TripResultsView: View {
                         .foregroundStyle(AppTheme.Colors.textTertiary)
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 20)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AppTheme.Colors.cardBackground)
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color(red: 0.2, green: 0.2, blue: 0.23))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .strokeBorder(.white.opacity(0.05), lineWidth: 1)
+                    )
             )
         }
         .buttonStyle(ResultsButtonStyle())

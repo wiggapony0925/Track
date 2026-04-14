@@ -10,28 +10,42 @@ struct TripTimelineGridView: View {
     let trips: [TripPlan]
     let onTripTap: (TripPlan) -> Void
     var recommendedIndex: Int = 0
+    var departureOption: DepartureOption = .leaveNow
 
     @State private var nowDate = Date()
     @State private var appeared = false
     private let ticker = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
     // Layout
-    private let barHeight: CGFloat = 36
-    private let rowSpacing: CGFloat = 4
-    private let pxPerMinute: CGFloat = 5.5
+    private let barHeight: CGFloat = 40
+    private let pxPerMinute: CGFloat = 5.9
+    private let minimumWindowMinutes: Double = 360
+    private let leadingContextMinutes: Double = 20
+    private let trailingContextMinutes: Double = 35
+    private let contentInset: CGFloat = 18
 
     // MARK: - Time Window
 
+    private var displayedSpanMinutes: Double {
+        let earliest = trips.map(\.departureTime).min() ?? nowDate
+        let latest = trips.map(\.arrivalTime).max() ?? nowDate
+        let paddedStart = min(earliest, nowDate).addingTimeInterval(-(leadingContextMinutes * 60))
+        let paddedEnd = latest.addingTimeInterval(trailingContextMinutes * 60)
+        let paddedSpan = paddedEnd.timeIntervalSince(paddedStart) / 60
+        return max(minimumWindowMinutes, paddedSpan)
+    }
+
     private var windowStart: Date {
-        guard let earliest = trips.map(\.departureTime).min() else { return Date() }
-        return floorTo(earliest, minutes: intervalMinutes)
+        let earliest = trips.map(\.departureTime).min() ?? nowDate
+        let anchor = min(earliest, nowDate).addingTimeInterval(-(leadingContextMinutes * 60))
+        return floorTo(anchor, minutes: intervalMinutes)
     }
 
     private var windowEnd: Date {
-        guard let latest = trips.map(\.arrivalTime).max() else {
-            return Date().addingTimeInterval(3600)
-        }
-        return ceilTo(latest, minutes: intervalMinutes)
+        let latest = trips.map(\.arrivalTime).max() ?? nowDate
+        let minimumEnd = windowStart.addingTimeInterval(minimumWindowMinutes * 60)
+        let contentEnd = latest.addingTimeInterval(trailingContextMinutes * 60)
+        return ceilTo(max(minimumEnd, contentEnd), minutes: intervalMinutes)
     }
 
     private var windowDuration: TimeInterval {
@@ -43,11 +57,8 @@ struct TripTimelineGridView: View {
     }
 
     private var intervalMinutes: Int {
-        let earliest = trips.map(\.departureTime).min() ?? Date()
-        let latest = trips.map(\.arrivalTime).max() ?? Date()
-        let span = latest.timeIntervalSince(earliest)
-        if span > 7200 { return 60 }
-        if span > 3600 { return 30 }
+        if displayedSpanMinutes > 480 { return 60 }
+        if displayedSpanMinutes > 180 { return 30 }
         return 15
     }
 
@@ -71,8 +82,12 @@ struct TripTimelineGridView: View {
                 GeometryReader { _ in
                     ForEach(timeMarkers, id: \.self) { marker in
                         Rectangle()
-                            .fill(AppTheme.Colors.borderSubtle.opacity(0.1))
-                            .frame(width: 0.5)
+                            .fill(
+                                isMajorMarker(marker)
+                                    ? AppTheme.Colors.borderSubtle.opacity(0.16)
+                                    : AppTheme.Colors.borderSubtle.opacity(0.08)
+                            )
+                            .frame(width: isMajorMarker(marker) ? 1 : 0.5)
                             .offset(x: xPos(for: marker))
                     }
                 }
@@ -86,17 +101,16 @@ struct TripTimelineGridView: View {
                     ForEach(Array(trips.enumerated()), id: \.element.id) { index, trip in
                         if index > 0 {
                             Divider()
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 2)
+                                .overlay(AppTheme.Colors.borderSubtle.opacity(0.12))
+                                .padding(.vertical, 12)
                         }
 
                         Button { onTripTap(trip) } label: {
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 candleRow(trip)
-                                    .padding(.bottom, 2)
                                 infoRow(trip, isRecommended: index == recommendedIndex)
                             }
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 10)
                         }
                         .buttonStyle(TimelineRowButtonStyle())
                         .opacity(appeared ? 1 : 0)
@@ -110,6 +124,7 @@ struct TripTimelineGridView: View {
                 }
             }
             .frame(width: canvasWidth)
+            .padding(.horizontal, contentInset)
         }
         .onReceive(ticker) { _ in nowDate = Date() }
         .onAppear {
@@ -124,14 +139,18 @@ struct TripTimelineGridView: View {
     private var timeAxisRow: some View {
         ZStack(alignment: .leading) {
             ForEach(timeMarkers, id: \.self) { marker in
-                timeLabel(marker)
+                timeLabel(marker, emphasized: isMajorMarker(marker))
                     .position(x: xPos(for: marker), y: 10)
             }
 
             ForEach(timeMarkers, id: \.self) { marker in
                 Rectangle()
-                    .fill(AppTheme.Colors.textTertiary.opacity(0.25))
-                    .frame(width: 1, height: 8)
+                    .fill(
+                        isMajorMarker(marker)
+                            ? AppTheme.Colors.textTertiary.opacity(0.22)
+                            : AppTheme.Colors.textTertiary.opacity(0.12)
+                    )
+                    .frame(width: isMajorMarker(marker) ? 1 : 0.5, height: isMajorMarker(marker) ? 10 : 6)
                     .position(x: xPos(for: marker), y: 24)
             }
 
@@ -146,28 +165,23 @@ struct TripTimelineGridView: View {
                         .frame(width: 5, height: 5)
                         .shadow(color: AppTheme.Colors.successGreen.opacity(0.5), radius: 2)
                 }
-                .position(x: nx, y: 10)
+                .position(x: nx, y: 8)
             }
         }
-        .frame(height: 28)
+        .frame(height: 30)
     }
 
-    private func timeLabel(_ date: Date) -> some View {
+    private func timeLabel(_ date: Date, emphasized: Bool) -> some View {
         let fmt = DateFormatter()
-        fmt.dateFormat = "h:mm"
-        let time = fmt.string(from: date)
+        fmt.dateFormat = "h:mm a"
 
-        let ampmFmt = DateFormatter()
-        ampmFmt.dateFormat = "a"
-        let ampm = ampmFmt.string(from: date)
-
-        return HStack(spacing: 1) {
-            Text(time)
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-            Text(ampm)
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-        }
-        .foregroundStyle(AppTheme.Colors.textSecondary)
+        return Text(fmt.string(from: date))
+        .font(.system(size: emphasized ? 11 : 10, weight: .heavy, design: .rounded))
+        .foregroundStyle(
+            emphasized
+                ? AppTheme.Colors.textSecondary
+                : AppTheme.Colors.textSecondary.opacity(0.72)
+        )
         .fixedSize()
     }
 
@@ -179,8 +193,8 @@ struct TripTimelineGridView: View {
             if nowDate >= windowStart && nowDate <= windowEnd {
                 let nx = xPos(for: nowDate)
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(AppTheme.Colors.successGreen.opacity(0.5))
-                    .frame(width: 2, height: barHeight + 4)
+                    .fill(AppTheme.Colors.successGreen.opacity(0.82))
+                    .frame(width: 2, height: barHeight + 6)
                     .position(x: nx, y: barHeight / 2)
             }
 
@@ -191,8 +205,92 @@ struct TripTimelineGridView: View {
             ForEach(trip.legs) { leg in
                 legView(leg, trip: trip)
             }
+
+            alternativeBadgesRow(trip)
         }
         .frame(width: canvasWidth, height: barHeight)
+    }
+
+    @ViewBuilder
+    private func alternativeBadgesRow(_ trip: TripPlan) -> some View {
+        let transitLegs = trip.legs.filter { $0.isTransit }
+        let altChips = trip.routeChips.filter { !$0.isWalk }
+
+        if altChips.count > transitLegs.count,
+           let anchorLeg = transitLegs.last {
+            let overflowCount = max(0, altChips.count - transitLegs.count - 4)
+            let anchorX = min(xPos(for: anchorLeg.departureTime) + 32, canvasWidth - 104)
+
+            HStack(spacing: 4) {
+                Text("or")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+
+                ForEach(
+                    Array(altChips.suffix(from: min(transitLegs.count, altChips.count))
+                        .prefix(4)
+                        .enumerated()),
+                    id: \.offset
+                ) { _, chip in
+                    routeChipBadge(chip)
+                }
+
+                if overflowCount > 0 {
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.Colors.cardInset)
+                            .frame(width: 20, height: 20)
+                        Text("+")
+                            .font(.system(size: 12, weight: .heavy, design: .rounded))
+                            .foregroundStyle(AppTheme.Colors.textPrimary)
+                    }
+                }
+            }
+            .position(x: max(anchorX, 68), y: 2)
+        }
+    }
+
+    private func routeChipBadge(_ chip: TripRouteChip) -> some View {
+        let color: Color = {
+            if let mode = chip.routeMode {
+                switch mode {
+                case .subway:
+                    return AppTheme.SubwayColors.color(for: chip.routeId ?? chip.label)
+                case .bus:
+                    if let hex = chip.colorHex, !hex.isEmpty { return Color(hex: hex) }
+                    return AppTheme.BusColors.localBlue
+                case .lirr:
+                    return AppTheme.CommuterRailColors.lirrBlue
+                case .mnr:
+                    return AppTheme.CommuterRailColors.mnrBlue
+                default:
+                    if let hex = chip.colorHex, !hex.isEmpty { return Color(hex: hex) }
+                    return AppTheme.Colors.textTertiary
+                }
+            }
+
+            if let hex = chip.colorHex, !hex.isEmpty { return Color(hex: hex) }
+            return AppTheme.Colors.textTertiary
+        }()
+
+        let textColor: Color = {
+            if let hex = chip.textColorHex, !hex.isEmpty { return Color(hex: hex) }
+            return .white
+        }()
+
+        return ZStack {
+            Circle()
+                .fill(color)
+                .frame(width: 20, height: 20)
+                .overlay(
+                    Circle()
+                        .strokeBorder(.white.opacity(0.18), lineWidth: 0.5)
+                )
+
+            Image(systemName: chip.routeMode?.icon ?? "tram.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(textColor)
+        }
     }
 
     /// Thin horizontal line connecting first transit start to last transit end.
@@ -207,8 +305,8 @@ struct TripTimelineGridView: View {
         let cx = startX + lineW / 2
         return AnyView(
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(AppTheme.Colors.textTertiary.opacity(0.22))
-                .frame(width: lineW, height: 3)
+                .fill(AppTheme.Colors.textTertiary.opacity(0.26))
+                .frame(width: lineW, height: 4)
                 .position(x: cx, y: barHeight / 2)
         )
     }
@@ -219,7 +317,7 @@ struct TripTimelineGridView: View {
     private func legView(_ leg: TripLeg, trip: TripPlan) -> some View {
         let startX = xPos(for: leg.departureTime)
         let endX = xPos(for: leg.arrivalTime)
-        let legW = max(endX - startX, leg.isTransit ? 44 : 24)
+        let legW = max(endX - startX, leg.isTransit ? 50 : 28)
         let cx = startX + legW / 2
         let cy = barHeight / 2
 
@@ -227,7 +325,7 @@ struct TripTimelineGridView: View {
             transitBar(leg, width: legW)
                 .position(x: cx, y: cy)
         } else {
-            walkDots(leg, width: legW, trip: trip)
+            walkDots(leg, width: legW)
                 .position(x: cx, y: cy)
         }
     }
@@ -238,53 +336,72 @@ struct TripTimelineGridView: View {
         let color = legColor(leg)
 
         return ZStack {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(color)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            color.opacity(0.92),
+                            color,
+                            color.opacity(0.82),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
 
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(
                     LinearGradient(
                         stops: [
                             .init(color: .white.opacity(0.14), location: 0),
-                            .init(color: .clear, location: 0.4),
+                            .init(color: .white.opacity(0.05), location: 0.42),
+                            .init(color: .clear, location: 0.62),
                         ],
                         startPoint: .top, endPoint: .bottom
                     )
                 )
 
-            if let routeId = leg.routeId {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+
+            if leg.routeId != nil {
                 let txt = textColorForLeg(leg)
-                if width > 54 {
-                    HStack(spacing: 4) {
+                let label = routeLabel(for: leg)
+
+                if width > 72 {
+                    HStack(spacing: 5) {
+                        Text(label)
+                            .font(.system(size: 17, weight: .heavy, design: .rounded))
+                            .lineLimit(1)
                         Image(systemName: vehicleIcon(for: leg))
-                            .font(.system(size: 13, weight: .bold))
-                        Text(routeId)
-                            .font(.system(size: 15, weight: .heavy, design: .rounded))
+                            .font(.system(size: 13, weight: .heavy))
                     }
                     .foregroundStyle(txt)
-                } else if width > 36 {
-                    HStack(spacing: 2) {
-                        Image(systemName: vehicleIcon(for: leg))
-                            .font(.system(size: 11, weight: .bold))
-                        Text(routeId)
-                            .font(.system(size: 12, weight: .heavy, design: .rounded))
-                            .minimumScaleFactor(0.5)
+                } else if width > 34 || label.count <= 3 {
+                    HStack(spacing: 3) {
+                        Text(label)
+                            .font(.system(size: width > 58 ? 17 : 14, weight: .heavy, design: .rounded))
                             .lineLimit(1)
+                        if width > 52 {
+                            Image(systemName: vehicleIcon(for: leg))
+                                .font(.system(size: 11, weight: .heavy))
+                        }
                     }
                     .foregroundStyle(txt)
                 } else {
                     Image(systemName: vehicleIcon(for: leg))
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 13, weight: .heavy))
                         .foregroundStyle(txt)
                 }
             } else {
                 Image(systemName: vehicleIcon(for: leg))
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 13, weight: .heavy))
                     .foregroundStyle(.white)
             }
         }
         .frame(width: width, height: barHeight)
-        .shadow(color: color.opacity(0.3), radius: 5, y: 3)
+        .shadow(color: color.opacity(0.18), radius: 4, y: 1)
+        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
         .overlay(alignment: .bottomTrailing) {
             if !leg.alerts.isEmpty {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -310,21 +427,45 @@ struct TripTimelineGridView: View {
 
     /// Renders walk/transfer legs as horizontal dot patterns on the
     /// connector line — matching Transit app style exactly.
-    private func walkDots(_ leg: TripLeg, width: CGFloat, trip: TripPlan) -> some View {
+    private func walkDots(_ leg: TripLeg, width: CGFloat) -> some View {
         let w = max(width, 24)
-        let dotSize: CGFloat = 5
+        let dotSize: CGFloat = 7
         let dotSpacing: CGFloat = 7
         let totalDotWidth = dotSize + dotSpacing
-        let dotCount = max(2, min(Int(w / totalDotWidth), 6))
+        let dotCount = max(2, min(Int(w / totalDotWidth), 8))
 
-        return HStack(spacing: dotSpacing) {
-            ForEach(0..<dotCount, id: \.self) { _ in
-                Circle()
-                    .fill(AppTheme.Colors.textTertiary.opacity(0.5))
-                    .frame(width: dotSize, height: dotSize)
+        return ZStack {
+            HStack(spacing: dotSpacing) {
+                ForEach(0..<dotCount, id: \.self) { _ in
+                    Circle()
+                        .fill(AppTheme.Colors.textTertiary.opacity(0.42))
+                        .frame(width: dotSize, height: dotSize)
+                }
+            }
+
+            if w > 34 {
+                Image(systemName: leg.mode == .transfer ? "arrow.triangle.swap" : "figure.walk")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
+                    .padding(5)
+                    .background(
+                        Circle()
+                            .fill(AppTheme.Colors.cardBackground.opacity(0.92))
+                    )
             }
         }
         .frame(width: w, height: barHeight)
+    }
+
+
+    private func routeLabel(for leg: TripLeg) -> String {
+        if let routeId = leg.routeId, !routeId.isEmpty {
+            return routeId
+        }
+        if let routeName = leg.routeName, !routeName.isEmpty {
+            return routeName
+        }
+        return leg.mode.label
     }
 
     // MARK: - Walk Summary Row
@@ -378,82 +519,74 @@ struct TripTimelineGridView: View {
     // MARK: - Info Row
 
     private func infoRow(_ trip: TripPlan, isRecommended: Bool) -> some View {
-        let seconds = trip.departureTime.timeIntervalSince(nowDate)
-        let minutes = Int(seconds / 60)
-        let hasRealtime = trip.legs.contains { $0.liveStatus?.isRealtime == true }
-
         return HStack(alignment: .center, spacing: 0) {
-            goLabel(trip: trip, minutes: minutes, hasRealtime: hasRealtime)
-
-            if isRecommended {
-                bestBadge
-                    .padding(.leading, 8)
-            }
+            goLabel(trip: trip)
 
             Spacer(minLength: 8)
 
             Text(trip.durationString)
-                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .font(.system(size: 16, weight: .heavy, design: .rounded))
                 .foregroundStyle(AppTheme.Colors.textPrimary)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 2)
+    }
+
+    private func isMajorMarker(_ date: Date) -> Bool {
+        if intervalMinutes >= 60 { return true }
+        return Calendar.current.component(.minute, from: date) == 0
     }
 
     @ViewBuilder
-    private func goLabel(trip: TripPlan, minutes: Int, hasRealtime: Bool) -> some View {
-        if minutes <= 0 {
-            HStack(spacing: 4) {
-                Text("Go")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+    private func goLabel(trip: TripPlan) -> some View {
+        let seconds = trip.departureTime.timeIntervalSince(nowDate)
+        let minutes = Int(seconds / 60)
+        let hasRealtime = trip.legs.contains { $0.liveStatus?.isRealtime == true }
+
+        if departureOption != .leaveNow {
+            HStack(spacing: 2) {
+                Text("Go at \(trip.departureTimeString)")
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
-                HStack(spacing: 2) {
-                    Text("now")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+
+                if hasRealtime {
+                    Image(systemName: "dot.radiowaves.right")
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(AppTheme.Colors.successGreen)
-                    if hasRealtime {
-                        Image(systemName: "dot.radiowaves.right")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(AppTheme.Colors.successGreen)
-                    }
+                }
+            }
+        } else if minutes <= 0 {
+            HStack(spacing: 1) {
+                Text("Go")
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                Text("now")
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.successGreen)
+                if hasRealtime {
+                    Image(systemName: "dot.radiowaves.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(AppTheme.Colors.successGreen)
                 }
             }
         } else if minutes <= 120 {
-            HStack(spacing: 4) {
+            HStack(spacing: 1) {
                 Text("Go in")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
-                HStack(spacing: 2) {
-                    Text("\(minutes) min")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                Text("\(minutes) min")
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.successGreen)
+                if hasRealtime {
+                    Image(systemName: "dot.radiowaves.right")
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(AppTheme.Colors.successGreen)
-                    if hasRealtime {
-                        Image(systemName: "dot.radiowaves.right")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(AppTheme.Colors.successGreen)
-                    }
                 }
             }
         } else {
-            Text("Departs \(trip.departureTimeString)")
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+            Text("Go at \(trip.departureTimeString)")
+                .font(.system(size: 16, weight: .heavy, design: .rounded))
                 .foregroundStyle(AppTheme.Colors.textPrimary)
         }
-    }
-
-    private var bestBadge: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "star.fill")
-                .font(.system(size: 7))
-            Text("BEST")
-                .font(.system(size: 9, weight: .heavy, design: .rounded))
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .background(
-            Capsule()
-                .fill(AppTheme.Colors.successGreen)
-        )
     }
 
     // MARK: - Helpers

@@ -1359,12 +1359,13 @@ struct TrackAPI {
 
         var lastError: Error = TrackAPIError.networkError
         let wasColdStart = !serverWarmedUp
-        let attempts = wasColdStart ? 4 : 3
+        let attempts = wasColdStart ? 3 : 2
 
         for attempt in 0..<attempts {
             if attempt > 0 {
+                // Reduced delays: cold-start 2s→4s, warm 1s→2s
                 let delay: UInt64 = wasColdStart
-                    ? UInt64(min(3 + attempt * 2, 10)) * 1_000_000_000
+                    ? UInt64(min(2 + attempt * 2, 6)) * 1_000_000_000
                     : UInt64(attempt) * 1_000_000_000
                 try await Task.sleep(nanoseconds: delay)
             }
@@ -1372,7 +1373,7 @@ struct TrackAPI {
             do {
                 var request = URLRequest(url: url)
                 request.httpMethod = method
-                request.timeoutInterval = wasColdStart ? max(timeout, 25) : timeout
+                request.timeoutInterval = wasColdStart ? max(timeout, 20) : timeout
                 request.setValue("application/json", forHTTPHeaderField: "Accept")
 
                 if let email = cachedUserEmail, !email.isEmpty {
@@ -1407,6 +1408,15 @@ struct TrackAPI {
                 }
 
                 serverWarmedUp = true
+
+                // Log server timing when available
+                #if DEBUG
+                if let serverMs = http.value(forHTTPHeaderField: "X-Server-Time-Ms") {
+                    let pathStr = url.path
+                    print("[Network] \(pathStr) — server: \(serverMs)ms")
+                }
+                #endif
+
                 return data
             } catch is CancellationError {
                 throw CancellationError()
