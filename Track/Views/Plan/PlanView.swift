@@ -837,13 +837,8 @@ struct PlanView: View {
             if viewModel.savedTrips.isEmpty {
                 emptyRecentState
             } else {
-                LazyVStack(spacing: 0) {
+                LazyVStack(spacing: 10) {
                     ForEach(Array(viewModel.savedTrips.prefix(5).enumerated()), id: \.element.id) { index, trip in
-                        if index > 0 {
-                            Divider()
-                                .padding(.leading, 72)
-                                .padding(.trailing, 16)
-                        }
                         RecentTripCard(trip: trip) {
                             viewModel.origin = .custom(
                                 name: trip.originName,
@@ -859,6 +854,14 @@ struct PlanView: View {
                             )
                             Task { await viewModel.planTrip() }
                         }
+                        .padding(.horizontal, 16)
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 10)
+                        .animation(
+                            .spring(response: 0.42, dampingFraction: 0.82)
+                                .delay(Double(index) * 0.04),
+                            value: appeared
+                        )
                     }
                 }
             }

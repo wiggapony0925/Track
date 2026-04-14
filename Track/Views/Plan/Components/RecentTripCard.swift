@@ -1,5 +1,5 @@
-// Recent trip card — clean, bold card with large destination text,
-// inline route badges, and compact date label.
+// Recent trip card — darker, route-first card with a subtle trip
+// connector, badge row, and recency metadata.
 
 import SwiftUI
 
@@ -10,42 +10,33 @@ struct RecentTripCard: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 14) {
-                // Mode icon badge
-                Image(systemName: primaryModeIcon)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(AppTheme.Colors.accent.gradient)
-                    )
+                tripConnector
 
-                VStack(alignment: .leading, spacing: 6) {
-                    // Route: Origin → Destination
-                    HStack(spacing: 6) {
-                        Text(trip.originName)
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppTheme.Colors.textPrimary)
-                            .lineLimit(1)
-
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.45))
-
+                VStack(alignment: .leading, spacing: 9) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(trip.destinationName)
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .font(.system(size: 17, weight: .heavy, design: .rounded))
                             .foregroundStyle(AppTheme.Colors.textPrimary)
                             .lineLimit(1)
+
+                        HStack(spacing: 5) {
+                            Text("from")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(AppTheme.Colors.textTertiary)
+                            Text(trip.originName)
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(AppTheme.Colors.textSecondary)
+                                .lineLimit(1)
+                        }
                     }
 
-                    // Leg badges
                     HStack(spacing: 5) {
                         ForEach(Array(zip(trip.legSummary, trip.legModes).enumerated()), id: \.offset) { index, pair in
                             let (routeId, modeStr) = pair
                             if index > 0 {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 7, weight: .bold))
-                                    .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.3))
+                                Capsule()
+                                    .fill(AppTheme.Colors.textTertiary.opacity(0.22))
+                                    .frame(width: 10, height: 3)
                             }
                             legBadge(routeId: routeId, mode: modeStr)
                         }
@@ -54,19 +45,77 @@ struct RecentTripCard: View {
 
                 Spacer(minLength: 0)
 
-                VStack(alignment: .trailing, spacing: 4) {
+                VStack(alignment: .trailing, spacing: 10) {
                     Text(dateLabel)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.Colors.cardInset.opacity(0.55))
+                        )
+
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.25))
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.32))
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.vertical, 16)
+            .background(cardBackground)
         }
         .buttonStyle(RecentTripButtonStyle())
+    }
+
+    private var tripConnector: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.accent.opacity(0.16))
+                    .frame(width: 20, height: 20)
+                Circle()
+                    .fill(AppTheme.Colors.accent)
+                    .frame(width: 9, height: 9)
+            }
+
+            Rectangle()
+                .fill(AppTheme.Colors.textTertiary.opacity(0.18))
+                .frame(width: 2, height: 28)
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(AppTheme.Colors.alertRed.opacity(0.16))
+                    .frame(width: 20, height: 20)
+                Image(systemName: "mappin")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(AppTheme.Colors.alertRed)
+            }
+        }
+        .padding(.leading, 2)
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .fill(AppTheme.Colors.cardBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.035), location: 0),
+                                .init(color: .clear, location: 0.42),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.16), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
     }
 
     // MARK: - Leg Badge
@@ -84,7 +133,7 @@ struct RecentTripCard: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
             .background(
-                Capsule().fill(AppTheme.Colors.cardInset.opacity(0.45))
+                Capsule().fill(AppTheme.Colors.cardInset.opacity(0.5))
             )
         } else {
             RouteBadge(
@@ -125,8 +174,8 @@ struct RecentTripCard: View {
 private struct RecentTripButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
