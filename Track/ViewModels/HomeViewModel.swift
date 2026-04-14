@@ -172,13 +172,25 @@ final class HomeViewModel {
     /// Rebuilds the pre-computed distance cache for all groups.
     /// Call after setting `groupedTransit`, `nearbyBusStops`, or `nearbyStations`.
     func rebuildDistanceCache(location: CLLocation?) {
+        rebuildDistanceCache(location: location, groups: nil)
+    }
+
+    /// Rebuilds the pre-computed distance cache for all groups.
+    /// When `groups` is provided, uses those instead of `self.groupedTransit`.
+    /// This allows pre-computing the cache for incoming groups BEFORE they're
+    /// published to `groupedTransit`, so the first SwiftUI body evaluation
+    /// after the publish gets O(1) cache hits with correct distances.
+    /// Call after setting `nearbyBusStops`, `nearbyStations`, or before
+    /// publishing new `groupedTransit` during drag-search.
+    func rebuildDistanceCache(location: CLLocation?, groups: [GroupedNearbyTransitResponse]?) {
         guard let location else { return }
         _distanceCacheLocation = location
 
+        let primaryGroups = groups ?? groupedTransit
         var cache: [String: CLLocationDistance] = [:]
-        cache.reserveCapacity(groupedTransit.count)
+        cache.reserveCapacity(primaryGroups.count)
 
-        for group in groupedTransit {
+        for group in primaryGroups {
             let key = "\(group.routeId)|\(group.mode)"
             if let dist = _computeDisplayDistance(for: group, from: location) {
                 cache[key] = dist
@@ -2676,6 +2688,14 @@ final class HomeViewModel {
         // Reset distance-mismatch warnings so they re-fire at the new
         // location instead of being suppressed by the session-wide set.
         Self._loggedDistWarnings.removeAll()
+        // Immediately rebuild the distance cache for the new pin location
+        // using existing groups. This ensures that while the backend fetch
+        // is in flight, any SwiftUI re-evaluation (triggered by the pin
+        // coordinate change) buckets existing routes by distance from the
+        // NEW center — preventing all routes from jumping to "Much Farther"
+        // during the intermediate state.
+        let pinLocation = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        rebuildDistanceCache(location: pinLocation)
         // Use the full mode-aware refresh so bus/subway/LIRR/MNR tabs
         // all get correct data at the drag-search location.
         // Force=true bypasses the cooldown guard — the user explicitly

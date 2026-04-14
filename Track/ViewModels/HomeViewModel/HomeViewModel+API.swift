@@ -1617,7 +1617,7 @@ extension HomeViewModel {
             // Merge new grouped data with existing data using a multi-cycle
             // grace period so routes don't vanish when the MTA feed briefly
             // drops them.  A route survives up to 3 consecutive misses.
-            groupedTransit = mergeGroupedTransit(
+            let mergedGroups = mergeGroupedTransit(
                 new: newGrouped,
                 existing: groupedTransit,
                 isAtTransitSpeed: location.speed >= AppSettings.transitSpeedThreshold
@@ -1655,13 +1655,54 @@ extension HomeViewModel {
             _coldStartRetryAttempt = 0
 
             // Update pulse state for station capsules with imminent arrivals
-            mapSystem.updateImminentStations(from: groupedTransit)
+            mapSystem.updateImminentStations(from: mergedGroups)
 
             // Persist for instant display on next cold launch.
             // Include the fetch location so the next launch can detect
             // if the user has moved significantly since this data was saved.
             let fetchLocation: CLLocation = lastKnownUserLocation ?? location
-            TransitSessionCache.save(groupedTransit, location: fetchLocation)
+            TransitSessionCache.save(mergedGroups, location: fetchLocation)
+
+            // Sync the selected route if it's currently open
+            updateSelectedRouteFromRefreshedData(mergedGroups)
+
+            // ── Await stations BEFORE publishing grouped data ─────────
+            // Previously, `groupedTransit` was set before stations were
+            // awaited, creating a suspension point that let SwiftUI
+            // re-render with new groups but stale station data / distance
+            // cache. During drag-search this caused routes to momentarily
+            // land in wrong distance buckets (everything in "Much Farther")
+            // before snapping to the correct tier a frame later.
+            //
+            // By awaiting stations first and batch-assigning all properties
+            // in one synchronous block, SwiftUI sees a single consistent
+            // snapshot: new groups + new stations + fresh distance cache.
+            let stations = (try? await stationsTask) ?? nearbyStations
+            let stationsElapsed = Date().timeIntervalSince(groupedStart)
+            AppLogger.shared.log(
+                "TIMING",
+                message: "  stations → \(stations.count) "
+                    + "stations in "
+                    + "\(AppLogger.formatDuration(stationsElapsed))"
+            )
+            // Augment nearbyStations with LIRR/MNR station data extracted from
+            // grouped arrivals. The subway-only /stations/nearby endpoint never
+            // returns commuter rail stations, so this keeps the primary
+            // station-matching path working for all modes.
+            let augmentedStations = Self.augmentStations(stations, from: mergedGroups)
+
+            // ── Atomic batch publish ──────────────────────────────────
+            // Set nearbyStations + rebuild distance cache BEFORE setting
+            // groupedTransit. This ensures that when SwiftUI re-evaluates
+            // NearbyDashboard in response to the groupedTransit change,
+            // the distance cache already has correct values for the new
+            // pin location → sections appear in the right buckets instantly.
+            nearbyStations = augmentedStations
+            rebuildDistanceCache(location: location, groups: mergedGroups)
+
+            // NOW publish grouped data — triggers a single SwiftUI body
+            // evaluation with ALL supporting data already in place.
+            groupedTransit = mergedGroups
 
             if !rawTransit.isEmpty || nearbyTransit.isEmpty {
                 // Deduplicate: Keep the first occurrence of each unique ID
@@ -1697,27 +1738,6 @@ extension HomeViewModel {
                     await self?.refreshGlobalFeeds()
                 }
             }
-
-            // Sync the selected route if it's currently open
-            updateSelectedRouteFromRefreshedData(groupedTransit)
-
-            let stations = (try? await stationsTask) ?? nearbyStations
-            let stationsElapsed = Date().timeIntervalSince(groupedStart)
-            AppLogger.shared.log(
-                "TIMING",
-                message: "  stations → \(stations.count) "
-                    + "stations in "
-                    + "\(AppLogger.formatDuration(stationsElapsed))"
-            )
-            // Augment nearbyStations with LIRR/MNR station data extracted from
-            // grouped arrivals. The subway-only /stations/nearby endpoint never
-            // returns commuter rail stations, so this keeps the primary
-            // station-matching path working for all modes.
-            nearbyStations = Self.augmentStations(stations, from: groupedTransit)
-
-            // Pre-compute distance cache so dashboard body evaluations
-            // do O(1) lookups instead of scanning nearbyBusStops/nearbyStations.
-            rebuildDistanceCache(location: location)
 
             // ── Refresh complete: log timing summary ──
             let refreshElapsed = Date().timeIntervalSince(refreshStart)
@@ -2045,7 +2065,7 @@ extension HomeViewModel {
             let allGrouped = try await groupedTask
             let filtered = allGrouped.filter { $0.mode == "subway" && $0.hasRealArrivals }
 
-            nearbyGroupedSubwayArrivals = mergeGroupedTransit(
+            let mergedSubway = mergeGroupedTransit(
                 new: filtered,
                 existing: nearbyGroupedSubwayArrivals,
                 source: "subway",
@@ -2053,19 +2073,19 @@ extension HomeViewModel {
             )
 
             // Update pulse state for station capsules with imminent arrivals
-            mapSystem.updateImminentStations(from: nearbyGroupedSubwayArrivals)
+            mapSystem.updateImminentStations(from: mergedSubway)
+            updateSelectedRouteFromRefreshedData(mergedSubway)
 
-            updateSelectedRouteFromRefreshedData(nearbyGroupedSubwayArrivals)
-
+            // Await stations BEFORE publishing arrivals so SwiftUI sees
+            // a single consistent snapshot (no intermediate re-render
+            // with stale distance cache during drag-search).
             let stations = (try? await stationsTask) ?? nearbyStations
-            // Augment with subway AND existing commuter rail groups so a
-            // subway-only refresh doesn't wipe LIRR/MNR station data from
-            // nearbyStations (distance matching breaks otherwise).
-            var allGroupsForAugment = nearbyGroupedSubwayArrivals as [GroupedNearbyTransitResponse]
+            var allGroupsForAugment = mergedSubway as [GroupedNearbyTransitResponse]
             allGroupsForAugment += nearbyGroupedLIRRArrivals
             allGroupsForAugment += nearbyGroupedMNRArrivals
             nearbyStations = Self.augmentStations(stations, from: allGroupsForAugment)
-            rebuildDistanceCache(location: location)
+            rebuildDistanceCache(location: location, groups: mergedSubway)
+            nearbyGroupedSubwayArrivals = mergedSubway
         } catch {            AppLogger.shared.logError("refreshSubway", error: error)
             errorMessage = (error as? TransitError)?.description ?? error.localizedDescription
         }
@@ -2094,15 +2114,17 @@ extension HomeViewModel {
             let allGrouped = try await groupedTask
             let filtered = allGrouped.filter { $0.mode == "bus" && $0.hasRealArrivals }
 
-            nearbyGroupedBusArrivals = mergeGroupedTransit(
+            let mergedBus = mergeGroupedTransit(
                 new: filtered,
                 existing: nearbyGroupedBusArrivals,
                 source: "bus",
                 isAtTransitSpeed: location.speed >= AppSettings.transitSpeedThreshold
             )
 
-            updateSelectedRouteFromRefreshedData(nearbyGroupedBusArrivals)
+            updateSelectedRouteFromRefreshedData(mergedBus)
 
+            // Await bus stops BEFORE publishing arrivals — atomic batch
+            // prevents intermediate re-render with stale distance cache.
             let stops: [BusStop]
             do {
                 stops = try await nearbyBusStopsTask
@@ -2110,8 +2132,9 @@ extension HomeViewModel {
                 AppLogger.shared.logError("fetchNearbyBusStops", error: error)
                 stops = nearbyBusStops
             }
-            nearbyBusStops = Self.augmentBusStops(stops, from: nearbyGroupedBusArrivals)
-            rebuildDistanceCache(location: location)
+            nearbyBusStops = Self.augmentBusStops(stops, from: mergedBus)
+            rebuildDistanceCache(location: location, groups: mergedBus)
+            nearbyGroupedBusArrivals = mergedBus
 
             // Fetch full route catalog only once — it rarely changes and is
             // cached for 30 s in the API memoizer.  Fire-and-forget so it
@@ -2160,15 +2183,17 @@ extension HomeViewModel {
                     lon: loc.coordinate.longitude,
                     mode: "lirr"
                 )
-                nearbyGroupedLIRRArrivals = mergeGroupedTransit(
+                let mergedLIRR = mergeGroupedTransit(
                     new: newGrouped,
                     existing: nearbyGroupedLIRRArrivals,
                     source: "lirr",
                     isAtTransitSpeed: loc.speed >= AppSettings.transitSpeedThreshold
                 )
-                // Inject LIRR station data so distance matching works
+                // Inject LIRR stations + rebuild cache BEFORE publishing
+                // arrivals for atomic drag-search updates.
                 nearbyStations = Self.augmentStations(nearbyStations, from: newGrouped)
-                rebuildDistanceCache(location: loc)
+                rebuildDistanceCache(location: loc, groups: mergedLIRR)
+                nearbyGroupedLIRRArrivals = mergedLIRR
             } catch {
                 AppLogger.shared.logError("fetchGroupedLIRR", error: error)
                 if nearbyGroupedLIRRArrivals.isEmpty {
@@ -2203,15 +2228,17 @@ extension HomeViewModel {
                     lon: loc.coordinate.longitude,
                     mode: "mnr"
                 )
-                nearbyGroupedMNRArrivals = mergeGroupedTransit(
+                let mergedMNR = mergeGroupedTransit(
                     new: newGrouped,
                     existing: nearbyGroupedMNRArrivals,
                     source: "mnr",
                     isAtTransitSpeed: loc.speed >= AppSettings.transitSpeedThreshold
                 )
-                // Inject MNR station data so distance matching works
+                // Inject MNR stations + rebuild cache BEFORE publishing
+                // arrivals for atomic drag-search updates.
                 nearbyStations = Self.augmentStations(nearbyStations, from: newGrouped)
-                rebuildDistanceCache(location: loc)
+                rebuildDistanceCache(location: loc, groups: mergedMNR)
+                nearbyGroupedMNRArrivals = mergedMNR
             } catch {
                 AppLogger.shared.logError("fetchGroupedMNR", error: error)
                 if nearbyGroupedMNRArrivals.isEmpty {
