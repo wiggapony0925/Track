@@ -2547,17 +2547,27 @@ class TrackEngineService:
 
         return response
 
-    def _enrich_trip(
+    # ── Shared real-time enrichment core ─────────────────────────────
+    # These two methods are the single source of truth for overlaying
+    # GTFS-RT live data onto transit legs.  Both plan() and go() call
+    # through here, so any improvement benefits every surface.
+
+    def _enrich_legs_realtime(
         self,
-        trip: GoTrip,
+        legs: list[TransitLeg],
         *,
         alerts_by_key: dict[str, list[ServiceAlertSummary]],
         subway_arrivals_by_key: dict[str, list[Any]],
         rail_arrivals_by_mode: dict[str, list[Any]],
         bus_arrivals_by_stop: dict[str, list[Any]],
-        priority: str | None = None,
-    ) -> GoTrip:
-        for leg in trip.itinerary.legs:
+    ) -> None:
+        """Mutate *legs* in place: set ``live_status`` and ``alerts``
+        on every transit leg using pre-fetched real-time data.
+
+        Walk legs are skipped.  This is the single reusable core that
+        both the Plan enrichment and the Go enrichment delegate to.
+        """
+        for leg in legs:
             if leg.mode == "walk":
                 continue
             leg.alerts = self._alerts_for_leg(leg, alerts_by_key)
@@ -2581,6 +2591,64 @@ class TrackEngineService:
                     leg,
                     bus_arrivals_by_stop.get(leg.board_stop_id, []),
                 )
+
+    async def _enrich_itineraries_realtime(
+        self,
+        itineraries: list[Itinerary],
+    ) -> None:
+        """Overlay GTFS-RT live data onto plan itineraries *in place*.
+
+        Runs the same four parallel data loads used by Go enrichment,
+        then delegates to ``_enrich_legs_realtime`` so every transit
+        leg gets ``live_status`` and ``alerts``.
+        """
+        transit_legs = [
+            leg
+            for itin in itineraries
+            for leg in itin.legs
+            if leg.mode != "walk"
+        ]
+        if not transit_legs:
+            return
+
+        (
+            alerts_by_key,
+            subway_arrivals_by_key,
+            rail_arrivals_by_mode,
+            bus_arrivals_by_stop,
+        ) = await asyncio.gather(
+            self._load_alert_index(transit_legs),
+            self._load_subway_arrivals(transit_legs),
+            self._load_rail_arrivals(transit_legs),
+            self._load_bus_arrivals(transit_legs),
+        )
+
+        self._enrich_legs_realtime(
+            transit_legs,
+            alerts_by_key=alerts_by_key,
+            subway_arrivals_by_key=subway_arrivals_by_key,
+            rail_arrivals_by_mode=rail_arrivals_by_mode,
+            bus_arrivals_by_stop=bus_arrivals_by_stop,
+        )
+
+    def _enrich_trip(
+        self,
+        trip: GoTrip,
+        *,
+        alerts_by_key: dict[str, list[ServiceAlertSummary]],
+        subway_arrivals_by_key: dict[str, list[Any]],
+        rail_arrivals_by_mode: dict[str, list[Any]],
+        bus_arrivals_by_stop: dict[str, list[Any]],
+        priority: str | None = None,
+    ) -> GoTrip:
+        # Delegate leg-level RT enrichment to the shared core
+        self._enrich_legs_realtime(
+            trip.itinerary.legs,
+            alerts_by_key=alerts_by_key,
+            subway_arrivals_by_key=subway_arrivals_by_key,
+            rail_arrivals_by_mode=rail_arrivals_by_mode,
+            bus_arrivals_by_stop=bus_arrivals_by_stop,
+        )
 
         trip.service_alerts = self._dedupe_alerts(
             [
@@ -3132,6 +3200,13 @@ class TrackEngineService:
         itineraries, schedule_note = await self._remote_plan(request)
         # Tag ADA accessibility on all results so iOS always has the data
         self._tag_ada_accessibility(itineraries)
+        # ── Real-time enrichment (same feeds as Go) ──────────────────
+        # Overlay GTFS-RT live_status + alerts on every transit leg so
+        # the Plan tab shows live/delayed/cancelled badges identical to
+        # what riders already see in the Go experience.
+        if self.enable_realtime_enrichment and itineraries:
+            with suppress(Exception):
+                await self._enrich_itineraries_realtime(itineraries)
         # When the user prioritises accessibility, push accessible trips first
         if getattr(request, "accessibility_priority", False):
             itineraries = self._rerank_for_accessibility(itineraries)
