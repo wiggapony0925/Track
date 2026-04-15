@@ -999,6 +999,63 @@ struct TrackAPI {
         return try decoder.decode([PlannerRecommendation].self, from: data)
     }
 
+    // MARK: - Saved Trip Templates
+
+    static func fetchEngineSavedTrips(
+        userID: String
+    ) async throws -> [PlannerSavedTripRecord] {
+        guard var components = URLComponents(string: baseURL + "/engine/trips/saved") else {
+            throw TrackAPIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "user_id", value: userID)]
+        guard let url = components.url else {
+            throw TrackAPIError.invalidURL
+        }
+        let data = try await get(url: url)
+        return try decoder.decode([PlannerSavedTripRecord].self, from: data)
+    }
+
+    static func upsertEngineSavedTrip(
+        request payload: EngineSavedTripUpsertRequest
+    ) async throws -> PlannerSavedTripRecord {
+        let data = try await sendJSON(
+            method: "POST",
+            path: "/engine/trips/saved",
+            body: payload,
+            timeout: 20
+        )
+        return try decoder.decode(PlannerSavedTripRecord.self, from: data)
+    }
+
+    static func deleteEngineSavedTrip(
+        tripID: Int,
+        userID: String
+    ) async throws {
+        _ = try await sendJSON(
+            method: "DELETE",
+            path: "/engine/trips/saved/\(tripID)",
+            queryItems: [URLQueryItem(name: "user_id", value: userID)],
+            timeout: 20
+        )
+    }
+
+    // MARK: - Calendar Events
+
+    static func replaceCalendarEvents(
+        userID: String,
+        events: [CalendarEventPayload]
+    ) async throws {
+        _ = try await sendJSON(
+            method: "PUT",
+            path: "/engine/calendar/events",
+            queryItems: [URLQueryItem(name: "user_id", value: userID)],
+            body: events,
+            timeout: 20
+        )
+    }
+
+    // MARK: - Go (Trip Planning)
+
     static func fetchEngineGo(
         request payload: EngineGoRequestPayload
     ) async throws -> EngineGoResponseDTO {

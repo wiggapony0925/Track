@@ -73,6 +73,7 @@ final class AppLogger: @unchecked Sendable {
         let fmt = dateFormatter
 
         // Append to log file asynchronously to avoid blocking main thread
+        // Append to log file asynchronously to avoid blocking main thread
         writeQueue.async { [fileURL] in
             let timestamp = fmt.string(from: now)
             let entry = "[\(timestamp)] [\(tag)] \(message)\n"

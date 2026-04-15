@@ -246,12 +246,12 @@ struct PlanView: View {
                 .disabled(true)
                 .allowsHitTesting(false)
 
-                // Purple fade overlay
+                // Purple fade overlay with subtle noise texture
                 LinearGradient(
                     stops: [
-                        .init(color: AppTheme.Colors.accentDeep.opacity(0.20), location: 0),
-                        .init(color: AppTheme.Colors.accentDeep.opacity(0.50), location: 0.35),
-                        .init(color: AppTheme.Colors.accentDeep.opacity(0.82), location: 0.7),
+                        .init(color: AppTheme.Colors.accentDeep.opacity(0.15), location: 0),
+                        .init(color: AppTheme.Colors.accentDeep.opacity(0.45), location: 0.30),
+                        .init(color: AppTheme.Colors.accentDeep.opacity(0.80), location: 0.65),
                         .init(color: AppTheme.Colors.background, location: 1),
                     ],
                     startPoint: .top, endPoint: .bottom
@@ -433,7 +433,23 @@ struct PlanView: View {
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(AppTheme.Colors.cardBackground)
-                .shadow(color: .black.opacity(0.12), radius: 20, y: 8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: AppTheme.Colors.glassHighlight.opacity(0.06), location: 0),
+                                    .init(color: .clear, location: 0.4),
+                                ],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.15), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.15), radius: 24, y: 10)
         )
         .padding(.horizontal, 16)
         .opacity(appeared ? 1 : 0)
@@ -497,6 +513,7 @@ struct PlanView: View {
         VStack(spacing: 28) {
             quickAccessRow
             savedPlacesSection
+            savedRoutesSection
             suggestionsCarousel
             recentTripsSection
             Spacer(minLength: viewModel.destination != nil ? 120 : 80)
@@ -556,12 +573,16 @@ struct PlanView: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(color)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 28, height: 28)
                     .background(
                         Circle()
                             .fill(color.opacity(0.12))
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(color.opacity(0.18), lineWidth: 0.8)
+                            )
                     )
 
                 Text(label)
@@ -569,16 +590,28 @@ struct PlanView: View {
                     .foregroundStyle(AppTheme.Colors.textPrimary)
             }
             .padding(.trailing, 14)
-            .padding(.leading, 6)
+            .padding(.leading, 7)
             .padding(.vertical, 8)
             .background(
                 Capsule()
                     .fill(AppTheme.Colors.cardBackground)
                     .overlay(
                         Capsule()
-                            .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.12), lineWidth: 0.5)
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: AppTheme.Colors.glassHighlight.opacity(0.08), location: 0),
+                                        .init(color: .clear, location: 0.5),
+                                    ],
+                                    startPoint: .top, endPoint: .bottom
+                                )
+                            )
                     )
-                    .shadow(color: .black.opacity(0.06), radius: 6, y: 2)
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.18), lineWidth: 0.5)
+                    )
+                    .shadow(color: color.opacity(0.08), radius: 8, y: 3)
             )
         }
         .buttonStyle(PlanCardButtonStyle())
@@ -596,12 +629,23 @@ struct PlanView: View {
                 Button {
                     viewModel.beginCustomPlaceFlow()
                 } label: {
-                    Label("Add", systemImage: "plus")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.accent)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(AppTheme.Colors.accent.opacity(0.1)))
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 10, weight: .black))
+                        Text("Add")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                    }
+                    .foregroundStyle(AppTheme.Colors.accent)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(AppTheme.Colors.accent.opacity(0.10))
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(AppTheme.Colors.accent.opacity(0.15), lineWidth: 0.5)
+                            )
+                    )
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 20)
@@ -648,13 +692,16 @@ struct PlanView: View {
                         VStack(spacing: 8) {
                             ZStack {
                                 Circle()
+                                    .fill(AppTheme.Colors.cardInset.opacity(0.5))
+                                    .frame(width: 54, height: 54)
+                                Circle()
                                     .strokeBorder(
-                                        AppTheme.Colors.borderSubtle.opacity(0.35),
-                                        style: StrokeStyle(lineWidth: 1.5, dash: [5])
+                                        AppTheme.Colors.borderSubtle.opacity(0.40),
+                                        style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])
                                     )
-                                    .frame(width: 56, height: 56)
+                                    .frame(width: 54, height: 54)
                                 Image(systemName: "plus")
-                                    .font(.system(size: 18, weight: .medium))
+                                    .font(.system(size: 17, weight: .medium))
                                     .foregroundStyle(AppTheme.Colors.textTertiary)
                             }
                             Text("Add")
@@ -684,30 +731,52 @@ struct PlanView: View {
         } label: {
             VStack(spacing: 8) {
                 ZStack {
+                    // Outer glow ring for set places
+                    if location != nil {
+                        Circle()
+                            .fill(color.opacity(0.06))
+                            .frame(width: 62, height: 62)
+                    }
+
                     Circle()
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    color.opacity(location != nil ? 0.22 : 0.08),
+                                    color.opacity(location != nil ? 0.22 : 0.06),
                                     color.opacity(location != nil ? 0.08 : 0.02),
                                 ],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 56, height: 56)
+                        .frame(width: 54, height: 54)
                         .overlay(
                             Circle().strokeBorder(
-                                color.opacity(location != nil ? 0.3 : 0.1), lineWidth: 1.5
+                                color.opacity(location != nil ? 0.35 : 0.12), lineWidth: 1.5
                             )
                         )
                         .shadow(
-                            color: location != nil ? color.opacity(0.15) : .clear,
-                            radius: 8, y: 3
+                            color: location != nil ? color.opacity(0.20) : .clear,
+                            radius: 10, y: 4
                         )
 
+                    // Glass shimmer overlay
+                    if location != nil {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: .white.opacity(0.08), location: 0),
+                                        .init(color: .clear, location: 0.45),
+                                    ],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 54, height: 54)
+                    }
+
                     Image(systemName: icon)
-                        .font(.system(size: 21, weight: .semibold))
-                        .foregroundStyle(color.opacity(location != nil ? 1 : 0.4))
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(color.opacity(location != nil ? 1 : 0.35))
                 }
 
                 Text(location != nil ? label : "Set")
@@ -728,6 +797,151 @@ struct PlanView: View {
                     Label("Remove \(label)", systemImage: "trash")
                 }
             }
+        }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // MARK: - My Routes (Saved Trip Templates)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    @ViewBuilder
+    private var savedRoutesSection: some View {
+        if !viewModel.savedTripTemplates.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                sectionTitle("My Routes")
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(viewModel.savedTripTemplates) { template in
+                            savedRouteCard(template)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+            }
+        }
+    }
+
+    private func savedRouteCard(_ template: PlannerSavedTripRecord) -> some View {
+        Button {
+            viewModel.planFromTemplate(template)
+        } label: {
+            HStack(spacing: 0) {
+                // Colored accent bar — left edge
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(
+                        LinearGradient(
+                            colors: [AppTheme.Colors.accentSecondary, AppTheme.Colors.accent],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 3.5)
+                    .padding(.vertical, 10)
+                    .padding(.leading, 4)
+
+                HStack(spacing: 14) {
+                    // Left — star circle with ring
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.Colors.accentSecondary.opacity(0.12))
+                            .frame(width: 44, height: 44)
+                        Circle()
+                            .strokeBorder(AppTheme.Colors.accentSecondary.opacity(0.20), lineWidth: 1)
+                            .frame(width: 44, height: 44)
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(AppTheme.Colors.accentSecondary)
+                    }
+
+                    // Center — text
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(template.name)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.Colors.textPrimary)
+                            .lineLimit(1)
+
+                        HStack(spacing: 4) {
+                            Text(template.originLabel)
+                                .lineLimit(1)
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(template.destinationLabel)
+                                .lineLimit(1)
+                        }
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+
+                        if !template.preferredModes.isEmpty {
+                            HStack(spacing: 4) {
+                                ForEach(template.preferredModes.prefix(3), id: \.self) { mode in
+                                    Image(systemName: modeIconForTemplate(mode))
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(AppTheme.Colors.accent.opacity(0.7))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+
+                    // Right — Go arrow with glass ring
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.Colors.accentSecondary.opacity(0.12))
+                            .frame(width: 36, height: 36)
+                        Circle()
+                            .strokeBorder(AppTheme.Colors.accentSecondary.opacity(0.30), lineWidth: 1.5)
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(AppTheme.Colors.accentSecondary)
+                    }
+                }
+                .padding(.leading, 10)
+                .padding(.trailing, 14)
+                .padding(.vertical, 14)
+            }
+            .frame(width: 280, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppTheme.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: AppTheme.Colors.accentSecondary.opacity(0.04), location: 0),
+                                        .init(color: .clear, location: 0.5),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(AppTheme.Colors.accentSecondary.opacity(0.08), lineWidth: 0.8)
+                    )
+                    .shadow(color: AppTheme.Colors.accentSecondary.opacity(0.08), radius: 12, y: 4)
+            )
+        }
+        .buttonStyle(PlanCardButtonStyle())
+        .contextMenu {
+            Button(role: .destructive) {
+                Task { await viewModel.deleteSavedTripTemplate(template) }
+            } label: {
+                Label("Delete Route", systemImage: "trash")
+            }
+        }
+    }
+
+    private func modeIconForTemplate(_ mode: String) -> String {
+        switch mode {
+        case "subway": return "tram.fill"
+        case "bus":    return "bus.fill"
+        case "lirr", "mnr": return "train.side.front.car"
+        case "walk":   return "figure.walk"
+        default:       return "map.fill"
         }
     }
 
@@ -760,53 +974,87 @@ struct PlanView: View {
             viewModel.selectRecommendation(rec)
             Task { await viewModel.planTrip() }
         } label: {
-            HStack(spacing: 14) {
-                // Left — Icon circle
-                ZStack {
-                    Circle()
-                        .fill(accent.opacity(0.10))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: recIcon(rec.source))
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(accent)
+            HStack(spacing: 0) {
+                // Colored accent bar — left edge
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(accent)
+                    .frame(width: 3.5)
+                    .padding(.vertical, 10)
+                    .padding(.leading, 4)
+
+                HStack(spacing: 14) {
+                    // Left — Icon circle with ring
+                    ZStack {
+                        Circle()
+                            .fill(accent.opacity(0.12))
+                            .frame(width: 44, height: 44)
+                        Circle()
+                            .strokeBorder(accent.opacity(0.20), lineWidth: 1)
+                            .frame(width: 44, height: 44)
+                        Image(systemName: recIcon(rec.source))
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(accent)
+                    }
+
+                    // Center — Text
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(rec.label)
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.Colors.textPrimary)
+                            .lineLimit(1)
+
+                        Text(rec.reason)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(accent)
+                            .lineLimit(1)
+
+                        Text(rec.subtitle)
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(AppTheme.Colors.textTertiary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    // Right — Go arrow with glass ring
+                    ZStack {
+                        Circle()
+                            .fill(accent.opacity(0.12))
+                            .frame(width: 36, height: 36)
+                        Circle()
+                            .strokeBorder(accent.opacity(0.30), lineWidth: 1.5)
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(accent)
+                    }
                 }
-
-                // Center — Text
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(rec.label)
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
-
-                    Text(rec.reason)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(accent)
-                        .lineLimit(1)
-
-                    Text(rec.subtitle)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textTertiary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-
-                // Right — Go arrow
-                ZStack {
-                    Circle()
-                        .fill(accent)
-                        .frame(width: 34, height: 34)
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                }
+                .padding(.leading, 10)
+                .padding(.trailing, 14)
+                .padding(.vertical, 14)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
             .frame(width: 280, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(AppTheme.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: accent.opacity(0.04), location: 0),
+                                        .init(color: .clear, location: 0.5),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(accent.opacity(0.08), lineWidth: 0.8)
+                    )
+                    .shadow(color: accent.opacity(0.08), radius: 12, y: 4)
             )
         }
         .buttonStyle(PlanCardButtonStyle())
@@ -828,7 +1076,12 @@ struct PlanView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(
-                            Capsule().fill(AppTheme.Colors.accent.opacity(0.10))
+                            Capsule()
+                                .fill(AppTheme.Colors.accent.opacity(0.10))
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(AppTheme.Colors.accent.opacity(0.15), lineWidth: 0.5)
+                                )
                         )
                         .padding(.trailing, 20)
                 }
@@ -881,19 +1134,26 @@ struct PlanView: View {
                 Circle()
                     .fill(AppTheme.Colors.cardBackground)
                     .frame(width: 66, height: 66)
-                    .overlay(Circle().strokeBorder(AppTheme.Colors.accent.opacity(0.08), lineWidth: 1))
-                    .shadow(color: AppTheme.Colors.accent.opacity(0.06), radius: 10)
+                    .overlay(
+                        Circle().strokeBorder(AppTheme.Colors.accent.opacity(0.12), lineWidth: 1)
+                    )
+                    .shadow(color: AppTheme.Colors.accent.opacity(0.10), radius: 12)
                 Image(systemName: "tram.fill")
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.accent)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                    )
             }
 
-            VStack(spacing: 4) {
+            VStack(spacing: 6) {
                 Text("No recent trips")
                     .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                 Text("Search a destination to plan your first trip")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textTertiary)
                     .multilineTextAlignment(.center)
             }
@@ -946,12 +1206,22 @@ struct PlanView: View {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     private func sectionTitle(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 13, weight: .heavy, design: .rounded))
-            .foregroundColor(AppTheme.Colors.textTertiary)
-            .textCase(.uppercase)
-            .tracking(0.6)
-            .padding(.leading, 20)
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(
+                    LinearGradient(
+                        colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+                .frame(width: 3, height: 14)
+            Text(title)
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textTertiary)
+                .textCase(.uppercase)
+                .tracking(0.8)
+        }
+        .padding(.leading, 20)
     }
 
     private func recColor(_ source: String) -> Color {

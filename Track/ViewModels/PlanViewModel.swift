@@ -43,6 +43,7 @@ final class PlanViewModel {
     var savedLocations: [SavedLocation] = []
     var recentSearches: [RecentSearchLocation] = []
     var savedTrips: [SavedTrip] = []
+    var savedTripTemplates: [PlannerSavedTripRecord] = []
     var calendarLocations: [SavedLocation] = []
     var pendingSavedPlaceCategory: SavedLocationCategory?
     var customPlaceLabel: String = ""
@@ -417,6 +418,7 @@ final class PlanViewModel {
             savedLocations = []
             recentSearches = []
             savedTrips = []
+            savedTripTemplates = []
             calendarLocations = []
             recommendations = []
             return
@@ -425,6 +427,7 @@ final class PlanViewModel {
         do {
             async let savedPlacesTask = TrackAPI.fetchEngineSavedPlaces(userID: userID)
             async let recentTripsTask = TrackAPI.fetchEngineRecentTrips(userID: userID, limit: 12)
+            async let savedTripTemplatesTask = TrackAPI.fetchEngineSavedTrips(userID: userID)
             async let recommendationsTask = TrackAPI.fetchEngineRecommendations(
                 userID: userID,
                 latitude: effectiveOriginCoordinate?.latitude,
@@ -433,11 +436,13 @@ final class PlanViewModel {
                 limit: 6
             )
 
-            let (savedPlaces, recentTrips, recommendations) = try await (
+            let (savedPlaces, recentTrips, templates, recommendations) = try await (
                 savedPlacesTask,
                 recentTripsTask,
+                savedTripTemplatesTask,
                 recommendationsTask
             )
+            savedTripTemplates = templates
             applyPlannerSnapshot(
                 savedPlaces: savedPlaces,
                 recentTrips: recentTrips,
@@ -644,6 +649,97 @@ final class PlanViewModel {
 
     func savedLocation(for category: SavedLocationCategory) -> SavedLocation? {
         savedLocations.first { $0.resolvedCategory == category }
+    }
+
+    // MARK: - Saved Trip Templates
+
+    /// Save the current origin/destination as a reusable trip template.
+    func saveTripTemplate(name: String) async {
+        guard let userID = currentUserID,
+              let dest = destination else { return }
+
+        let originPayload = EngineLocationPayloadRequest(
+            label: origin.displayName,
+            lat: resolvedCoordinate(for: origin)?.latitude,
+            lon: resolvedCoordinate(for: origin)?.longitude,
+            stopID: nil,
+            address: origin.displayAddress
+        )
+        let destPayload = EngineLocationPayloadRequest(
+            label: dest.displayName,
+            lat: resolvedCoordinate(for: dest)?.latitude,
+            lon: resolvedCoordinate(for: dest)?.longitude,
+            stopID: nil,
+            address: dest.displayAddress
+        )
+
+        let modes = tripConfiguration.enabledModes
+
+        let request = EngineSavedTripUpsertRequest(
+            userID: userID,
+            name: name,
+            origin: originPayload,
+            destination: destPayload,
+            preferredDepartureHour: nil,
+            preferredArrivalHour: nil,
+            preferredModes: modes,
+            tripID: nil
+        )
+
+        do {
+            let saved = try await TrackAPI.upsertEngineSavedTrip(request: request)
+            savedTripTemplates.insert(saved, at: 0)
+        } catch {
+            let (kind, message) = friendlyError(for: error)
+            errorKind = kind
+            errorMessage = message
+        }
+    }
+
+    /// Delete a saved trip template.
+    func deleteSavedTripTemplate(_ template: PlannerSavedTripRecord) async {
+        guard let userID = currentUserID else { return }
+
+        do {
+            try await TrackAPI.deleteEngineSavedTrip(tripID: template.tripID, userID: userID)
+            savedTripTemplates.removeAll { $0.tripID == template.tripID }
+        } catch {
+            let (kind, message) = friendlyError(for: error)
+            errorKind = kind
+            errorMessage = message
+        }
+    }
+
+    /// Launch a trip plan from a saved trip template.
+    func planFromTemplate(_ template: PlannerSavedTripRecord) {
+        origin = .custom(
+            name: template.originLabel,
+            address: "",
+            lat: template.originLat,
+            lon: template.originLon
+        )
+        destination = .custom(
+            name: template.destinationLabel,
+            address: "",
+            lat: template.destinationLat,
+            lon: template.destinationLon
+        )
+        Task { await planTrip() }
+    }
+
+    // MARK: - Calendar Sync
+
+    /// Sync upcoming calendar events to the backend for smarter recommendations.
+    func syncCalendarEvents(_ events: [CalendarEventPayload]) async {
+        guard let userID = currentUserID else { return }
+        do {
+            try await TrackAPI.replaceCalendarEvents(userID: userID, events: events)
+            await refreshPlannerData()
+        } catch {
+            #if DEBUG
+            print("[CalendarSync] Failed: \(error.localizedDescription)")
+            #endif
+        }
     }
 
     // MARK: - Trip Configuration

@@ -11,6 +11,8 @@ struct TripResultsView: View {
     @State private var appeared = false
     @State private var headerPulse = false
     @State private var showSettings = false
+    @State private var showSaveRouteAlert = false
+    @State private var saveRouteName = ""
 
     var body: some View {
         NavigationStack {
@@ -56,6 +58,15 @@ struct TripResultsView: View {
                         Task { await viewModel.planTrip() }
                     }
                 )
+            }
+            .alert("Save Route", isPresented: $showSaveRouteAlert) {
+                TextField("Route name", text: $saveRouteName)
+                Button("Save") {
+                    Task { await viewModel.saveTripTemplate(name: saveRouteName) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Save this route for quick access in your Plan tab.")
             }
             .onAppear {
                 withAnimation(.easeOut(duration: 0.5).delay(0.15)) {
@@ -225,6 +236,24 @@ struct TripResultsView: View {
                 )
             }
             .buttonStyle(.plain)
+
+            // Save route
+            Button {
+                saveRouteName = "\(viewModel.origin.displayName) → \(viewModel.destination?.displayName ?? "")"
+                showSaveRouteAlert = true
+            } label: {
+                Image(systemName: "star")
+                    .font(.system(size: 17, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        Circle()
+                            .fill(Color(red: 0.22, green: 0.22, blue: 0.25))
+                            .overlay(Circle().strokeBorder(.white.opacity(0.08), lineWidth: 1))
+                            .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                    )
+            }
+            .buttonStyle(ResultsButtonStyle())
 
             // Refresh — always bypass cache
             Button {

@@ -845,6 +845,103 @@ struct PlannerRecentTripRecord: Codable, Equatable {
     }
 }
 
+// MARK: - Saved Trip Templates (from /engine/trips/saved)
+
+struct PlannerSavedTripRecord: Codable, Identifiable, Equatable {
+    let tripID: Int
+    let userID: String
+    let name: String
+    let originLabel: String
+    let originLat: Double
+    let originLon: Double
+    let destinationLabel: String
+    let destinationLat: Double
+    let destinationLon: Double
+    let preferredDepartureHour: Int?
+    let preferredArrivalHour: Int?
+    let preferredModes: [String]
+    let createdAt: Int
+    let updatedAt: Int
+    let lastUsedAt: Int?
+
+    var id: Int { tripID }
+
+    enum CodingKeys: String, CodingKey {
+        case tripID = "trip_id"
+        case userID = "user_id"
+        case name
+        case originLabel = "origin_label"
+        case originLat = "origin_lat"
+        case originLon = "origin_lon"
+        case destinationLabel = "destination_label"
+        case destinationLat = "destination_lat"
+        case destinationLon = "destination_lon"
+        case preferredDepartureHour = "preferred_departure_hour"
+        case preferredArrivalHour = "preferred_arrival_hour"
+        case preferredModes = "preferred_modes"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case lastUsedAt = "last_used_at"
+    }
+
+    var lastUsedDate: Date? {
+        lastUsedAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+    }
+
+    var preferredDepartureString: String? {
+        guard let h = preferredDepartureHour else { return nil }
+        let hour12 = h % 12 == 0 ? 12 : h % 12
+        let ampm = h < 12 ? "AM" : "PM"
+        return "\(hour12) \(ampm)"
+    }
+}
+
+struct EngineSavedTripUpsertRequest: Encodable, Equatable {
+    let userID: String
+    let name: String
+    let origin: EngineLocationPayloadRequest
+    let destination: EngineLocationPayloadRequest
+    let preferredDepartureHour: Int?
+    let preferredArrivalHour: Int?
+    let preferredModes: [String]
+    let tripID: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case userID = "user_id"
+        case name
+        case origin
+        case destination
+        case preferredDepartureHour = "preferred_departure_hour"
+        case preferredArrivalHour = "preferred_arrival_hour"
+        case preferredModes = "preferred_modes"
+        case tripID = "trip_id"
+    }
+}
+
+// MARK: - Calendar Events (for /engine/calendar/events)
+
+struct CalendarEventPayload: Encodable, Equatable {
+    let externalID: String
+    let title: String
+    let locationLabel: String
+    let startsAt: Int
+    let endsAt: Int?
+    let lat: Double?
+    let lon: Double?
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case externalID = "external_id"
+        case title
+        case locationLabel = "location_label"
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
+        case lat
+        case lon
+        case notes
+    }
+}
+
 // MARK: - TrackEngine Request / Response DTOs
 
 struct EngineLocationPayloadRequest: Encodable, Equatable {
