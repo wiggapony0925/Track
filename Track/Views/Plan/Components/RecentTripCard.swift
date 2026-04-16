@@ -292,25 +292,7 @@ struct RecentTripCard: View {
     // MARK: - Card Background
 
     private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .fill(AppTheme.Colors.cardBackground)
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white.opacity(0.035), location: 0),
-                                .init(color: .clear, location: 0.42),
-                            ],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.16), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+        Color.clear
     }
 
     // MARK: - Helpers

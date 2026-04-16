@@ -952,13 +952,13 @@ struct PlanView: View {
     @ViewBuilder
     private var suggestionsCarousel: some View {
         if !viewModel.recommendations.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 sectionTitle("Suggested for You")
 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 10) {
                         ForEach(viewModel.recommendations) { rec in
-                            suggestionCard(rec)
+                            suggestionTile(rec)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -967,39 +967,39 @@ struct PlanView: View {
         }
     }
 
-    private func suggestionCard(_ rec: PlannerRecommendation) -> some View {
+    private func suggestionTile(_ rec: PlannerRecommendation) -> some View {
         let accent = recColor(rec.source)
 
         return Button {
             viewModel.selectRecommendation(rec)
             Task { await viewModel.planTrip() }
         } label: {
-            HStack(spacing: 0) {
-                // Colored accent bar — left edge
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(accent)
-                    .frame(width: 3.5)
-                    .padding(.vertical, 10)
-                    .padding(.leading, 4)
+            HStack(spacing: 12) {
+                // Content
+                VStack(alignment: .leading, spacing: 10) {
+                    // Icon row
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(accent.opacity(0.12))
+                                .frame(width: 38, height: 38)
+                            Image(systemName: recIcon(rec.source))
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(accent)
+                        }
 
-                HStack(spacing: 14) {
-                    // Left — Icon circle with ring
-                    ZStack {
-                        Circle()
-                            .fill(accent.opacity(0.12))
-                            .frame(width: 44, height: 44)
-                        Circle()
-                            .strokeBorder(accent.opacity(0.20), lineWidth: 1)
-                            .frame(width: 44, height: 44)
-                        Image(systemName: recIcon(rec.source))
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(accent)
+                        Spacer(minLength: 0)
+
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(accent.opacity(0.6))
+                            .symbolRenderingMode(.hierarchical)
                     }
 
-                    // Center — Text
-                    VStack(alignment: .leading, spacing: 4) {
+                    // Text
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(rec.label)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(.system(size: 16, weight: .heavy, design: .rounded))
                             .foregroundStyle(AppTheme.Colors.textPrimary)
                             .lineLimit(1)
 
@@ -1007,57 +1007,19 @@ struct PlanView: View {
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundStyle(accent)
                             .lineLimit(1)
-
-                        Text(rec.subtitle)
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundStyle(AppTheme.Colors.textTertiary)
-                            .lineLimit(1)
                     }
 
-                    Spacer(minLength: 0)
-
-                    // Right — Go arrow with glass ring
-                    ZStack {
-                        Circle()
-                            .fill(accent.opacity(0.12))
-                            .frame(width: 36, height: 36)
-                        Circle()
-                            .strokeBorder(accent.opacity(0.30), lineWidth: 1.5)
-                            .frame(width: 36, height: 36)
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(accent)
-                    }
+                    Text(rec.subtitle)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                        .lineLimit(1)
                 }
-                .padding(.leading, 10)
-                .padding(.trailing, 14)
-                .padding(.vertical, 14)
             }
-            .frame(width: 280, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(AppTheme.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: accent.opacity(0.04), location: 0),
-                                        .init(color: .clear, location: 0.5),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(accent.opacity(0.08), lineWidth: 0.8)
-                    )
-                    .shadow(color: accent.opacity(0.08), radius: 12, y: 4)
-            )
+            .padding(.vertical, 12)
+            .padding(.trailing, 14)
+            .frame(width: 200, alignment: .leading)
         }
-        .buttonStyle(PlanCardButtonStyle())
+        .buttonStyle(.plain)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
