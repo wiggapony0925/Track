@@ -2,6 +2,7 @@
 // (trip planner) experiences.  Uses a compact floating pill tab
 // bar that stays out of the way of the map and sheet content.
 
+import CoreLocation
 import SwiftUI
 
 // MARK: - Tab Enum
@@ -36,15 +37,38 @@ struct MainTabView: View {
     var locationManager: LocationManager
     @State private var selectedTab: AppTab = .home
 
+    // Shared map state — owned here so both Home and Plan tabs
+    // share the same interactive MapLibre map instance data.
+    @State private var homeViewModel = HomeViewModel()
+    @State private var cameraPosition: TrackCameraPosition = .userLocation
+    @State private var showStations: Bool = true
+    @State private var currentMapCenter: CLLocationCoordinate2D?
+    @State private var currentMapDistance: Double?
+
     var body: some View {
         ZStack(alignment: .bottom) {
             // TabView with page style: keeps both views alive, supports
             // native swipe-to-switch, and properly isolates sheets.
             TabView(selection: $selectedTab) {
-                HomeView(locationManager: locationManager, isActive: selectedTab == .home)
+                HomeView(
+                    viewModel: homeViewModel,
+                    locationManager: locationManager,
+                    isActive: selectedTab == .home,
+                    cameraPosition: $cameraPosition,
+                    showStations: $showStations,
+                    currentMapCenter: $currentMapCenter,
+                    currentMapDistance: $currentMapDistance
+                )
                     .tag(AppTab.home)
 
-                PlanView(locationManager: locationManager)
+                PlanView(
+                    locationManager: locationManager,
+                    homeViewModel: homeViewModel,
+                    cameraPosition: $cameraPosition,
+                    showStations: $showStations,
+                    currentMapCenter: $currentMapCenter,
+                    currentMapDistance: $currentMapDistance
+                )
                     .tag(AppTab.plan)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))

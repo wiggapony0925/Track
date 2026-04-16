@@ -4,11 +4,17 @@
 
 import SwiftUI
 import SwiftData
-import MapKit
+import CoreLocation
+import MapLibre
 
 struct PlanView: View {
     @Environment(\.modelContext) private var modelContext
     let locationManager: LocationManager
+    var homeViewModel: HomeViewModel
+    @Binding var cameraPosition: TrackCameraPosition
+    @Binding var showStations: Bool
+    @Binding var currentMapCenter: CLLocationCoordinate2D?
+    @Binding var currentMapDistance: Double?
     @State private var viewModel = PlanViewModel()
     @State private var animatePulse = false
     @State private var appeared = false
@@ -16,7 +22,6 @@ struct PlanView: View {
     @State private var randomHeadline: String = "Where to?"
     @State private var cardShakeOffset: CGFloat = 0
     @State private var showSameLocationToast = false
-    @State private var heroMapSnapshot: UIImage?
 
     private static let headlines: [String] = [
         "Where to?",
@@ -96,7 +101,6 @@ struct PlanView: View {
                 withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
                     animatePulse = true
                 }
-                generateHeroSnapshot()
             }
             .onChange(of: viewModel.sameLocationMessage) { _, newValue in
                 guard newValue != nil else { return }
@@ -139,145 +143,6 @@ struct PlanView: View {
         }
     }
 
-    // NYC map config
-    private static let nycCenter = CLLocationCoordinate2D(latitude: 40.7520, longitude: -73.9880)
-    private static let nycSpan = MKCoordinateSpan(latitudeDelta: 0.04, longitudeDelta: 0.04)
-
-    // Decorative subway trunk polylines (actual MTA corridor approximations)
-    private static let subwayLines: [(coords: [CLLocationCoordinate2D], color: Color)] = [
-        // 1/2/3 — Red — 7th Ave / Broadway local
-        ([
-            CLLocationCoordinate2D(latitude: 40.7830, longitude: -73.9722), // 96 St
-            CLLocationCoordinate2D(latitude: 40.7785, longitude: -73.9810), // 86 St
-            CLLocationCoordinate2D(latitude: 40.7719, longitude: -73.9824), // 72 St
-            CLLocationCoordinate2D(latitude: 40.7649, longitude: -73.9818), // 59 St Columbus
-            CLLocationCoordinate2D(latitude: 40.7580, longitude: -73.9855), // 50 St
-            CLLocationCoordinate2D(latitude: 40.7527, longitude: -73.9877), // Times Sq
-            CLLocationCoordinate2D(latitude: 40.7470, longitude: -73.9901), // 34 St Penn
-            CLLocationCoordinate2D(latitude: 40.7418, longitude: -73.9910), // 28 St
-            CLLocationCoordinate2D(latitude: 40.7353, longitude: -73.9906), // 18 St
-            CLLocationCoordinate2D(latitude: 40.7298, longitude: -73.9935), // 14 St
-        ], Color(red: 0.93, green: 0.22, blue: 0.20)),
-        // 4/5/6 — Green — Lexington Ave
-        ([
-            CLLocationCoordinate2D(latitude: 40.7794, longitude: -73.9555), // 86 St
-            CLLocationCoordinate2D(latitude: 40.7688, longitude: -73.9564), // 77 St
-            CLLocationCoordinate2D(latitude: 40.7633, longitude: -73.9586), // 68 St Hunter
-            CLLocationCoordinate2D(latitude: 40.7585, longitude: -73.9659), // 59 St
-            CLLocationCoordinate2D(latitude: 40.7527, longitude: -73.9680), // 51 St
-            CLLocationCoordinate2D(latitude: 40.7507, longitude: -73.9764), // Grand Central
-            CLLocationCoordinate2D(latitude: 40.7449, longitude: -73.9783), // 33 St
-            CLLocationCoordinate2D(latitude: 40.7386, longitude: -73.9829), // 28 St
-            CLLocationCoordinate2D(latitude: 40.7327, longitude: -73.9893), // 23 St
-            CLLocationCoordinate2D(latitude: 40.7256, longitude: -73.9898), // 14 St Union
-        ], Color(red: 0.0, green: 0.57, blue: 0.27)),
-        // 7 — Flushing Purple — East-West crosstown
-        ([
-            CLLocationCoordinate2D(latitude: 40.7563, longitude: -73.9903), // Times Sq hub
-            CLLocationCoordinate2D(latitude: 40.7549, longitude: -73.9875), // 5th Ave
-            CLLocationCoordinate2D(latitude: 40.7510, longitude: -73.9770), // Grand Central
-            CLLocationCoordinate2D(latitude: 40.7466, longitude: -73.9555), // Vernon-Jackson
-            CLLocationCoordinate2D(latitude: 40.7428, longitude: -73.9397), // Hunters Pt
-            CLLocationCoordinate2D(latitude: 40.7433, longitude: -73.9233), // Court Sq
-        ], Color(red: 0.72, green: 0.33, blue: 0.78)),
-        // N/Q/R/W — Yellow — Broadway express
-        ([
-            CLLocationCoordinate2D(latitude: 40.7809, longitude: -73.9725), // 96 St
-            CLLocationCoordinate2D(latitude: 40.7756, longitude: -73.9817), // 86 St
-            CLLocationCoordinate2D(latitude: 40.7681, longitude: -73.9819), // 72 St
-            CLLocationCoordinate2D(latitude: 40.7613, longitude: -73.9835), // 57 St
-            CLLocationCoordinate2D(latitude: 40.7542, longitude: -73.9866), // 49 St
-            CLLocationCoordinate2D(latitude: 40.7527, longitude: -73.9877), // Times Sq
-            CLLocationCoordinate2D(latitude: 40.7500, longitude: -73.9879), // 34 St Herald
-            CLLocationCoordinate2D(latitude: 40.7441, longitude: -73.9889), // 28 St
-            CLLocationCoordinate2D(latitude: 40.7390, longitude: -73.9900), // 23 St
-            CLLocationCoordinate2D(latitude: 40.7316, longitude: -73.9904), // 14 St Union
-        ], Color(red: 0.98, green: 0.80, blue: 0.18)),
-        // L — Canarsie Gray — 14th St crosstown
-        ([
-            CLLocationCoordinate2D(latitude: 40.7388, longitude: -74.0003), // 8th Ave
-            CLLocationCoordinate2D(latitude: 40.7382, longitude: -73.9968), // 6th Ave
-            CLLocationCoordinate2D(latitude: 40.7369, longitude: -73.9903), // Union Sq
-            CLLocationCoordinate2D(latitude: 40.7345, longitude: -73.9827), // 3rd Ave
-            CLLocationCoordinate2D(latitude: 40.7325, longitude: -73.9754), // 1st Ave
-            CLLocationCoordinate2D(latitude: 40.7301, longitude: -73.9565), // Bedford
-        ], Color(red: 0.63, green: 0.63, blue: 0.63)),
-        // A/C/E — Blue — 8th Ave
-        ([
-            CLLocationCoordinate2D(latitude: 40.7845, longitude: -73.9688), // 103 St
-            CLLocationCoordinate2D(latitude: 40.7770, longitude: -73.9819), // 86 St
-            CLLocationCoordinate2D(latitude: 40.7725, longitude: -73.9815), // 81 St Museum
-            CLLocationCoordinate2D(latitude: 40.7686, longitude: -73.9819), // 72 St
-            CLLocationCoordinate2D(latitude: 40.7615, longitude: -73.9842), // 59 St Columbus
-            CLLocationCoordinate2D(latitude: 40.7562, longitude: -73.9901), // 50 St
-            CLLocationCoordinate2D(latitude: 40.7529, longitude: -73.9929), // 42 St PABT
-            CLLocationCoordinate2D(latitude: 40.7505, longitude: -73.9940), // 34 St Penn
-            CLLocationCoordinate2D(latitude: 40.7453, longitude: -73.9949), // 23 St
-            CLLocationCoordinate2D(latitude: 40.7389, longitude: -74.0004), // 14 St
-        ], Color(red: 0.0, green: 0.24, blue: 0.71)),
-        // B/D/F/M — Orange — 6th Ave
-        ([
-            CLLocationCoordinate2D(latitude: 40.7815, longitude: -73.9722), // 96 St
-            CLLocationCoordinate2D(latitude: 40.7757, longitude: -73.9803), // 81 St
-            CLLocationCoordinate2D(latitude: 40.7692, longitude: -73.9815), // 72 St
-            CLLocationCoordinate2D(latitude: 40.7626, longitude: -73.9808), // 57 St
-            CLLocationCoordinate2D(latitude: 40.7553, longitude: -73.9815), // 47-50 Rock
-            CLLocationCoordinate2D(latitude: 40.7527, longitude: -73.9845), // 42 St Bryant
-            CLLocationCoordinate2D(latitude: 40.7486, longitude: -73.9877), // 34 St Herald
-            CLLocationCoordinate2D(latitude: 40.7433, longitude: -73.9880), // 23 St
-            CLLocationCoordinate2D(latitude: 40.7366, longitude: -73.9905), // 14 St
-            CLLocationCoordinate2D(latitude: 40.7305, longitude: -73.9973), // W 4 St
-        ], Color(red: 1.0, green: 0.39, blue: 0.0)),
-    ]
-
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // MARK: - Hero Map Snapshot
-    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-    /// Generates a static map snapshot with subway polylines once,
-    /// replacing the expensive live Map() view. Cached in @State.
-    private func generateHeroSnapshot() {
-        guard heroMapSnapshot == nil else { return }
-
-        let screenWidth = UIScreen.main.bounds.width
-        let scale = UIScreen.main.scale
-        let options = MKMapSnapshotter.Options()
-        options.region = MKCoordinateRegion(
-            center: Self.nycCenter,
-            span: Self.nycSpan
-        )
-        options.size = CGSize(width: screenWidth, height: 310)
-        options.scale = scale
-        options.pointOfInterestFilter = .excludingAll
-
-        let snapshotter = MKMapSnapshotter(options: options)
-        snapshotter.start { snapshot, error in
-            guard let snapshot, error == nil else { return }
-            let image = UIGraphicsImageRenderer(size: options.size).image { ctx in
-                // Draw the map
-                snapshot.image.draw(at: .zero)
-
-                // Draw subway polylines on top
-                for line in Self.subwayLines {
-                    let path = UIBezierPath()
-                    for (i, coord) in line.coords.enumerated() {
-                        let pt = snapshot.point(for: coord)
-                        if i == 0 { path.move(to: pt) }
-                        else { path.addLine(to: pt) }
-                    }
-                    path.lineWidth = 4 * scale / UIScreen.main.scale
-                    path.lineCapStyle = .round
-                    path.lineJoinStyle = .round
-                    UIColor(line.color).setStroke()
-                    path.stroke()
-                }
-            }
-            DispatchQueue.main.async {
-                heroMapSnapshot = image
-            }
-        }
-    }
-
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Hero Header
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -286,18 +151,17 @@ struct PlanView: View {
         VStack(spacing: 0) {
             // ── Map banner with polylines + purple fade ──
             ZStack(alignment: .bottom) {
-                // Cached map snapshot — rendered once, no live MapKit overhead
-                if let snapshot = heroMapSnapshot {
-                    Image(uiImage: snapshot)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: .infinity)
-                        .clipped()
-                } else {
-                    // Placeholder while snapshot renders (< 0.5s)
-                    Rectangle()
-                        .fill(AppTheme.Colors.cardBackground)
-                }
+                // Real interactive MapLibre map — same instance data as
+                // the Home tab. Camera + polylines stay perfectly in sync.
+                MapLibreTrackMapView(
+                    cameraPosition: $cameraPosition,
+                    viewModel: homeViewModel,
+                    locationManager: locationManager,
+                    showStations: $showStations,
+                    currentMapCenter: $currentMapCenter,
+                    currentMapDistance: $currentMapDistance
+                )
+                .allowsHitTesting(true)
 
                 // Purple fade overlay with subtle noise texture
                 LinearGradient(
@@ -1359,6 +1223,13 @@ private struct DashedConnector: Shape {
 }
 
 #Preview {
-    PlanView(locationManager: LocationManager())
+    PlanView(
+        locationManager: LocationManager(),
+        homeViewModel: HomeViewModel(),
+        cameraPosition: .constant(.userLocation),
+        showStations: .constant(true),
+        currentMapCenter: .constant(nil),
+        currentMapDistance: .constant(nil)
+    )
         .preferredColorScheme(.dark)
 }

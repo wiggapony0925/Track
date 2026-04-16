@@ -18,14 +18,17 @@ struct HomeView: View {
     
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
-    @State private var viewModel = HomeViewModel()
+    @Bindable var viewModel: HomeViewModel
     var locationManager: LocationManager
     /// When false, the universal bottom sheet is suppressed so it
     /// doesn't bleed through on top of the Plan tab.
     var isActive: Bool = true
+    @Binding var cameraPosition: TrackCameraPosition
+    @Binding var showStations: Bool
+    @Binding var currentMapCenter: CLLocationCoordinate2D?
+    @Binding var currentMapDistance: Double?
     @State private var sheetNavigator = SheetNavigator()
     @State private var sheetDetent: PresentationDetent = SheetConstants.defaultDetent
-    @State private var cameraPosition: TrackCameraPosition = .userLocation
     /// Bridges sheet pixel height to the map's UIKit contentInset in
     /// real-time (60fps) without SwiftUI re-renders.
     @State private var sheetHeightObserver = SheetHeightObserver()
@@ -38,13 +41,6 @@ struct HomeView: View {
     /// GPS fix arrives, `handleLocationUpdate` force-refreshes with accurate
     /// coordinates, then clears this flag.
     @State private var usedSpeculativeLocation = false
-    
-    // Zoom-level visibility for stations
-    @State private var showStations = true
-    
-    // Track current map state for smooth camera transitions
-    @State private var currentMapCenter: CLLocationCoordinate2D?
-    @State private var currentMapDistance: Double?
     
     // Drag-to-search state
     @AppStorage("drag_to_search") private var dragToSearchEnabled = true
@@ -1391,5 +1387,12 @@ struct HomeView: View {
 }
 
 #Preview {
-    HomeView(locationManager: LocationManager())
+    HomeView(
+        viewModel: HomeViewModel(),
+        locationManager: LocationManager(),
+        cameraPosition: .constant(.userLocation),
+        showStations: .constant(true),
+        currentMapCenter: .constant(nil),
+        currentMapDistance: .constant(nil)
+    )
 }
