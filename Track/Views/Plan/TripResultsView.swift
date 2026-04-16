@@ -147,8 +147,10 @@ struct TripResultsView: View {
 
                 // Swap button
                 Button {
-                    withAnimation(AppTheme.Animation.snappy) {
+                    let didSwap = withAnimation(AppTheme.Animation.snappy) {
                         viewModel.swapOriginDestination()
+                    }
+                    if didSwap {
                         Task { await viewModel.planTrip() }
                     }
                 } label: {

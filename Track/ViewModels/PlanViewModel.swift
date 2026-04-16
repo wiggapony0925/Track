@@ -148,12 +148,29 @@ final class PlanViewModel {
 
     // MARK: - Actions
 
-    func swapOriginDestination() {
+    /// Guards against rapid-fire taps on the swap button.
+    private var isSwapping = false
+
+    /// Atomically swaps origin ↔ destination.
+    /// - `.currentLocation` is always preserved — it moves to the other field,
+    ///   never dropped.
+    /// - Ignores re-entrant calls so the user can spam the button safely.
+    /// - Returns `true` when a meaningful swap was performed.
+    @discardableResult
+    func swapOriginDestination() -> Bool {
+        guard !isSwapping else { return false }
+        isSwapping = true
+        defer { isSwapping = false }
+
         let oldOrigin = origin
-        if let destination {
-            origin = destination
-        }
-        self.destination = oldOrigin == .currentLocation ? nil : oldOrigin
+        let oldDestination = destination
+
+        // Nothing to swap if destination hasn't been set yet.
+        guard let dest = oldDestination else { return false }
+
+        origin = dest
+        destination = oldOrigin
+        return true
     }
 
     func planTrip(forceRefresh: Bool = false) async {

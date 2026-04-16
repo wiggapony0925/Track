@@ -410,8 +410,11 @@ struct PlanView: View {
 
             // ── Swap button ──
             Button {
-                withAnimation(AppTheme.Animation.snappy) {
+                let didSwap = withAnimation(AppTheme.Animation.snappy) {
                     viewModel.swapOriginDestination()
+                }
+                if didSwap, viewModel.showResults {
+                    Task { await viewModel.planTrip() }
                 }
             } label: {
                 ZStack {
@@ -974,50 +977,48 @@ struct PlanView: View {
             viewModel.selectRecommendation(rec)
             Task { await viewModel.planTrip() }
         } label: {
-            HStack(spacing: 12) {
-                // Content
-                VStack(alignment: .leading, spacing: 10) {
-                    // Icon row
-                    HStack(spacing: 10) {
-                        ZStack {
-                            Circle()
-                                .fill(accent.opacity(0.12))
-                                .frame(width: 38, height: 38)
-                            Image(systemName: recIcon(rec.source))
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(accent)
-                        }
-
-                        Spacer(minLength: 0)
-
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(accent.opacity(0.6))
-                            .symbolRenderingMode(.hierarchical)
-                    }
-
-                    // Text
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(rec.label)
-                            .font(.system(size: 16, weight: .heavy, design: .rounded))
-                            .foregroundStyle(AppTheme.Colors.textPrimary)
-                            .lineLimit(1)
-
-                        Text(rec.reason)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
+            VStack(alignment: .leading, spacing: 10) {
+                // Icon + arrow row
+                HStack {
+                    ZStack {
+                        Circle()
+                            .fill(accent.opacity(0.10))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: recIcon(rec.source))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(accent)
-                            .lineLimit(1)
                     }
 
-                    Text(rec.subtitle)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(accent.opacity(0.4))
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(rec.label)
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+
+                    Text(rec.reason)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(accent)
                         .lineLimit(1)
                 }
+
+                Text(rec.subtitle)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                    .lineLimit(1)
             }
-            .padding(.vertical, 12)
-            .padding(.trailing, 14)
-            .frame(width: 200, alignment: .leading)
+            .padding(14)
+            .frame(width: 190, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppTheme.Colors.cardBackground.opacity(0.55))
+            )
         }
         .buttonStyle(.plain)
     }
