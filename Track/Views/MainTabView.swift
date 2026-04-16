@@ -14,14 +14,14 @@ enum AppTab: String, CaseIterable {
     var icon: String {
         switch self {
         case .home: return "tram.fill"
-        case .plan: return "arrow.triangle.swap"
+        case .plan: return "arrow.up.arrow.down"
         }
     }
 
     var selectedIcon: String {
         switch self {
         case .home: return "tram.fill"
-        case .plan: return "arrow.triangle.swap"
+        case .plan: return "arrow.up.arrow.down"
         }
     }
 }
@@ -46,37 +46,32 @@ struct MainTabView: View {
     @State private var currentMapDistance: Double?
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // TabView with page style: keeps both views alive, supports
-            // native swipe-to-switch, and properly isolates sheets.
-            TabView(selection: $selectedTab) {
-                HomeView(
-                    viewModel: homeViewModel,
-                    locationManager: locationManager,
-                    isActive: selectedTab == .home,
-                    cameraPosition: $cameraPosition,
-                    showStations: $showStations,
-                    currentMapCenter: $currentMapCenter,
-                    currentMapDistance: $currentMapDistance
-                )
-                    .tag(AppTab.home)
+        TabView(selection: $selectedTab) {
+            HomeView(
+                viewModel: homeViewModel,
+                locationManager: locationManager,
+                isActive: selectedTab == .home,
+                selectedTab: $selectedTab,
+                cameraPosition: $cameraPosition,
+                showStations: $showStations,
+                currentMapCenter: $currentMapCenter,
+                currentMapDistance: $currentMapDistance
+            )
+                .tag(AppTab.home)
 
-                PlanView(
-                    locationManager: locationManager,
-                    homeViewModel: homeViewModel,
-                    cameraPosition: $cameraPosition,
-                    showStations: $showStations,
-                    currentMapCenter: $currentMapCenter,
-                    currentMapDistance: $currentMapDistance
-                )
-                    .tag(AppTab.plan)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .ignoresSafeArea()
-
-            // Floating pill tab bar
-            floatingTabBar
+            PlanView(
+                locationManager: locationManager,
+                homeViewModel: homeViewModel,
+                selectedTab: $selectedTab,
+                cameraPosition: $cameraPosition,
+                showStations: $showStations,
+                currentMapCenter: $currentMapCenter,
+                currentMapDistance: $currentMapDistance
+            )
+                .tag(AppTab.plan)
         }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .ignoresSafeArea()
         .ignoresSafeArea(.keyboard)
         .onReceive(NotificationCenter.default.publisher(for: .switchToTab)) { notification in
             if let tab = notification.object as? AppTab {
@@ -90,61 +85,8 @@ struct MainTabView: View {
     // MARK: - Floating Pill Tab Bar
 
     private var floatingTabBar: some View {
-        HStack(spacing: 4) {
-            ForEach(AppTab.allCases, id: \.self) { tab in
-                tabItem(tab)
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 6)
-        .background(
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
-                .overlay(
-                    Capsule()
-                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.3), lineWidth: 0.5)
-                )
-        )
-        .padding(.bottom, 28)
-    }
-
-    private func tabItem(_ tab: AppTab) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                selectedTab = tab
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: selectedTab == tab ? tab.selectedIcon : tab.icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .symbolRenderingMode(.monochrome)
-
-                if selectedTab == tab {
-                    Text(tab.rawValue)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.8, anchor: .leading)),
-                            removal: .opacity
-                        ))
-                }
-            }
-            .foregroundStyle(
-                selectedTab == tab
-                    ? AppTheme.Colors.textOnColor
-                    : AppTheme.Colors.textSecondary
-            )
-            .padding(.horizontal, selectedTab == tab ? 18 : 16)
-            .padding(.vertical, 10)
-            .background {
-                if selectedTab == tab {
-                    Capsule()
-                        .fill(AppTheme.Colors.accent)
-                }
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
+        FloatingTabPill(selectedTab: $selectedTab)
+            .padding(.bottom, 28)
     }
 }
 

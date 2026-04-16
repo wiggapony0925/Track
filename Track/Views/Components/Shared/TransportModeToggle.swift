@@ -21,9 +21,11 @@ struct TransportModeToggle: View {
         let isSelected: Bool = selectedMode == mode
 
         return Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedMode = mode
-            }
+            // Don't wrap in withAnimation — it propagates the animation
+            // to every downstream @Observable mutation (clearRoute, etc.)
+            // causing jank. The button's .animation modifier handles the
+            // visual highlight transition.
+            selectedMode = mode
             HapticManager.impact(.medium)
         } label: {
             HStack(spacing: 8) {
@@ -81,6 +83,7 @@ struct TransportModeToggle: View {
         }
         .accessibilityLabel("\(mode.label) mode")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .animation(.easeInOut(duration: 0.2), value: selectedMode)
     }
 }
 

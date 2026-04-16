@@ -31,32 +31,6 @@ struct MNRDashboard: View {
         viewModel.filteredNearbyGroupedMNRArrivals
     }
     
-    /// Get filtered arrivals based on search
-    private var displayArrivals: [TrainArrival] {
-        viewModel.filteredMNRArrivals
-    }
-    
-    /// Arrivals within 15 minutes (soon)
-    private var soonArrivals: [TrainArrival] {
-        displayArrivals.filter {
-            $0.minutesAway <= 15
-                && ($0.minutesAway > 0
-                    || $0.estimatedTime > Date())
-        }
-    }
-    
-    /// Check if user is likely far from Metro-North service area
-    private var isOutOfServiceArea: Bool {
-        soonArrivals.isEmpty && !displayArrivals.isEmpty
-    }
-    
-    /// Whether the soonest departure is far away (30+ min)
-    private var isFarFromService: Bool {
-        guard !groupedArrivals.isEmpty else { return false }
-        let soonest = groupedArrivals.map(\.soonestMinutes).min() ?? 0
-        return soonest > 30 || isOutOfServiceArea
-    }
-    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             let refLocation: CLLocation? = viewModel
@@ -64,7 +38,24 @@ struct MNRDashboard: View {
                     userLocation: locationManager.currentLocation
                 )
 
-            if !groupedArrivals.isEmpty {
+            // Evaluate once per body — avoids chains of computed properties
+            // each re-reading the ViewModel (displayArrivals → soonArrivals
+            // → isOutOfServiceArea → isFarFromService was 4 passes).
+            let arrivals = groupedArrivals
+            let isFarFromService: Bool = {
+                guard !arrivals.isEmpty else { return false }
+                let soonest = arrivals.map(\.soonestMinutes).min() ?? 0
+                if soonest > 30 { return true }
+                let display = viewModel.filteredMNRArrivals
+                let soon = display.filter {
+                    $0.minutesAway <= 15
+                        && ($0.minutesAway > 0
+                            || $0.estimatedTime > Date())
+                }
+                return soon.isEmpty && !display.isEmpty
+            }()
+
+            if !arrivals.isEmpty {
                 // MARK: - Far From Service Hero
                 if isFarFromService {
                     FarFromTransitView(
@@ -79,7 +70,7 @@ struct MNRDashboard: View {
 
                 // Sort by distance from user / drag-search location
                 let (nearYou, fartherAway, muchFarther) = viewModel.groupedDisplayBuckets(
-                    from: groupedArrivals,
+                    from: arrivals,
                     referenceLocation: refLocation
                 )
 

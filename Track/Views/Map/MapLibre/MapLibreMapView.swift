@@ -379,37 +379,50 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         }
 
         // ── Camera sync (only if externally changed) ──
-        if coordinator.shouldSyncCamera {
+        // Skip when the user is actively gesturing or when the update was
+        // triggered by our own binding write (shouldSyncCamera == false).
+        // This prevents the "bounce" where a round-tripped binding value
+        // triggers an animated setCenter that fights the user's gesture.
+        if coordinator.shouldSyncCamera && !coordinator.userGestureInProgress {
             let state = MapLibreCameraState(from: cameraPosition)
-            let currentZoom: Double = mapView.zoomLevel
-            let currentCenter: CLLocationCoordinate2D = mapView.centerCoordinate
-            let zoomDiff: Double = abs(state.zoom - currentZoom)
-            let latDiff: Double = abs(state.center.latitude - currentCenter.latitude)
-            let lonDiff: Double = abs(state.center.longitude - currentCenter.longitude)
-            let needsUpdate: Bool = zoomDiff > 0.1 || latDiff > 1e-5 || lonDiff > 1e-5
 
-            if needsUpdate {
-                // Cancel any stale pending camera sync work items so they
-                // can't overwrite the new programmatic target. This fixes
-                // the "tap center twice" race where a gesture-end sync
-                // fires between the SwiftUI state write and this point.
-                coordinator.pendingCameraSync?.cancel()
-                coordinator.pendingCameraSync = nil
+            // Echo detection: if the binding value matches what we last
+            // wrote, this updateUIView was triggered by our own async
+            // binding write — not an external camera change. Skip.
+            let isEcho: Bool
+            if let last = coordinator.lastWrittenCamera {
+                isEcho = (state == last)
+            } else {
+                isEcho = false
+            }
 
-                // Mark programmatic animation in flight so syncCameraToBinding
-                // doesn't overwrite cameraPosition with intermediate frames.
-                coordinator.programmaticCameraInFlight = true
-                mapView.setCenter(
-                    state.center,
-                    zoomLevel: state.zoom,
-                    direction: state.bearing,
-                    animated: true
-                )
-                let pitchDiff: Double = abs(state.pitch - Double(mapView.camera.pitch))
-                if pitchDiff > 1.0 {
-                    let camera = mapView.camera
-                    camera.pitch = CGFloat(state.pitch)
-                    mapView.setCamera(camera, animated: true)
+            if !isEcho {
+                let currentZoom: Double = mapView.zoomLevel
+                let currentCenter: CLLocationCoordinate2D = mapView.centerCoordinate
+                let zoomDiff: Double = abs(state.zoom - currentZoom)
+                let latDiff: Double = abs(state.center.latitude - currentCenter.latitude)
+                let lonDiff: Double = abs(state.center.longitude - currentCenter.longitude)
+                // Wider thresholds to absorb floating-point drift from the
+                // TrackCameraPosition ↔ MapLibreCameraState round-trip.
+                let needsUpdate: Bool = zoomDiff > 0.5 || latDiff > 5e-4 || lonDiff > 5e-4
+
+                if needsUpdate {
+                    coordinator.pendingCameraSync?.cancel()
+                    coordinator.pendingCameraSync = nil
+                    coordinator.programmaticCameraInFlight = true
+                    coordinator.lastWrittenCamera = nil  // Clear — this is external
+                    mapView.setCenter(
+                        state.center,
+                        zoomLevel: state.zoom,
+                        direction: state.bearing,
+                        animated: true
+                    )
+                    let pitchDiff: Double = abs(state.pitch - Double(mapView.camera.pitch))
+                    if pitchDiff > 1.0 {
+                        let camera = mapView.camera
+                        camera.pitch = CGFloat(state.pitch)
+                        mapView.setCamera(camera, animated: true)
+                    }
                 }
             }
         }
@@ -446,6 +459,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         var styleLoaded = false
         var shouldSyncCamera = true
         var currentStyleIsDark: Bool?
+        /// True while the user's finger(s) are actively on the map (pan/pinch/rotate).
+        var userGestureInProgress = false
+        /// The last camera state THIS coordinator wrote to the binding.
+        /// Used to detect echoes: if updateUIView sees a value matching
+        /// this, the change came from us (not an external source) — skip.
+        var lastWrittenCamera: MapLibreCameraState?
 
         /// When true, a code-driven camera animation is in flight.
         /// `syncCameraToBinding` skips binding writes while this flag is set
@@ -586,11 +605,20 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
         // MARK: - Delegate: Camera Changed
 
+        func mapView(_ mapView: MLNMapView, regionWillChangeAnimated animated: Bool) {
+            // Detect user-initiated gestures (the map passes animated=false
+            // when the change comes from a user gesture, true for programmatic).
+            if !animated {
+                userGestureInProgress = true
+            }
+        }
+
         func mapViewRegionIsChanging(_ mapView: MLNMapView) {
             syncCameraToBinding(mapView)
         }
 
         func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) {
+            userGestureInProgress = false
             // When a code-driven camera finishes, clear the in-flight flag
             // and do one final sync so bindings reflect the final position.
             if programmaticCameraInFlight {
@@ -653,6 +681,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                         pitch: pitch,
                         bearing: bearing
                     )
+                    self.lastWrittenCamera = state
                     self.parent.cameraPosition = state.toTrackCameraPosition()
                 }
 

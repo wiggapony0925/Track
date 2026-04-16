@@ -730,22 +730,30 @@ final class HomeViewModel {
     /// (non-placeholder) arrivals in every direction.  These "ghost"
     /// entries are moved from the active display to the Inactive Lines
     /// section so they don't clutter the active dashboard.
-    var ghostRoutes: [GroupedNearbyTransitResponse] {
-        groupedTransit.filter { !$0.hasRealArrivals }
-    }
+    ///
+    /// **Stored** (not computed) to avoid re-filtering `groupedTransit`
+    /// on every SwiftUI body evaluation.  Rebuilt by `rebuildGhostRoutes()`
+    /// whenever `groupedTransit` changes.
+    var ghostRoutes: [GroupedNearbyTransitResponse] = []
 
     /// Mode-filtered ghost routes for per-tab inactive sections.
-    var ghostSubwayRoutes: [GroupedNearbyTransitResponse] {
-        ghostRoutes.filter { $0.mode == "subway" }
-    }
-    var ghostBusRoutes: [GroupedNearbyTransitResponse] {
-        ghostRoutes.filter { $0.isBus }
-    }
-    var ghostLIRRRoutes: [GroupedNearbyTransitResponse] {
-        ghostRoutes.filter { $0.isLIRR }
-    }
-    var ghostMNRRoutes: [GroupedNearbyTransitResponse] {
-        ghostRoutes.filter { $0.isMNR }
+    /// Stored alongside `ghostRoutes` to prevent double-filter chains
+    /// that create transitive @Observable observation on `groupedTransit`
+    /// from every mode dashboard (even inactive ones).
+    var ghostSubwayRoutes: [GroupedNearbyTransitResponse] = []
+    var ghostBusRoutes: [GroupedNearbyTransitResponse] = []
+    var ghostLIRRRoutes: [GroupedNearbyTransitResponse] = []
+    var ghostMNRRoutes: [GroupedNearbyTransitResponse] = []
+
+    /// Rebuilds the ghost-route stored properties from current `groupedTransit`.
+    /// Call after every mutation of `groupedTransit`.
+    func rebuildGhostRoutes() {
+        let ghosts = groupedTransit.filter { !$0.hasRealArrivals }
+        ghostRoutes = ghosts
+        ghostSubwayRoutes = ghosts.filter { $0.mode == "subway" }
+        ghostBusRoutes = ghosts.filter { $0.isBus }
+        ghostLIRRRoutes = ghosts.filter { $0.isLIRR }
+        ghostMNRRoutes = ghosts.filter { $0.isMNR }
     }
 
     /// Remembers the user's last selected direction per grouped route card.
@@ -869,7 +877,38 @@ final class HomeViewModel {
     var mnrArrivals: [TrainArrival] = []
 
     // Service alerts & accessibility
-    var serviceAlerts: [TransitAlert] = []
+    var serviceAlerts: [TransitAlert] = [] {
+        didSet { rebuildAlertedRouteKeys() }
+    }
+
+    /// Pre-built lookup of "routeId|mode" keys that have active service
+    /// alerts. Views use `hasActiveAlert(routeId:mode:)` for O(1) checks
+    /// instead of scanning every alert with string normalization per row.
+    private(set) var _alertedRouteKeys: Set<String> = []
+
+    /// Rebuilds the alert lookup set from current `serviceAlerts`.
+    private func rebuildAlertedRouteKeys() {
+        var keys = Set<String>()
+        for alert in serviceAlerts {
+            let mode = alert.mode.lowercased()
+            if let routeId = alert.routeId, !routeId.isEmpty {
+                keys.insert("\(routeId.lowercased())|\(mode)")
+                keys.insert("\(normalizeMTARouteToken(routeId).lowercased())|\(mode)")
+            }
+            for affected in alert.affectedRoutes {
+                keys.insert("\(affected.lowercased())|\(mode)")
+                keys.insert("\(normalizeMTARouteToken(affected).lowercased())|\(mode)")
+            }
+        }
+        _alertedRouteKeys = keys
+    }
+
+    /// O(1) check for whether a route has any active service alert.
+    func hasActiveAlert(routeId: String, mode: String) -> Bool {
+        let m = mode.lowercased()
+        return _alertedRouteKeys.contains("\(routeId.lowercased())|\(m)")
+            || _alertedRouteKeys.contains("\(normalizeMTARouteToken(routeId).lowercased())|\(m)")
+    }
     var alertsLastUpdated: Date?
     var elevatorOutages: [ElevatorStatus] = []
     /// Timestamp of the last global-feeds (alerts + accessibility) fetch.
@@ -2280,6 +2319,7 @@ final class HomeViewModel {
         }
 
         groupedTransit = groupsToShow
+        rebuildGhostRoutes()
 
         // Seed the GPS reference so the first render after cache load
         // can sort routes by distance instead of falling back to

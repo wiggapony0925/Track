@@ -943,26 +943,31 @@ extension HomeViewModel {
 
     /// Clears the selected route and remove bus/train markers from the map.
     func clearRoute() {
-        selectedRouteId = nil
-        selectedDirectionIndex = 0
-        busVehicles = []
-        trainVehicles = []
-        cachedTrainArrivals = []
-        previousBusPositions = [:]
-        _targetBusGPS = [:]
-        _previousTrainPositions = [:]
-        _trainGraceBuffer = [:]
-        _busGraceBuffer = [:]
+        // Guard every set to avoid firing @Observable withMutation
+        // notifications for no-op changes. Each unnecessary notification
+        // triggers SwiftUI view invalidations and cascading .onChange
+        // handlers (camera animations, timer teardown, etc.) — on mode
+        // switch this caused 20+ spurious re-renders.
+        if selectedRouteId != nil { selectedRouteId = nil }
+        if selectedDirectionIndex != 0 { selectedDirectionIndex = 0 }
+        if !busVehicles.isEmpty { busVehicles = [] }
+        if !trainVehicles.isEmpty { trainVehicles = [] }
+        if !cachedTrainArrivals.isEmpty { cachedTrainArrivals = [] }
+        if !previousBusPositions.isEmpty { previousBusPositions = [:] }
+        if !_targetBusGPS.isEmpty { _targetBusGPS = [:] }
+        if !_previousTrainPositions.isEmpty { _previousTrainPositions = [:] }
+        if !_trainGraceBuffer.isEmpty { _trainGraceBuffer = [:] }
+        if !_busGraceBuffer.isEmpty { _busGraceBuffer = [:] }
         lastBusUpdateTime = .distantPast
-        routeShape = nil
-        errorMessage = nil
-        nearestStopCoordinate = nil
-        highlightedVehicleId = nil
-        trackedVehicleCoordinate = nil
-        tappedVehicleId = nil
-        selectedStopId = nil
+        if routeShape != nil { routeShape = nil }
+        if errorMessage != nil { errorMessage = nil }
+        if nearestStopCoordinate != nil { nearestStopCoordinate = nil }
+        if highlightedVehicleId != nil { highlightedVehicleId = nil }
+        if trackedVehicleCoordinate != nil { trackedVehicleCoordinate = nil }
+        if tappedVehicleId != nil { tappedVehicleId = nil }
+        if selectedStopId != nil { selectedStopId = nil }
         goMode.cancelWalkingRoute()
-        busSchedule = nil
+        if busSchedule != nil { busSchedule = nil }
     }
 
     /// Recalculates the nearest stop and `selectedStopId` for the current direction.
@@ -1703,6 +1708,7 @@ extension HomeViewModel {
             // NOW publish grouped data — triggers a single SwiftUI body
             // evaluation with ALL supporting data already in place.
             groupedTransit = mergedGroups
+            rebuildGhostRoutes()
 
             if !rawTransit.isEmpty || nearbyTransit.isEmpty {
                 // Deduplicate: Keep the first occurrence of each unique ID

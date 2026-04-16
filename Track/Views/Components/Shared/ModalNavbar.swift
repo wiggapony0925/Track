@@ -174,9 +174,11 @@ struct ModeFilterStrip: View {
     private func modeChip(for mode: TransportMode) -> some View {
         let isActive = selectedMode == mode
         return Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                selectedMode = mode
-            }
+            // Animate only the pill highlight — NOT the model mutation.
+            // wrapping selectedMode = mode in withAnimation propagated
+            // the animation to every @Observable property change triggered
+            // downstream (clearRoute, refresh, etc.), causing lag.
+            selectedMode = mode
             HapticManager.impact(.light)
         } label: {
             HStack(spacing: 5) {
@@ -205,6 +207,9 @@ struct ModeFilterStrip: View {
         .buttonStyle(.plain)
         .accessibilityLabel(mode.label)
         .accessibilityAddTraits(isActive ? .isSelected : [])
+        // Animate only the pill highlight slide — scoped so it doesn't
+        // propagate to downstream model mutations.
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selectedMode)
     }
 }
 

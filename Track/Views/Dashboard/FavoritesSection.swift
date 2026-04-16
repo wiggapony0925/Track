@@ -119,12 +119,15 @@ struct FavoritesSection: View {
                     if sortedFavorites.isEmpty {
                         FavoritesEmptyCard(mode: selectedMode)
                     } else {
+                        // Build lookup once — O(n) — instead of O(n) per card.
+                        let groupLookup = Dictionary(
+                            groupedTransit.map { ($0.routeId, $0) },
+                            uniquingKeysWith: { first, _ in first }
+                        )
                         ForEach(sortedFavorites) { favorite in
                             FavoriteCard(
                                 favorite: favorite,
-                                matchedGroup: groupedTransit.first {
-                                    $0.routeId == favorite.routeId
-                                },
+                                matchedGroup: groupLookup[favorite.routeId],
                                 onTap: onSelect,
                                 userLocation: userLocation,
                                 smartETAProvider: smartETAProvider,

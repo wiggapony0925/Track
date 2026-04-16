@@ -603,7 +603,9 @@ struct GroupedRouteList: View {
 
     /// When true, rows render desaturated and non-interactive while
     /// fresh data is being fetched from the backend.
-    private var isStale: Bool { viewModel.showStaleRows }
+    /// Passed in explicitly to avoid a transitive @Observable read
+    /// of `viewModel.showStaleRows` (which depends on timer state).
+    var isStale: Bool = false
 
     var body: some View {
         // LazyVStack: rows are only built when they scroll into view.
@@ -614,12 +616,10 @@ struct GroupedRouteList: View {
                 GroupedRouteRow(
                     group: group,
                     hasAlert: group.hasAlert
-                        || !viewModel.serviceAlerts.matching(
-                            routeId: group.routeId, mode: group.mode
-                        ).isEmpty
-                        || !viewModel.serviceAlerts.matching(
-                            routeId: group.displayName, mode: group.mode
-                        ).isEmpty,
+                        || viewModel.hasActiveAlert(
+                            routeId: group.routeId, mode: group.mode)
+                        || viewModel.hasActiveAlert(
+                            routeId: group.displayName, mode: group.mode),
                     userLocation: referenceLocation,
                     distanceMetersOverride: viewModel.displayDistanceMeters(
                         for: group, from: referenceLocation),

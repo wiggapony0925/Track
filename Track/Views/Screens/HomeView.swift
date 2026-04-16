@@ -23,6 +23,7 @@ struct HomeView: View {
     /// When false, the universal bottom sheet is suppressed so it
     /// doesn't bleed through on top of the Plan tab.
     var isActive: Bool = true
+    @Binding var selectedTab: AppTab
     @Binding var cameraPosition: TrackCameraPosition
     @Binding var showStations: Bool
     @Binding var currentMapCenter: CLLocationCoordinate2D?
@@ -210,33 +211,6 @@ struct HomeView: View {
                         isDragSearchActive: isDragSearchActive,
                         onDismissDragSearch: { dismissDragSearch() }
                     )
-                
-                // MARK: - Plan Trip Floating Button
-                // Positioned at bottom-right, just above the sheet edge.
-                // Moves with the sheet detent and hides when sheet is fully expanded.
-                if sheetDetent != .large
-                    && viewModel.selectedRouteId == nil
-                    && !viewModel.isRouteDetailPresented {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            PlanTripFloatingButton {
-                                NotificationCenter.default.post(
-                                    name: .switchToTab,
-                                    object: AppTab.plan
-                                )
-                            }
-                        }
-                        .padding(.trailing, 16)
-                        .padding(.bottom, planButtonBottom(screenHeight: geo.size.height))
-                    }
-                    .transition(
-                        .opacity.combined(
-                            with: .scale(scale: 0.85, anchor: .bottomTrailing)
-                        )
-                    )
-                }
 
                 // MARK: - Drag-to-Search Overlay
                 if dragToSearchEnabled
@@ -246,6 +220,26 @@ struct HomeView: View {
                         isSearching: isDragSearching,
                         isPanning: isDragSearchPanning,
                         onDismiss: { dismissDragSearch() }
+                    )
+                }
+
+                // MARK: - Floating Pill Tab Bar
+                if sheetDetent != .large
+                    && viewModel.selectedRouteId == nil
+                    && !viewModel.isRouteDetailPresented {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            FloatingTabPill(selectedTab: $selectedTab)
+                        }
+                        .padding(.trailing, 16)
+                        .padding(.bottom, pillBottom(screenHeight: geo.size.height))
+                    }
+                    .transition(
+                        .opacity.combined(
+                            with: .scale(scale: 0.85, anchor: .bottomTrailing)
+                        )
                     )
                 }
 
@@ -280,16 +274,14 @@ struct HomeView: View {
             }
         }
     }
-    
-    // MARK: - Plan Trip Button Positioning
 
-    /// Computes the bottom padding for the floating plan-trip button
-    /// so it sits just above the current sheet detent.
-    private func planButtonBottom(screenHeight: CGFloat) -> CGFloat {
+    // MARK: - Pill Tab Bar Positioning
+
+    /// Bottom padding so the pill sits just above the sheet at default detent.
+    private func pillBottom(screenHeight: CGFloat) -> CGFloat {
         if sheetDetent == .fraction(SheetConstants.defaultFraction) {
             return screenHeight * SheetConstants.defaultFraction + 16
         }
-        // Peek detent (or any other non-large, non-default)
         return 180
     }
 
@@ -968,7 +960,14 @@ struct HomeView: View {
     }
     
     private func handleModeChange() {
-        viewModel.clearRoute()
+        // Only clear route state when a route is actually selected.
+        // Unconditional clearRoute() set ~20 @Observable properties to
+        // nil/empty, each firing mutation notifications that cascaded
+        // through .onChange handlers (camera, timers, walking route)
+        // causing jank on every tab switch.
+        if viewModel.selectedRouteId != nil {
+            viewModel.clearRoute()
+        }
         // Cancel any in-flight mode-change refresh so only the latest
         // tab switch actually hits the network.
         modeChangeTask?.cancel()
@@ -1390,6 +1389,7 @@ struct HomeView: View {
     HomeView(
         viewModel: HomeViewModel(),
         locationManager: LocationManager(),
+        selectedTab: .constant(.home),
         cameraPosition: .constant(.userLocation),
         showStations: .constant(true),
         currentMapCenter: .constant(nil),

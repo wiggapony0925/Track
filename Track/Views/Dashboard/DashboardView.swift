@@ -90,91 +90,97 @@ struct DashboardView: View {
                     // Transitions to the real section once favorites have loaded.
                     let favsLoading = favoritesManager.isLoading
                         && favoritesManager.favorites.isEmpty
-                    if initialLoad || favsLoading {
-                        FavoritesSectionSkeleton()
-                            .transition(.opacity)
-                    } else {
-                        FavoritesSection(
-                            groupedTransit: viewModel.groupedTransit,
-                            userLocation: viewModel.referenceLocation ?? locationManager.currentLocation,
-                            sheetNavigator: sheetNavigator,
-                            onSelect: { group, directionIndex in
-                                sheetNavigator.navigate(
-                                    to: .routeDetail(
-                                        group: group,
-                                        directionIndex: directionIndex
+                    Group {
+                        if initialLoad || favsLoading {
+                            FavoritesSectionSkeleton()
+                                .transition(.opacity)
+                        } else {
+                            FavoritesSection(
+                                groupedTransit: viewModel.groupedTransit,
+                                userLocation: viewModel.referenceLocation ?? locationManager.currentLocation,
+                                sheetNavigator: sheetNavigator,
+                                onSelect: { group, directionIndex in
+                                    sheetNavigator.navigate(
+                                        to: .routeDetail(
+                                            group: group,
+                                            directionIndex: directionIndex
+                                        )
                                     )
-                                )
-                                Task {
-                                    await viewModel.handleRouteSelection(
-                                        group,
-                                        directionIndex: directionIndex,
-                                        userLocation: locationManager.currentLocation
-                                    )
-                                }
-                            },
-                            selectedMode: viewModel.selectedMode,
-                            smartETAProvider: { viewModel.smartETA(for: $0) },
-                            isStale: viewModel.showStaleRows
-                        )
-                        .transition(.opacity.animation(.easeIn(duration: 0.25)))
+                                    Task {
+                                        await viewModel.handleRouteSelection(
+                                            group,
+                                            directionIndex: directionIndex,
+                                            userLocation: locationManager.currentLocation
+                                        )
+                                    }
+                                },
+                                selectedMode: viewModel.selectedMode,
+                                smartETAProvider: { viewModel.smartETA(for: $0) },
+                                isStale: viewModel.showStaleRows
+                            )
+                            .transition(.opacity.animation(.easeIn(duration: 0.25)))
+                        }
                     }
+                    // Scoped: only animates the skeleton→favorites swap,
+                    // not the entire VStack of dashboard rows.
+                    .animation(.easeInOut(duration: 0.3), value: favoritesManager.isLoading)
 
                     // ── Transit: skeleton OR mode-specific content ────────────
-                    if showTransitSkeleton {
-                        TransitLoadingSkeleton()
-                            .transition(.opacity)
-                    } else {
-                        Group {
-                            switch viewModel.selectedMode {
-                            case .nearby:
-                                NearbyDashboard(
-                                    viewModel: viewModel,
-                                    locationManager: locationManager,
-                                    sheetNavigator: sheetNavigator,
-                                    lastUpdated: lastUpdated,
-                                    cameraPosition: $cameraPosition
-                                )
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                            case .subway:
-                                SubwayDashboard(
-                                    viewModel: viewModel,
-                                    locationManager: locationManager,
-                                    sheetNavigator: sheetNavigator,
-                                    lastUpdated: lastUpdated
-                                )
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                            case .bus:
-                                BusDashboard(
-                                    viewModel: viewModel,
-                                    locationManager: locationManager,
-                                    sheetNavigator: sheetNavigator,
-                                    lastUpdated: lastUpdated
-                                )
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                            case .lirr:
-                                LIRRDashboard(
-                                    viewModel: viewModel,
-                                    locationManager: locationManager,
-                                    sheetNavigator: sheetNavigator,
-                                    lastUpdated: lastUpdated
-                                )
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                            case .mnr:
-                                MNRDashboard(
-                                    viewModel: viewModel,
-                                    locationManager: locationManager,
-                                    sheetNavigator: sheetNavigator,
-                                    lastUpdated: lastUpdated
-                                )
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                    Group {
+                        if showTransitSkeleton {
+                            TransitLoadingSkeleton()
+                                .transition(.opacity)
+                        } else {
+                            Group {
+                                switch viewModel.selectedMode {
+                                case .nearby:
+                                    NearbyDashboard(
+                                        viewModel: viewModel,
+                                        locationManager: locationManager,
+                                        sheetNavigator: sheetNavigator,
+                                        lastUpdated: lastUpdated,
+                                        cameraPosition: $cameraPosition
+                                    )
+                                case .subway:
+                                    SubwayDashboard(
+                                        viewModel: viewModel,
+                                        locationManager: locationManager,
+                                        sheetNavigator: sheetNavigator,
+                                        lastUpdated: lastUpdated
+                                    )
+                                case .bus:
+                                    BusDashboard(
+                                        viewModel: viewModel,
+                                        locationManager: locationManager,
+                                        sheetNavigator: sheetNavigator,
+                                        lastUpdated: lastUpdated
+                                    )
+                                case .lirr:
+                                    LIRRDashboard(
+                                        viewModel: viewModel,
+                                        locationManager: locationManager,
+                                        sheetNavigator: sheetNavigator,
+                                        lastUpdated: lastUpdated
+                                    )
+                                case .mnr:
+                                    MNRDashboard(
+                                        viewModel: viewModel,
+                                        locationManager: locationManager,
+                                        sheetNavigator: sheetNavigator,
+                                        lastUpdated: lastUpdated
+                                    )
+                                }
                             }
+                            // Lightweight cross-fade between mode dashboards.
+                            .transition(.opacity)
+                            .animation(
+                                .easeInOut(duration: 0.2),
+                                value: viewModel.selectedMode
+                            )
                         }
-                        .animation(
-                            .spring(response: 0.4, dampingFraction: 0.7),
-                            value: viewModel.selectedMode
-                        )
                     }
+                    // Scoped: only animates the skeleton→content swap.
+                    .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
 
                     if let error = viewModel.errorMessage {
                         NetworkErrorBanner(
@@ -187,8 +193,6 @@ struct DashboardView: View {
 
                     Spacer().frame(height: 20)
                 }
-                .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
-                .animation(.easeInOut(duration: 0.3), value: favoritesManager.isLoading)
                 .padding(.top, 4)
             }
             .refreshable {

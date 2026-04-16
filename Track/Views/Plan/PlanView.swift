@@ -11,6 +11,7 @@ struct PlanView: View {
     @Environment(\.modelContext) private var modelContext
     let locationManager: LocationManager
     var homeViewModel: HomeViewModel
+    @Binding var selectedTab: AppTab
     @Binding var cameraPosition: TrackCameraPosition
     @Binding var showStations: Bool
     @Binding var currentMapCenter: CLLocationCoordinate2D?
@@ -87,6 +88,17 @@ struct PlanView: View {
                 if viewModel.destination != nil {
                     goButton
                         .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                // Floating pill tab bar — bottom-trailing, same as Home tab
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        FloatingTabPill(selectedTab: $selectedTab)
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 28)
                 }
             }
             .navigationBarHidden(true)
@@ -1226,6 +1238,7 @@ private struct DashedConnector: Shape {
     PlanView(
         locationManager: LocationManager(),
         homeViewModel: HomeViewModel(),
+        selectedTab: .constant(.plan),
         cameraPosition: .constant(.userLocation),
         showStations: .constant(true),
         currentMapCenter: .constant(nil),
