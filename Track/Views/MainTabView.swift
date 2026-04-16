@@ -38,16 +38,17 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Content
-            Group {
-                switch selectedTab {
-                case .home:
-                    HomeView(locationManager: locationManager)
-                case .plan:
-                    PlanView(locationManager: locationManager)
-                }
+            // TabView with page style: keeps both views alive, supports
+            // native swipe-to-switch, and properly isolates sheets.
+            TabView(selection: $selectedTab) {
+                HomeView(locationManager: locationManager, isActive: selectedTab == .home)
+                    .tag(AppTab.home)
+
+                PlanView(locationManager: locationManager)
+                    .tag(AppTab.plan)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .ignoresSafeArea()
 
             // Floating pill tab bar
             floatingTabBar

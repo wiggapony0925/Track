@@ -14,6 +14,9 @@ struct PlanView: View {
     @State private var appeared = false
     @State private var headerParallax: CGFloat = 0
     @State private var randomHeadline: String = "Where to?"
+    @State private var cardShakeOffset: CGFloat = 0
+    @State private var showSameLocationToast = false
+    @State private var heroMapSnapshot: UIImage?
 
     private static let headlines: [String] = [
         "Where to?",
@@ -93,6 +96,11 @@ struct PlanView: View {
                 withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
                     animatePulse = true
                 }
+                generateHeroSnapshot()
+            }
+            .onChange(of: viewModel.sameLocationMessage) { _, newValue in
+                guard newValue != nil else { return }
+                checkSameLocation()
             }
             .task {
                 // Pre-fetch commute plans in background after a short delay
@@ -223,6 +231,54 @@ struct PlanView: View {
     ]
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // MARK: - Hero Map Snapshot
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Generates a static map snapshot with subway polylines once,
+    /// replacing the expensive live Map() view. Cached in @State.
+    private func generateHeroSnapshot() {
+        guard heroMapSnapshot == nil else { return }
+
+        let screenWidth = UIScreen.main.bounds.width
+        let scale = UIScreen.main.scale
+        let options = MKMapSnapshotter.Options()
+        options.region = MKCoordinateRegion(
+            center: Self.nycCenter,
+            span: Self.nycSpan
+        )
+        options.size = CGSize(width: screenWidth, height: 310)
+        options.scale = scale
+        options.pointOfInterestFilter = .excludingAll
+
+        let snapshotter = MKMapSnapshotter(options: options)
+        snapshotter.start { snapshot, error in
+            guard let snapshot, error == nil else { return }
+            let image = UIGraphicsImageRenderer(size: options.size).image { ctx in
+                // Draw the map
+                snapshot.image.draw(at: .zero)
+
+                // Draw subway polylines on top
+                for line in Self.subwayLines {
+                    let path = UIBezierPath()
+                    for (i, coord) in line.coords.enumerated() {
+                        let pt = snapshot.point(for: coord)
+                        if i == 0 { path.move(to: pt) }
+                        else { path.addLine(to: pt) }
+                    }
+                    path.lineWidth = 4 * scale / UIScreen.main.scale
+                    path.lineCapStyle = .round
+                    path.lineJoinStyle = .round
+                    UIColor(line.color).setStroke()
+                    path.stroke()
+                }
+            }
+            DispatchQueue.main.async {
+                heroMapSnapshot = image
+            }
+        }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Hero Header
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -230,21 +286,18 @@ struct PlanView: View {
         VStack(spacing: 0) {
             // ── Map banner with polylines + purple fade ──
             ZStack(alignment: .bottom) {
-                // Map with subway polylines — fills edge-to-edge
-                Map(initialPosition: .region(
-                    MKCoordinateRegion(
-                        center: Self.nycCenter,
-                        span: Self.nycSpan
-                    )
-                )) {
-                    ForEach(Array(Self.subwayLines.enumerated()), id: \.offset) { _, line in
-                        MapPolyline(coordinates: line.coords)
-                            .stroke(line.color, lineWidth: 4)
-                    }
+                // Cached map snapshot — rendered once, no live MapKit overhead
+                if let snapshot = heroMapSnapshot {
+                    Image(uiImage: snapshot)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                } else {
+                    // Placeholder while snapshot renders (< 0.5s)
+                    Rectangle()
+                        .fill(AppTheme.Colors.cardBackground)
                 }
-                .mapStyle(.standard(pointsOfInterest: .excludingAll))
-                .disabled(true)
-                .allowsHitTesting(false)
 
                 // Purple fade overlay with subtle noise texture
                 LinearGradient(
@@ -284,9 +337,35 @@ struct PlanView: View {
             .frame(height: 310)
 
             // ── Route input card overlapping map ──
-            routeInputCard
-                .padding(.top, -36)
-                .zIndex(1)
+            ZStack(alignment: .bottom) {
+                routeInputCard
+                    .offset(x: cardShakeOffset)
+
+                // Same-location toast
+                if showSameLocationToast, let msg = viewModel.sameLocationMessage {
+                    HStack(spacing: 8) {
+                        Image(systemName: "figure.stand")
+                            .font(.system(size: 14, weight: .bold))
+                        Text(msg)
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(AppTheme.Colors.textOnColor)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule()
+                            .fill(AppTheme.Colors.accent)
+                            .shadow(color: AppTheme.Colors.accent.opacity(0.35), radius: 12, y: 4)
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .offset(y: 28)
+                    .zIndex(2)
+                }
+            }
+            .padding(.top, -36)
+            .zIndex(1)
 
             // ── Departure controls ──
             DepartureTimeControl(
@@ -567,6 +646,45 @@ struct PlanView: View {
             .padding(.horizontal, 20)
         }
         .opacity(appeared ? 1 : 0)
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // MARK: - Same-Location Shake
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    /// Checks whether the ViewModel flagged same-location, and fires
+    /// the card shake + toast if so.
+    private func checkSameLocation() {
+        guard viewModel.sameLocationMessage != nil else { return }
+        triggerShake()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+            showSameLocationToast = true
+        }
+        // Auto-dismiss after 2.5s
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showSameLocationToast = false
+            }
+            // Clear the message so the next tap can fire again
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                viewModel.sameLocationMessage = nil
+            }
+        }
+    }
+
+    /// Rapid left-right shake, then spring back to center.
+    private func triggerShake() {
+        let offsets: [(CGFloat, Double)] = [
+            (-12, 0.0), (10, 0.06), (-8, 0.12),
+            (6, 0.18), (-3, 0.24), (0, 0.30),
+        ]
+        for (x, delay) in offsets {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                withAnimation(.interactiveSpring(response: 0.12, dampingFraction: 0.3)) {
+                    cardShakeOffset = x
+                }
+            }
+        }
     }
 
     private func quickChip(

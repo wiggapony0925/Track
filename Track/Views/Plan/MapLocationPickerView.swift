@@ -246,12 +246,12 @@ struct MapLocationPickerView: View {
 
             // Confirm button
             Button {
-                Task {
-                    let shouldDismiss = await viewModel.selectMapCoordinate(centerCoordinate)
-                    if shouldDismiss {
-                        dismiss()
-                    }
-                }
+                geocodeTask?.cancel()
+                viewModel.confirmMapCoordinate(
+                    centerCoordinate,
+                    name: resolvedName,
+                    address: resolvedAddress
+                )
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")

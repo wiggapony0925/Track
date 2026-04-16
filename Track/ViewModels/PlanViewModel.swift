@@ -55,9 +55,20 @@ final class PlanViewModel {
     /// Whether the user has already loaded additional trips for the current search.
     var didLoadMore = false
 
+    /// Shown briefly when the user picks the same origin + destination.
+    var sameLocationMessage: String?
+
     /// Trip settings (modes, walking, accessibility, priority).
     /// Loaded from Supabase on configure; mutated by TripSettingsSheet.
     var tripConfiguration: CloudTripConfiguration = CloudTripConfiguration.makeDefault(userId: UUID())
+
+    private static let sameLocationQuips: [String] = [
+        "C'mon, you should know how to get there! 😄",
+        "You're already there! 📍",
+        "That's… right here 🤔",
+        "Zero steps. New record! 🏆",
+        "Shortest trip ever — 0 min 🎉",
+    ]
 
     // MARK: - Private
 
@@ -174,6 +185,9 @@ final class PlanViewModel {
     }
 
     func planTrip(forceRefresh: Bool = false) async {
+        // Reset same-location flag so onChange fires fresh each time.
+        sameLocationMessage = nil
+
         guard let destination else { return }
         guard let originPayload = payload(for: origin) else {
             errorMessage = "Current location is still loading."
@@ -186,6 +200,71 @@ final class PlanViewModel {
             showResults = true
             tripResults = []
             return
+        }
+
+        // ── Same-location / walking-distance check ──────────────
+        if let oLat = originPayload.lat, let oLon = originPayload.lon,
+           let dLat = destinationPayload.lat, let dLon = destinationPayload.lon {
+            let originCL  = CLLocation(latitude: oLat, longitude: oLon)
+            let destCL    = CLLocation(latitude: dLat, longitude: dLon)
+            let distanceM = originCL.distance(from: destCL)
+
+            // Exact same spot (< 50 m) — haptic + witty message, no trip
+            if distanceM < 50 {
+                sameLocationMessage = Self.sameLocationQuips.randomElement()
+                HapticManager.notification(.error)
+                return
+            }
+
+            // Walking distance (< 1.2 km ≈ ~15 min walk) — synthesize a walk-only result
+            let walkSpeedMPS: Double = 1.35 // average walking speed
+            let walkSeconds = distanceM / walkSpeedMPS
+            let walkMinutes = Int(ceil(walkSeconds / 60))
+
+            if distanceM < 1200 {
+                let now = Date()
+                let walkTrip = TripPlan(
+                    departureTime: now,
+                    arrivalTime: now.addingTimeInterval(walkSeconds),
+                    totalDurationMinutes: walkMinutes,
+                    legs: [
+                        TripLeg(
+                            mode: .walk,
+                            routeId: nil,
+                            routeName: nil,
+                            routeColor: nil,
+                            headsign: nil,
+                            boardStopName: originPayload.label,
+                            alightStopName: destinationPayload.label,
+                            departureTime: now,
+                            arrivalTime: now.addingTimeInterval(walkSeconds),
+                            numStops: 0,
+                            durationMinutes: walkMinutes,
+                            walkMeters: distanceM
+                        )
+                    ],
+                    totalWalkMeters: distanceM,
+                    numTransfers: 0,
+                    routeChips: [
+                        TripRouteChip(
+                            kind: "walk",
+                            label: "Walk",
+                            routeId: nil,
+                            colorHex: nil,
+                            textColorHex: nil,
+                            mode: "walk",
+                            modeName: "Walk",
+                            durationSeconds: Int(walkSeconds),
+                            walkMeters: distanceM
+                        )
+                    ]
+                )
+                tripResults = [walkTrip]
+                scheduleNote = "It's close enough to walk — \(walkMinutes) min on foot."
+                errorMessage = nil
+                showResults = true
+                return
+            }
         }
 
         // Check cache first (skip for explicit refresh)
@@ -564,35 +643,34 @@ final class PlanViewModel {
         }
     }
 
-    func selectMapCoordinate(_ coordinate: CLLocationCoordinate2D) async -> Bool {
-        isResolvingLocation = true
-        defer { isResolvingLocation = false }
-        do {
-            let mapItem = try await locationSearchService.reverseGeocode(coordinate)
-            let location = PlanLocation.custom(
-                name: mapItem.name ?? mapItem.formattedAddress,
-                address: mapItem.formattedAddress,
-                lat: coordinate.latitude,
-                lon: coordinate.longitude
-            )
-            let didApply = await selectLocation(location, isOrigin: isOriginForMapPicker)
-            if didApply {
-                showMapPicker = false
-            }
-            return didApply
-        } catch {
-            let fallback = PlanLocation.custom(
-                name: String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude),
-                address: "",
-                lat: coordinate.latitude,
-                lon: coordinate.longitude
-            )
-            let didApply = await selectLocation(fallback, isOrigin: isOriginForMapPicker)
-            if didApply {
-                showMapPicker = false
-            }
-            return didApply
+    /// Confirms a map-picked coordinate. Synchronous — all state
+    /// mutations happen in one run-loop tick to avoid mid-dismiss races.
+    func confirmMapCoordinate(
+        _ coordinate: CLLocationCoordinate2D,
+        name: String,
+        address: String
+    ) {
+        let displayName = name.isEmpty
+            ? String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude)
+            : name
+        let location = PlanLocation.custom(
+            name: displayName,
+            address: address,
+            lat: coordinate.latitude,
+            lon: coordinate.longitude
+        )
+
+        if let category = pendingSavedPlaceCategory {
+            // Saved-place flow — fire-and-forget the async persist.
+            Task { await persistSavedPlace(location, category: category) }
+        } else if isOriginForMapPicker {
+            selectOrigin(location)
+        } else {
+            selectDestination(location)
         }
+
+        // Dismiss last — no further state changes after this.
+        showMapPicker = false
     }
 
     // MARK: - Saved Place Helpers

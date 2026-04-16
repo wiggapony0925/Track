@@ -20,6 +20,9 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel = HomeViewModel()
     var locationManager: LocationManager
+    /// When false, the universal bottom sheet is suppressed so it
+    /// doesn't bleed through on top of the Plan tab.
+    var isActive: Bool = true
     @State private var sheetNavigator = SheetNavigator()
     @State private var sheetDetent: PresentationDetent = SheetConstants.defaultDetent
     @State private var cameraPosition: TrackCameraPosition = .userLocation
@@ -107,7 +110,7 @@ struct HomeView: View {
 
     private var bottomSheetPresentation: Binding<Bool> {
         Binding(
-            get: { !isRouteDetailOverlayPresented },
+            get: { isActive && !isRouteDetailOverlayPresented },
             set: { _ in }
         )
     }
