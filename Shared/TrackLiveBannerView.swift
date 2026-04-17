@@ -171,6 +171,7 @@ struct TrackLiveBannerView: View {
                 // Requires iOS 16.2+, safe to omit in shared
                 // view or wrap in available check if needed.
                 // We'll leave it simple for widgets.
+                .lineLimit(1)
                 .frame(minWidth: 80)
                 .minimumScaleFactor(0.8)
 

@@ -51,6 +51,8 @@ struct ServiceAlertsSection: View {
                         Text(lastUpdated, style: .time)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     
                     // Total count badge

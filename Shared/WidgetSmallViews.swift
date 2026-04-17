@@ -49,6 +49,8 @@ struct NearbySmallWidgetView: View {
                         Text(date, style: .time)
                             .font(.system(size: 8, weight: .medium))
                             .foregroundColor(AppTheme.Colors.textSecondary)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
@@ -112,6 +114,8 @@ struct NearbySmallWidgetView: View {
                             Text(next.arrivalTime, style: .timer)
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundColor(AppTheme.Colors.textSecondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                         .padding(.bottom, 8)
                     }
@@ -230,6 +234,8 @@ struct NearbyListWidgetView: View {
                     Text(date, style: .time)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
             .padding(.bottom, 2)
@@ -380,6 +386,8 @@ struct NearbyWidgetRowView: View {
                             TrackingTimeSync.remainingMinutes(
                                 until: arrival.arrivalTime)))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 
                 if !arrival.status.isEmpty {
                     Text(
@@ -447,6 +455,8 @@ struct TrackRouteSmallWidgetView: View {
                         Text(date, style: .time)
                             .font(.system(size: 8, weight: .bold))
                             .foregroundColor(AppTheme.Colors.textSecondary)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .padding(.horizontal, 10)
                     .padding(.top, 8)
@@ -507,6 +517,8 @@ struct TrackRouteSmallWidgetView: View {
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundColor(AppTheme.Colors.textSecondary)
                                 .monospacedDigit()
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                         .padding(.bottom, 8)
                     }

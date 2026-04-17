@@ -11,9 +11,14 @@ struct TripTimelineGridView: View {
     let onTripTap: (TripPlan) -> Void
     var recommendedIndex: Int = 0
     var departureOption: DepartureOption = .leaveNow
+    var onDepartureTimeChange: ((Date?) -> Void)? = nil
 
     @State private var nowDate = Date()
     @State private var appeared = false
+    @State private var isDraggingNeedle = false
+    @State private var needleDragX: CGFloat? = nil
+    /// After the user drops the needle, it stays pinned here.
+    @State private var pinnedNeedleX: CGFloat? = nil
     private let ticker = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
     // Layout
@@ -93,10 +98,15 @@ struct TripTimelineGridView: View {
                         }
                     }
 
+                    // Full-height needle — behind the time axis, above gridlines
+                    nowNeedleOverlay
+
                     VStack(alignment: .leading, spacing: 0) {
-                        // Time axis header
+                        // Time axis header — opaque so needle slides behind it
                         timeAxisRow
                             .padding(.bottom, 2)
+                            .background(AppTheme.Gradients.screen)
+                            .zIndex(10)
 
                         // Each trip: candle bar + info row
                         ForEach(Array(trips.enumerated()), id: \.element.id) { index, trip in
@@ -155,6 +165,126 @@ struct TripTimelineGridView: View {
         return max(0, tx)
     }
 
+    // MARK: - Now Needle (draggable)
+
+    /// The x position of the needle — follows drag when active, pinned after drop, otherwise tracks `nowDate`.
+    private var needleX: CGFloat {
+        if let dragX = needleDragX { return dragX }
+        if let pinX = pinnedNeedleX { return pinX }
+        return xPos(for: nowDate)
+    }
+
+    /// Whether the needle is pinned to a user-chosen time (not tracking "now").
+    private var isNeedlePinned: Bool {
+        pinnedNeedleX != nil
+    }
+
+    /// The date corresponding to the current needle position.
+    private func dateForX(_ x: CGFloat) -> Date {
+        let fraction = (x - contentInset) / canvasWidth
+        let clamped = max(0, min(1, fraction))
+        let seconds = Double(clamped) * windowDuration
+        return windowStart.addingTimeInterval(seconds)
+    }
+
+    /// Full-height draggable needle rendered above gridlines but below time axis.
+    @ViewBuilder
+    private var nowNeedleOverlay: some View {
+        let nx = needleX
+        let showNeedle = (nowDate >= windowStart && nowDate <= windowEnd) || isDraggingNeedle || isNeedlePinned
+
+        if showNeedle {
+            // Invisible wider hit-target for easy grabbing
+            Rectangle()
+                .fill(Color.clear)
+                .frame(width: 44)
+                .contentShape(Rectangle())
+                .overlay {
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(
+                            isNeedlePinned && !isDraggingNeedle
+                                ? AppTheme.Colors.successGreen.opacity(0.9)
+                                : isDraggingNeedle
+                                    ? AppTheme.Colors.successGreen
+                                    : AppTheme.Colors.successGreen.opacity(0.72)
+                        )
+                        .frame(width: isDraggingNeedle ? 3 : 2)
+                        .shadow(color: isDraggingNeedle ? AppTheme.Colors.successGreen.opacity(0.4) : .clear, radius: 4)
+                }
+                .overlay(alignment: .top) {
+                    // Time pill — always visible when pinned, larger when dragging
+                    if isDraggingNeedle || isNeedlePinned {
+                        let displayDate = dateForX(nx)
+                        Text(Self.needleTimeFormatter.string(from: displayDate))
+                            .font(.system(size: isDraggingNeedle ? 12 : 10, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, isDraggingNeedle ? 8 : 6)
+                            .padding(.vertical, isDraggingNeedle ? 4 : 2)
+                            .background(
+                                Capsule()
+                                    .fill(AppTheme.Colors.successGreen)
+                                    .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
+                            )
+                            .offset(y: 32)
+                    }
+                }
+                .offset(x: nx)
+                .gesture(
+                    LongPressGesture(minimumDuration: 0.15)
+                        .sequenced(before: DragGesture(minimumDistance: 0))
+                        .onChanged { value in
+                            switch value {
+                            case .second(true, let drag):
+                                if !isDraggingNeedle {
+                                    isDraggingNeedle = true
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.impactOccurred()
+                                }
+                                if let drag {
+                                    let anchorX = pinnedNeedleX ?? xPos(for: nowDate)
+                                    let newX = anchorX + drag.translation.width
+                                    needleDragX = max(contentInset, min(newX, contentInset + canvasWidth))
+                                }
+                            default:
+                                break
+                            }
+                        }
+                        .onEnded { _ in
+                            if let finalX = needleDragX {
+                                let selectedDate = dateForX(finalX)
+                                // Pin needle at dropped position
+                                pinnedNeedleX = finalX
+                                // Light haptic to confirm the drop
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.impactOccurred()
+                                onDepartureTimeChange?(selectedDate)
+                            }
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                isDraggingNeedle = false
+                                needleDragX = nil
+                            }
+                        }
+                )
+                .animation(.interactiveSpring(response: 0.12, dampingFraction: 0.9), value: needleDragX)
+                .simultaneousGesture(
+                    // Double-tap to reset to "now"
+                    TapGesture(count: 2).onEnded {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            pinnedNeedleX = nil
+                            needleDragX = nil
+                        }
+                        onDepartureTimeChange?(nil)
+                    }
+                )
+        }
+    }
+
+    private static let needleTimeFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "h:mm a"
+        return fmt
+    }()
+
     // MARK: - Time Axis
 
     private var timeAxisRow: some View {
@@ -178,18 +308,18 @@ struct TripTimelineGridView: View {
             if nowDate >= windowStart && nowDate <= windowEnd {
                 let nx = xPos(for: nowDate)
                 VStack(spacing: 1) {
-                    Text("Now")
-                        .font(.system(size: 9, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.successGreen)
                     Circle()
                         .fill(AppTheme.Colors.successGreen)
                         .frame(width: 5, height: 5)
                         .shadow(color: AppTheme.Colors.successGreen.opacity(0.5), radius: 2)
+                    Text("Now")
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.successGreen)
                 }
-                .position(x: nx, y: 8)
+                .position(x: nx, y: 36)
             }
         }
-        .frame(height: 30)
+        .frame(height: 44)
     }
 
     private func timeLabel(_ date: Date, emphasized: Bool) -> some View {
@@ -206,41 +336,83 @@ struct TripTimelineGridView: View {
         .fixedSize()
     }
 
+    // MARK: - Leg Layout
+
+    /// Pre-computed geometry for a single trip leg, with overlap resolution
+    /// so minimum-width bars never collide.
+    private struct LegFrame: Identifiable {
+        let id: UUID
+        let leg: TripLeg
+        let x: CGFloat        // leading-edge x position
+        let width: CGFloat
+        var centerX: CGFloat { x + width / 2 }
+        var trailingX: CGFloat { x + width }
+    }
+
+    /// Computes non-overlapping rectangles for every leg in a trip.
+    /// Transit and walk-only bars get a larger minimum; mid-trip walk/transfer
+    /// segments scale down for tiny durations so they don't bloat the layout.
+    private func computeLegFrames(_ trip: TripPlan) -> [LegFrame] {
+        let isWalkOnly = !trip.legs.contains(where: { $0.isTransit })
+        let gap: CGFloat = 2
+        var frames: [LegFrame] = []
+
+        for leg in trip.legs {
+            let startX = xPos(for: leg.departureTime)
+            let endX = xPos(for: leg.arrivalTime)
+            let naturalW = endX - startX
+
+            let minW: CGFloat = {
+                if leg.isTransit || isWalkOnly { return 42 }
+                // Walk/transfer between transit — scale minimum to content
+                if naturalW < 10 { return 10 }
+                return 20
+            }()
+
+            let legW = max(naturalW, minW)
+            var leadingX = startX
+
+            // Shift right if this leg would overlap the previous one
+            if let prev = frames.last {
+                let minStart = prev.trailingX + gap
+                if leadingX < minStart { leadingX = minStart }
+            }
+
+            frames.append(LegFrame(id: leg.id, leg: leg, x: leadingX, width: legW))
+        }
+
+        return frames
+    }
+
     // MARK: - Candle Row
 
     private func candleRow(_ trip: TripPlan) -> some View {
-        ZStack {
-            // "Now" needle
-            if nowDate >= windowStart && nowDate <= windowEnd {
-                let nx = xPos(for: nowDate)
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(AppTheme.Colors.successGreen.opacity(0.82))
-                    .frame(width: 2, height: barHeight + 6)
-                    .position(x: nx, y: barHeight / 2)
+        let frames = computeLegFrames(trip)
+        let isWalkOnly = !trip.legs.contains(where: { $0.isTransit })
+
+        return ZStack {
+            // Transfer connector line (uses pre-computed positions)
+            transferConnectorLine(frames)
+
+            // Legs — positioned via pre-computed, overlap-free frames
+            ForEach(frames) { frame in
+                legView(frame, isWalkOnly: isWalkOnly)
             }
 
-            // Transfer connector line
-            transferConnectorLine(trip)
-
-            // Legs
-            ForEach(trip.legs) { leg in
-                legView(leg, trip: trip)
-            }
-
-            alternativeBadgesRow(trip)
+            alternativeBadgesRow(trip, frames: frames)
         }
         .frame(width: canvasWidth + 2 * contentInset, height: barHeight)
     }
 
     @ViewBuilder
-    private func alternativeBadgesRow(_ trip: TripPlan) -> some View {
-        let transitLegs = trip.legs.filter { $0.isTransit }
+    private func alternativeBadgesRow(_ trip: TripPlan, frames: [LegFrame]) -> some View {
+        let transitFrames = frames.filter { $0.leg.isTransit }
         let altChips = trip.routeChips.filter { !$0.isWalk }
 
-        if altChips.count > transitLegs.count,
-           let anchorLeg = transitLegs.last {
-            let overflowCount = max(0, altChips.count - transitLegs.count - 4)
-            let anchorX = min(xPos(for: anchorLeg.departureTime) + 32, canvasWidth + contentInset - 104)
+        if altChips.count > transitFrames.count,
+           let anchorFrame = transitFrames.last {
+            let overflowCount = max(0, altChips.count - transitFrames.count - 4)
+            let anchorX = min(anchorFrame.x + 32, canvasWidth + contentInset - 104)
 
             HStack(spacing: 4) {
                 Text("or")
@@ -248,7 +420,7 @@ struct TripTimelineGridView: View {
                     .foregroundStyle(AppTheme.Colors.textTertiary)
 
                 ForEach(
-                    Array(altChips.suffix(from: min(transitLegs.count, altChips.count))
+                    Array(altChips.suffix(from: min(transitFrames.count, altChips.count))
                         .prefix(4)
                         .enumerated()),
                     id: \.offset
@@ -315,13 +487,13 @@ struct TripTimelineGridView: View {
     }
 
     /// Thin horizontal line connecting first transit start to last transit end.
-    private func transferConnectorLine(_ trip: TripPlan) -> some View {
-        let transitLegs = trip.legs.filter { $0.isTransit }
-        guard let first = transitLegs.first, let last = transitLegs.last else {
+    private func transferConnectorLine(_ frames: [LegFrame]) -> some View {
+        let transitFrames = frames.filter { $0.leg.isTransit }
+        guard let first = transitFrames.first, let last = transitFrames.last else {
             return AnyView(EmptyView())
         }
-        let startX = xPos(for: first.departureTime)
-        let endX = xPos(for: last.arrivalTime)
+        let startX = first.x
+        let endX = last.trailingX
         let lineW = max(endX - startX, 0)
         let cx = startX + lineW / 2
         return AnyView(
@@ -335,19 +507,22 @@ struct TripTimelineGridView: View {
     // MARK: - Leg View
 
     @ViewBuilder
-    private func legView(_ leg: TripLeg, trip: TripPlan) -> some View {
-        let startX = xPos(for: leg.departureTime)
-        let endX = xPos(for: leg.arrivalTime)
-        let legW = max(endX - startX, leg.isTransit ? 50 : 28)
-        let cx = startX + legW / 2
+    private func legView(_ frame: LegFrame, isWalkOnly: Bool) -> some View {
         let cy = barHeight / 2
 
-        if leg.isTransit {
-            transitBar(leg, width: legW)
-                .position(x: cx, y: cy)
+        if frame.leg.isTransit {
+            transitBar(frame.leg, width: frame.width)
+                .position(x: frame.centerX, y: cy)
+        } else if isWalkOnly {
+            walkBar(frame.leg, width: frame.width)
+                .position(x: frame.centerX, y: cy)
+        } else if frame.width < 16 {
+            // Tiny walk/transfer segment — compact connector dot
+            transferDot(frame.leg)
+                .position(x: frame.centerX, y: cy)
         } else {
-            walkDots(leg, width: legW)
-                .position(x: cx, y: cy)
+            walkDots(frame.leg, width: frame.width)
+                .position(x: frame.centerX, y: cy)
         }
     }
 
@@ -444,36 +619,108 @@ struct TripTimelineGridView: View {
         }
     }
 
+    // MARK: - Walk Bar (walk-only trips)
+
+    /// Renders a walk leg as a filled capsule — used when the entire trip
+    /// is walking and the sparse dots would look too empty.
+    private func walkBar(_ leg: TripLeg, width: CGFloat) -> some View {
+        let walkDistance: String? = {
+            guard leg.walkMeters > 0 else { return nil }
+            let miles = leg.walkMeters / 1609.344
+            if miles < 0.1 { return nil }
+            return String(format: "%.1f mi", miles)
+        }()
+
+        return ZStack {
+            // Neutral card-like background — matches transit bar shape language
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppTheme.Colors.textTertiary.opacity(0.10))
+
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white.opacity(0.06), location: 0),
+                            .init(color: .clear, location: 0.5),
+                        ],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
+
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AppTheme.Colors.textTertiary.opacity(0.18), lineWidth: 1)
+
+            // Content: icon + duration + optional distance
+            HStack(spacing: 6) {
+                Image(systemName: "figure.walk")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
+
+                if width > 90, let dist = walkDistance {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("\(leg.durationMinutes) min")
+                            .font(.system(size: 15, weight: .heavy, design: .rounded))
+                            .foregroundStyle(AppTheme.Colors.textPrimary)
+                        Text(dist)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(AppTheme.Colors.textTertiary)
+                    }
+                } else if width > 54 {
+                    Text("\(leg.durationMinutes) min")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                }
+            }
+        }
+        .frame(width: width, height: barHeight)
+        .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
+    }
+
     // MARK: - Walk Dots (• • • •)
 
     /// Renders walk/transfer legs as horizontal dot patterns on the
     /// connector line — matching Transit app style exactly.
+    /// Adapts dot size and spacing for narrow widths so tiny walks
+    /// don't look broken.
     private func walkDots(_ leg: TripLeg, width: CGFloat) -> some View {
-        let w = max(width, 24)
-        let dotSize: CGFloat = 7
-        let dotSpacing: CGFloat = 7
+        let w = max(width, 18)
+        let isCompact = w < 28
+        let showsInlineIcon = w > 28
+        let showMinutes = showsInlineIcon && leg.durationMinutes > 0
+        let dotSize: CGFloat = isCompact ? 5 : 6
+        let dotSpacing: CGFloat = isCompact ? 4 : 5
+
+        // When showing minutes label, use fewer dots to make room
+        let availableForDots = showMinutes ? max(0, w - 40) : w
         let totalDotWidth = dotSize + dotSpacing
-        let dotCount = max(2, min(Int(w / totalDotWidth), 8))
-        let showsInlineIcon = w > 34
-        let leadingDots = showsInlineIcon ? max(1, dotCount / 2) : dotCount
-        let trailingDots = showsInlineIcon ? max(1, dotCount - leadingDots) : 0
+        let dotCount = max(1, min(Int(availableForDots / totalDotWidth), 6))
+        let leadingDots = showsInlineIcon ? max(1, (dotCount + 1) / 2) : dotCount
+        let trailingDots = showsInlineIcon ? max(0, dotCount - leadingDots) : 0
 
         return ZStack {
             HStack(spacing: dotSpacing) {
                 ForEach(0..<leadingDots, id: \.self) { _ in
                     Circle()
-                        .fill(AppTheme.Colors.textTertiary.opacity(0.42))
+                        .fill(AppTheme.Colors.textTertiary.opacity(0.38))
                         .frame(width: dotSize, height: dotSize)
                 }
 
                 if showsInlineIcon {
-                    Image(systemName: leg.mode == .transfer ? "arrow.triangle.swap" : "figure.walk")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.95))
+                    HStack(spacing: 2) {
+                        Image(systemName: leg.mode == .transfer ? "arrow.triangle.swap" : "figure.walk")
+                            .font(.system(size: isCompact ? 9 : 11, weight: .bold))
+                            .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.9))
+
+                        if showMinutes {
+                            Text("\(leg.durationMinutes)")
+                                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                .foregroundStyle(AppTheme.Colors.textTertiary)
+                        }
+                    }
 
                     ForEach(0..<trailingDots, id: \.self) { _ in
                         Circle()
-                            .fill(AppTheme.Colors.textTertiary.opacity(0.42))
+                            .fill(AppTheme.Colors.textTertiary.opacity(0.38))
                             .frame(width: dotSize, height: dotSize)
                     }
                 }
@@ -482,9 +729,28 @@ struct TripTimelineGridView: View {
         .frame(width: w, height: barHeight)
     }
 
+    // MARK: - Transfer Dot
+
+    /// Compact connector for very short walk/transfer segments (< 16 px).
+    /// Shows a small circle with a mode icon instead of oversized dots.
+    private func transferDot(_ leg: TripLeg) -> some View {
+        ZStack {
+            Circle()
+                .fill(AppTheme.Colors.textTertiary.opacity(0.18))
+                .frame(width: 14, height: 14)
+            Image(systemName: leg.mode == .transfer ? "arrow.triangle.swap" : "figure.walk")
+                .font(.system(size: 7, weight: .bold))
+                .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.7))
+        }
+    }
+
 
     private func routeLabel(for leg: TripLeg) -> String {
         if let routeId = leg.routeId, !routeId.isEmpty {
+            // Strip common bus suffixes (-SBS, -LTD) for compact display
+            if leg.mode == .bus {
+                return routeId.components(separatedBy: "-").first ?? routeId
+            }
             return routeId
         }
         if let routeName = leg.routeName, !routeName.isEmpty {
@@ -548,16 +814,22 @@ struct TripTimelineGridView: View {
         // and the duration label is placed just after the last bar ends.
         let departX = xPos(for: trip.departureTime)
         let arriveX = xPos(for: trip.arrivalTime)
+
+        // Ensure duration label never overlaps the go label by enforcing a minimum gap
+        let goLabelEstimatedWidth: CGFloat = 110
+        let minDurationX = max(contentInset, departX - 2) + goLabelEstimatedWidth + 8
+        let durationX = max(minDurationX, min(arriveX + 6, canvasWidth + contentInset - 64))
+
         return ZStack(alignment: .topLeading) {
             // "Go now / Go in / Go at" label — anchored at departure x
             goLabel(trip: trip)
                 .offset(x: max(contentInset, departX - 2))
 
-            // Duration — anchored just after arrival x
+            // Duration — anchored just after arrival x, with overlap guard
             Text(trip.durationString)
                 .font(.system(size: 16, weight: .heavy, design: .rounded))
                 .foregroundStyle(AppTheme.Colors.textPrimary)
-                .offset(x: min(arriveX + 6, canvasWidth + contentInset - 64))
+                .offset(x: durationX)
         }
         .frame(width: canvasWidth + 2 * contentInset, height: 24, alignment: .leading)
     }

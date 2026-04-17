@@ -611,6 +611,8 @@ struct StopRowView: View {
                                     ? AppTheme.Colors.textSecondary.opacity(0.35)
                                     : AppTheme.Colors.textPrimary
                             )
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
 
                     HStack(spacing: 3) {
@@ -642,6 +644,8 @@ struct StopRowView: View {
                         ? AppTheme.Colors.textSecondary.opacity(0.3)
                         : AppTheme.Colors.textSecondary
                 )
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         } else {
             EmptyView()
         }

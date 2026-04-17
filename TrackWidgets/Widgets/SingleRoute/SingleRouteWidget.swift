@@ -442,6 +442,8 @@ struct SingleRouteWidgetView: View {
                 Text(entry.date, style: .time)
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 HStack(spacing: 4) {
                     Circle()
                         .fill(AppTheme.Colors.successGreen)

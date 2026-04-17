@@ -23,24 +23,30 @@ struct TripResultsView: View {
                 VStack(spacing: 0) {
                     resultsHeader
 
-                    if viewModel.isLoading {
-                        loadingState
-                    } else if let error = viewModel.errorMessage, viewModel.tripResults.isEmpty {
-                        errorState(error)
-                    } else {
-                        if viewModel.isUsingAppleFallback {
-                            appleFallbackBanner
+                    ZStack {
+                        if viewModel.isLoading {
+                            loadingState
+                                .transition(.opacity)
+                        } else if let error = viewModel.errorMessage, viewModel.tripResults.isEmpty {
+                            errorState(error)
+                                .transition(.opacity)
+                        } else {
+                            VStack(spacing: 0) {
+                                if viewModel.isUsingAppleFallback {
+                                    appleFallbackBanner
+                                }
+                                if let note = viewModel.scheduleNote {
+                                    scheduleNoteBanner(note)
+                                }
+                                resultsList
+                            }
+                            .transition(.opacity)
                         }
-                        if let note = viewModel.scheduleNote {
-                            scheduleNoteBanner(note)
-                        }
-                        resultsList
                     }
+                    .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
                 }
 
-                if !viewModel.isLoading && !viewModel.tripResults.isEmpty {
-                    floatingSettingsButton
-                }
+
             }
         }
             .animation(AppTheme.Animation.snappy, value: showSettings)
@@ -224,17 +230,17 @@ struct TripResultsView: View {
                     Text(viewModel.departureTimeLabel)
                         .font(.system(size: 13, weight: .heavy, design: .rounded))
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.Colors.textPrimary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 11)
                 .background(
                     Capsule()
-                        .fill(Color(red: 0.22, green: 0.22, blue: 0.25))
+                        .fill(AppTheme.Colors.cardFloating)
                         .overlay(
                             Capsule()
-                                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.2), lineWidth: 1)
                         )
-                        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                        .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
                 )
             }
             .buttonStyle(.plain)
@@ -246,13 +252,13 @@ struct TripResultsView: View {
             } label: {
                 Image(systemName: "star")
                     .font(.system(size: 17, weight: .heavy))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
                     .frame(width: 42, height: 42)
                     .background(
                         Circle()
-                            .fill(Color(red: 0.22, green: 0.22, blue: 0.25))
-                            .overlay(Circle().strokeBorder(.white.opacity(0.08), lineWidth: 1))
-                            .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                            .fill(AppTheme.Colors.cardFloating)
+                            .overlay(Circle().strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.2), lineWidth: 1))
+                            .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
                     )
             }
             .buttonStyle(ResultsButtonStyle())
@@ -263,13 +269,30 @@ struct TripResultsView: View {
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 17, weight: .heavy))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
                     .frame(width: 42, height: 42)
                     .background(
                         Circle()
-                            .fill(Color(red: 0.22, green: 0.22, blue: 0.25))
-                            .overlay(Circle().strokeBorder(.white.opacity(0.08), lineWidth: 1))
-                            .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                            .fill(AppTheme.Colors.cardFloating)
+                            .overlay(Circle().strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.2), lineWidth: 1))
+                            .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
+                    )
+            }
+            .buttonStyle(ResultsButtonStyle())
+
+            // Filter / trip settings
+            Button {
+                showSettings = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 17, weight: .heavy))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                    .frame(width: 42, height: 42)
+                    .background(
+                        Circle()
+                            .fill(AppTheme.Colors.cardFloating)
+                            .overlay(Circle().strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.2), lineWidth: 1))
+                            .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
                     )
             }
             .buttonStyle(ResultsButtonStyle())
@@ -288,7 +311,7 @@ struct TripResultsView: View {
                     .background(
                         Circle()
                             .fill(AppTheme.Colors.alertRed)
-                            .overlay(Circle().strokeBorder(.white.opacity(0.08), lineWidth: 1))
+                            .overlay(Circle().strokeBorder(AppTheme.Colors.alertRed.opacity(0.3), lineWidth: 1))
                             .shadow(color: AppTheme.Colors.alertRed.opacity(0.34), radius: 10, y: 4)
                     )
             }
@@ -297,32 +320,7 @@ struct TripResultsView: View {
         .padding(.horizontal, 16)
     }
 
-    private var floatingSettingsButton: some View {
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                Button {
-                    showSettings = true
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 20, weight: .heavy))
-                        .foregroundStyle(.white.opacity(0.92))
-                        .frame(width: 58, height: 58)
-                        .background(
-                            Circle()
-                                .fill(Color(red: 0.22, green: 0.22, blue: 0.25).opacity(0.96))
-                                .overlay(Circle().strokeBorder(.white.opacity(0.08), lineWidth: 1))
-                                .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
-                        )
-                }
-                .buttonStyle(ResultsButtonStyle())
-                .padding(.trailing, 18)
-                .padding(.bottom, 102)
-            }
-        }
-        .ignoresSafeArea(edges: .bottom)
-    }
+
 
     // MARK: - Results List
 
@@ -337,7 +335,15 @@ struct TripResultsView: View {
                     trips: viewModel.tripResults,
                     onTripTap: { trip in selectedTrip = trip },
                     recommendedIndex: 0,
-                    departureOption: viewModel.departureOption
+                    departureOption: viewModel.departureOption,
+                    onDepartureTimeChange: { date in
+                        if let date {
+                            viewModel.setDepartAt(date)
+                        } else {
+                            viewModel.setLeaveNow()
+                        }
+                        Task { await viewModel.planTrip(forceRefresh: true) }
+                    }
                 )
 
                 // Show more trips button — one-shot; disappears after use
@@ -381,10 +387,10 @@ struct TripResultsView: View {
             .padding(.vertical, 20)
             .background(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color(red: 0.2, green: 0.2, blue: 0.23))
+                    .fill(AppTheme.Colors.cardElevated)
                     .overlay(
                         RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .strokeBorder(.white.opacity(0.05), lineWidth: 1)
+                            .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.15), lineWidth: 1)
                     )
             )
         }
@@ -498,93 +504,170 @@ struct TripResultsView: View {
     // MARK: - Loading State
 
     @State private var shimmerPhase: CGFloat = 0
+    @State private var pulseScale: CGFloat = 1.0
+    @State private var rotationAngle: Double = 0
 
     private var loadingState: some View {
-        VStack(spacing: 28) {
-            Spacer()
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 24) {
+                Spacer().frame(height: 24)
+            }
 
-            // Animated indicator
-            ZStack {
-                Circle()
-                    .stroke(AppTheme.Colors.accent.opacity(0.1), lineWidth: 3)
-                    .frame(width: 94, height: 94)
+            // Animated indicator — centered hero
+            VStack(spacing: 24) {
+                ZStack {
+                    // Outer pulsing ring
+                    Circle()
+                        .stroke(AppTheme.Colors.accent.opacity(0.08), lineWidth: 1.5)
+                        .frame(width: 120, height: 120)
+                        .scaleEffect(pulseScale)
+                        .opacity(2.0 - Double(pulseScale))
 
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [AppTheme.Colors.accent.opacity(0.08), .clear],
-                            center: .center, startRadius: 0, endRadius: 48
+                    // Rotating gradient arc
+                    Circle()
+                        .trim(from: 0, to: 0.3)
+                        .stroke(
+                            AngularGradient(
+                                stops: [
+                                    .init(color: AppTheme.Colors.accent.opacity(0.0), location: 0.0),
+                                    .init(color: AppTheme.Colors.accent, location: 1.0),
+                                ],
+                                center: .center
+                            ),
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
                         )
-                    )
-                    .frame(width: 80, height: 80)
+                        .frame(width: 94, height: 94)
+                        .rotationEffect(.degrees(rotationAngle))
 
-                Circle()
-                    .fill(AppTheme.Colors.cardBackground)
-                    .frame(width: 60, height: 60)
-                    .overlay(
-                        Circle().strokeBorder(AppTheme.Colors.accent.opacity(0.08), lineWidth: 1)
-                    )
+                    // Soft radial glow
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [AppTheme.Colors.accent.opacity(0.10), .clear],
+                                center: .center, startRadius: 0, endRadius: 40
+                            )
+                        )
+                        .frame(width: 80, height: 80)
 
-                ProgressView()
-                    .tint(AppTheme.Colors.accent)
-                    .scaleEffect(1.4)
+                    // Center icon circle
+                    Circle()
+                        .fill(AppTheme.Colors.cardBackground)
+                        .frame(width: 56, height: 56)
+                        .overlay(
+                            Circle().strokeBorder(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: AppTheme.Colors.accent.opacity(0.15), location: 0.0),
+                                        .init(color: AppTheme.Colors.borderSubtle.opacity(0.08), location: 1.0),
+                                    ],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                        )
+                        .shadow(color: AppTheme.Colors.accent.opacity(0.12), radius: 16, y: 4)
+
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(AppTheme.Colors.accent)
+                        .rotationEffect(.degrees(-rotationAngle * 0.3))
+                }
+
+                VStack(spacing: 6) {
+                    Text("Finding routes")
+                        .font(.system(size: 21, weight: .black, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                    Text("Checking subway, bus & rail options...")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                }
             }
-
-            VStack(spacing: 8) {
-                Text("Finding routes")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-                Text("Checking subway, bus & rail options...")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
-            }
+            .padding(.bottom, 32)
 
             // Skeleton cards with shimmer
             VStack(spacing: 10) {
                 ForEach(0..<3, id: \.self) { i in
                     skeletonCard
-                        .opacity(Double(3 - i) / 3.0 * 0.7)
+                        .opacity(Double(3 - i) / 3.0 * 0.8)
+                        .offset(y: CGFloat(i) * 2)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
 
-            Spacer()
+            Spacer().frame(height: 40)
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                rotationAngle = 360
+            }
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                pulseScale = 1.15
+            }
+            withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
+                shimmerPhase = 1.0
+            }
         }
     }
 
     private var skeletonCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(AppTheme.Colors.cardInset)
-                    .frame(width: 130, height: 14)
+                shimmerRect(width: 130, height: 13, radius: 6)
                 Spacer()
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(AppTheme.Colors.cardInset)
-                    .frame(width: 55, height: 14)
+                shimmerRect(width: 55, height: 13, radius: 6)
             }
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(AppTheme.Colors.cardInset)
-                .frame(height: 38)
+            shimmerRect(width: nil, height: 36, radius: 12)
             HStack(spacing: 6) {
                 ForEach(0..<3, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(AppTheme.Colors.cardInset)
-                        .frame(width: 28, height: 28)
+                    shimmerRect(width: 30, height: 30, radius: 10)
                 }
                 Spacer()
             }
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(AppTheme.Colors.cardBackground)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.15), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(AppTheme.Gradients.chromeHighlight)
                 )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: AppTheme.Colors.glassHighlight.opacity(0.10), location: 0.0),
+                                    .init(color: AppTheme.Colors.borderSubtle.opacity(0.06), location: 1.0),
+                                ],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.75
+                        )
+                )
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.04), radius: 6, y: 3)
         )
+    }
+
+    private func shimmerRect(width: CGFloat?, height: CGFloat, radius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(AppTheme.Colors.cardInset)
+            .frame(width: width, height: height)
+            .frame(maxWidth: width == nil ? .infinity : nil)
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: max(0, shimmerPhase - 0.3)),
+                                .init(color: AppTheme.Colors.accent.opacity(0.06), location: shimmerPhase),
+                                .init(color: .clear, location: min(1, shimmerPhase + 0.3)),
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            )
     }
 
     // MARK: - Apple Maps Fallback Banner

@@ -334,6 +334,8 @@ struct LiveNearMeWidgetView: View {
                     Text(entry.date, style: .time)
                         .font(.system(size: isLarge ? 12 : 11, weight: .bold, design: .rounded))
                         .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                     if let activeUntil = calculateActiveUntil() {
                         Text("Until \(activeUntil, style: .time)")
                             .font(.system(
@@ -342,6 +344,8 @@ struct LiveNearMeWidgetView: View {
                                 design: .rounded
                             ))
                             .foregroundColor(AppTheme.Colors.successGreen)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 }
             }
@@ -449,6 +453,8 @@ struct LiveNearMeWidgetView: View {
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.countdown(minutesRemaining(for: arrival)))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
 
             Text(arrival.stopName)
@@ -485,6 +491,8 @@ struct LiveNearMeWidgetView: View {
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.countdown(minutesRemaining(for: arrival)))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 
                 if !arrival.status.isEmpty {
                     Text(arrival.status)

@@ -1,6 +1,6 @@
-// Trip settings — premium bottom sheet matching the Track design system.
-// Glass-frosted surface, gradient accents, animated selections,
-// and consistent depth with TripDetailSheet and PlanView.
+// Trip settings — premium bottom sheet matching the TripResultsView
+// design language. Accent gradient header, frosted glass cards,
+// animated selections, and seamless visual continuity.
 
 import SwiftUI
 
@@ -24,37 +24,93 @@ struct TripSettingsSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            sheetContent
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar { toolbarContent }
+        ZStack(alignment: .top) {
+            // Background
+            AppTheme.Gradients.screen.ignoresSafeArea()
+            AppTheme.Gradients.screenSheen.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                settingsHeader
+                settingsScroll
+            }
+
+            // Floating apply button at bottom
+            floatingApply
         }
         .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
         .presentationCornerRadius(32)
         .onAppear { seedLocalState() }
     }
 
-    // MARK: - Sheet Content
+    // MARK: - Header (matches TripResultsView accent gradient)
 
-    private var sheetContent: some View {
-        ZStack {
-            sheetBackground
-            settingsScroll
-            floatingApply
+    private var settingsHeader: some View {
+        VStack(spacing: 0) {
+            // Drag indicator
+            Capsule()
+                .fill(.white.opacity(0.35))
+                .frame(width: 36, height: 4)
+                .padding(.top, 10)
+                .padding(.bottom, 14)
+
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Trip Settings")
+                        .font(.system(size: 24, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("Customize your route search")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+
+                Spacer()
+
+                // Close button — matches resultsView control bar style
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(
+                            Circle()
+                                .fill(Color.black.opacity(0.14))
+                                .overlay(Circle().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
+                        )
+                }
+                .buttonStyle(SettingsButtonStyle())
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
         }
+        .background(
+            ZStack {
+                LinearGradient(
+                    stops: [
+                        .init(color: AppTheme.Colors.accent, location: 0),
+                        .init(color: AppTheme.Colors.accentDeep, location: 0.55),
+                        .init(color: AppTheme.Colors.accentDeep.opacity(0.95), location: 1),
+                    ],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.0),
+                        Color.black.opacity(0.08),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        )
     }
 
-    private var sheetBackground: some View {
-        ZStack {
-            AppTheme.Colors.background.ignoresSafeArea()
-            AppTheme.Gradients.screenSheen.ignoresSafeArea()
-        }
-    }
+    // MARK: - Scrollable Content
 
     private var settingsScroll: some View {
         ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: AppTheme.Spacing.section) {
+            VStack(spacing: 14) {
                 settingsCard("Route Priority", icon: "arrow.triangle.branch") {
                     priorityPicker
                 }
@@ -67,13 +123,15 @@ struct TripSettingsSheet: View {
                 settingsCard("Accessibility", icon: "figure.roll") {
                     accessibilityToggle
                 }
-                Spacer(minLength: 100)
+                Spacer(minLength: 120)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.top, 16)
         }
         .scrollContentBackground(.hidden)
     }
+
+    // MARK: - Floating Apply
 
     private var floatingApply: some View {
         VStack {
@@ -81,62 +139,19 @@ struct TripSettingsSheet: View {
             applyButton
                 .padding(.horizontal, 20)
                 .padding(.bottom, 28)
-                .background(applyFadeGradient)
-        }
-    }
-
-    private var applyFadeGradient: some View {
-        LinearGradient(
-            stops: [
-                .init(color: .clear, location: 0.0),
-                .init(color: AppTheme.Colors.background.opacity(0.85), location: 0.25),
-                .init(color: AppTheme.Colors.background, location: 1.0),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .frame(height: 120)
-        .allowsHitTesting(false)
-    }
-
-    // MARK: - Toolbar
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
-            dismissButton
-        }
-        ToolbarItem(placement: .principal) {
-            titleLabel
-        }
-    }
-
-    private var dismissButton: some View {
-        Button { dismiss() } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(AppTheme.Colors.textSecondary)
-                .frame(width: 32, height: 32)
                 .background(
-                    Circle()
-                        .fill(AppTheme.Colors.cardElevated)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.3), lineWidth: 0.5)
-                        )
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0.0),
+                            .init(color: AppTheme.Colors.background.opacity(0.85), location: 0.25),
+                            .init(color: AppTheme.Colors.background, location: 1.0),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 120)
+                    .allowsHitTesting(false)
                 )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var titleLabel: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "slider.horizontal.3")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(AppTheme.Colors.accent)
-            Text("Trip Settings")
-                .font(.system(size: 17, weight: .bold, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textPrimary)
         }
     }
 

@@ -145,6 +145,8 @@ struct ServiceAlertsPage: View {
                             .frame(width: 5, height: 5)
                         Text("Updated \(lastUpdated, style: .time)")
                             .font(.system(size: 11, weight: .medium))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     .foregroundColor(AppTheme.Colors.textTertiary)
                 }
@@ -284,6 +286,8 @@ struct ServiceAlertsPage: View {
                         .font(.system(size: 10, weight: .semibold))
                     Text("Checked at \(lastUpdated, style: .time)")
                         .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
                 .foregroundColor(AppTheme.Colors.textTertiary)
             }

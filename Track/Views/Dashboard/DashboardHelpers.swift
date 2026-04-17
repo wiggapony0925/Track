@@ -26,6 +26,8 @@ struct DashboardSectionHeader: View {
                 Text("Updated \(updated, style: .time)")
                     .font(.system(size: 11, weight: .regular))
                     .foregroundColor(AppTheme.Colors.textTertiary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             } else {
                 Spacer()
             }
@@ -155,6 +157,8 @@ struct CommuterRailSectionHeader: View {
                 Text(updated, style: .time)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundColor(AppTheme.Colors.textTertiary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)

@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services.track_engine.integration import reset_engine_service
+from app.services.transit.db_pool import schedule_pool
 
 client = TestClient(app)
 NY_TZ = ZoneInfo("America/New_York")
@@ -82,6 +83,12 @@ def _build_schedule_db(path: Path) -> None:
             ON trips(service_id);
         CREATE INDEX idx_stops_name
             ON stops(stop_name);
+        CREATE TABLE stop_modes (
+            stop_id TEXT,
+            route_type INTEGER
+        );
+        CREATE INDEX idx_stop_modes_stop_type
+            ON stop_modes(stop_id, route_type);
         """
     )
     conn.executemany(
@@ -125,6 +132,16 @@ def _build_schedule_db(path: Path) -> None:
         INSERT INTO calendar
         VALUES ('WKD', 1, 1, 1, 1, 1, 1, 1, '20240101', '20300101')
         """
+    )
+    conn.executemany(
+        "INSERT INTO stop_modes VALUES (?, ?)",
+        [
+            ("STOP_A", 3),  # bus
+            ("STOP_B", 3),  # bus
+            ("STOP_C", 1),  # subway
+            ("STOP_C", 3),  # bus
+            ("STOP_D", 1),  # subway
+        ],
     )
     conn.commit()
     conn.close()
@@ -431,6 +448,10 @@ def test_backend_plan_route_uses_remote_cpp_engine(tmp_path: Path, monkeypatch: 
         monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
         monkeypatch.setenv("TRACK_ENGINE_URL", f"http://127.0.0.1:{port}")
         monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
+        monkeypatch.setattr(schedule_pool, "_db_path", Path(str(schedule_db)))
+        monkeypatch.setattr(schedule_pool, "_opened", False)
+        monkeypatch.setattr(schedule_pool, "_pool", None)
+        monkeypatch.setattr(schedule_pool, "_connections", [])
         reset_engine_service()
 
         health_resp = client.get("/engine/health")
@@ -557,6 +578,10 @@ def test_backend_bus_schedule_fallback_preserves_requested_day(
         monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
         monkeypatch.setenv("TRACK_ENGINE_URL", f"http://127.0.0.1:{port}")
         monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
+        monkeypatch.setattr(schedule_pool, "_db_path", Path(str(schedule_db)))
+        monkeypatch.setattr(schedule_pool, "_opened", False)
+        monkeypatch.setattr(schedule_pool, "_pool", None)
+        monkeypatch.setattr(schedule_pool, "_connections", [])
         reset_engine_service()
 
         depart_at = _fixed_timestamp(2026, 4, 11, 19, 58)
@@ -680,6 +705,10 @@ def test_backend_future_bus_schedule_fallback_uses_next_matching_service_day(
         monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
         monkeypatch.setenv("TRACK_ENGINE_URL", f"http://127.0.0.1:{port}")
         monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
+        monkeypatch.setattr(schedule_pool, "_db_path", Path(str(schedule_db)))
+        monkeypatch.setattr(schedule_pool, "_opened", False)
+        monkeypatch.setattr(schedule_pool, "_pool", None)
+        monkeypatch.setattr(schedule_pool, "_connections", [])
         reset_engine_service()
 
         depart_at = _fixed_timestamp(2026, 4, 11, 19, 58)
