@@ -2742,6 +2742,56 @@ class TrackEngineService:
                 trip.itinerary.walk_meters,
             ),
         )
+
+        # ── Dominance pruning ──────────────────────────────────────────
+        # Drop alternatives that are Pareto-dominated by the primary:
+        # arrives same-or-later AND has strictly more transfers.
+        # This prevents the diversity filter from surfacing "unique"
+        # routes that are objectively worse in every dimension.
+        if len(ranked_trips) > 1:
+            best = ranked_trips[0]
+            best_arrive = best.itinerary.arrive_at_ts or 0
+            best_xfers = best.itinerary.transfer_count or 0
+
+            def _is_dominated(alt: GoTrip) -> bool:
+                a_arrive = alt.itinerary.arrive_at_ts or 0
+                a_xfers = alt.itinerary.transfer_count or 0
+                # Dominated: arrives same-or-later with more transfers
+                if a_arrive >= best_arrive and a_xfers > best_xfers:
+                    # Allow if it saves significant walking (>200m)
+                    if (alt.itinerary.walk_meters or 0) + 200 < (best.itinerary.walk_meters or 0):
+                        return False
+                    return True
+                return False
+
+            ranked_trips = [ranked_trips[0]] + [
+                t for t in ranked_trips[1:] if not _is_dominated(t)
+            ]
+
+        # ── Phantom-leg pruning ────────────────────────────────────────
+        # Remove itineraries containing a phantom transit leg where the
+        # rider boards and alights at the exact same stop (stop-matching
+        # artifact).
+        def _has_phantom_leg(trip: GoTrip) -> bool:
+            for leg in trip.itinerary.legs:
+                if leg.mode != "walk" and (leg.stop_count or 0) <= 0:
+                    dur = (leg.arrival_ts or 0) - (leg.departure_ts or 0)
+                    if dur <= 60 and leg.board_stop_id == leg.alight_stop_id:
+                        return True
+            return False
+
+        ranked_trips = [t for t in ranked_trips if not _has_phantom_leg(t)]
+        if not ranked_trips:
+            # Safety: if all trips were pruned, fall back to original sort
+            ranked_trips = sorted(
+                trips,
+                key=lambda trip: (
+                    trip.ranking_score,
+                    trip.itinerary.arrive_at_ts,
+                    trip.itinerary.transfer_count,
+                ),
+            )
+
         response.primary_trip = ranked_trips[0]
         response.alternatives = ranked_trips[1:]
         return response
