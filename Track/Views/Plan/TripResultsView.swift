@@ -215,6 +215,7 @@ struct TripResultsView: View {
             departureControlBar
                 .offset(y: 16)
         }
+        .zIndex(1) // Keep control bar above scrolled trip cards
     }
 
     // Floating control bar: Leave now + settings + refresh + X
@@ -328,7 +329,7 @@ struct TripResultsView: View {
         ScrollView {
             VStack(spacing: 0) {
                 // Space for the floating departure control bar
-                Spacer().frame(height: 24)
+                Spacer().frame(height: 48)
 
                 // Timeline grid — Transit-style horizontal Gantt chart
                 TripTimelineGridView(
