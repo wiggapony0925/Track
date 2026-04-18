@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import ssl
 import time
 import urllib.request
@@ -25,11 +26,48 @@ from typing import Any
 
 from app.config import get_settings
 
-_CONFIG_DIR = Path(__file__).resolve().parents[3] / "config"
 _log = logging.getLogger("track.brand")
 
 _MTA_COLORS_API = get_settings().urls.mta_colors_api
 _SYNC_STALE_SECONDS = 7 * 24 * 3600  # refresh if JSON is older than 7 days
+
+
+def _config_candidates() -> list[Path]:
+    """Return config directories in priority order.
+
+    Supports both the full monorepo layout (repo-root ``config/``) and the
+    standalone backend Docker layout where only ``TrackBackend/`` is copied
+    into the image.
+    """
+    explicit = os.environ.get("TRACK_CONFIG_DIR", "").strip()
+    candidates: list[Path] = []
+    if explicit:
+        candidates.append(Path(explicit))
+
+    here = Path(__file__).resolve()
+    candidates.extend(
+        [
+            here.parents[3] / "config",  # repo root: Track/config
+            here.parents[2] / "config",  # standalone backend: TrackBackend/config
+            Path.cwd() / "config",
+        ]
+    )
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate not in seen:
+            unique.append(candidate)
+            seen.add(candidate)
+    return unique
+
+
+def _resolve_config_path(filename: str) -> Path | None:
+    for config_dir in _config_candidates():
+        candidate = config_dir / filename
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _try_sync_from_api(colors_path: Path) -> None:
@@ -79,15 +117,17 @@ def _try_sync_from_api(colors_path: Path) -> None:
 
 # ── colours ──────────────────────────────────────────────────────────
 
-_colors_path = _CONFIG_DIR / "brand_colors.json"
+_colors_path = _resolve_config_path("brand_colors.json")
 
 # Best-effort auto-sync from MTA Open Data API
-_try_sync_from_api(_colors_path)
-
-if _colors_path.exists():
+if _colors_path is not None:
+    _try_sync_from_api(_colors_path)
     _colors: dict[str, Any] = json.loads(_colors_path.read_text())
 else:
-    # Fallback — should never happen in a properly-deployed environment.
+    _log.info(
+        "🎨 brand_colors.json not found in %s; using built-in brand fallbacks",
+        ", ".join(str(path) for path in _config_candidates()),
+    )
     _colors = {}
 
 _FALLBACK_SUBWAY_COLORS: dict[str, str] = {
@@ -139,7 +179,7 @@ MNR_COLORS: dict[str, str] = _colors.get("commuter_rail", {}).get("mnr", {})
 MODE_DEFAULTS: dict[str, str] = _colors.get("mode_defaults", {})
 
 _missing_subway_color_keys = sorted(set(_FALLBACK_SUBWAY_COLORS) - set(_RAW_SUBWAY_COLORS))
-if _missing_subway_color_keys:
+if _colors_path is not None and _missing_subway_color_keys:
     _log.warning(
         "🎨 brand_colors.json missing %d subway color entries; using built-in fallback for: %s",
         len(_missing_subway_color_keys),
@@ -148,8 +188,8 @@ if _missing_subway_color_keys:
 
 # ── planner defaults ─────────────────────────────────────────────────
 
-_defaults_path = _CONFIG_DIR / "planner_defaults.json"
-if _defaults_path.exists():
+_defaults_path = _resolve_config_path("planner_defaults.json")
+if _defaults_path is not None:
     PLANNER_DEFAULTS: dict[str, Any] = json.loads(_defaults_path.read_text())
 else:
     PLANNER_DEFAULTS = {}
