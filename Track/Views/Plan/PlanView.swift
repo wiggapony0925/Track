@@ -305,10 +305,7 @@ struct PlanView: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("FROM")
-                                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                                .foregroundStyle(AppTheme.Colors.accent.opacity(0.65))
-                                .tracking(1.0)
+                            SectionHeader(title: "From", size: 10, tracking: 1.0, color: AppTheme.Colors.accent.opacity(0.65))
                             Text(viewModel.origin.displayName)
                                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                                 .foregroundStyle(AppTheme.Colors.textPrimary)
@@ -331,10 +328,7 @@ struct PlanView: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("TO")
-                                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                                .foregroundStyle(AppTheme.Colors.alertRed.opacity(0.55))
-                                .tracking(1.0)
+                            SectionHeader(title: "To", size: 10, tracking: 1.0, color: AppTheme.Colors.alertRed.opacity(0.55))
                             Text(viewModel.destination?.displayName ?? "Where to?")
                                 .font(.system(size: 16, weight: viewModel.destination != nil ? .semibold : .regular, design: .rounded))
                                 .foregroundStyle(
@@ -1391,11 +1385,7 @@ struct PlanView: View {
                     )
                 )
                 .frame(width: 3, height: 14)
-            Text(title)
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textTertiary)
-                .textCase(.uppercase)
-                .tracking(0.8)
+            SectionHeader(title: title, size: 13)
         }
         .padding(.leading, 20)
     }

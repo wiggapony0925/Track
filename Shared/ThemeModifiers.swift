@@ -397,4 +397,73 @@ extension View {
                 .fill(AppTheme.Colors.cardElevated)
         }
     }
+
+    // MARK: - Glass Card
+
+    /// Premium glass card background — fill + top-edge highlight + subtle border.
+    /// Consolidates the recurring 3-layer pattern used across sheets, detail
+    /// views, and cards:
+    ///   1. `cardBackground` fill
+    ///   2. Optional top-edge white gradient highlight
+    ///   3. Subtle `borderSubtle` strokeBorder
+    ///
+    /// Parameters default to the most common variant. Callers that need only a
+    /// plain bordered card can pass `hasHighlight: false`.
+    func trackGlassCard(
+        cornerRadius: CGFloat = 16,
+        borderOpacity: Double = 0.2,
+        borderWidth: CGFloat = 0.5,
+        hasHighlight: Bool = true,
+        shadowRadius: CGFloat = 0,
+        shadowY: CGFloat = 0
+    ) -> some View {
+        background {
+            ZStack {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(AppTheme.Colors.cardBackground)
+
+                if hasHighlight {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0.05), location: 0),
+                                    .init(color: .clear, location: 0.4),
+                                ],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                }
+
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        AppTheme.Colors.borderSubtle.opacity(borderOpacity),
+                        lineWidth: borderWidth
+                    )
+            }
+            .shadow(
+                color: shadowRadius > 0 ? .black.opacity(0.12) : .clear,
+                radius: shadowRadius,
+                y: shadowY
+            )
+        }
+    }
+
+    /// Tinted glass card — card fill + accent-tinted border (e.g. action cards,
+    /// alert rows). Uses a specific tint color instead of `borderSubtle`.
+    func trackTintedCard(
+        cornerRadius: CGFloat = 16,
+        tint: Color = AppTheme.Colors.accent,
+        borderOpacity: Double = 0.15,
+        borderWidth: CGFloat = 0.8
+    ) -> some View {
+        background {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(tint.opacity(borderOpacity), lineWidth: borderWidth)
+                )
+        }
+    }
 }

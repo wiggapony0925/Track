@@ -1,5 +1,6 @@
-// Premium trip detail sheet — immersive hero banner,
-// glass stat cards, rich timeline, and polished action buttons.
+// Premium trip detail page — immersive interactive MapLibre map hero
+// with route polylines, glass stat cards, rich timeline, and polished
+// action buttons.  Presented as a full-screen cover.
 
 import SwiftUI
 
@@ -13,17 +14,21 @@ struct TripDetailSheet: View {
     @State private var showShareSheet = false
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        ZStack(alignment: .top) {
+            // Background
+            AppTheme.Colors.background
+                .ignoresSafeArea()
+
+            ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    // Hero banner
-                    heroBanner
+                    // Map hero with overlaid summary card
+                    mapHero
                         .opacity(heroVisible ? 1 : 0)
-                        .scaleEffect(heroVisible ? 1 : 0.98)
+                        .scaleEffect(heroVisible ? 1 : 0.99)
 
                     // Stats row (overlapping hero)
                     statsRow
-                        .padding(.top, -30)
+                        .padding(.top, -24)
                         .padding(.horizontal, 16)
 
                     // Route summary
@@ -86,138 +91,108 @@ struct TripDetailSheet: View {
                     Spacer(minLength: 40)
                 }
             }
-            .background(AppTheme.Colors.background)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(AppTheme.Colors.textSecondary)
-                            .frame(width: 34, height: 34)
-                            .background(
-                                Circle()
-                                    .fill(AppTheme.Colors.cardInset)
-                                    .overlay(
-                                        Circle().strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.3), lineWidth: 0.5)
-                                    )
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-                ToolbarItem(placement: .principal) {
-                    Text("Trip Details")
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showShareSheet = true
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(AppTheme.Colors.accent)
-                    }
-                    .buttonStyle(.plain)
-                }
+
+            // Floating close + share buttons over map
+            floatingButtons
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: [buildShareText()])
+                .presentationDetents([.medium, .large])
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                heroVisible = true
             }
-            .sheet(isPresented: $showShareSheet) {
-                ShareSheet(items: [buildShareText()])
-                    .presentationDetents([.medium, .large])
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.82).delay(0.12)) {
+                statsVisible = true
             }
-            .onAppear {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    heroVisible = true
-                }
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.82).delay(0.12)) {
-                    statsVisible = true
-                }
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.8).delay(0.22)) {
-                    bodyVisible = true
-                }
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.8).delay(0.22)) {
+                bodyVisible = true
             }
         }
     }
 
-    // MARK: - Hero Banner
+    // MARK: - Floating Buttons
 
-    private var heroBanner: some View {
-        ZStack(alignment: .bottomLeading) {
-            // Gradient background
-            ZStack {
-                LinearGradient(
-                    stops: [
-                        .init(color: AppTheme.Colors.accent, location: 0),
-                        .init(color: AppTheme.Colors.accentDeep, location: 0.65),
-                        .init(color: AppTheme.Colors.accentDeep.opacity(0.9), location: 1),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+    private var floatingButtons: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 12) {
+                FloatingCircleButton(icon: "xmark") { dismiss() }
 
-                // Decorative orbs
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [.white.opacity(0.08), .clear],
-                            center: .center, startRadius: 0, endRadius: 90
-                        )
-                    )
-                    .frame(width: 180, height: 180)
-                    .offset(x: 200, y: -50)
-
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [AppTheme.Colors.accentSecondary.opacity(0.1), .clear],
-                            center: .center, startRadius: 0, endRadius: 60
-                        )
-                    )
-                    .frame(width: 120, height: 120)
-                    .offset(x: -20, y: 30)
+                FloatingCircleButton(
+                    icon: "location.fill",
+                    fillColor: AppTheme.Colors.accent,
+                    iconSize: 14
+                ) { showShareSheet = true }
             }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 54) // below status bar
+    }
 
-            // Content
-            VStack(alignment: .leading, spacing: 10) {
+    // MARK: - Map Hero
+
+    private var mapHero: some View {
+        ZStack(alignment: .bottom) {
+            // Live interactive route map (MapLibre GL)
+            TripRouteMapView(trip: trip, isInteractive: true)
+                .frame(height: 420)
+
+            // Gradient fade into background
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: AppTheme.Colors.background.opacity(0.3), location: 0.4),
+                    .init(color: AppTheme.Colors.background.opacity(0.85), location: 0.75),
+                    .init(color: AppTheme.Colors.background, location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(height: 180)
+
+            // Overlaid trip summary card
+            tripSummaryCard
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+        }
+    }
+
+    // MARK: - Trip Summary Card
+
+    private var tripSummaryCard: some View {
+        VStack(spacing: 12) {
+            // Times + duration row
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Leave at \(timeString(trip.departureTime))")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+
+                    Text("Arrive at \(timeString(trip.arrivalTime))")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                }
+
                 Spacer()
 
-                // Departure time
-                Text("Go at \(timeString(trip.departureTime))")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-
-                // Trip summary chips
-                HStack(spacing: 12) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "clock.fill")
-                            .font(.system(size: 11, weight: .bold))
-                        Text(trip.durationString)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    }
-
-                    Text("·")
-                        .font(.system(size: 14, weight: .bold))
-
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.triangle.swap")
-                            .font(.system(size: 11, weight: .bold))
-                        Text(
-                            trip.numTransfers == 0
-                                ? "Direct"
-                                : "\(trip.numTransfers) transfer\(trip.numTransfers > 1 ? "s" : "")"
-                        )
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    }
-
-                    Spacer()
-                }
-                .foregroundStyle(.white.opacity(0.7))
+                Text(trip.durationString)
+                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                    .padding(.top, 4)
             }
-            .padding(.horizontal, 22)
-            .padding(.bottom, 48)
+
+            // Mini timeline bar
+            MiniTimelineBar(legs: trip.legs)
         }
-        .frame(height: 190)
-        .clipShape(Rectangle())
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .trackGlassCard(
+            cornerRadius: 20,
+            borderOpacity: 0.15,
+            shadowRadius: 16,
+            shadowY: 8
+        )
     }
 
     // MARK: - Stats Row
@@ -264,25 +239,11 @@ struct TripDetailSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(AppTheme.Colors.cardBackground)
-                // Top-edge glass highlight
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white.opacity(0.04), location: 0),
-                                .init(color: .clear, location: 0.4),
-                            ],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                    )
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.25), lineWidth: 0.5)
-            }
-            .shadow(color: .black.opacity(0.12), radius: 10, y: 5)
+        .trackGlassCard(
+            cornerRadius: 16,
+            borderOpacity: 0.25,
+            shadowRadius: 10,
+            shadowY: 5
         )
     }
 
@@ -317,28 +278,14 @@ struct TripDetailSheet: View {
     }
 
     private func nextActionCard(_ nextAction: TripNextAction) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.Colors.accent.opacity(0.14))
-                    .frame(width: 42, height: 42)
-                Image(systemName: actionIcon(for: nextAction.status))
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.accent)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(nextAction.title)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-                Text(nextAction.subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
-                    .lineLimit(2)
-            }
-
-            Spacer(minLength: 0)
-
+        IconInfoRow(
+            icon: actionIcon(for: nextAction.status),
+            circleOpacity: 0.14,
+            title: nextAction.title,
+            titleSize: 15,
+            subtitle: nextAction.subtitle,
+            subtitleColor: AppTheme.Colors.textSecondary
+        ) {
             Text(relativeDueString(nextAction.dueInSeconds))
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundStyle(AppTheme.Colors.accent)
@@ -350,24 +297,13 @@ struct TripDetailSheet: View {
                 )
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AppTheme.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.accent.opacity(0.15), lineWidth: 0.8)
-                )
-        )
+        .trackTintedCard(cornerRadius: 18)
     }
 
     @ViewBuilder
     private var alertsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Live Alerts")
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textTertiary)
-                .textCase(.uppercase)
-                .tracking(1.0)
+            SectionHeader(title: "Live Alerts", tracking: 1.0)
 
             ForEach(trip.serviceAlerts.prefix(3)) { alert in
                 HStack(alignment: .top, spacing: 12) {
@@ -389,13 +325,10 @@ struct TripDetailSheet: View {
                     Spacer(minLength: 0)
                 }
                 .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(AppTheme.Colors.cardBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .strokeBorder(AppTheme.Colors.warningYellow.opacity(0.14), lineWidth: 0.8)
-                        )
+                .trackTintedCard(
+                    cornerRadius: 16,
+                    tint: AppTheme.Colors.warningYellow,
+                    borderOpacity: 0.14
                 )
             }
         }
@@ -404,42 +337,20 @@ struct TripDetailSheet: View {
     // MARK: - Fare Estimate
 
     private var fareEstimate: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.Colors.accent.opacity(0.1))
-                    .frame(width: 42, height: 42)
-                Image(systemName: "creditcard.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(AppTheme.Colors.accent)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Estimated Fare")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-                if let fare = trip.fare {
-                    Text(fare.description.isEmpty ? fare.formattedTotal : fare.description)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(AppTheme.Colors.textTertiary)
-                } else {
-                    Text("$2.90 with OMNY")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(AppTheme.Colors.textTertiary)
-                }
-            }
-
-            Spacer()
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(AppTheme.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.2), lineWidth: 0.5)
-                )
+        IconInfoRow(
+            icon: "creditcard.fill",
+            title: "Estimated Fare",
+            subtitle: fareSubtitle
         )
+        .padding(14)
+        .trackGlassCard(cornerRadius: 14, hasHighlight: false)
+    }
+
+    private var fareSubtitle: String {
+        if let fare = trip.fare {
+            return fare.description.isEmpty ? fare.formattedTotal : fare.description
+        }
+        return "$2.90 with OMNY"
     }
 
     // MARK: - Environmental Impact
@@ -447,20 +358,11 @@ struct TripDetailSheet: View {
     @ViewBuilder
     private var environmentalImpactView: some View {
         if let impact = trip.environmentalImpact, (impact.co2SavedGrams > 0 || impact.caloriesBurned > 0) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.1))
-                        .frame(width: 42, height: 42)
-                    Image(systemName: "leaf.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.green)
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Environmental Impact")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
+            IconInfoRow(
+                icon: "leaf.fill",
+                iconColor: .green,
+                title: "Environmental Impact",
+                subtitleView: AnyView(
                     HStack(spacing: 12) {
                         if impact.co2SavedGrams > 0 {
                             Label(impact.formattedCO2, systemImage: "cloud.fill")
@@ -473,19 +375,10 @@ struct TripDetailSheet: View {
                                 .foregroundStyle(.orange)
                         }
                     }
-                }
-
-                Spacer()
-            }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AppTheme.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.2), lineWidth: 0.5)
-                    )
+                )
             )
+            .padding(14)
+            .trackGlassCard(cornerRadius: 14, hasHighlight: false)
         }
     }
 
@@ -702,22 +595,6 @@ struct TripDetailSheet: View {
 
         return lines.joined(separator: "\n")
     }
-}
-
-// MARK: - Share Sheet
-
-private struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(
-            activityItems: items,
-            applicationActivities: nil
-        )
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {

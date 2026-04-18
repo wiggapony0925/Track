@@ -51,10 +51,8 @@ struct TripResultsView: View {
         }
             .animation(AppTheme.Animation.snappy, value: showSettings)
             .navigationBarHidden(true)
-            .sheet(item: $selectedTrip) { trip in
+            .fullScreenCover(item: $selectedTrip) { (trip: TripPlan) in
                 TripDetailSheet(trip: trip)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showSettings) {
                 TripSettingsSheet(
@@ -403,11 +401,7 @@ struct TripResultsView: View {
     private var otherOptionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                Text("Other Options")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
+                SectionHeader(title: "Other Options")
                 Rectangle()
                     .fill(
                         LinearGradient(
@@ -478,24 +472,7 @@ struct TripResultsView: View {
                     .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.35))
             }
             .padding(14)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(AppTheme.Colors.cardBackground)
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .white.opacity(0.03), location: 0),
-                                    .init(color: .clear, location: 0.4),
-                                ],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.2), lineWidth: 0.5)
-                }
-            )
+            .trackGlassCard(cornerRadius: 18)
         }
         .buttonStyle(ResultsButtonStyle())
         .padding(.horizontal, 16)
@@ -918,11 +895,7 @@ struct TripResultsView: View {
             .buttonStyle(ResultsButtonStyle())
 
             VStack(alignment: .leading, spacing: 14) {
-                Text("Quick Setup")
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
+                SectionHeader(title: "Quick Setup", size: 13)
 
                 LazyVGrid(
                     columns: [
@@ -1000,14 +973,7 @@ struct TripResultsView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(AppTheme.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .strokeBorder(color.opacity(0.12), lineWidth: 0.8)
-                    )
-            )
+            .trackTintedCard(tint: color, borderOpacity: 0.12)
         }
         .buttonStyle(ResultsButtonStyle())
     }

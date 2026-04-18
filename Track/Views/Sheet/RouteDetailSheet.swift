@@ -2482,14 +2482,7 @@ struct RouteDetailSheet: View {
             Spacer()
         }
         .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(routeColor.opacity(0.1), lineWidth: 0.5)
-                )
-        )
+        .trackTintedCard(tint: routeColor, borderOpacity: 0.1, borderWidth: 0.5)
         .shadow(color: AppTheme.Colors.shadow.opacity(0.04), radius: 8, x: 0, y: 3)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
@@ -2518,14 +2511,7 @@ struct RouteDetailSheet: View {
             Spacer()
         }
         .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 0.5)
-                )
-        )
+        .trackGlassCard(borderOpacity: 1.0, hasHighlight: false)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 

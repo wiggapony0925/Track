@@ -778,11 +778,7 @@ struct DestinationSearchView: View {
 
     private func sectionHeader(_ title: String) -> some View {
         HStack(spacing: 8) {
-            Text(title)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textTertiary)
-                .textCase(.uppercase)
-                .tracking(1.0)
+            SectionHeader(title: title, size: 11, tracking: 1.0)
             Rectangle()
                 .fill(
                     LinearGradient(

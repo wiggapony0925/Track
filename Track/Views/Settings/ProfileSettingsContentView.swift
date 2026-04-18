@@ -337,10 +337,7 @@ struct ProfileSettingsContentView: View {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(iconColor.opacity(0.6))
-                Text(title.uppercased())
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textTertiary)
-                    .tracking(0.6)
+                SectionHeader(title: title, size: 11, weight: .bold, tracking: 0.6)
             }
             .padding(.horizontal, AppTheme.Layout.margin + 4)
 

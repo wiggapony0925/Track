@@ -262,10 +262,7 @@ struct StopDetailSheet: View {
             if ada.adaStatus == 0 || ada.adaStatus == 2 {
                 if !ada.nextAccessibleNorth.isEmpty || !ada.nextAccessibleSouth.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("NEAREST ACCESSIBLE")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                            .tracking(0.8)
+                        SectionHeader(title: "Nearest Accessible", size: 11, weight: .bold, color: AppTheme.Colors.textSecondary)
 
                         if !ada.nextAccessibleNorth.isEmpty {
                             Label(ada.nextAccessibleNorth, systemImage: "arrow.up")
@@ -392,10 +389,7 @@ struct StopDetailSheet: View {
             // Alternative route for out-of-service ADA equipment
             if !eq.isActive, eq.isAda, !eq.alternativeRoute.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("TRAVEL ALTERNATIVE")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.alertRed)
-                        .tracking(0.6)
+                    SectionHeader(title: "Travel Alternative", size: 11, weight: .bold, tracking: 0.6, color: AppTheme.Colors.alertRed)
 
                     Text(eq.alternativeRoute)
                         .font(.system(size: 13, weight: .medium))
@@ -445,11 +439,7 @@ struct StopDetailSheet: View {
             VStack(spacing: 10) {
                 ForEach(Array(viewModel.accessibilityOutages.enumerated()), id: \.offset) { index, outage in
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(outage.equipmentType)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.alertRed)
-                            .textCase(.uppercase)
-                            .tracking(0.8)
+                        SectionHeader(title: outage.equipmentType, weight: .bold, color: AppTheme.Colors.alertRed)
 
                         Text(outage.description)
                             .font(.system(size: 14, weight: .medium))
@@ -833,10 +823,7 @@ private struct StopAlertRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 if let alertType = alert.alertType,
                    !alertType.isEmpty {
-                    Text(alertType.uppercased())
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundColor(alertColor)
-                        .tracking(0.6)
+                    SectionHeader(title: alertType, size: 10, tracking: 0.6, color: alertColor)
                 }
 
                 AlertRichText(

@@ -483,10 +483,7 @@ struct SettingsView: View {
                 Image(systemName: icon)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(iconColor.opacity(0.7))
-                Text(title.uppercased())
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textTertiary)
-                    .tracking(0.5)
+                SectionHeader(title: title, weight: .bold, tracking: 0.5)
             }
             .padding(.horizontal, AppTheme.Layout.margin)
 

@@ -237,10 +237,7 @@ struct DeveloperSettingsContentView: View {
                 Image(systemName: icon)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(iconColor.opacity(0.7))
-                Text(title.uppercased())
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                    .tracking(0.5)
+                SectionHeader(title: title, weight: .bold, tracking: 0.5, color: AppTheme.Colors.textSecondary.opacity(0.6))
             }
             .padding(.horizontal, AppTheme.Layout.margin)
 

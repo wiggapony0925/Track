@@ -652,11 +652,7 @@ struct ScheduledChipStrip: View {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.6))
-                Text("Scheduled Departures")
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.5))
-                    .textCase(.uppercase)
-                    .tracking(1.0)
+                SectionHeader(title: "Scheduled Departures", size: 10, tracking: 1.0, color: AppTheme.Colors.textSecondary.opacity(0.5))
 
                 // Fading line after label
                 LinearGradient(

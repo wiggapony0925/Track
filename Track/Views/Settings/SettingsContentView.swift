@@ -819,10 +819,7 @@ struct SettingsContentView: View {
         @ViewBuilder content: () -> C
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textTertiary)
-                .tracking(0.6)
+            SectionHeader(title: title, tracking: 0.6)
                 .padding(.horizontal, AppTheme.Layout.margin)
 
             content()
@@ -1010,10 +1007,7 @@ struct SettingsContentView: View {
     // -- About helpers
 
     private func miniLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .heavy))
-            .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.6))
-            .tracking(0.8)
+        SectionHeader(title: text, size: 10, color: AppTheme.Colors.textTertiary.opacity(0.6))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, AppTheme.Layout.cardPadding)
     }

@@ -597,10 +597,7 @@ struct TripSettingsSheet: View {
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(AppTheme.Colors.accent)
 
-            Text(title.uppercased())
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textTertiary)
-                .tracking(1.0)
+            SectionHeader(title: title, tracking: 1.0)
         }
         .padding(.leading, 4)
     }
