@@ -1658,9 +1658,14 @@ class TrackEngineService:
         if go_response.primary_trip is None and not go_response.alternatives:
             logger.warning(
                 "[GO] Engine returned 0 itineraries — origin=%s dest=%s "
+                "origin_coords=(%s,%s) dest_coords=(%s,%s) "
                 "query_ts=%s depart_at_ts=%s modes=%s schedule_note=%s",
                 request.origin.label,
                 request.destination.label,
+                request.origin.lat,
+                request.origin.lon,
+                request.destination.lat,
+                request.destination.lon,
                 payload.get("query_ts"),
                 payload.get("depart_at_ts"),
                 payload.get("modes"),

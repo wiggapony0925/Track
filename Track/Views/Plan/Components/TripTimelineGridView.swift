@@ -307,33 +307,31 @@ struct TripTimelineGridView: View {
 
             if nowDate >= windowStart && nowDate <= windowEnd {
                 let nx = xPos(for: nowDate)
-                VStack(spacing: 1) {
-                    Circle()
-                        .fill(AppTheme.Colors.successGreen)
-                        .frame(width: 5, height: 5)
-                        .shadow(color: AppTheme.Colors.successGreen.opacity(0.5), radius: 2)
-                    Text("Now")
-                        .font(.system(size: 9, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.successGreen)
-                }
-                .position(x: nx, y: 36)
+                Text("Now")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.successGreen)
+                    .fixedSize()
+                    .position(x: nx, y: 38)
             }
         }
         .frame(height: 44)
     }
 
-    private func timeLabel(_ date: Date, emphasized: Bool) -> some View {
+    private static let axisTimeFormatter: DateFormatter = {
         let fmt = DateFormatter()
         fmt.dateFormat = "h:mm a"
+        return fmt
+    }()
 
-        return Text(fmt.string(from: date))
-        .font(.system(size: emphasized ? 11 : 10, weight: .heavy, design: .rounded))
-        .foregroundStyle(
-            emphasized
-                ? AppTheme.Colors.textSecondary
-                : AppTheme.Colors.textSecondary.opacity(0.72)
-        )
-        .fixedSize()
+    private func timeLabel(_ date: Date, emphasized: Bool) -> some View {
+        Text(Self.axisTimeFormatter.string(from: date))
+            .font(.system(size: emphasized ? 11 : 10, weight: .heavy, design: .rounded))
+            .foregroundStyle(
+                emphasized
+                    ? AppTheme.Colors.textSecondary
+                    : AppTheme.Colors.textSecondary.opacity(0.72)
+            )
+            .fixedSize()
     }
 
     // MARK: - Leg Layout

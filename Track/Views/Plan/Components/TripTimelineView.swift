@@ -222,10 +222,14 @@ struct TripTimelineView: View {
 
     // MARK: - Helpers
 
-    private func timeString(_ date: Date) -> String {
+    private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "h:mm"
-        return f.string(from: date)
+        return f
+    }()
+
+    private func timeString(_ date: Date) -> String {
+        Self.timeFormatter.string(from: date)
     }
 
     private func legBarColor(_ leg: TripLeg) -> Color {

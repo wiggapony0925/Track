@@ -77,6 +77,8 @@ final class PlanViewModel {
     private var searchTask: Task<Void, Never>?
     private var bootstrapTask: Task<Void, Never>?
     private var configSaveTask: Task<Void, Never>?
+    /// Active trip-planning task — cancelled on re-tap to avoid stale overwrites.
+    private var planTask: Task<Void, Never>?
     private var didConfigure = false
 
     // MARK: - Trip Result Cache
@@ -185,20 +187,28 @@ final class PlanViewModel {
     }
 
     func planTrip(forceRefresh: Bool = false) async {
+        // Cancel any in-flight plan request so a rapid re-tap doesn't
+        // overwrite fresh results with a stale response.
+        planTask?.cancel()
+
+        let task = Task { @MainActor in
+            await self._planTripImpl(forceRefresh: forceRefresh)
+        }
+        planTask = task
+        await task.value
+    }
+
+    private func _planTripImpl(forceRefresh: Bool) async {
         // Reset same-location flag so onChange fires fresh each time.
         sameLocationMessage = nil
 
         guard let destination else { return }
         guard let originPayload = payload(for: origin) else {
             errorMessage = "Current location is still loading."
-            showResults = true
-            tripResults = []
             return
         }
         guard let destinationPayload = payload(for: destination) else {
             errorMessage = "Choose a destination with a valid location."
-            showResults = true
-            tripResults = []
             return
         }
 
@@ -286,6 +296,7 @@ final class PlanViewModel {
         errorMessage = nil
         showResults = true
         didLoadMore = false
+        defer { isLoading = false }
 
         let tc = tripConfiguration
         let modes = tc.enabledModes.isEmpty ? ["subway", "bus", "lirr", "mnr"] : tc.enabledModes
@@ -311,6 +322,9 @@ final class PlanViewModel {
         do {
             let startTime = CFAbsoluteTimeGetCurrent()
             let response = try await TrackAPI.fetchEngineGo(request: request)
+            // If this task was cancelled while awaiting, bail out so we
+            // don't overwrite results from a newer request.
+            guard !Task.isCancelled else { return }
             let elapsed = CFAbsoluteTimeGetCurrent() - startTime
             let ms = Int(elapsed * 1000)
             #if DEBUG
@@ -318,9 +332,16 @@ final class PlanViewModel {
             #endif
             tripResults = response.tripPlans
             scheduleNote = response.scheduleNote
-            if tripResults.isEmpty {
+            // Detect future-day-only results: engine returned 0 for today,
+            // backend fallback found trips on a future day. These render as
+            // invisible candle bars because the timeline centers on "Now".
+            let allFutureDay = !tripResults.isEmpty
+                && scheduleNote != nil
+                && tripResults.allSatisfy { $0.departureTime.timeIntervalSinceNow > 6 * 3600 }
+            if tripResults.isEmpty || allFutureDay {
+                if allFutureDay { tripResults = [] }  // clear invisible future trips
                 errorKind = .noResults
-                errorMessage = emptyResultsMessage()
+                errorMessage = scheduleNote ?? emptyResultsMessage()
             } else {
                 errorMessage = nil
                 // Cache trip plans for offline access (generic last-viewed)
@@ -387,8 +408,6 @@ final class PlanViewModel {
                 errorMessage = message
             }
         }
-
-        isLoading = false
     }
 
     /// Load additional trips starting after the last displayed trip.
@@ -448,6 +467,17 @@ final class PlanViewModel {
 
             if !uniqueNew.isEmpty {
                 tripResults.append(contentsOf: uniqueNew)
+
+                // Update session cache so dismissing + reopening preserves "load more" results.
+                if let originPayload = payload(for: origin),
+                   let destinationPayload = payload(for: destination) {
+                    let cacheKey = tripCacheKey(origin: originPayload, destination: destinationPayload)
+                    tripCache[cacheKey] = TripCacheEntry(
+                        plans: tripResults,
+                        scheduleNote: scheduleNote,
+                        timestamp: Date()
+                    )
+                }
             }
         } catch {
             // Silently fail — user still sees existing results

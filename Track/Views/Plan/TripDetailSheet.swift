@@ -7,7 +7,9 @@ struct TripDetailSheet: View {
     let trip: TripPlan
 
     @Environment(\.dismiss) private var dismiss
-    @State private var appeared = false
+    @State private var heroVisible = false
+    @State private var statsVisible = false
+    @State private var bodyVisible = false
 
     var body: some View {
         NavigationStack {
@@ -15,6 +17,8 @@ struct TripDetailSheet: View {
                 VStack(spacing: 0) {
                     // Hero banner
                     heroBanner
+                        .opacity(heroVisible ? 1 : 0)
+                        .scaleEffect(heroVisible ? 1 : 0.98)
 
                     // Stats row (overlapping hero)
                     statsRow
@@ -25,11 +29,15 @@ struct TripDetailSheet: View {
                     routeSummary
                         .padding(.top, 20)
                         .padding(.horizontal, 16)
+                        .opacity(bodyVisible ? 1 : 0)
+                        .offset(y: bodyVisible ? 0 : 12)
 
                     if let nextAction = trip.nextAction {
                         nextActionCard(nextAction)
                             .padding(.top, 18)
                             .padding(.horizontal, 16)
+                            .opacity(bodyVisible ? 1 : 0)
+                            .offset(y: bodyVisible ? 0 : 12)
                     }
 
                     // Divider
@@ -38,32 +46,41 @@ struct TripDetailSheet: View {
                         .frame(height: 1)
                         .padding(.horizontal, 16)
                         .padding(.top, 18)
+                        .opacity(bodyVisible ? 1 : 0)
 
                     if !trip.serviceAlerts.isEmpty {
                         alertsSection
                             .padding(.top, 18)
                             .padding(.horizontal, 16)
+                            .opacity(bodyVisible ? 1 : 0)
+                            .offset(y: bodyVisible ? 0 : 12)
                     }
 
                     // Full timeline
                     TripTimelineView(trip: trip)
                         .padding(.horizontal, 16)
                         .padding(.top, trip.serviceAlerts.isEmpty ? 16 : 20)
+                        .opacity(bodyVisible ? 1 : 0)
+                        .offset(y: bodyVisible ? 0 : 12)
 
                     // Fare estimate
                     fareEstimate
                         .padding(.top, 20)
                         .padding(.horizontal, 16)
+                        .opacity(bodyVisible ? 1 : 0)
 
                     // Environmental impact (CO₂ + calories)
                     environmentalImpactView
                         .padding(.top, 12)
                         .padding(.horizontal, 16)
+                        .opacity(bodyVisible ? 1 : 0)
 
                     // Action buttons
                     actionButtons
                         .padding(.top, 24)
                         .padding(.horizontal, 16)
+                        .opacity(bodyVisible ? 1 : 0)
+                        .offset(y: bodyVisible ? 0 : 8)
 
                     Spacer(minLength: 40)
                 }
@@ -104,8 +121,14 @@ struct TripDetailSheet: View {
                 }
             }
             .onAppear {
-                withAnimation(.easeOut(duration: 0.5).delay(0.1)) {
-                    appeared = true
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    heroVisible = true
+                }
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.82).delay(0.12)) {
+                    statsVisible = true
+                }
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.8).delay(0.22)) {
+                    bodyVisible = true
                 }
             }
         }
@@ -215,8 +238,8 @@ struct TripDetailSheet: View {
                 color: AppTheme.Colors.warningYellow
             )
         }
-        .opacity(appeared ? 1 : 0)
-        .offset(y: appeared ? 0 : 15)
+        .opacity(statsVisible ? 1 : 0)
+        .offset(y: statsVisible ? 0 : 15)
     }
 
     private func statCard(icon: String, label: String, value: String, color: Color) -> some View {
@@ -540,10 +563,14 @@ struct TripDetailSheet: View {
 
     // MARK: - Helpers
 
-    private func timeString(_ date: Date) -> String {
+    private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "h:mm a"
-        return f.string(from: date)
+        return f
+    }()
+
+    private func timeString(_ date: Date) -> String {
+        Self.timeFormatter.string(from: date)
     }
 
     private var walkDistanceString: String {

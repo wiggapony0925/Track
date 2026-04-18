@@ -505,74 +505,15 @@ struct TripResultsView: View {
     // MARK: - Loading State
 
     @State private var shimmerPhase: CGFloat = 0
-    @State private var pulseScale: CGFloat = 1.0
-    @State private var rotationAngle: Double = 0
 
     private var loadingState: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 24) {
-                Spacer().frame(height: 24)
-            }
+        VStack(spacing: 0) {
+            Spacer()
 
-            // Animated indicator — centered hero
-            VStack(spacing: 24) {
-                ZStack {
-                    // Outer pulsing ring
-                    Circle()
-                        .stroke(AppTheme.Colors.accent.opacity(0.08), lineWidth: 1.5)
-                        .frame(width: 120, height: 120)
-                        .scaleEffect(pulseScale)
-                        .opacity(2.0 - Double(pulseScale))
-
-                    // Rotating gradient arc
-                    Circle()
-                        .trim(from: 0, to: 0.3)
-                        .stroke(
-                            AngularGradient(
-                                stops: [
-                                    .init(color: AppTheme.Colors.accent.opacity(0.0), location: 0.0),
-                                    .init(color: AppTheme.Colors.accent, location: 1.0),
-                                ],
-                                center: .center
-                            ),
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                        )
-                        .frame(width: 94, height: 94)
-                        .rotationEffect(.degrees(rotationAngle))
-
-                    // Soft radial glow
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [AppTheme.Colors.accent.opacity(0.10), .clear],
-                                center: .center, startRadius: 0, endRadius: 40
-                            )
-                        )
-                        .frame(width: 80, height: 80)
-
-                    // Center icon circle
-                    Circle()
-                        .fill(AppTheme.Colors.cardBackground)
-                        .frame(width: 56, height: 56)
-                        .overlay(
-                            Circle().strokeBorder(
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: AppTheme.Colors.accent.opacity(0.15), location: 0.0),
-                                        .init(color: AppTheme.Colors.borderSubtle.opacity(0.08), location: 1.0),
-                                    ],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                        )
-                        .shadow(color: AppTheme.Colors.accent.opacity(0.12), radius: 16, y: 4)
-
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(AppTheme.Colors.accent)
-                        .rotationEffect(.degrees(-rotationAngle * 0.3))
-                }
+            VStack(spacing: 20) {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(AppTheme.Colors.accent)
 
                 VStack(spacing: 6) {
                     Text("Finding routes")
@@ -583,9 +524,10 @@ struct TripResultsView: View {
                         .foregroundStyle(AppTheme.Colors.textTertiary)
                 }
             }
-            .padding(.bottom, 32)
 
-            // Skeleton cards with shimmer
+            Spacer()
+
+            // Skeleton cards with shimmer at the bottom
             VStack(spacing: 10) {
                 ForEach(0..<3, id: \.self) { i in
                     skeletonCard
@@ -594,16 +536,9 @@ struct TripResultsView: View {
                 }
             }
             .padding(.horizontal, 16)
-
-            Spacer().frame(height: 40)
+            .padding(.bottom, 40)
         }
         .onAppear {
-            withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
-                rotationAngle = 360
-            }
-            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
-                pulseScale = 1.15
-            }
             withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
                 shimmerPhase = 1.0
             }
@@ -611,21 +546,37 @@ struct TripResultsView: View {
     }
 
     private var skeletonCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                shimmerRect(width: 130, height: 13, radius: 6)
-                Spacer()
-                shimmerRect(width: 55, height: 13, radius: 6)
-            }
-            shimmerRect(width: nil, height: 36, radius: 12)
-            HStack(spacing: 6) {
-                ForEach(0..<3, id: \.self) { _ in
-                    shimmerRect(width: 30, height: 30, radius: 10)
+        VStack(alignment: .leading, spacing: 8) {
+            // Candle bar row — matches the real timeline bars
+            HStack(spacing: 3) {
+                // Walk dots
+                HStack(spacing: 4) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        shimmerRect(width: 5, height: 5, radius: 2.5)
+                    }
                 }
+                .frame(width: 28)
+                // Transit bar 1
+                shimmerRect(width: nil, height: 40, radius: 14)
+                // Transfer dots
+                HStack(spacing: 3) {
+                    ForEach(0..<2, id: \.self) { _ in
+                        shimmerRect(width: 5, height: 5, radius: 2.5)
+                    }
+                }
+                .frame(width: 20)
+                // Transit bar 2
+                shimmerRect(width: 60, height: 40, radius: 14)
+            }
+            // Info row — "Go in X min" + duration
+            HStack {
+                shimmerRect(width: 100, height: 14, radius: 6)
                 Spacer()
+                shimmerRect(width: 48, height: 14, radius: 6)
             }
         }
-        .padding(16)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(AppTheme.Colors.cardBackground)
