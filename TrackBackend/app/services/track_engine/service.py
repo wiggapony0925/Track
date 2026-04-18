@@ -1142,20 +1142,19 @@ class TrackEngineService:
         day_offset: int,
         *,
         now_ts: int | None = None,
+        departure_hour: int | None = None,
     ) -> dict:
         """Build an engine payload shifted to *day_offset* days in the future.
 
         Keeps origin/destination but replaces timestamps so the engine
-        queries for the future service day.  We pick 8 AM local as a
-        reasonable departure time for the lookahead query.
+        queries for the future service day.
         """
-        now_ny = datetime.now(NY_TZ)
-        today_ny = now_ny.date()
-        future_date = today_ny + timedelta(days=day_offset)
-        # Use the current time-of-day (floored to the hour) so the
-        # fallback shows trips near the user's actual planning time
-        # rather than always defaulting to 8 AM.
-        hour = max(now_ny.hour, 5)  # clamp before 5 AM to avoid empty late-night windows
+        anchor_ts = self._fallback_anchor_timestamp(request, now_ts=now_ts)
+        anchor_dt = datetime.fromtimestamp(anchor_ts, NY_TZ)
+        future_date = anchor_dt.date() + timedelta(days=day_offset)
+        # Preserve the request's time-of-day as much as possible while
+        # avoiding the very sparse overnight window.
+        hour = departure_hour if departure_hour is not None else max(anchor_dt.hour, 5)
         future_depart = datetime.combine(future_date, time_value(hour, 0), tzinfo=NY_TZ)
         future_ts = int(future_depart.timestamp())
         future_midnight = datetime.combine(future_date, time_value.min, tzinfo=NY_TZ)
@@ -1196,6 +1195,33 @@ class TrackEngineService:
         if getattr(request, "accessibility_priority", False):
             payload["accessibility_priority"] = True
         return payload
+
+    def _fallback_anchor_timestamp(
+        self,
+        request: PlanRequest,
+        *,
+        now_ts: int | None = None,
+    ) -> int:
+        if request.depart_at_ts is not None:
+            return request.depart_at_ts
+        if request.arrive_by_ts is not None:
+            base_now_ts = now_ts if now_ts is not None else int(time.time())
+            return max(base_now_ts, request.arrive_by_ts - request.search_window_minutes * 60)
+        return now_ts if now_ts is not None else int(time.time())
+
+    def _future_day_candidate_hours(
+        self,
+        request: PlanRequest,
+        *,
+        now_ts: int | None = None,
+    ) -> list[int]:
+        anchor_ts = self._fallback_anchor_timestamp(request, now_ts=now_ts)
+        anchor_hour = max(datetime.fromtimestamp(anchor_ts, NY_TZ).hour, 5)
+        if anchor_hour < 8:
+            end_hour = 8
+        else:
+            end_hour = min(anchor_hour + 2, 23)
+        return list(range(anchor_hour, end_hour + 1))
 
     @staticmethod
     def _schedule_note_for_date(future_date) -> str:
@@ -1561,27 +1587,36 @@ class TrackEngineService:
         self, request: PlanRequest, *, max_lookahead: int = 3
     ) -> tuple[list[Itinerary], str] | None:
         """Try up to *max_lookahead* future days, returning the first day with results."""
-        today_ny = datetime.now(NY_TZ).date()
+        anchor_date = datetime.fromtimestamp(
+            self._fallback_anchor_timestamp(request),
+            NY_TZ,
+        ).date()
+        candidate_hours = self._future_day_candidate_hours(request)
         for offset in range(1, max_lookahead + 1):
-            future_date = today_ny + timedelta(days=offset)
-            payload = self._future_day_payload(request, offset)
-            try:
-                resp = await self.http.post(
-                    f"{self.remote_engine_url}/plan",
-                    json=payload,
-                    timeout=min(self.remote_engine_timeout_s, 8.0),
+            future_date = anchor_date + timedelta(days=offset)
+            for hour in candidate_hours:
+                payload = self._future_day_payload(
+                    request,
+                    offset,
+                    departure_hour=hour,
                 )
-                resp.raise_for_status()
-                data = resp.json()
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 503:
-                    return None  # engine down — stop immediately
-                continue
-            except httpx.HTTPError:
-                continue
-            items = [self._parse_itinerary(item) for item in data.get("itineraries", [])]
-            if items:
-                return items, self._schedule_note_for_date(future_date)
+                try:
+                    resp = await self.http.post(
+                        f"{self.remote_engine_url}/plan",
+                        json=payload,
+                        timeout=min(self.remote_engine_timeout_s, 8.0),
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 503:
+                        return None  # engine down — stop immediately
+                    continue
+                except httpx.HTTPError:
+                    continue
+                items = [self._parse_itinerary(item) for item in data.get("itineraries", [])]
+                if items:
+                    return items, self._schedule_note_for_date(future_date)
         return None
 
     async def _remote_go(self, request: PlanRequest, *, now_ts: int) -> GoResponse:
@@ -1684,39 +1719,49 @@ class TrackEngineService:
         self, request: PlanRequest, *, now_ts: int, max_lookahead: int = 3
     ) -> GoResponse | None:
         """Try future days for the /go endpoint."""
-        today_ny = datetime.now(NY_TZ).date()
+        anchor_date = datetime.fromtimestamp(
+            self._fallback_anchor_timestamp(request, now_ts=now_ts),
+            NY_TZ,
+        ).date()
+        candidate_hours = self._future_day_candidate_hours(request, now_ts=now_ts)
         for offset in range(1, max_lookahead + 1):
-            future_date = today_ny + timedelta(days=offset)
-            payload = self._future_day_payload(request, offset, now_ts=now_ts)
-            try:
-                resp = await self.http.post(
-                    f"{self.remote_engine_url}/go",
-                    json=payload,
-                    timeout=min(self.remote_engine_timeout_s, 8.0),
+            future_date = anchor_date + timedelta(days=offset)
+            for hour in candidate_hours:
+                payload = self._future_day_payload(
+                    request,
+                    offset,
+                    now_ts=now_ts,
+                    departure_hour=hour,
                 )
-                resp.raise_for_status()
-                data = resp.json()
-            except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 503:
-                    return None  # engine down — stop immediately
-                continue
-            except httpx.HTTPError:
-                continue
-            primary = data.get("primary_trip")
-            if primary is not None:
-                return GoResponse(
-                    engine_version=str(data["engine_version"]),
-                    requested_at_ts=int(data["requested_at_ts"]),
-                    now_ts=int(data["now_ts"]),
-                    origin=request.origin,
-                    destination=request.destination,
-                    session_kind=str(data["session_kind"]),
-                    primary_trip=self._parse_go_trip(primary),
-                    alternatives=[
-                        self._parse_go_trip(item) for item in data.get("alternatives", [])
-                    ],
-                    schedule_note=self._schedule_note_for_date(future_date),
-                )
+                try:
+                    resp = await self.http.post(
+                        f"{self.remote_engine_url}/go",
+                        json=payload,
+                        timeout=min(self.remote_engine_timeout_s, 8.0),
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 503:
+                        return None  # engine down — stop immediately
+                    continue
+                except httpx.HTTPError:
+                    continue
+                primary = data.get("primary_trip")
+                if primary is not None:
+                    return GoResponse(
+                        engine_version=str(data["engine_version"]),
+                        requested_at_ts=int(data["requested_at_ts"]),
+                        now_ts=int(data["now_ts"]),
+                        origin=request.origin,
+                        destination=request.destination,
+                        session_kind=str(data["session_kind"]),
+                        primary_trip=self._parse_go_trip(primary),
+                        alternatives=[
+                            self._parse_go_trip(item) for item in data.get("alternatives", [])
+                        ],
+                        schedule_note=self._schedule_note_for_date(future_date),
+                    )
         return None
 
     def _normalize_route_key(self, value: str | None) -> str:

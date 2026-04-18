@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from app.models import TrackArrival, TransitAlert
 from app.services.track_engine.domain import (
@@ -25,8 +26,107 @@ def _timestamp(hour: int, minute: int) -> int:
     return int(datetime(2026, 4, 11, hour, minute, tzinfo=UTC).timestamp())
 
 
+NY_TZ = ZoneInfo("America/New_York")
+
+
+def _ny_timestamp(year: int, month: int, day: int, hour: int, minute: int) -> int:
+    return int(datetime(year, month, day, hour, minute, tzinfo=NY_TZ).timestamp())
+
+
 def _empty_db(path: Path) -> None:
     sqlite3.connect(path).close()
+
+
+async def test_future_day_payload_anchors_to_request_timestamp(
+    tmp_path: Path,
+) -> None:
+    schedule_db = tmp_path / "schedule.db"
+    state_db = tmp_path / "state.db"
+    _empty_db(schedule_db)
+
+    service = TrackEngineService(schedule_db=schedule_db, state_db=state_db)
+    request = PlanRequest(
+        origin=LocationInput(label="Origin", lat=40.7, lon=-73.9),
+        destination=LocationInput(label="Dest", lat=40.8, lon=-73.8),
+        depart_at_ts=_ny_timestamp(2026, 4, 18, 0, 15),
+    )
+
+    payload = service._future_day_payload(request, 1)
+
+    assert payload["service_day_yyyymmdd"] == 20260419
+    assert payload["service_weekday"] == 6
+    assert datetime.fromtimestamp(payload["query_ts"], NY_TZ).day == 19
+
+
+async def test_try_future_days_go_sweeps_morning_hours(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    schedule_db = tmp_path / "schedule.db"
+    state_db = tmp_path / "state.db"
+    _empty_db(schedule_db)
+
+    service = TrackEngineService(schedule_db=schedule_db, state_db=state_db)
+    service.remote_engine_url = "http://engine.test"
+
+    request = PlanRequest(
+        origin=LocationInput(label="Origin", lat=40.75308, lon=-73.99945),
+        destination=LocationInput(label="Dest", lat=40.78438, lon=-73.85569),
+        depart_at_ts=_ny_timestamp(2026, 4, 18, 0, 15),
+        modes=("subway", "bus"),
+    )
+
+    calls: list[int] = []
+
+    class _Response:
+        def __init__(self, payload: dict):
+            self._payload = payload
+            self.status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return self._payload
+
+    async def fake_post(url: str, json: dict, timeout):
+        calls.append(json["query_ts"])
+        hour = datetime.fromtimestamp(json["query_ts"], NY_TZ).hour
+        if hour < 7:
+            return _Response(
+                {
+                    "engine_version": "0.9.0",
+                    "requested_at_ts": json["query_ts"],
+                    "now_ts": json["query_ts"],
+                    "session_kind": "leave_now",
+                    "primary_trip": None,
+                    "alternatives": [],
+                }
+            )
+        return _Response(
+            {
+                "engine_version": "0.9.0",
+                "requested_at_ts": json["query_ts"],
+                "now_ts": json["query_ts"],
+                "session_kind": "leave_now",
+                "primary_trip": {"id": "chosen"},
+                "alternatives": [],
+            }
+        )
+
+    monkeypatch.setattr(service.http, "post", fake_post)
+    monkeypatch.setattr(service, "_parse_go_trip", lambda payload, **_: payload)
+
+    response = await service._try_future_days_go(
+        request,
+        now_ts=request.depart_at_ts,
+        max_lookahead=1,
+    )
+
+    assert response is not None
+    assert response.primary_trip == {"id": "chosen"}
+    assert response.schedule_note == "Next trips available Sunday, Apr 19"
+    assert len(calls) >= 3
 
 
 async def test_go_enrichment_reranks_live_trip_above_delayed_trip(
