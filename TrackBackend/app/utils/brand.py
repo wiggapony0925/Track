@@ -56,7 +56,20 @@ def _try_sync_from_api(colors_path: Path) -> None:
         spec.loader.exec_module(mod)
         existing = json.loads(colors_path.read_text()) if colors_path.exists() else {}
         rows = mod.fetch_mta_colors()
+        if not rows:
+            _log.debug("🎨 MTA color sync skipped: API returned 0 rows")
+            return
         brand = mod.build_brand_colors(rows, existing)
+        # Sanity-check: never overwrite a good file with fewer subway entries
+        new_subway = brand.get("subway", {})
+        old_subway = existing.get("subway", {})
+        if len(new_subway) < len(old_subway) and len(old_subway) > 0:
+            _log.warning(
+                "🎨 MTA color sync produced fewer subway entries (%d vs %d); keeping existing file",
+                len(new_subway),
+                len(old_subway),
+            )
+            return
         colors_path.parent.mkdir(parents=True, exist_ok=True)
         colors_path.write_text(json.dumps(brand, indent=2, ensure_ascii=False) + "\n")
         _log.info("🎨 MTA brand colors synced from API (%d entries)", len(rows))

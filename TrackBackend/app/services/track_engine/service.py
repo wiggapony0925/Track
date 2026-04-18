@@ -236,6 +236,9 @@ class ScheduleRepository:
         "idx_stops_name": (
             "CREATE INDEX IF NOT EXISTS idx_stops_name ON stops(stop_name)"
         ),
+        "idx_trips_route": (
+            "CREATE INDEX IF NOT EXISTS idx_trips_route ON trips(route_id)"
+        ),
     }
 
     def __init__(self, db_path: Path):
