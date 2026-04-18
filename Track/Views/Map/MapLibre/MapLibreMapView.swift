@@ -89,6 +89,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             return false
         }
 
+        // Trip route overlay
+        let tripEq: Bool = (lhs.tripRouteLegs?.count ?? 0) == (rhs.tripRouteLegs?.count ?? 0)
+            && lhs.tripFitCamera == rhs.tripFitCamera
+        guard tripEq else { return false }
+
         return true
     }
 
@@ -203,6 +208,21 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// Bridges real-time sheet height → contentInset.bottom (bypasses SwiftUI).
     /// Wired once in makeUIView; not included in Equatable check.
     var sheetHeightObserver: SheetHeightObserver?
+
+    // MARK: - Trip Route Overlay (optional)
+
+    /// When provided, renders multi-colored transit + walk polylines for a
+    /// planned trip.  Used by TripRouteMapView (TripDetailSheet hero map).
+    var tripRouteLegs: [TripRouteLegData]?
+
+    /// Origin marker coordinate for trip route overlays.
+    var tripOriginCoordinate: CLLocationCoordinate2D?
+
+    /// Destination marker coordinate for trip route overlays.
+    var tripDestinationCoordinate: CLLocationCoordinate2D?
+
+    /// When true, the camera auto-fits to the trip route bounds on load.
+    var tripFitCamera: Bool = false
 
     // MARK: - UIViewRepresentable
 
@@ -505,6 +525,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private var lastTransferHash: Int = -1
         private var lastRadiusHash: Int = -1
         private var lastBusHash: Int = -1
+        private var lastTripRouteHash: Int = -1
         private var lastDarkMode: Bool?
 
         /// Route-colour tint tracking — detects when the tint should
@@ -598,10 +619,14 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             lastWalkingHash = -1
             lastTransferHash = -1
             lastRadiusHash = -1
+            lastTripRouteHash = -1
             lastDarkMode = nil
             lastRouteTintActive = false
             lastRouteTintColor = nil
         }
+
+        /// Annotations added for trip route origin/destination markers.
+        var tripRouteAnnotations: [MLNAnnotation] = []
 
         // MARK: - Delegate: Camera Changed
 
@@ -702,7 +727,63 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             _ mapView: MLNMapView,
             viewFor annotation: MLNAnnotation
         ) -> MLNAnnotationView? {
-            return nil  // All annotations use GL layers or SwiftUI overlays
+            guard let point = annotation as? MLNPointAnnotation,
+                  let title = point.title,
+                  title == "trip-origin" || title == "trip-destination"
+            else {
+                return nil  // All other annotations use GL layers or SwiftUI overlays
+            }
+
+            var view = mapView.dequeueReusableAnnotationView(
+                withIdentifier: title
+            )
+
+            if view == nil {
+                view = MLNAnnotationView(
+                    annotation: annotation,
+                    reuseIdentifier: title
+                )
+                view?.frame = CGRect(x: 0, y: 0, width: 24, height: 24)
+                view?.isEnabled = false
+
+                if title == "trip-origin" {
+                    let outer = UIView(frame: CGRect(x: 0, y: 0, width: 24, height: 24))
+                    outer.backgroundColor = .white
+                    outer.layer.cornerRadius = 12
+                    outer.layer.shadowColor = UIColor.black.cgColor
+                    outer.layer.shadowOpacity = 0.25
+                    outer.layer.shadowOffset = CGSize(width: 0, height: 2)
+                    outer.layer.shadowRadius = 4
+
+                    let inner = UIView(frame: CGRect(x: 5, y: 5, width: 14, height: 14))
+                    inner.backgroundColor = .systemBlue
+                    inner.layer.cornerRadius = 7
+                    outer.addSubview(inner)
+                    view?.addSubview(outer)
+
+                } else {
+                    let circle = UIView(frame: CGRect(x: 0, y: 0, width: 24, height: 24))
+                    circle.backgroundColor = UIColor(AppTheme.Colors.successGreen)
+                    circle.layer.cornerRadius = 12
+                    circle.layer.shadowColor = UIColor(AppTheme.Colors.successGreen).cgColor
+                    circle.layer.shadowOpacity = 0.4
+                    circle.layer.shadowOffset = CGSize(width: 0, height: 2)
+                    circle.layer.shadowRadius = 6
+
+                    let config = UIImage.SymbolConfiguration(pointSize: 11, weight: .bold)
+                    let img = UIImage(
+                        systemName: "house.fill",
+                        withConfiguration: config
+                    )?.withTintColor(.white, renderingMode: .alwaysOriginal)
+                    let iv = UIImageView(image: img)
+                    iv.frame = CGRect(x: 5, y: 5, width: 14, height: 14)
+                    iv.contentMode = .scaleAspectFit
+                    circle.addSubview(iv)
+                    view?.addSubview(circle)
+                }
+            }
+
+            return view
         }
 
         // MARK: - Bus Stop Tap Handling
@@ -785,6 +866,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 mapView: mapView, style: style, representable: representable
             )
             updateBusMapIfNeeded(
+                style: style,
+                representable: representable
+            )
+            updateTripRouteIfNeeded(
+                mapView: mapView,
                 style: style,
                 representable: representable
             )
@@ -1853,6 +1939,217 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 layer.lineDashPattern = NSExpression(forConstantValue: [2.0, 1.5])
                 style.addLayer(layer)
             }
+        }
+
+        // MARK: - Trip Route Overlay (planned trip polylines)
+
+        /// Hash-gated update — only rebuild trip route layers when the leg
+        /// data changes.  Called from `updateAllLayers`.
+        private func updateTripRouteIfNeeded(
+            mapView: MLNMapView,
+            style: MLNStyle,
+            representable: MapLibreMapView
+        ) {
+            let legCount = representable.tripRouteLegs?.count ?? 0
+            let tripHash = legCount ^ (representable.tripFitCamera ? 0x100 : 0)
+            guard tripHash != lastTripRouteHash else { return }
+            lastTripRouteHash = tripHash
+            updateTripRouteLayers(
+                mapView: mapView,
+                style: style,
+                representable: representable
+            )
+        }
+
+        private static let tripTransitSourceID = "trip-transit-src"
+        private static let tripTransitCasingID = "trip-transit-casing"
+        private static let tripTransitFillID   = "trip-transit-fill"
+        private static let tripWalkSourceID    = "trip-walk-src"
+        private static let tripWalkLineID      = "trip-walk-line"
+
+        func updateTripRouteLayers(
+            mapView: MLNMapView,
+            style: MLNStyle,
+            representable: MapLibreMapView
+        ) {
+            guard let legs = representable.tripRouteLegs, !legs.isEmpty else {
+                clearSource(style: style, sourceID: Self.tripTransitSourceID)
+                clearSource(style: style, sourceID: Self.tripWalkSourceID)
+                // Remove trip markers
+                if !tripRouteAnnotations.isEmpty {
+                    mapView.removeAnnotations(tripRouteAnnotations)
+                    tripRouteAnnotations.removeAll()
+                }
+                return
+            }
+
+            // ── Transit polylines (casing + fill, per-segment color) ──
+            let transitSegs = legs.filter { !$0.isWalk }
+            if !transitSegs.isEmpty {
+                var features: [MLNPolylineFeature] = []
+                for seg in transitSegs {
+                    guard seg.coordinates.count >= 2 else { continue }
+                    var mutable = seg.coordinates
+                    let feature = MLNPolylineFeature(
+                        coordinates: &mutable,
+                        count: UInt(mutable.count)
+                    )
+                    feature.attributes = ["color": tripHexString(from: seg.color)]
+                    features.append(feature)
+                }
+
+                let shape = MLNShapeCollectionFeature(shapes: features)
+
+                if let existing = style.source(withIdentifier: Self.tripTransitSourceID) as? MLNShapeSource {
+                    existing.shape = shape
+                } else {
+                    let source = MLNShapeSource(
+                        identifier: Self.tripTransitSourceID,
+                        shape: shape,
+                        options: nil
+                    )
+                    style.addSource(source)
+                    sourcesCreated.insert(Self.tripTransitSourceID)
+
+                    // Casing layer (wider, blurred glow)
+                    let casing = MLNLineStyleLayer(
+                        identifier: Self.tripTransitCasingID,
+                        source: source
+                    )
+                    casing.lineColor = NSExpression(forKeyPath: "color")
+                    casing.lineWidth = MapLibreStyleConfig.routeCasingWidth
+                    casing.lineOpacity = NSExpression(forConstantValue: 0.3)
+                    casing.lineCap = NSExpression(forConstantValue: "round")
+                    casing.lineJoin = NSExpression(forConstantValue: "round")
+                    casing.lineBlur = MapLibreStyleConfig.routeCasingBlur
+                    style.addLayer(casing)
+
+                    // Fill layer (core colored line)
+                    let fill = MLNLineStyleLayer(
+                        identifier: Self.tripTransitFillID,
+                        source: source
+                    )
+                    fill.lineColor = NSExpression(forKeyPath: "color")
+                    fill.lineWidth = MapLibreStyleConfig.routeFillWidth
+                    fill.lineCap = NSExpression(forConstantValue: "round")
+                    fill.lineJoin = NSExpression(forConstantValue: "round")
+                    fill.lineMiterLimit = NSExpression(forConstantValue: 1.05)
+                    style.addLayer(fill)
+                }
+            } else {
+                clearSource(style: style, sourceID: Self.tripTransitSourceID)
+            }
+
+            // ── Walk polylines (dashed grey) ──
+            let walkSegs = legs.filter(\.isWalk)
+            if !walkSegs.isEmpty {
+                var features: [MLNPolylineFeature] = []
+                for seg in walkSegs {
+                    guard seg.coordinates.count >= 2 else { continue }
+                    var mutable = seg.coordinates
+                    let feature = MLNPolylineFeature(
+                        coordinates: &mutable,
+                        count: UInt(mutable.count)
+                    )
+                    features.append(feature)
+                }
+
+                let shape = MLNShapeCollectionFeature(shapes: features)
+
+                if let existing = style.source(withIdentifier: Self.tripWalkSourceID) as? MLNShapeSource {
+                    existing.shape = shape
+                } else {
+                    let source = MLNShapeSource(
+                        identifier: Self.tripWalkSourceID,
+                        shape: shape,
+                        options: nil
+                    )
+                    style.addSource(source)
+                    sourcesCreated.insert(Self.tripWalkSourceID)
+
+                    let walkLayer = MLNLineStyleLayer(
+                        identifier: Self.tripWalkLineID,
+                        source: source
+                    )
+                    walkLayer.lineColor = NSExpression(
+                        forConstantValue: UIColor.systemGray
+                    )
+                    walkLayer.lineWidth = NSExpression(forConstantValue: 4)
+                    walkLayer.lineCap = NSExpression(forConstantValue: "round")
+                    walkLayer.lineJoin = NSExpression(forConstantValue: "round")
+                    walkLayer.lineDashPattern = NSExpression(
+                        forConstantValue: [2, 3]
+                    )
+                    walkLayer.lineOpacity = NSExpression(forConstantValue: 0.6)
+                    style.addLayer(walkLayer)
+                }
+            } else {
+                clearSource(style: style, sourceID: Self.tripWalkSourceID)
+            }
+
+            // ── Origin / Destination annotations ──
+            if !tripRouteAnnotations.isEmpty {
+                mapView.removeAnnotations(tripRouteAnnotations)
+                tripRouteAnnotations.removeAll()
+            }
+
+            if let origin = representable.tripOriginCoordinate {
+                let pin = MLNPointAnnotation()
+                pin.coordinate = origin
+                pin.title = "trip-origin"
+                mapView.addAnnotation(pin)
+                tripRouteAnnotations.append(pin)
+            }
+
+            if let dest = representable.tripDestinationCoordinate {
+                let pin = MLNPointAnnotation()
+                pin.coordinate = dest
+                pin.title = "trip-destination"
+                mapView.addAnnotation(pin)
+                tripRouteAnnotations.append(pin)
+            }
+
+            // ── Fit camera to trip bounds ──
+            if representable.tripFitCamera {
+                let allCoords = legs.flatMap(\.coordinates)
+                guard allCoords.count >= 2 else { return }
+
+                var minLat = allCoords[0].latitude
+                var maxLat = allCoords[0].latitude
+                var minLon = allCoords[0].longitude
+                var maxLon = allCoords[0].longitude
+
+                for c in allCoords {
+                    minLat = min(minLat, c.latitude)
+                    maxLat = max(maxLat, c.latitude)
+                    minLon = min(minLon, c.longitude)
+                    maxLon = max(maxLon, c.longitude)
+                }
+
+                let bounds = MLNCoordinateBounds(
+                    sw: CLLocationCoordinate2D(latitude: minLat, longitude: minLon),
+                    ne: CLLocationCoordinate2D(latitude: maxLat, longitude: maxLon)
+                )
+
+                let padding = UIEdgeInsets(top: 60, left: 40, bottom: 60, right: 40)
+                mapView.setVisibleCoordinateBounds(
+                    bounds,
+                    edgePadding: padding,
+                    animated: true,
+                    completionHandler: nil
+                )
+            }
+        }
+
+        private func tripHexString(from color: UIColor) -> String {
+            var r: CGFloat = 0
+            var g: CGFloat = 0
+            var b: CGFloat = 0
+            color.getRed(&r, green: &g, blue: &b, alpha: nil)
+            return String(
+                format: "#%02X%02X%02X",
+                Int(r * 255), Int(g * 255), Int(b * 255)
+            )
         }
 
         // MARK: - Route Layers (selected route)

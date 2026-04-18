@@ -41,6 +41,22 @@ struct TransferConnector: Identifiable {
     let distanceMeters: Double
 }
 
+// MARK: - Trip Route Leg Data
+
+/// A resolved polyline segment for one trip leg, used by
+/// MapLibreMapView's trip-route overlay.  Produced by `TripRouteMapView`'s
+/// shape-fetching pipeline and consumed by the shared map renderer.
+struct TripRouteLegData: Identifiable, Equatable {
+    let id = UUID()
+    let coordinates: [CLLocationCoordinate2D]
+    let color: UIColor     // UIColor for MapLibre NSExpression
+    let isWalk: Bool
+
+    static func == (lhs: TripRouteLegData, rhs: TripRouteLegData) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 // MARK: - Coordinate Projection Helper
 
 /// Projects a geographic coordinate to a screen point via MapLibre's

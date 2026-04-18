@@ -1,9 +1,12 @@
 // MapLibre GL-powered interactive map that draws a trip's transit leg
 // polylines on top of the app's MapTiler vector tiles.  Each leg fetches
 // its full route shape from the backend and clips it between the board/
-// alight stops, then draws a colored line layer with casing + fill.
-// Walk legs are rendered as dashed grey lines connecting consecutive
-// transit segments.  Origin / destination markers use MLNPointAnnotation.
+// alight stops, then draws colored line layers via the SHARED MapLibreMapView.
+//
+// This is a thin wrapper around the app's main map renderer — no duplicate
+// MLNMapView or GL pipeline.  The trip-route-specific layers (transit casing
+// + fill, walk dashes, origin/destination markers) are handled by
+// MapLibreMapView's `tripRouteLegs` property.
 //
 // Used as the interactive map in TripDetailSheet (full-screen cover).
 
@@ -19,24 +22,40 @@ struct TripRouteMapView: View {
     var isInteractive: Bool = true
 
     @Environment(\.colorScheme) private var colorScheme
-    @State private var legPolylines: [LegPolylineData] = []
+    @State private var legPolylines: [TripRouteLegData] = []
     @State private var isLoading = true
 
-    /// A resolved polyline segment for one trip leg.
-    struct LegPolylineData: Identifiable {
-        let id = UUID()
-        let coordinates: [CLLocationCoordinate2D]
-        let color: UIColor     // UIColor for MapLibre NSExpression
-        let isWalk: Bool
-    }
+    // Dummy bindings — the trip map doesn't need camera sync
+    @State private var cameraPosition: TrackCameraPosition = .automatic
+    @State private var mapCenter: CLLocationCoordinate2D?
+    @State private var mapDistance: Double?
+    @State private var showStations = false
 
     var body: some View {
-        TripRouteMapViewRepresentable(
-            legPolylines: legPolylines,
+        MapLibreMapView(
+            cameraPosition: $cameraPosition,
+            currentMapCenter: $mapCenter,
+            currentMapDistance: $mapDistance,
+            showStations: $showStations,
+            subwayPolylines: [],
+            commuterRailPolylines: [],
+            stations: [],
+            routePolylines: [],
+            inactivePolylines: [],
+            routeColor: .clear,
+            isBusRoute: false,
+            busVehicles: [],
+            trainVehicles: [],
+            transferConnectors: [],
+            crossings: [],
+            hasActiveRoute: false,
+            reroutedRouteIDs: [],
             isDarkMode: colorScheme == .dark,
-            isInteractive: isInteractive,
-            originCoordinate: originCoordinate,
-            destinationCoordinate: destinationCoordinate
+            selectedMode: .subway,
+            tripRouteLegs: legPolylines,
+            tripOriginCoordinate: originCoordinate,
+            tripDestinationCoordinate: destinationCoordinate,
+            tripFitCamera: !legPolylines.isEmpty
         )
         .task { await loadAllShapes() }
     }
@@ -54,7 +73,7 @@ struct TripRouteMapView: View {
     // MARK: - Shape Loading
 
     private func loadAllShapes() async {
-        var segments: [LegPolylineData] = []
+        var segments: [TripRouteLegData] = []
 
         await withTaskGroup(of: (Int, [CLLocationCoordinate2D]?, UIColor, Bool).self) { group in
             for (index, leg) in trip.legs.enumerated() {
@@ -99,12 +118,12 @@ struct TripRouteMapView: View {
                         legs: trip.legs
                     )
                     if !walkCoords.isEmpty {
-                        segments.append(LegPolylineData(
+                        segments.append(TripRouteLegData(
                             coordinates: walkCoords, color: color, isWalk: true
                         ))
                     }
                 } else if let coords, !coords.isEmpty {
-                    segments.append(LegPolylineData(
+                    segments.append(TripRouteLegData(
                         coordinates: coords, color: color, isWalk: false
                     ))
                 }
@@ -236,354 +255,6 @@ struct TripRouteMapView: View {
             return UIColor(AppTheme.SubwayColors.color(for: stripped))
         }
         return UIColor(AppTheme.Colors.accent)
-    }
-}
-
-// MARK: - UIViewRepresentable (MapLibre GL)
-
-private struct TripRouteMapViewRepresentable: UIViewRepresentable {
-    let legPolylines: [TripRouteMapView.LegPolylineData]
-    let isDarkMode: Bool
-    let isInteractive: Bool
-    let originCoordinate: CLLocationCoordinate2D?
-    let destinationCoordinate: CLLocationCoordinate2D?
-
-    // Source / layer IDs
-    private static let transitSourceID = "trip-transit-src"
-    private static let transitCasingID = "trip-transit-casing"
-    private static let transitFillID   = "trip-transit-fill"
-    private static let walkSourceID    = "trip-walk-src"
-    private static let walkLineID      = "trip-walk-line"
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeUIView(context: Context) -> MLNMapView {
-        let styleURL = MapLibreStyleConfig.styleURL(isDarkMode: isDarkMode)
-            ?? MapLibreStyleConfig.osmRasterStyleJSON()
-
-        let mapView = MLNMapView(frame: .zero, styleURL: styleURL)
-        mapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        mapView.automaticallyAdjustsContentInset = false
-        mapView.minimumZoomLevel = MapLibreStyleConfig.minZoom
-        mapView.maximumZoomLevel = MapLibreStyleConfig.maxZoom
-        mapView.preferredFramesPerSecond = .maximum
-
-        // Interaction
-        mapView.isScrollEnabled = isInteractive
-        mapView.isZoomEnabled = isInteractive
-        mapView.isRotateEnabled = false
-        mapView.isPitchEnabled = false
-
-        // Clean chrome
-        mapView.attributionButton.isHidden = true
-        mapView.logoView.isHidden = true
-        mapView.compassView.compassVisibility = .adaptive
-
-        // Default center (NYC)
-        mapView.setCenter(
-            CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
-            zoomLevel: 11,
-            animated: false
-        )
-
-        mapView.delegate = context.coordinator
-        context.coordinator.pendingPolylines = legPolylines
-        context.coordinator.pendingOrigin = originCoordinate
-        context.coordinator.pendingDestination = destinationCoordinate
-
-        return mapView
-    }
-
-    func updateUIView(_ mapView: MLNMapView, context: Context) {
-        // Update polylines when data arrives
-        guard let style = mapView.style else {
-            // Style not loaded yet — stash for didFinishLoadingStyle
-            context.coordinator.pendingPolylines = legPolylines
-            context.coordinator.pendingOrigin = originCoordinate
-            context.coordinator.pendingDestination = destinationCoordinate
-            return
-        }
-
-        addLayers(to: style, on: mapView, coordinator: context.coordinator)
-    }
-
-    // MARK: - Layer Building
-
-    fileprivate func addLayers(
-        to style: MLNStyle,
-        on mapView: MLNMapView,
-        coordinator: Coordinator
-    ) {
-        // ── Transit polylines (casing + fill, per-segment color) ──
-        let transitSegs = legPolylines.filter { !$0.isWalk }
-        if !transitSegs.isEmpty {
-            var features: [MLNPolylineFeature] = []
-            for seg in transitSegs {
-                guard seg.coordinates.count >= 2 else { continue }
-                var mutable = seg.coordinates
-                let feature = MLNPolylineFeature(
-                    coordinates: &mutable,
-                    count: UInt(mutable.count)
-                )
-                // Store hex color for data-driven styling
-                feature.attributes = ["color": hexString(from: seg.color)]
-                features.append(feature)
-            }
-
-            let shape = MLNShapeCollectionFeature(shapes: features)
-
-            if let existing = style.source(withIdentifier: Self.transitSourceID) as? MLNShapeSource {
-                existing.shape = shape
-            } else {
-                let source = MLNShapeSource(
-                    identifier: Self.transitSourceID,
-                    shape: shape,
-                    options: nil
-                )
-                style.addSource(source)
-
-                // Casing layer (wider, blurred for glow)
-                let casing = MLNLineStyleLayer(
-                    identifier: Self.transitCasingID,
-                    source: source
-                )
-                casing.lineColor = NSExpression(forKeyPath: "color")
-                casing.lineWidth = MapLibreStyleConfig.routeCasingWidth
-                casing.lineOpacity = NSExpression(forConstantValue: 0.3)
-                casing.lineCap = NSExpression(forConstantValue: "round")
-                casing.lineJoin = NSExpression(forConstantValue: "round")
-                casing.lineBlur = MapLibreStyleConfig.routeCasingBlur
-                style.addLayer(casing)
-
-                // Fill layer (core colored line)
-                let fill = MLNLineStyleLayer(
-                    identifier: Self.transitFillID,
-                    source: source
-                )
-                fill.lineColor = NSExpression(forKeyPath: "color")
-                fill.lineWidth = MapLibreStyleConfig.routeFillWidth
-                fill.lineCap = NSExpression(forConstantValue: "round")
-                fill.lineJoin = NSExpression(forConstantValue: "round")
-                fill.lineMiterLimit = NSExpression(forConstantValue: 1.05)
-                style.addLayer(fill)
-            }
-        }
-
-        // ── Walk polylines (dashed grey) ──
-        let walkSegs = legPolylines.filter(\.isWalk)
-        if !walkSegs.isEmpty {
-            var features: [MLNPolylineFeature] = []
-            for seg in walkSegs {
-                guard seg.coordinates.count >= 2 else { continue }
-                var mutable = seg.coordinates
-                let feature = MLNPolylineFeature(
-                    coordinates: &mutable,
-                    count: UInt(mutable.count)
-                )
-                features.append(feature)
-            }
-
-            let shape = MLNShapeCollectionFeature(shapes: features)
-
-            if let existing = style.source(withIdentifier: Self.walkSourceID) as? MLNShapeSource {
-                existing.shape = shape
-            } else {
-                let source = MLNShapeSource(
-                    identifier: Self.walkSourceID,
-                    shape: shape,
-                    options: nil
-                )
-                style.addSource(source)
-
-                let walkLayer = MLNLineStyleLayer(
-                    identifier: Self.walkLineID,
-                    source: source
-                )
-                walkLayer.lineColor = NSExpression(
-                    forConstantValue: UIColor.systemGray
-                )
-                walkLayer.lineWidth = NSExpression(forConstantValue: 4)
-                walkLayer.lineCap = NSExpression(forConstantValue: "round")
-                walkLayer.lineJoin = NSExpression(forConstantValue: "round")
-                walkLayer.lineDashPattern = NSExpression(
-                    forConstantValue: [2, 3]
-                )
-                walkLayer.lineOpacity = NSExpression(forConstantValue: 0.6)
-                style.addLayer(walkLayer)
-            }
-        }
-
-        // ── Origin / Destination annotations ──
-        addMarkerAnnotations(on: mapView, coordinator: coordinator)
-
-        // ── Fit camera to show entire trip ──
-        fitCamera(on: mapView)
-    }
-
-    // MARK: - Marker Annotations
-
-    private func addMarkerAnnotations(
-        on mapView: MLNMapView,
-        coordinator: Coordinator
-    ) {
-        // Remove old markers
-        if !coordinator.addedAnnotations.isEmpty {
-            mapView.removeAnnotations(coordinator.addedAnnotations)
-            coordinator.addedAnnotations.removeAll()
-        }
-
-        if let origin = originCoordinate {
-            let pin = MLNPointAnnotation()
-            pin.coordinate = origin
-            pin.title = "origin"
-            mapView.addAnnotation(pin)
-            coordinator.addedAnnotations.append(pin)
-        }
-
-        if let dest = destinationCoordinate {
-            let pin = MLNPointAnnotation()
-            pin.coordinate = dest
-            pin.title = "destination"
-            mapView.addAnnotation(pin)
-            coordinator.addedAnnotations.append(pin)
-        }
-    }
-
-    // MARK: - Camera Fitting
-
-    private func fitCamera(on mapView: MLNMapView) {
-        let allCoords = legPolylines.flatMap(\.coordinates)
-        guard allCoords.count >= 2 else { return }
-
-        var minLat = allCoords[0].latitude
-        var maxLat = allCoords[0].latitude
-        var minLon = allCoords[0].longitude
-        var maxLon = allCoords[0].longitude
-
-        for c in allCoords {
-            minLat = min(minLat, c.latitude)
-            maxLat = max(maxLat, c.latitude)
-            minLon = min(minLon, c.longitude)
-            maxLon = max(maxLon, c.longitude)
-        }
-
-        let bounds = MLNCoordinateBounds(
-            sw: CLLocationCoordinate2D(latitude: minLat, longitude: minLon),
-            ne: CLLocationCoordinate2D(latitude: maxLat, longitude: maxLon)
-        )
-
-        let padding = UIEdgeInsets(top: 60, left: 40, bottom: 60, right: 40)
-        mapView.setVisibleCoordinateBounds(
-            bounds,
-            edgePadding: padding,
-            animated: true,
-            completionHandler: nil
-        )
-    }
-
-    // MARK: - Helpers
-
-    private func hexString(from color: UIColor) -> String {
-        var r: CGFloat = 0
-        var g: CGFloat = 0
-        var b: CGFloat = 0
-        color.getRed(&r, green: &g, blue: &b, alpha: nil)
-        return String(
-            format: "#%02X%02X%02X",
-            Int(r * 255), Int(g * 255), Int(b * 255)
-        )
-    }
-
-    // MARK: - Coordinator
-
-    final class Coordinator: NSObject, MLNMapViewDelegate {
-        var pendingPolylines: [TripRouteMapView.LegPolylineData] = []
-        var pendingOrigin: CLLocationCoordinate2D?
-        var pendingDestination: CLLocationCoordinate2D?
-        var addedAnnotations: [MLNAnnotation] = []
-
-        func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
-            // When the style finishes loading, the parent's updateUIView
-            // will fire and add layers.  But if polylines were already set
-            // before the style loaded, we need to add them now.
-            guard !pendingPolylines.isEmpty else { return }
-            let rep = TripRouteMapViewRepresentable(
-                legPolylines: pendingPolylines,
-                isDarkMode: false, // doesn't matter for addLayers
-                isInteractive: true,
-                originCoordinate: pendingOrigin,
-                destinationCoordinate: pendingDestination
-            )
-            rep.addLayers(to: style, on: mapView, coordinator: self)
-        }
-
-        // Custom annotation views for origin / destination dots
-        func mapView(
-            _ mapView: MLNMapView,
-            viewFor annotation: MLNAnnotation
-        ) -> MLNAnnotationView? {
-            guard let point = annotation as? MLNPointAnnotation else {
-                return nil
-            }
-
-            let reuseID = point.title ?? "marker"
-            var view = mapView.dequeueReusableAnnotationView(
-                withIdentifier: reuseID
-            )
-
-            if view == nil {
-                view = MLNAnnotationView(
-                    annotation: annotation,
-                    reuseIdentifier: reuseID
-                )
-                view?.frame = CGRect(x: 0, y: 0, width: 24, height: 24)
-                view?.isEnabled = false
-
-                if reuseID == "origin" {
-                    // Blue dot with white ring
-                    let outer = UIView(frame: CGRect(x: 0, y: 0, width: 24, height: 24))
-                    outer.backgroundColor = .white
-                    outer.layer.cornerRadius = 12
-                    outer.layer.shadowColor = UIColor.black.cgColor
-                    outer.layer.shadowOpacity = 0.25
-                    outer.layer.shadowOffset = CGSize(width: 0, height: 2)
-                    outer.layer.shadowRadius = 4
-
-                    let inner = UIView(frame: CGRect(x: 5, y: 5, width: 14, height: 14))
-                    inner.backgroundColor = .systemBlue
-                    inner.layer.cornerRadius = 7
-                    outer.addSubview(inner)
-                    view?.addSubview(outer)
-
-                } else if reuseID == "destination" {
-                    // Green circle with house icon
-                    let circle = UIView(frame: CGRect(x: 0, y: 0, width: 24, height: 24))
-                    circle.backgroundColor = UIColor(AppTheme.Colors.successGreen)
-                    circle.layer.cornerRadius = 12
-                    circle.layer.shadowColor = UIColor(AppTheme.Colors.successGreen).cgColor
-                    circle.layer.shadowOpacity = 0.4
-                    circle.layer.shadowOffset = CGSize(width: 0, height: 2)
-                    circle.layer.shadowRadius = 6
-
-                    let config = UIImage.SymbolConfiguration(
-                        pointSize: 11, weight: .bold
-                    )
-                    let houseImage = UIImage(
-                        systemName: "house.fill",
-                        withConfiguration: config
-                    )?.withTintColor(.white, renderingMode: .alwaysOriginal)
-                    let imageView = UIImageView(image: houseImage)
-                    imageView.frame = CGRect(x: 5, y: 5, width: 14, height: 14)
-                    imageView.contentMode = .scaleAspectFit
-                    circle.addSubview(imageView)
-                    view?.addSubview(circle)
-                }
-            }
-
-            return view
-        }
     }
 }
 
