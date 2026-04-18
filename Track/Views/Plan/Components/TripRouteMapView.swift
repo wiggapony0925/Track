@@ -75,7 +75,7 @@ struct TripRouteMapView: View {
     private func loadAllShapes() async {
         var segments: [TripRouteLegData] = []
 
-        await withTaskGroup(of: (Int, [CLLocationCoordinate2D]?, [CLLocationCoordinate2D]?, UIColor, Bool).self) { group in
+        await withTaskGroup(of: (Int, [CLLocationCoordinate2D]?, [[CLLocationCoordinate2D]]?, UIColor, Bool).self) { group in
             for (index, leg) in trip.legs.enumerated() {
                 let color = legUIColor(for: leg)
                 let isWalk = leg.mode == .walk || leg.mode == .transfer
@@ -89,16 +89,17 @@ struct TripRouteMapView: View {
                     }
                     do {
                         let shape = try await fetchShapeForLeg(leg)
-                        let fullCoords = shape.decodedPolylines.flatMap { $0 }
+                        let fullCoords = routedPolylines(for: leg, shape: shape)
                         let clipped = clipShape(
-                            shape: shape,
+                            polylines: fullCoords,
+                            stops: routedStops(for: leg, shape: shape),
                             boardStopId: leg.boardStopId,
                             alightStopId: leg.alightStopId
                         )
                         return (
                             index,
                             clipped.isEmpty ? nil : clipped,
-                            fullCoords.count >= 2 ? fullCoords : nil,
+                            fullCoords.isEmpty ? nil : fullCoords,
                             color,
                             false
                         )
@@ -111,7 +112,7 @@ struct TripRouteMapView: View {
                 }
             }
 
-            var results: [(Int, [CLLocationCoordinate2D]?, [CLLocationCoordinate2D]?, UIColor, Bool)] = []
+            var results: [(Int, [CLLocationCoordinate2D]?, [[CLLocationCoordinate2D]]?, UIColor, Bool)] = []
             for await result in group {
                 results.append(result)
             }
@@ -168,42 +169,83 @@ struct TripRouteMapView: View {
 
     /// Clips a full route shape to the segment between board and alight stops.
     nonisolated private func clipShape(
-        shape: RouteShapeResponse,
+        polylines: [[CLLocationCoordinate2D]],
+        stops: [BusStop],
         boardStopId: String?,
         alightStopId: String?
     ) -> [CLLocationCoordinate2D] {
-        let allCoords = shape.decodedPolylines.flatMap { $0 }
-        guard !allCoords.isEmpty else { return [] }
+        let candidatePolylines = polylines.filter { $0.count >= 2 }
+        guard !candidatePolylines.isEmpty else { return [] }
 
         guard let boardId = boardStopId,
               let alightId = alightStopId else {
-            return allCoords
+            return candidatePolylines.first ?? []
         }
 
-        let boardStop = shape.stops.first { $0.id == boardId }
-        let alightStop = shape.stops.first { $0.id == alightId }
+        let boardStop = stops.first { $0.id == boardId }
+        let alightStop = stops.first { $0.id == alightId }
 
         guard let boardCoord = boardStop.map({ CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }),
               let alightCoord = alightStop.map({ CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) })
         else {
-            return allCoords
+            return candidatePolylines.first ?? []
         }
 
-        let boardIdx = nearestIndex(in: allCoords, to: boardCoord)
-        let alightIdx = nearestIndex(in: allCoords, to: alightCoord)
+        var bestSlice: [CLLocationCoordinate2D] = []
+        var bestScore = Double.greatestFiniteMagnitude
 
-        guard let bIdx = boardIdx, let aIdx = alightIdx else {
-            return allCoords
+        for polyline in candidatePolylines {
+            guard let boardMatch = nearestIndexWithDistance(in: polyline, to: boardCoord),
+                  let alightMatch = nearestIndexWithDistance(in: polyline, to: alightCoord)
+            else {
+                continue
+            }
+
+            let startIdx = min(boardMatch.index, alightMatch.index)
+            let endIdx = max(boardMatch.index, alightMatch.index)
+            guard startIdx < endIdx, endIdx < polyline.count else { continue }
+
+            let score = boardMatch.distance + alightMatch.distance
+            if score < bestScore {
+                bestScore = score
+                bestSlice = Array(polyline[startIdx...endIdx])
+            }
         }
 
-        let startIdx = min(bIdx, aIdx)
-        let endIdx = max(bIdx, aIdx)
-
-        guard startIdx < endIdx, endIdx < allCoords.count else {
-            return allCoords
+        if !bestSlice.isEmpty {
+            return bestSlice
         }
 
-        return Array(allCoords[startIdx...endIdx])
+        let flattened = candidatePolylines.flatMap { $0 }
+        guard let boardIdx = nearestIndex(in: flattened, to: boardCoord),
+              let alightIdx = nearestIndex(in: flattened, to: alightCoord)
+        else {
+            return candidatePolylines.first ?? []
+        }
+
+        let startIdx = min(boardIdx, alightIdx)
+        let endIdx = max(boardIdx, alightIdx)
+        guard startIdx < endIdx, endIdx < flattened.count else {
+            return candidatePolylines.first ?? []
+        }
+        return Array(flattened[startIdx...endIdx])
+    }
+
+    nonisolated private func routedPolylines(
+        for leg: TripLeg,
+        shape: RouteShapeResponse
+    ) -> [[CLLocationCoordinate2D]] {
+        let matched = shape.polylinesForDirection(index: 0, name: leg.headsign)
+            .filter { $0.count >= 2 }
+        return matched.isEmpty ? shape.decodedPolylines.filter { $0.count >= 2 } : matched
+    }
+
+    nonisolated private func routedStops(
+        for leg: TripLeg,
+        shape: RouteShapeResponse
+    ) -> [BusStop] {
+        let matched = shape.stopsForDirection(index: 0, name: leg.headsign)
+        return matched.isEmpty ? shape.stops : matched
     }
 
     nonisolated private func nearestIndex(
@@ -225,9 +267,28 @@ struct TripRouteMapView: View {
         return bestIdx
     }
 
+    nonisolated private func nearestIndexWithDistance(
+        in coords: [CLLocationCoordinate2D],
+        to target: CLLocationCoordinate2D
+    ) -> (index: Int, distance: Double)? {
+        guard !coords.isEmpty else { return nil }
+        var bestIdx = 0
+        var bestDist = Double.greatestFiniteMagnitude
+        for (i, c) in coords.enumerated() {
+            let dlat = c.latitude - target.latitude
+            let dlon = c.longitude - target.longitude
+            let dist = dlat * dlat + dlon * dlon
+            if dist < bestDist {
+                bestDist = dist
+                bestIdx = i
+            }
+        }
+        return (bestIdx, bestDist)
+    }
+
     private func resolveWalkCoords(
         index: Int,
-        results: [(Int, [CLLocationCoordinate2D]?, [CLLocationCoordinate2D]?, UIColor, Bool)],
+        results: [(Int, [CLLocationCoordinate2D]?, [[CLLocationCoordinate2D]]?, UIColor, Bool)],
         legs: [TripLeg]
     ) -> [CLLocationCoordinate2D] {
         var startCoord: CLLocationCoordinate2D?

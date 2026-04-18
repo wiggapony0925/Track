@@ -1990,22 +1990,24 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             // ── Full route lines (dimmed context behind active segment) ──
             let transitSegs = legs.filter { !$0.isWalk }
             let fullRouteSegs = transitSegs.filter {
-                $0.fullRouteCoordinates != nil && ($0.fullRouteCoordinates?.count ?? 0) >= 2
+                $0.fullRouteCoordinates?.isEmpty == false
             }
 
             if !fullRouteSegs.isEmpty {
                 var features: [MLNPolylineFeature] = []
                 for seg in fullRouteSegs {
-                    guard var mutable = seg.fullRouteCoordinates,
-                          mutable.count >= 2 else { continue }
-                    let feature = MLNPolylineFeature(
-                        coordinates: &mutable,
-                        count: UInt(mutable.count)
-                    )
-                    feature.attributes = [
-                        "color": tripHexString(from: seg.color)
-                    ]
-                    features.append(feature)
+                    for polyline in seg.fullRouteCoordinates ?? [] {
+                        guard polyline.count >= 2 else { continue }
+                        var mutable = polyline
+                        let feature = MLNPolylineFeature(
+                            coordinates: &mutable,
+                            count: UInt(mutable.count)
+                        )
+                        feature.attributes = [
+                            "color": tripHexString(from: seg.color)
+                        ]
+                        features.append(feature)
+                    }
                 }
 
                 let shape = MLNShapeCollectionFeature(shapes: features)
@@ -2030,7 +2032,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     )
                     casing.lineColor = NSExpression(forKeyPath: "color")
                     casing.lineWidth = MapLibreStyleConfig.routeCasingWidth
-                    casing.lineOpacity = NSExpression(forConstantValue: 0.08)
+                    casing.lineOpacity = NSExpression(forConstantValue: 0.035)
                     casing.lineCap = NSExpression(forConstantValue: "round")
                     casing.lineJoin = NSExpression(forConstantValue: "round")
                     casing.lineBlur = MapLibreStyleConfig.routeCasingBlur
@@ -2043,7 +2045,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     )
                     fill.lineColor = NSExpression(forKeyPath: "color")
                     fill.lineWidth = MapLibreStyleConfig.routeFillWidth
-                    fill.lineOpacity = NSExpression(forConstantValue: 0.20)
+                    fill.lineOpacity = NSExpression(forConstantValue: 0.10)
                     fill.lineCap = NSExpression(forConstantValue: "round")
                     fill.lineJoin = NSExpression(forConstantValue: "round")
                     fill.lineMiterLimit = NSExpression(forConstantValue: 1.05)
@@ -2235,9 +2237,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 casingLayerID: "route-inactive-casing",
                 fillLayerID: "route-inactive-fill",
                 coordinates: representable.inactivePolylines,
-                color: routeColor.withAlphaComponent(0.15),
+                color: routeColor.withAlphaComponent(0.09),
                 casingColor: (isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white)
-                    .withAlphaComponent(0.15 * (isBus ? 0.6 : 1.0)),
+                    .withAlphaComponent(0.09 * (isBus ? 0.55 : 0.85)),
                 fillWidth: MapLibreStyleConfig.routeFillWidth,
                 casingWidth: MapLibreStyleConfig.routeCasingWidth
             )
@@ -2246,8 +2248,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             if let split = representable.directionalSplit {
                 // Bus behind segments get softer dimming so the route stays
                 // readable — bus lines are thinner and less prominent than subway.
-                let behindAlpha: CGFloat = isBus ? 0.35 : 0.25
-                let behindCasingAlpha: CGFloat = isBus ? 0.25 : 0.30
+                let behindAlpha: CGFloat = isBus ? 0.18 : 0.12
+                let behindCasingAlpha: CGFloat = isBus ? 0.12 : 0.14
                 buildRoutePolylineLayer(
                     style: style,
                     sourceID: "route-behind-source",

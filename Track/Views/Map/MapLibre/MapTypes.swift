@@ -52,7 +52,7 @@ struct TripRouteLegData: Identifiable, Equatable {
     let coordinates: [CLLocationCoordinate2D]
     /// The full unclipped route shape — rendered dimmed behind the
     /// active segment so users see the complete route context.
-    let fullRouteCoordinates: [CLLocationCoordinate2D]?
+    let fullRouteCoordinates: [[CLLocationCoordinate2D]]?
     let color: UIColor     // UIColor for MapLibre NSExpression
     let isWalk: Bool
 
