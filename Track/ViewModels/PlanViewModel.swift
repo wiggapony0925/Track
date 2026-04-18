@@ -28,6 +28,8 @@ final class PlanViewModel {
     var recommendations: [PlannerRecommendation] = []
     var isLoading = false
     var isLoadingMore = false
+    /// True once the initial planner data (saved places, recent trips, etc.) is loaded.
+    var isPlanDataLoaded = false
     var errorMessage: String?
     var errorKind: PlanErrorKind = .general
     var scheduleNote: String?
@@ -154,8 +156,10 @@ final class PlanViewModel {
         }
 
         bootstrapTask = Task {
-            await refreshPlannerData()
-            await loadTripConfiguration()
+            async let plannerData: Void = refreshPlannerData()
+            async let tripConfig: Void = loadTripConfiguration()
+            _ = await (plannerData, tripConfig)
+            isPlanDataLoaded = true
         }
     }
 
@@ -332,14 +336,8 @@ final class PlanViewModel {
             #endif
             tripResults = response.tripPlans
             scheduleNote = response.scheduleNote
-            // Detect future-day-only results: engine returned 0 for today,
-            // backend fallback found trips on a future day. These render as
-            // invisible candle bars because the timeline centers on "Now".
-            let allFutureDay = !tripResults.isEmpty
-                && scheduleNote != nil
-                && tripResults.allSatisfy { $0.departureTime.timeIntervalSinceNow > 6 * 3600 }
-            if tripResults.isEmpty || allFutureDay {
-                if allFutureDay { tripResults = [] }  // clear invisible future trips
+
+            if tripResults.isEmpty {
                 errorKind = .noResults
                 errorMessage = scheduleNote ?? emptyResultsMessage()
             } else {

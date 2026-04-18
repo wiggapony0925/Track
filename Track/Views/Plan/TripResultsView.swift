@@ -78,9 +78,7 @@ struct TripResultsView: View {
                 withAnimation(.easeOut(duration: 0.5).delay(0.15)) {
                     appeared = true
                 }
-                withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                    headerPulse = true
-                }
+                headerPulse = true
             }
     }
 
@@ -207,6 +205,7 @@ struct TripResultsView: View {
                     .frame(width: 200, height: 200)
                     .offset(x: 130, y: -70)
                     .scaleEffect(headerPulse ? 1.03 : 0.97)
+                    .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: headerPulse)
             }
             .ignoresSafeArea(edges: .top)
         )
@@ -507,9 +506,31 @@ struct TripResultsView: View {
     @State private var shimmerPhase: CGFloat = 0
 
     private var loadingState: some View {
-        VStack(spacing: 0) {
-            Spacer()
+        ZStack {
+            // Background: skeleton timeline rows (visible behind the loader)
+            VStack(spacing: 0) {
+                // Fake time axis header
+                skeletonTimeAxis
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
 
+                // Skeleton candle rows — mimic real trip timeline
+                ForEach(0..<4, id: \.self) { i in
+                    if i > 0 {
+                        Divider()
+                            .overlay(AppTheme.Colors.borderSubtle.opacity(0.08))
+                            .padding(.vertical, 8)
+                    }
+                    skeletonCandleRow(variant: i)
+                        .padding(.vertical, 6)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .opacity(0.55)
+
+            // Foreground: centered loader on a soft frosted card
             VStack(spacing: 20) {
                 ProgressView()
                     .controlSize(.large)
@@ -524,81 +545,174 @@ struct TripResultsView: View {
                         .foregroundStyle(AppTheme.Colors.textTertiary)
                 }
             }
-
-            Spacer()
-
-            // Skeleton cards with shimmer at the bottom
-            VStack(spacing: 10) {
-                ForEach(0..<3, id: \.self) { i in
-                    skeletonCard
-                        .opacity(Double(3 - i) / 3.0 * 0.8)
-                        .offset(y: CGFloat(i) * 2)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 40)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 28)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.12), radius: 20, y: 8)
+            )
         }
         .onAppear {
-            withAnimation(.linear(duration: 2.0).repeatForever(autoreverses: false)) {
-                shimmerPhase = 1.0
+            // Set value without withAnimation — scoped .animation() on each
+            // shimmer element prevents the repeating transaction from leaking
+            // into the entire view tree (which was pushing the header up/down).
+            shimmerPhase = 1.0
+        }
+    }
+
+    // MARK: - Skeleton Time Axis
+
+    private var skeletonTimeAxis: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<6, id: \.self) { i in
+                VStack(spacing: 4) {
+                    shimmerRect(width: 38, height: 10, radius: 4)
+                    Rectangle()
+                        .fill(AppTheme.Colors.borderSubtle.opacity(0.12))
+                        .frame(width: i % 2 == 0 ? 1 : 0.5, height: i % 2 == 0 ? 8 : 5)
+                }
+                if i < 5 { Spacer() }
+            }
+        }
+        .frame(height: 28)
+    }
+
+    // MARK: - Skeleton Candle Row
+
+    /// Each variant mimics a different trip shape so the skeleton looks realistic.
+    private func skeletonCandleRow(variant: Int) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Candle bars — ZStack with connector line behind the bars,
+            // exactly like the real TripTimelineGridView candleRow.
+            ZStack(alignment: .leading) {
+                // Thin horizontal connector line behind bars
+                connectorLine(variant: variant)
+
+                // Bars + walk dots
+                HStack(spacing: 0) {
+                    switch variant {
+                    case 0:
+                        // Walk → long subway → short bus
+                        skeletonWalkDots(count: 3)
+                        skeletonTransitBar(width: 160)
+                        skeletonTransferDots()
+                        skeletonTransitBar(width: 72)
+                        Spacer(minLength: 4)
+                    case 1:
+                        // Walk → medium subway → walk → medium subway
+                        skeletonWalkDots(count: 2)
+                        skeletonTransitBar(width: 100)
+                        skeletonTransferDots()
+                        skeletonTransitBar(width: 120)
+                        skeletonWalkDots(count: 2)
+                        Spacer(minLength: 4)
+                    case 2:
+                        // Single long express train
+                        skeletonWalkDots(count: 3)
+                        skeletonTransitBar(width: 220)
+                        skeletonWalkDots(count: 2)
+                        Spacer(minLength: 4)
+                    default:
+                        // Walk → 3-seat ride
+                        skeletonWalkDots(count: 2)
+                        skeletonTransitBar(width: 80)
+                        skeletonTransferDots()
+                        skeletonTransitBar(width: 60)
+                        skeletonTransferDots()
+                        skeletonTransitBar(width: 68)
+                        Spacer(minLength: 4)
+                    }
+                }
+            }
+            .frame(height: 38)
+
+            // Info row — "Go in X min" + duration placeholders
+            HStack {
+                shimmerRect(width: 90, height: 12, radius: 5)
+                Spacer()
+                shimmerRect(width: 44, height: 12, radius: 5)
             }
         }
     }
 
-    private var skeletonCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Candle bar row — matches the real timeline bars
-            HStack(spacing: 3) {
-                // Walk dots
-                HStack(spacing: 4) {
-                    ForEach(0..<3, id: \.self) { _ in
-                        shimmerRect(width: 5, height: 5, radius: 2.5)
-                    }
-                }
-                .frame(width: 28)
-                // Transit bar 1
-                shimmerRect(width: nil, height: 40, radius: 14)
-                // Transfer dots
-                HStack(spacing: 3) {
-                    ForEach(0..<2, id: \.self) { _ in
-                        shimmerRect(width: 5, height: 5, radius: 2.5)
-                    }
-                }
-                .frame(width: 20)
-                // Transit bar 2
-                shimmerRect(width: 60, height: 40, radius: 14)
+    /// Connector line spanning between the first and last transit bars.
+    private func connectorLine(variant: Int) -> some View {
+        // Approximate leading offset and total width of the transit bars
+        let (leadingPad, lineWidth): (CGFloat, CGFloat) = {
+            switch variant {
+            case 0:  return (26, 160 + 20 + 72)       // walk(26) to end of bar2
+            case 1:  return (18, 100 + 20 + 120)      // walk(18) to end of bar2
+            case 2:  return (26, 220)                  // single bar
+            default: return (18, 80 + 20 + 60 + 20 + 68) // 3-seat
             }
-            // Info row — "Go in X min" + duration
-            HStack {
-                shimmerRect(width: 100, height: 14, radius: 6)
-                Spacer()
-                shimmerRect(width: 48, height: 14, radius: 6)
-            }
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(AppTheme.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(AppTheme.Gradients.chromeHighlight)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(
+        }()
+        return RoundedRectangle(cornerRadius: 2)
+            .fill(AppTheme.Colors.textTertiary.opacity(0.14))
+            .frame(width: lineWidth, height: 4)
+            .padding(.leading, leadingPad)
+    }
+
+    // MARK: - Skeleton Components
+
+    private func skeletonWalkDots(count: Int) -> some View {
+        HStack(spacing: 4) {
+            ForEach(0..<count, id: \.self) { _ in
+                Circle()
+                    .fill(AppTheme.Colors.cardInset)
+                    .frame(width: 5, height: 5)
+                    .overlay(
+                        Circle().fill(
                             LinearGradient(
                                 stops: [
-                                    .init(color: AppTheme.Colors.glassHighlight.opacity(0.10), location: 0.0),
-                                    .init(color: AppTheme.Colors.borderSubtle.opacity(0.06), location: 1.0),
+                                    .init(color: .clear, location: max(0, shimmerPhase - 0.3)),
+                                    .init(color: AppTheme.Colors.accent.opacity(0.08), location: shimmerPhase),
+                                    .init(color: .clear, location: min(1, shimmerPhase + 0.3)),
                                 ],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.75
+                                startPoint: .leading, endPoint: .trailing
+                            )
                         )
-                )
-                .shadow(color: AppTheme.Colors.shadow.opacity(0.04), radius: 6, y: 3)
-        )
+                    )
+                    .animation(.linear(duration: 2.0).repeatForever(autoreverses: false), value: shimmerPhase)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func skeletonTransferDots() -> some View {
+        HStack(spacing: 3) {
+            ForEach(0..<2, id: \.self) { _ in
+                Circle()
+                    .fill(AppTheme.Colors.cardInset.opacity(0.6))
+                    .frame(width: 4, height: 4)
+            }
+        }
+        .padding(.horizontal, 3)
+    }
+
+    private func skeletonTransitBar(width: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(AppTheme.Colors.cardInset)
+            .frame(width: width, height: 38)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: max(0, shimmerPhase - 0.3)),
+                                .init(color: AppTheme.Colors.accent.opacity(0.06), location: shimmerPhase),
+                                .init(color: .clear, location: min(1, shimmerPhase + 0.3)),
+                            ],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.12), lineWidth: 0.5)
+            )
+            .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 3, y: 1)
+            .animation(.linear(duration: 2.0).repeatForever(autoreverses: false), value: shimmerPhase)
     }
 
     private func shimmerRect(width: CGFloat?, height: CGFloat, radius: CGFloat) -> some View {
@@ -620,6 +734,7 @@ struct TripResultsView: View {
                         )
                     )
             )
+            .animation(.linear(duration: 2.0).repeatForever(autoreverses: false), value: shimmerPhase)
     }
 
     // MARK: - Apple Maps Fallback Banner

@@ -467,16 +467,38 @@ struct PlanView: View {
     // MARK: - Main Content
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    @State private var shimmerPhase: CGFloat = 0
+
     private var mainContent: some View {
         VStack(spacing: 28) {
-            quickAccessRow
-            savedPlacesSection
-            savedRoutesSection
-            suggestionsCarousel
-            recentTripsSection
+            if viewModel.isPlanDataLoaded {
+                quickAccessRow
+                    .transition(.opacity.combined(with: .move(edge: .bottom)).animation(.easeOut(duration: 0.35)))
+                savedPlacesSection
+                    .transition(.opacity.combined(with: .move(edge: .bottom)).animation(.easeOut(duration: 0.35).delay(0.05)))
+                savedRoutesSection
+                    .transition(.opacity.combined(with: .move(edge: .bottom)).animation(.easeOut(duration: 0.35).delay(0.10)))
+                suggestionsCarousel
+                    .transition(.opacity.combined(with: .move(edge: .bottom)).animation(.easeOut(duration: 0.35).delay(0.15)))
+                recentTripsSection
+                    .transition(.opacity.combined(with: .move(edge: .bottom)).animation(.easeOut(duration: 0.35).delay(0.20)))
+            } else {
+                skeletonQuickAccessRow
+                    .transition(.opacity)
+                skeletonSavedPlacesSection
+                    .transition(.opacity)
+                skeletonSuggestionsSection
+                    .transition(.opacity)
+                skeletonRecentTripsSection
+                    .transition(.opacity)
+            }
             Spacer(minLength: viewModel.destination != nil ? 120 : 80)
         }
         .padding(.top, 24)
+        .animation(.easeInOut(duration: 0.4), value: viewModel.isPlanDataLoaded)
+        .onAppear {
+            shimmerPhase = 1.0
+        }
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1156,6 +1178,203 @@ struct PlanView: View {
                 )
                 .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
         )
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // MARK: - Skeleton Loading States
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    private func shimmerGradient(phase: CGFloat) -> LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: .white.opacity(0.04), location: max(0, phase - 0.3)),
+                .init(color: .white.opacity(0.12), location: phase),
+                .init(color: .white.opacity(0.04), location: min(1, phase + 0.3)),
+            ],
+            startPoint: .leading, endPoint: .trailing
+        )
+    }
+
+    private var skeletonQuickAccessRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Capsule()
+                        .fill(AppTheme.Colors.cardBackground.opacity(0.5))
+                        .overlay(
+                            Capsule()
+                                .fill(shimmerGradient(phase: shimmerPhase))
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.10), lineWidth: 0.5)
+                        )
+                        .frame(width: 130, height: 42)
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .animation(.linear(duration: 1.8).repeatForever(autoreverses: false), value: shimmerPhase)
+    }
+
+    private var skeletonSavedPlacesSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Section title placeholder
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(AppTheme.Colors.borderSubtle.opacity(0.3))
+                    .frame(width: 3, height: 14)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(AppTheme.Colors.cardBackground.opacity(0.4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).fill(shimmerGradient(phase: shimmerPhase)))
+                    .frame(width: 100, height: 12)
+                Spacer()
+            }
+            .padding(.leading, 20)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        VStack(spacing: 8) {
+                            Circle()
+                                .fill(AppTheme.Colors.cardBackground.opacity(0.35))
+                                .overlay(
+                                    Circle()
+                                        .fill(shimmerGradient(phase: shimmerPhase))
+                                )
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.12), lineWidth: 1)
+                                )
+                                .frame(width: 54, height: 54)
+
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(AppTheme.Colors.cardBackground.opacity(0.3))
+                                .overlay(RoundedRectangle(cornerRadius: 3).fill(shimmerGradient(phase: shimmerPhase)))
+                                .frame(width: 38, height: 9)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .animation(.linear(duration: 1.8).repeatForever(autoreverses: false), value: shimmerPhase)
+    }
+
+    private var skeletonSuggestionsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(AppTheme.Colors.borderSubtle.opacity(0.3))
+                    .frame(width: 3, height: 14)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(AppTheme.Colors.cardBackground.opacity(0.4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).fill(shimmerGradient(phase: shimmerPhase)))
+                    .frame(width: 80, height: 12)
+                Spacer()
+            }
+            .padding(.leading, 20)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        VStack(alignment: .leading, spacing: 10) {
+                            // Icon placeholder
+                            Circle()
+                                .fill(AppTheme.Colors.cardBackground.opacity(0.3))
+                                .overlay(Circle().fill(shimmerGradient(phase: shimmerPhase)))
+                                .frame(width: 28, height: 28)
+
+                            // Title line
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(AppTheme.Colors.cardBackground.opacity(0.3))
+                                .overlay(RoundedRectangle(cornerRadius: 3).fill(shimmerGradient(phase: shimmerPhase)))
+                                .frame(width: 120, height: 11)
+
+                            // Subtitle line
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(AppTheme.Colors.cardBackground.opacity(0.2))
+                                .overlay(RoundedRectangle(cornerRadius: 3).fill(shimmerGradient(phase: shimmerPhase)))
+                                .frame(width: 80, height: 9)
+                        }
+                        .padding(14)
+                        .frame(width: 190, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(AppTheme.Colors.cardBackground.opacity(0.25))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.08), lineWidth: 0.5)
+                                )
+                        )
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .animation(.linear(duration: 1.8).repeatForever(autoreverses: false), value: shimmerPhase)
+    }
+
+    private var skeletonRecentTripsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(AppTheme.Colors.borderSubtle.opacity(0.3))
+                    .frame(width: 3, height: 14)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(AppTheme.Colors.cardBackground.opacity(0.4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).fill(shimmerGradient(phase: shimmerPhase)))
+                    .frame(width: 90, height: 12)
+                Spacer()
+            }
+            .padding(.leading, 20)
+
+            VStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { index in
+                    HStack(spacing: 12) {
+                        // Route icon placeholder
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(AppTheme.Colors.cardBackground.opacity(0.3))
+                            .overlay(RoundedRectangle(cornerRadius: 8).fill(shimmerGradient(phase: shimmerPhase)))
+                            .frame(width: 36, height: 36)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            // Destination line
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(AppTheme.Colors.cardBackground.opacity(0.35))
+                                .overlay(RoundedRectangle(cornerRadius: 3).fill(shimmerGradient(phase: shimmerPhase)))
+                                .frame(width: CGFloat([160, 140, 180][index % 3]), height: 13)
+
+                            // Subtitle line
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(AppTheme.Colors.cardBackground.opacity(0.2))
+                                .overlay(RoundedRectangle(cornerRadius: 3).fill(shimmerGradient(phase: shimmerPhase)))
+                                .frame(width: CGFloat([110, 130, 100][index % 3]), height: 10)
+                        }
+
+                        Spacer()
+
+                        // Time placeholder
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(AppTheme.Colors.cardBackground.opacity(0.2))
+                            .overlay(RoundedRectangle(cornerRadius: 4).fill(shimmerGradient(phase: shimmerPhase)))
+                            .frame(width: 48, height: 10)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(AppTheme.Colors.cardBackground.opacity(0.20))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.08), lineWidth: 0.5)
+                            )
+                    )
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+        .animation(.linear(duration: 1.8).repeatForever(autoreverses: false), value: shimmerPhase)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

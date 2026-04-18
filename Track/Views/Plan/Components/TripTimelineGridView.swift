@@ -362,9 +362,8 @@ struct TripTimelineGridView: View {
 
             let minW: CGFloat = {
                 if leg.isTransit || isWalkOnly { return 42 }
-                // Walk/transfer between transit — scale minimum to content
-                if naturalW < 10 { return 10 }
-                return 20
+                // Walk/transfer between transit — wide enough for icon + time
+                return 36
             }()
 
             let legW = max(naturalW, minW)
@@ -514,12 +513,8 @@ struct TripTimelineGridView: View {
         } else if isWalkOnly {
             walkBar(frame.leg, width: frame.width)
                 .position(x: frame.centerX, y: cy)
-        } else if frame.width < 16 {
-            // Tiny walk/transfer segment — compact connector dot
-            transferDot(frame.leg)
-                .position(x: frame.centerX, y: cy)
         } else {
-            walkDots(frame.leg, width: frame.width)
+            walkSegment(frame.leg, width: frame.width)
                 .position(x: frame.centerX, y: cy)
         }
     }
@@ -674,72 +669,28 @@ struct TripTimelineGridView: View {
         .shadow(color: .black.opacity(0.06), radius: 3, y: 1)
     }
 
-    // MARK: - Walk Dots (• • • •)
+    // MARK: - Walk Segment
 
-    /// Renders walk/transfer legs as horizontal dot patterns on the
-    /// connector line — matching Transit app style exactly.
-    /// Adapts dot size and spacing for narrow widths so tiny walks
-    /// don't look broken.
-    private func walkDots(_ leg: TripLeg, width: CGFloat) -> some View {
-        let w = max(width, 18)
-        let isCompact = w < 28
-        let showsInlineIcon = w > 28
-        let showMinutes = showsInlineIcon && leg.durationMinutes > 0
-        let dotSize: CGFloat = isCompact ? 5 : 6
-        let dotSpacing: CGFloat = isCompact ? 4 : 5
+    /// Renders walk/transfer legs with a prominent walking icon and
+    /// walk duration label — no bubble, just icon + "X min" text.
+    private func walkSegment(_ leg: TripLeg, width: CGFloat) -> some View {
+        let w = max(width, 28)
+        let minutes = leg.durationMinutes
+        let isTransfer = leg.mode == .transfer
+        let iconName = isTransfer ? "arrow.triangle.swap" : "figure.walk"
 
-        // When showing minutes label, use fewer dots to make room
-        let availableForDots = showMinutes ? max(0, w - 40) : w
-        let totalDotWidth = dotSize + dotSpacing
-        let dotCount = max(1, min(Int(availableForDots / totalDotWidth), 6))
-        let leadingDots = showsInlineIcon ? max(1, (dotCount + 1) / 2) : dotCount
-        let trailingDots = showsInlineIcon ? max(0, dotCount - leadingDots) : 0
+        return HStack(spacing: 2) {
+            Image(systemName: iconName)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(AppTheme.Colors.textSecondary)
 
-        return ZStack {
-            HStack(spacing: dotSpacing) {
-                ForEach(0..<leadingDots, id: \.self) { _ in
-                    Circle()
-                        .fill(AppTheme.Colors.textTertiary.opacity(0.38))
-                        .frame(width: dotSize, height: dotSize)
-                }
-
-                if showsInlineIcon {
-                    HStack(spacing: 2) {
-                        Image(systemName: leg.mode == .transfer ? "arrow.triangle.swap" : "figure.walk")
-                            .font(.system(size: isCompact ? 9 : 11, weight: .bold))
-                            .foregroundStyle(AppTheme.Colors.textSecondary.opacity(0.9))
-
-                        if showMinutes {
-                            Text("\(leg.durationMinutes)")
-                                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                                .foregroundStyle(AppTheme.Colors.textTertiary)
-                        }
-                    }
-
-                    ForEach(0..<trailingDots, id: \.self) { _ in
-                        Circle()
-                            .fill(AppTheme.Colors.textTertiary.opacity(0.38))
-                            .frame(width: dotSize, height: dotSize)
-                    }
-                }
+            if minutes > 0 && w > 38 {
+                Text("\(minutes)")
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
             }
         }
         .frame(width: w, height: barHeight)
-    }
-
-    // MARK: - Transfer Dot
-
-    /// Compact connector for very short walk/transfer segments (< 16 px).
-    /// Shows a small circle with a mode icon instead of oversized dots.
-    private func transferDot(_ leg: TripLeg) -> some View {
-        ZStack {
-            Circle()
-                .fill(AppTheme.Colors.textTertiary.opacity(0.18))
-                .frame(width: 14, height: 14)
-            Image(systemName: leg.mode == .transfer ? "arrow.triangle.swap" : "figure.walk")
-                .font(.system(size: 7, weight: .bold))
-                .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.7))
-        }
     }
 
 

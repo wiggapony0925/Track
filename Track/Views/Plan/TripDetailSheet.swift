@@ -10,6 +10,7 @@ struct TripDetailSheet: View {
     @State private var heroVisible = false
     @State private var statsVisible = false
     @State private var bodyVisible = false
+    @State private var showShareSheet = false
 
     var body: some View {
         NavigationStack {
@@ -111,7 +112,7 @@ struct TripDetailSheet: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        // TODO: Share
+                        showShareSheet = true
                     } label: {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 14, weight: .semibold))
@@ -119,6 +120,10 @@ struct TripDetailSheet: View {
                     }
                     .buttonStyle(.plain)
                 }
+            }
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheet(items: [buildShareText()])
+                    .presentationDetents([.medium, .large])
             }
             .onAppear {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -540,7 +545,7 @@ struct TripDetailSheet: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    // TODO: Share trip
+                    showShareSheet = true
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "square.and.arrow.up")
@@ -611,6 +616,108 @@ struct TripDetailSheet: View {
         let minutes = max(1, Int(round(Double(dueInSeconds) / 60.0)))
         return "in \(minutes)m"
     }
+
+    // MARK: - Share Builder
+
+    private static let shareDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE, MMM d"
+        return f
+    }()
+
+    private func buildShareText() -> String {
+        let dateLine = Self.shareDateFormatter.string(from: trip.departureTime)
+        let originName = trip.legs.first?.boardStopName ?? "Origin"
+        let destName = trip.legs.last?.alightStopName ?? "Destination"
+
+        var lines: [String] = []
+
+        // Header
+        lines.append("🚇 Trip Plan — \(dateLine)")
+        lines.append("\(originName) → \(destName)")
+        lines.append("")
+
+        // Quick stats
+        let transferLabel = trip.numTransfers == 0
+            ? "Direct"
+            : "\(trip.numTransfers) transfer\(trip.numTransfers > 1 ? "s" : "")"
+        lines.append("🕐 Depart \(timeString(trip.departureTime)) · Arrive \(timeString(trip.arrivalTime))")
+        lines.append("⏱ \(trip.durationString) · \(transferLabel) · Walk \(walkDistanceString)")
+        lines.append("")
+
+        // Step-by-step legs
+        lines.append("Route:")
+        for (i, leg) in trip.legs.enumerated() {
+            let stepNum = i + 1
+            switch leg.mode {
+            case .walk:
+                let mins = leg.durationMinutes
+                lines.append("  \(stepNum). 🚶 Walk \(mins) min — \(leg.boardStopName) → \(leg.alightStopName)")
+            case .transfer:
+                lines.append("  \(stepNum). 🔄 Transfer at \(leg.boardStopName)")
+            default:
+                let emoji = leg.mode == .bus ? "🚌" : leg.mode == .lirr || leg.mode == .mnr ? "🚆" : "🚇"
+                let route = leg.routeId ?? leg.routeName ?? "Transit"
+                let headsignPart = leg.headsign.map { " → \($0)" } ?? ""
+                lines.append("  \(stepNum). \(emoji) \(route)\(headsignPart)")
+                lines.append("       Board \(leg.boardStopName) at \(timeString(leg.departureTime))")
+                lines.append("       Exit  \(leg.alightStopName) at \(timeString(leg.arrivalTime))")
+                if leg.numStops > 0 {
+                    lines.append("       \(leg.numStops) stop\(leg.numStops > 1 ? "s" : ""), \(leg.durationMinutes) min")
+                }
+            }
+        }
+
+        // Fare
+        if let fare = trip.fare {
+            lines.append("")
+            if !fare.description.isEmpty {
+                lines.append("💳 \(fare.description)")
+            } else {
+                lines.append("💳 Est. fare: \(fare.formattedTotal)")
+            }
+        }
+
+        // Environmental impact
+        if let impact = trip.environmentalImpact {
+            var parts: [String] = []
+            if impact.co2SavedGrams > 0 { parts.append(impact.formattedCO2 + " saved") }
+            if impact.caloriesBurned > 0 { parts.append(impact.formattedCalories) }
+            if !parts.isEmpty {
+                lines.append("🌿 \(parts.joined(separator: " · "))")
+            }
+        }
+
+        // Service alerts
+        if !trip.serviceAlerts.isEmpty {
+            lines.append("")
+            lines.append("⚠️ Alerts:")
+            for alert in trip.serviceAlerts.prefix(3) {
+                lines.append("  • \(alert.title)")
+            }
+        }
+
+        lines.append("")
+        lines.append("Shared from Track")
+
+        return lines.joined(separator: "\n")
+    }
+}
+
+// MARK: - Share Sheet
+
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: items,
+            applicationActivities: nil
+        )
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
