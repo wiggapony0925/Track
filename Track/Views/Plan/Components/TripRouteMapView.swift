@@ -75,42 +75,49 @@ struct TripRouteMapView: View {
     private func loadAllShapes() async {
         var segments: [TripRouteLegData] = []
 
-        await withTaskGroup(of: (Int, [CLLocationCoordinate2D]?, UIColor, Bool).self) { group in
+        await withTaskGroup(of: (Int, [CLLocationCoordinate2D]?, [CLLocationCoordinate2D]?, UIColor, Bool).self) { group in
             for (index, leg) in trip.legs.enumerated() {
                 let color = legUIColor(for: leg)
                 let isWalk = leg.mode == .walk || leg.mode == .transfer
 
                 group.addTask {
                     if isWalk {
-                        return (index, nil, color, true)
+                        return (index, nil, nil, color, true)
                     }
                     guard let routeId = leg.routeId, !routeId.isEmpty else {
-                        return (index, nil, color, false)
+                        return (index, nil, nil, color, false)
                     }
                     do {
                         let shape = try await fetchShapeForLeg(leg)
+                        let fullCoords = shape.decodedPolylines.flatMap { $0 }
                         let clipped = clipShape(
                             shape: shape,
                             boardStopId: leg.boardStopId,
                             alightStopId: leg.alightStopId
                         )
-                        return (index, clipped.isEmpty ? nil : clipped, color, false)
+                        return (
+                            index,
+                            clipped.isEmpty ? nil : clipped,
+                            fullCoords.count >= 2 ? fullCoords : nil,
+                            color,
+                            false
+                        )
                     } catch {
                         #if DEBUG
                         print("[TripRouteMap] Failed to fetch shape for \(routeId): \(error)")
                         #endif
-                        return (index, nil, color, false)
+                        return (index, nil, nil, color, false)
                     }
                 }
             }
 
-            var results: [(Int, [CLLocationCoordinate2D]?, UIColor, Bool)] = []
+            var results: [(Int, [CLLocationCoordinate2D]?, [CLLocationCoordinate2D]?, UIColor, Bool)] = []
             for await result in group {
                 results.append(result)
             }
             results.sort { $0.0 < $1.0 }
 
-            for (index, coords, color, isWalk) in results {
+            for (index, coords, fullCoords, color, isWalk) in results {
                 if isWalk {
                     let walkCoords = resolveWalkCoords(
                         index: index,
@@ -119,12 +126,18 @@ struct TripRouteMapView: View {
                     )
                     if !walkCoords.isEmpty {
                         segments.append(TripRouteLegData(
-                            coordinates: walkCoords, color: color, isWalk: true
+                            coordinates: walkCoords,
+                            fullRouteCoordinates: nil,
+                            color: color,
+                            isWalk: true
                         ))
                     }
                 } else if let coords, !coords.isEmpty {
                     segments.append(TripRouteLegData(
-                        coordinates: coords, color: color, isWalk: false
+                        coordinates: coords,
+                        fullRouteCoordinates: fullCoords,
+                        color: color,
+                        isWalk: false
                     ))
                 }
             }
@@ -214,7 +227,7 @@ struct TripRouteMapView: View {
 
     private func resolveWalkCoords(
         index: Int,
-        results: [(Int, [CLLocationCoordinate2D]?, UIColor, Bool)],
+        results: [(Int, [CLLocationCoordinate2D]?, [CLLocationCoordinate2D]?, UIColor, Bool)],
         legs: [TripLeg]
     ) -> [CLLocationCoordinate2D] {
         var startCoord: CLLocationCoordinate2D?

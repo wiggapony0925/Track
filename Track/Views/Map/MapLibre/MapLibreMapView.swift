@@ -1964,6 +1964,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private static let tripTransitSourceID = "trip-transit-src"
         private static let tripTransitCasingID = "trip-transit-casing"
         private static let tripTransitFillID   = "trip-transit-fill"
+        private static let tripFullRouteSourceID = "trip-full-route-src"
+        private static let tripFullRouteCasingID = "trip-full-route-casing"
+        private static let tripFullRouteFillID   = "trip-full-route-fill"
         private static let tripWalkSourceID    = "trip-walk-src"
         private static let tripWalkLineID      = "trip-walk-line"
 
@@ -1974,6 +1977,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         ) {
             guard let legs = representable.tripRouteLegs, !legs.isEmpty else {
                 clearSource(style: style, sourceID: Self.tripTransitSourceID)
+                clearSource(style: style, sourceID: Self.tripFullRouteSourceID)
                 clearSource(style: style, sourceID: Self.tripWalkSourceID)
                 // Remove trip markers
                 if !tripRouteAnnotations.isEmpty {
@@ -1983,8 +1987,73 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 return
             }
 
-            // ── Transit polylines (casing + fill, per-segment color) ──
+            // ── Full route lines (dimmed context behind active segment) ──
             let transitSegs = legs.filter { !$0.isWalk }
+            let fullRouteSegs = transitSegs.filter {
+                $0.fullRouteCoordinates != nil && ($0.fullRouteCoordinates?.count ?? 0) >= 2
+            }
+
+            if !fullRouteSegs.isEmpty {
+                var features: [MLNPolylineFeature] = []
+                for seg in fullRouteSegs {
+                    guard var mutable = seg.fullRouteCoordinates,
+                          mutable.count >= 2 else { continue }
+                    let feature = MLNPolylineFeature(
+                        coordinates: &mutable,
+                        count: UInt(mutable.count)
+                    )
+                    feature.attributes = [
+                        "color": tripHexString(from: seg.color)
+                    ]
+                    features.append(feature)
+                }
+
+                let shape = MLNShapeCollectionFeature(shapes: features)
+
+                if let existing = style.source(
+                    withIdentifier: Self.tripFullRouteSourceID
+                ) as? MLNShapeSource {
+                    existing.shape = shape
+                } else {
+                    let source = MLNShapeSource(
+                        identifier: Self.tripFullRouteSourceID,
+                        shape: shape,
+                        options: nil
+                    )
+                    style.addSource(source)
+                    sourcesCreated.insert(Self.tripFullRouteSourceID)
+
+                    // Dimmed casing (subtle glow)
+                    let casing = MLNLineStyleLayer(
+                        identifier: Self.tripFullRouteCasingID,
+                        source: source
+                    )
+                    casing.lineColor = NSExpression(forKeyPath: "color")
+                    casing.lineWidth = MapLibreStyleConfig.routeCasingWidth
+                    casing.lineOpacity = NSExpression(forConstantValue: 0.08)
+                    casing.lineCap = NSExpression(forConstantValue: "round")
+                    casing.lineJoin = NSExpression(forConstantValue: "round")
+                    casing.lineBlur = MapLibreStyleConfig.routeCasingBlur
+                    style.addLayer(casing)
+
+                    // Dimmed fill
+                    let fill = MLNLineStyleLayer(
+                        identifier: Self.tripFullRouteFillID,
+                        source: source
+                    )
+                    fill.lineColor = NSExpression(forKeyPath: "color")
+                    fill.lineWidth = MapLibreStyleConfig.routeFillWidth
+                    fill.lineOpacity = NSExpression(forConstantValue: 0.20)
+                    fill.lineCap = NSExpression(forConstantValue: "round")
+                    fill.lineJoin = NSExpression(forConstantValue: "round")
+                    fill.lineMiterLimit = NSExpression(forConstantValue: 1.05)
+                    style.addLayer(fill)
+                }
+            } else {
+                clearSource(style: style, sourceID: Self.tripFullRouteSourceID)
+            }
+
+            // ── Active transit segments (casing + fill, full opacity) ──
             if !transitSegs.isEmpty {
                 var features: [MLNPolylineFeature] = []
                 for seg in transitSegs {

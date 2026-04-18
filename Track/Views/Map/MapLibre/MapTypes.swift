@@ -48,7 +48,11 @@ struct TransferConnector: Identifiable {
 /// shape-fetching pipeline and consumed by the shared map renderer.
 struct TripRouteLegData: Identifiable, Equatable {
     let id = UUID()
+    /// The clipped segment the user actually rides (board → alight).
     let coordinates: [CLLocationCoordinate2D]
+    /// The full unclipped route shape — rendered dimmed behind the
+    /// active segment so users see the complete route context.
+    let fullRouteCoordinates: [CLLocationCoordinate2D]?
     let color: UIColor     // UIColor for MapLibre NSExpression
     let isWalk: Bool
 
