@@ -11,7 +11,6 @@
 // Used as the interactive map in TripDetailSheet (full-screen cover).
 
 import CoreLocation
-import MapLibre
 import SwiftUI
 
 // MARK: - SwiftUI Wrapper
