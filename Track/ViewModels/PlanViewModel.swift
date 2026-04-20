@@ -337,6 +337,29 @@ final class PlanViewModel {
             tripResults = response.tripPlans
             scheduleNote = response.scheduleNote
 
+            // ── Future-day fallback ──
+            // When the engine has no service right now and returns only
+            // future-day trips (schedule_note = "Next trips available …"),
+            // try Apple Maps for immediate transit options first.
+            if !tripResults.isEmpty,
+               scheduleNote != nil,
+               allTripsAreFutureDay(tripResults)
+            {
+                let futurePlans = tripResults
+                let futureNote = scheduleNote
+                #if DEBUG
+                print("[PlanVM] All \(futurePlans.count) trips are future-day — trying Apple fallback")
+                #endif
+                await fallbackToAppleDirections()
+                if tripResults.isEmpty || isUsingAppleFallback == false {
+                    // Apple returned nothing — restore the future trips
+                    tripResults = futurePlans
+                    scheduleNote = futureNote
+                }
+                // If Apple succeeded, tripResults + isUsingAppleFallback are
+                // already set by fallbackToAppleDirections().
+            }
+
             if tripResults.isEmpty {
                 errorKind = .noResults
                 errorMessage = scheduleNote ?? emptyResultsMessage()
@@ -1187,6 +1210,19 @@ final class PlanViewModel {
         isUsingAppleFallback = false
         errorKind = .engineUnavailable
         errorMessage = "The routing engine is temporarily offline. Please try again shortly."
+    }
+
+    /// Returns `true` when every trip departs on a different calendar day
+    /// (Eastern time) than right now — i.e. the engine found nothing for
+    /// today and fell back to the next service day.
+    private func allTripsAreFutureDay(_ trips: [TripPlan]) -> Bool {
+        guard !trips.isEmpty else { return false }
+        let cal = Calendar.current
+        let todayComponents = cal.dateComponents([.year, .month, .day], from: Date())
+        return trips.allSatisfy { trip in
+            let depComponents = cal.dateComponents([.year, .month, .day], from: trip.departureTime)
+            return depComponents != todayComponents
+        }
     }
 
     private func friendlyError(for error: Error) -> (PlanErrorKind, String) {

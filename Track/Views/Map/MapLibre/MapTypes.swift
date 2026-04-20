@@ -55,6 +55,23 @@ struct TripRouteLegData: Identifiable, Equatable {
     let fullRouteCoordinates: [[CLLocationCoordinate2D]]?
     let color: UIColor     // UIColor for MapLibre NSExpression
     let isWalk: Bool
+    /// Intermediate stop coordinates (board → alight inclusive)
+    /// for rendering station dots on transit legs.
+    let stopCoordinates: [CLLocationCoordinate2D]
+
+    init(
+        coordinates: [CLLocationCoordinate2D],
+        fullRouteCoordinates: [[CLLocationCoordinate2D]]? = nil,
+        color: UIColor,
+        isWalk: Bool,
+        stopCoordinates: [CLLocationCoordinate2D] = []
+    ) {
+        self.coordinates = coordinates
+        self.fullRouteCoordinates = fullRouteCoordinates
+        self.color = color
+        self.isWalk = isWalk
+        self.stopCoordinates = stopCoordinates
+    }
 
     static func == (lhs: TripRouteLegData, rhs: TripRouteLegData) -> Bool {
         lhs.id == rhs.id

@@ -157,12 +157,30 @@ struct TripTimelineGridView: View {
 
     /// X offset of the scroll anchor — positions the view so the first departure
     /// (or "Now" needle if earlier) lands near the left edge with a small margin.
+    /// When ALL trips are on a future day the anchor jumps to the first departure
+    /// so the user immediately sees the trip bars instead of an empty "Now" column.
     private var scrollAnchorX: CGFloat {
         let earliest = trips.map(\.departureTime).min() ?? nowDate
-        let anchor = min(earliest, nowDate)
+        let anchor: Date
+        if allTripsAreFutureDay {
+            // Service ended — scroll to show the future trips
+            anchor = earliest
+        } else {
+            anchor = min(earliest, nowDate)
+        }
         // Show the anchor date about 16pt from the left of the viewport
         let tx = xPos(for: anchor) - 16
         return max(0, tx)
+    }
+
+    /// True when every trip departs on a different calendar day than right now.
+    private var allTripsAreFutureDay: Bool {
+        guard !trips.isEmpty else { return false }
+        let cal = Calendar.current
+        let today = cal.dateComponents([.year, .month, .day], from: nowDate)
+        return trips.allSatisfy {
+            cal.dateComponents([.year, .month, .day], from: $0.departureTime) != today
+        }
     }
 
     // MARK: - Now Needle (draggable)

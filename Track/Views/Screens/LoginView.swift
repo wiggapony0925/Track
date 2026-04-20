@@ -10,115 +10,168 @@ struct LoginView: View {
     @State private var errorMessage: String?
     @State private var appleSignInDelegate: AppleSignInDelegate?
 
+    // Staggered entrance animation
+    @State private var showIcon = false
+    @State private var showTitle = false
+    @State private var showFeatures = false
+    @State private var showActions = false
+
     var body: some View {
         ZStack {
+            // Background
             ZStack {
                 AppTheme.Gradients.screen
                 AppTheme.Gradients.screenGlow
             }
-                .ignoresSafeArea()
+            .ignoresSafeArea()
 
+            // Content
             VStack(spacing: 0) {
                 Spacer()
+                    .frame(minHeight: 20)
 
                 // App Identity
                 appHeader
+                    .padding(.bottom, 36)
 
                 Spacer()
 
                 // Feature highlights
                 featureHighlights
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 40)
 
                 // Login Actions
                 loginActions
-                
+
                 // Error message
                 if let error = errorMessage {
-                    Text(error)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(AppTheme.Colors.alertRed)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                        .padding(.bottom, 16)
+                    errorBanner(error)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
                 // Footer
                 footerText
             }
-            .padding(.horizontal, AppTheme.Layout.margin * 2)
+            .padding(.horizontal, 28)
         }
+        .onAppear { animateEntrance() }
+    }
+
+    // MARK: - Entrance Animation
+
+    private func animateEntrance() {
+        withAnimation(AppTheme.Animation.smooth.delay(0.1)) { showIcon = true }
+        withAnimation(AppTheme.Animation.smooth.delay(0.25)) { showTitle = true }
+        withAnimation(AppTheme.Animation.smooth.delay(0.4)) { showFeatures = true }
+        withAnimation(AppTheme.Animation.smooth.delay(0.55)) { showActions = true }
     }
 
     // MARK: - App Header
 
     private var appHeader: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
+            // Icon with glow
             ZStack {
+                // Outer soft glow
                 Circle()
-                    .fill(AppTheme.Colors.accentGlow)
-                    .frame(width: 156, height: 156)
-                    .blur(radius: 24)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                AppTheme.Colors.accent.opacity(0.25),
+                                AppTheme.Colors.accentSecondary.opacity(0.08),
+                                Color.clear,
+                            ],
+                            center: .center,
+                            startRadius: 40,
+                            endRadius: 100
+                        )
+                    )
+                    .frame(width: 180, height: 180)
 
                 Image("AppIconImage")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 110, height: 110)
-                    .clipShape(RoundedRectangle(cornerRadius: 28))
-                    .shadow(color: AppTheme.Colors.shadow.opacity(0.4), radius: 16, y: 8)
+                    .frame(width: 120, height: 120)
+                    .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.35), radius: 20, y: 10)
+                    .shadow(color: AppTheme.Colors.accent.opacity(0.15), radius: 30, y: 4)
                     .accessibilityHidden(true)
             }
+            .opacity(showIcon ? 1 : 0)
+            .scaleEffect(showIcon ? 1 : 0.8)
 
-            VStack(spacing: 8) {
+            // Title & tagline
+            VStack(spacing: 10) {
                 Text("Track")
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .font(.system(size: 44, weight: .bold, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textPrimary)
 
                 Text("NYC Transit, Live")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
             }
+            .opacity(showTitle ? 1 : 0)
+            .offset(y: showTitle ? 0 : 12)
         }
     }
 
     // MARK: - Feature Highlights
 
     private var featureHighlights: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             featureRow(
-                icon: "location.fill",
-                color: AppTheme.Colors.mtaBlue,
-                text: "Real-time subway, bus & rail arrivals"
+                icon: "tram.fill",
+                color: AppTheme.Colors.accent,
+                title: "Live Arrivals",
+                subtitle: "Subway, bus & rail — updated every second"
             )
             featureRow(
                 icon: "bell.badge.fill",
                 color: AppTheme.Colors.warningYellow,
-                text: "Live service alerts & delay notifications"
+                title: "Service Alerts",
+                subtitle: "Delays, reroutes & planned work"
             )
             featureRow(
                 icon: "map.fill",
                 color: AppTheme.Colors.successGreen,
-                text: "Transit map with live vehicle tracking"
+                title: "Live Map",
+                subtitle: "Vehicle positions & station coverage"
             )
         }
-        .padding(18)
-        .trackCardBackground(cornerRadius: 24)
-        .padding(.horizontal, 8)
+        .padding(.vertical, 20)
+        .padding(.horizontal, 18)
+        .trackCardBackground(cornerRadius: 20)
+        .opacity(showFeatures ? 1 : 0)
+        .offset(y: showFeatures ? 0 : 16)
     }
 
-    private func featureRow(icon: String, color: Color, text: String) -> some View {
+    private func featureRow(icon: String, color: Color, title: String, subtitle: String) -> some View {
         HStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(.white)
-                .frame(width: 30, height: 30)
+                .frame(width: 34, height: 34)
                 .background(color.gradient)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            
-            Text(text)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-            
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .shadow(color: color.opacity(0.3), radius: 4, y: 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+
+                Text(subtitle)
+                    .font(.system(size: 12.5, weight: .regular))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(1)
+            }
+
             Spacer()
         }
     }
@@ -126,46 +179,98 @@ struct LoginView: View {
     // MARK: - Login Actions
 
     private var loginActions: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             // Sign in with Apple button
             Button(action: startAppleSignIn) {
-                HStack(spacing: 8) {
-                    Image(systemName: "apple.logo")
-                        .font(.system(size: 18, weight: .semibold))
+                HStack(spacing: 10) {
+                    if isLoading {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.9)
+                    } else {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 19, weight: .semibold))
+                    }
                     Text("Sign in with Apple")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
                 }
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 54)
-                .background(Color.black)
-                .cornerRadius(14)
+                .frame(height: 56)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.black)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.15), .white.opacity(0.05)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 0.5
+                                )
+                        )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
-            .shadow(color: AppTheme.Colors.subwayBlack.opacity(0.15), radius: 8, y: 4)
+            .shadow(color: AppTheme.Colors.shadow.opacity(0.2), radius: 12, y: 6)
+            .shadow(color: Color.black.opacity(0.1), radius: 4, y: 2)
             .disabled(isLoading)
-
-            if isLoading {
-                ProgressView()
-                    .tint(AppTheme.Colors.mtaBlue)
-                    .padding(.top, 8)
-            }
+            .opacity(isLoading ? 0.85 : 1)
+            .animation(AppTheme.Animation.gentle, value: isLoading)
         }
-        .padding(.bottom, 24)
+        .padding(.bottom, 20)
+        .opacity(showActions ? 1 : 0)
+        .offset(y: showActions ? 0 : 16)
+    }
+
+    // MARK: - Error Banner
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.alertRed)
+
+            Text(message)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.Colors.alertRed.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.alertRed.opacity(0.2), lineWidth: 0.5)
+                )
+        )
+        .padding(.bottom, 16)
     }
 
     // MARK: - Footer
 
     private var footerText: some View {
-        VStack(spacing: 6) {
-            Text("Your data stays on your device.")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-            Text("Sign in to sync across devices.")
+        VStack(spacing: 5) {
+            HStack(spacing: 4) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                Text("Your data stays on your device")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+            }
+            Text("Sign in to sync across devices")
                 .font(.system(size: 12, weight: .regular))
-                .foregroundColor(AppTheme.Colors.textTertiary)
+                .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.7))
         }
         .multilineTextAlignment(.center)
-        .padding(.bottom, 32)
+        .padding(.bottom, 36)
+        .opacity(showActions ? 1 : 0)
     }
 
     // MARK: - Actions
