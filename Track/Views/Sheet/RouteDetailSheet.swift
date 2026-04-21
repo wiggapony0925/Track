@@ -195,6 +195,9 @@ struct RouteDetailSheet: View {
     ///  • `prioritizedArrivals` never flip-flops to a different nearby stop between
     ///    backend refresh cycles for a given direction.
     @State private var lockedStopKeyPerDirection: [Int: String] = [:]
+    /// Guard against double-fire of `handleDirectionChange` when `selectedDirectionIndex`
+    /// is written twice in rapid succession (e.g. initial snap + DIR_PREF restore at open).
+    @State private var _lastHandledDirectionIndex: Int = -1
     /// Headsign of the user's selected direction — locked so that backend
     /// re-sorts of `group.directions` never flip the sheet to a different dir.
     @State private var lockedDirectionHeadsign: String?
@@ -771,6 +774,9 @@ struct RouteDetailSheet: View {
     }
 
     private func handleOnAppear() {
+        // Prime the direction-change guard so the first real direction change
+        // (e.g. from a DIR_PREF restore) is handled, not spurious double-fires.
+        _lastHandledDirectionIndex = selectedDirectionIndex
         rebuildCachedPolyline()
         isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
         isLoadingArrivals = safeDirection.arrivals.isEmpty
@@ -905,6 +911,16 @@ struct RouteDetailSheet: View {
     }
 
     private func handleDirectionChange() {
+        // Guard: skip duplicate fires that occur when selectedDirectionIndex is
+        // written twice in rapid succession (initial open + DIR_PREF restore).
+        guard selectedDirectionIndex != _lastHandledDirectionIndex else {
+            #if DEBUG
+            print("[DIR_CHANGE] ⏭ SKIP duplicate fire for idx=\(selectedDirectionIndex)")
+            #endif
+            return
+        }
+        _lastHandledDirectionIndex = selectedDirectionIndex
+
         inSheetSelectedStopId = nil
         selectedChipId = nil
         selectedChipRouteId = nil
@@ -918,6 +934,12 @@ struct RouteDetailSheet: View {
         if selectedDirectionIndex < group.directions.count {
             lockedDirectionHeadsign = group.directions[selectedDirectionIndex].direction
         }
+
+        // Clear the locked stop for the new direction so it re-resolves fresh.
+        // The old lock may carry a platform stop ID from the opposite direction
+        // (e.g. 726N for southbound) that won't match any arrivals in this direction,
+        // causing the chip list to show only expiring SCHED entries instead of live.
+        lockedStopKeyPerDirection[selectedDirectionIndex] = nil
 
         rebuildCachedPolyline()
         let freshArrivals = nearestStopArrivals
@@ -1714,6 +1736,13 @@ struct RouteDetailSheet: View {
         for item in schedItems {
             let ts = Int(item.departureDate.timeIntervalSince1970)
             if existingTripIds.contains(item.id) { continue }
+            // GTFS static trip IDs (e.g. "AFA25GEN-7064-Weekday-00_058350_7..S35R") don't
+            // exact-match SIRI trip IDs (e.g. "058350_7..S").  Check if the GTFS ID contains
+            // any existing SIRI ID as a substring (min 8 chars to avoid false positives).
+            let gtfsLower = item.id.lowercased()
+            if existingTripIds.contains(where: { k in k.count >= 8 && gtfsLower.contains(k.lowercased()) }) {
+                continue
+            }
             // Don't filter by timestamp exact match too aggressively, just trip IDs.
             // But if we have no trip ID, timestamp collision check is useful.
             if existingTimestamps.contains(ts) { continue }
@@ -2235,16 +2264,16 @@ struct RouteDetailSheet: View {
         eta: SmartETA
     ) -> some View {
         let chip = makeChipData(arrival: arrival, eta: eta)
-        let isSched = chip.isScheduled
-        let accent: Color = chip.isCancelled
-            ? AppTheme.Colors.alertRed
-            : isSched ? AppTheme.Colors.textSecondary : routeColor
-
         let isChipLive = !chip.isScheduled && !chip.isTrackedOnly
+        // Colored = has a real map marker. Tracked-only (SIRI, no GPS) renders grey
+        // alongside scheduled chips so colored-chip count always matches marker count.
+        let chipAccent: Color = chip.isCancelled
+            ? AppTheme.Colors.alertRed
+            : (chip.isScheduled || chip.isTrackedOnly) ? AppTheme.Colors.textSecondary : routeColor
         return ArrivalChipView(
             chip: chip,
             index: index,
-            accentColor: accent,
+            accentColor: chipAccent,
             isSelected: selectedChipId == arrival.id
         ) {
             // Scheduled and tracked-only chips are informational — not tappable
@@ -2315,10 +2344,15 @@ struct RouteDetailSheet: View {
         for arrival in arrivals {
             let eta = smartETA(for: arrival)
             guard !eta.isPastArrival else { continue }
-            if arrival.isScheduledOnly {
-                sched.append((arrival, eta))
-            } else {
+            // Only arrivals with an actual map marker go in the live (colored) bucket.
+            // Tracked-only arrivals (SIRI real-time but no GPS position) and
+            // scheduled-only arrivals both go in the sched (grey) bucket so the
+            // number of colored chips always matches the number of map markers.
+            let hasMarker = isLiveOnMap?(arrival) ?? false
+            if hasMarker {
                 live.append((arrival, eta))
+            } else {
+                sched.append((arrival, eta))
             }
         }
         // Sort by feed arrivalTs (canonical order) when available.
@@ -2367,7 +2401,61 @@ struct RouteDetailSheet: View {
             }
         }
 
-        return live + sched
+        var result = live + sched
+
+        // ── Guarantee minimum 6 chips ─────────────────────────────────────
+        // If the pipeline produced fewer than 6 (backend returned few arrivals,
+        // or isPastArrival removed some), pad with additional scheduled
+        // departures from scheduledDeparturesForCurrentDirection, bypassing
+        // the anchor-stop filter that may have been too strict upstream.
+        if result.count < 6 {
+            let existingTripIds = Set(result.compactMap(\.arrival.tripId))
+            let existingTs     = Set(result.compactMap(\.arrival.arrivalTs))
+            let allSched = scheduledDeparturesForCurrentDirection
+            let nowTs    = Date().timeIntervalSince1970
+
+            for item in allSched {
+                guard result.count < 6 else { break }
+                let ts = Int(item.departureDate.timeIntervalSince1970)
+                guard ts > Int(nowTs - 60) else { continue }  // skip clearly past
+                guard !existingTripIds.contains(item.id) else { continue }
+                // GTFS/SIRI partial dedup (same as appendScheduledDepartures)
+                let gtfsLow = item.id.lowercased()
+                if existingTripIds.contains(where: { k in k.count >= 8 && gtfsLow.contains(k.lowercased()) }) { continue }
+                guard !existingTs.contains(ts) else { continue }
+
+                let synthetic = NearbyTransitResponse(
+                    routeId: group.routeId,
+                    stopName: item.stopName,
+                    direction: safeDirection.direction,
+                    destination: item.headsign,
+                    minutesAway: item.minutesAway,
+                    status: "Scheduled",
+                    mode: group.mode,
+                    stopLat: nil, stopLon: nil,
+                    arrivalTs: ts,
+                    vehicleId: nil,
+                    tripId: item.id,
+                    stopId: nil,
+                    isRealTime: false,
+                    isCancelled: false,
+                    colorHex: group.colorHex,
+                    busServiceType: group.busServiceType
+                )
+                let eta = smartETA(for: synthetic)
+                guard !eta.isPastArrival else { continue }
+                result.append((synthetic, eta))
+            }
+
+            // Re-sort after padding so times remain chronological.
+            result.sort { a, b in
+                if let tsA = a.arrival.arrivalTs, let tsB = b.arrival.arrivalTs,
+                   tsA > 0, tsB > 0 { return tsA < tsB }
+                return a.eta.secondsRemaining < b.eta.secondsRemaining
+            }
+        }
+
+        return result
     }
 
     /// Stop-name pill shown when user has manually selected a stop.
@@ -2535,6 +2623,8 @@ struct RouteDetailSheet: View {
     }
 
     /// Single horizontal row of arrival chips.
+    /// Shows the first 6 chips (always guaranteed by buildOrderedChips),
+    /// then a "See More" chip if more exist.
     private func countdownChipRow(
         chips: [(arrival: NearbyTransitResponse, eta: SmartETA)]
     ) -> some View {
@@ -2547,7 +2637,6 @@ struct RouteDetailSheet: View {
                     arrivalCard(arrival: pair.arrival, index: index, eta: pair.eta)
                 }
 
-                // "See More" chip — opens the Departures tab
                 if hasMore {
                     seeMoreChip(remainingCount: chips.count - 6)
                 }
@@ -3298,55 +3387,24 @@ struct RouteDetailSheet: View {
 
     /// Finds transfer routes at a given stop.
     ///
-    /// Three sources, combined additively:
-    /// 1. **Subway stations** — all name-matched AND proximity-matched (≤200 m)
-    ///    stations from `cachedStations`.  Collects routes from EVERY matching
-    ///    entry (not just the first), catching transfer complexes like
-    ///    Times Sq (1/2/3 + 7 + N/Q/R/W + GS) and different-name complexes
-    ///    like 74 St-Broadway ↔ Jackson Hts-Roosevelt Av.
-    /// 2. **Bus route IDs** — from `stop.routeIds` (set by the backend for
-    ///    stops fetched from /bus/nearby or enriched shape stops).
-    /// 3. **Fallback shape stops** — nearby/name-matched stops in the current
-    ///    routeShape that carry routeIds (captures bus-to-bus transfers).
+    /// The backend's `enrich_stops_with_transfers` runs before every subway /
+    /// commuter-rail shape response and writes the correct transfer route IDs
+    /// into `stop.routeIds` using authoritative GTFS coordinates.  We simply
+    /// read those here — no client-side station lookup needed.
+    ///
+    /// Two sources, combined additively:
+    /// 1. **Backend-enriched route IDs** — `stop.routeIds` populated by the
+    ///    backend's transfer-enrichment pipeline (subway + commuter rail stops).
+    /// 2. **Fallback shape stops** — nearby/name-matched stops in the current
+    ///    routeShape that carry routeIds (catches bus-to-bus transfers where
+    ///    the current stop row itself has nil routeIds).
     ///
     /// Returns a deduplicated, sorted list of route display names (badges).
     private func transferRoutes(for stop: BusStop) -> [String] {
         let currentRoute = group.displayName
         var routes = Set<String>()
 
-        // ── 1. Subway / commuter-rail station matches ──
-        if !cachedStations.isEmpty {
-            let stopName = stop.name.lowercased().trimmingCharacters(in: .whitespaces)
-            let stopCoord = CLLocation(latitude: stop.lat, longitude: stop.lon)
-
-            // 1a. Name match — collect ALL stations sharing this name
-            //     (e.g. "Times Sq-42 St" appears for 1/2/3, 7/7X, N/Q/R/W, GS)
-            let nameMatches = cachedStations.filter {
-                $0.name.lowercased().trimmingCharacters(in: .whitespaces) == stopName
-            }
-            for station in nameMatches {
-                for r in station.routes where r != currentRoute { routes.insert(r) }
-            }
-
-            // 1b. Proximity match — ALWAYS runs (not just as fallback)
-            //     Catches transfer complexes with different names, e.g.:
-            //     · 74 St-Broadway (7) ↔ Jackson Hts-Roosevelt Av (E/F/M/R) — 23 m
-            //     · Court Sq (7) ↔ Court Sq-23 St (E/F) — 111 m
-            //     · Court Sq (7) ↔ Court Sq (G) — 131 m
-            let nameMatchIDs = Set(nameMatches.map(\.id))
-            let nearbyStations = cachedStations.filter { station in
-                guard !nameMatchIDs.contains(station.id) else { return false }
-                let loc = CLLocation(
-                    latitude: station.coordinate.latitude,
-                    longitude: station.coordinate.longitude)
-                return stopCoord.distance(from: loc) <= 200
-            }
-            for station in nearbyStations {
-                for r in station.routes where r != currentRoute { routes.insert(r) }
-            }
-        }
-
-        // ── 2. Bus route IDs served at this stop (from shape/nearby data) ──
+        // ── 1. Backend-enriched route IDs (authoritative source) ──
         if let routeIds = stop.routeIds {
             for rawId in routeIds {
                 let display = BranchNames.resolveDisplayName(routeId: rawId, mode: "bus")
@@ -3356,7 +3414,7 @@ struct RouteDetailSheet: View {
             }
         }
 
-        // ── 3. Fallback: nearby/name-matched shape stops (captures bus transfers
+        // ── 2. Fallback: nearby/name-matched shape stops (captures bus transfers
         // when the current stop row itself has nil routeIds) ──
         if let shape = routeShape {
             let here = CLLocation(latitude: stop.lat, longitude: stop.lon)

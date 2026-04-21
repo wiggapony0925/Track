@@ -51,7 +51,10 @@ struct MapLibreRouteStopOverlay: View {
         GeometryReader { _ in
             ZStack {
                 ForEach(stops) { displayedStop in
-                    stopMarkerView(for: displayedStop, showLabel: zoom >= 13)
+                    // Bus routes have many closely-spaced stops — only show labels
+                    // at higher zoom or when selected to avoid clutter.
+                    let showLabel = isBusRoute ? zoom >= 15 : zoom >= 13
+                    stopMarkerView(for: displayedStop, showLabel: showLabel)
                 }
             }
         }
@@ -74,8 +77,7 @@ struct MapLibreRouteStopOverlay: View {
                 isSkipped: displayedStop.isSkipped,
                 routeColor: routeColor,
                 stopName: stop.name,
-                showLabel: showLabel || isSelected,
-                transferRouteIds: stop.routeIds ?? []
+                showLabel: showLabel || isSelected
             )
             .position(point)
             .onTapGesture { onStopTap(stop) }

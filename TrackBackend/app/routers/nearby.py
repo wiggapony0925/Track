@@ -1242,7 +1242,8 @@ async def nearby_inactive_routes(
 
     # Build InactiveRoute objects (before filtering by active — cache the full set)
     inactive_list: list[InactiveRoute] = []
-    for display_name, (route_id, color, route_type) in sorted(all_routes_in_area.items()):
+    for display_name_raw, (route_id, color, route_type) in sorted(all_routes_in_area.items()):
+        display_name = _normalize_route_display(display_name_raw)
         mode = _mode_for_route_type(route_type)
         service_type = _classify_bus_service_type(display_name) if mode == "bus" else None
         color_hex = None
@@ -1536,13 +1537,23 @@ _LEADING_ZERO_RE = re.compile(r"^([A-Za-z]+)0+(\d+)$")
 
 
 def _normalize_route_display(name: str) -> str:
-    """Strip leading zeros from the numeric part of a bus route display name.
+    """Strip leading zeros and normalise SBS suffix on bus route display names.
 
-    Examples: Q07 → Q7, B09 → B9, Q09 → Q9, Bx12 unchanged (already no leading zeros).
-    Subway/LIRR/MNR identifiers are unaffected because they don't match the pattern.
+    Examples:
+      Q07      → Q7
+      B09      → B9
+      M34-SBS  → M34+   (MTA canonical SBS notation)
+      M34+SBS  → M34+
+      M34+     → M34+   (already canonical, unchanged)
+      Bx12     → Bx12   (no leading zeros, not SBS)
+
+    Subway/LIRR/MNR identifiers are unaffected.
     """
-    m = _LEADING_ZERO_RE.match(name)
-    return (m.group(1) + m.group(2)) if m else name
+    # Normalise SBS variants to trailing "+" before stripping leading zeros
+    normalized = re.sub(r"-SBS$", "+", name, flags=re.IGNORECASE)
+    normalized = re.sub(r"\+SBS$", "+", normalized, flags=re.IGNORECASE)
+    m = _LEADING_ZERO_RE.match(normalized)
+    return (m.group(1) + m.group(2)) if m else normalized
 
 
 def _display_name(route_id: str) -> str:

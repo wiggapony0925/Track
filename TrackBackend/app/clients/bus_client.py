@@ -83,6 +83,36 @@ except RuntimeError:
     asyncio.set_event_loop(asyncio.new_event_loop())
 
 # ---------------------------------------------------------------------------
+# SBS Display Normalization
+# ---------------------------------------------------------------------------
+
+def normalize_bus_short_name(name: str) -> str:
+    """Normalise a bus route short name to the MTA canonical display form.
+
+    MTA's official public notation for Select Bus Service routes is a
+    trailing ``+`` (e.g. ``M34+``, ``B44+``).  GTFS feeds and some OBA
+    responses use the ``-SBS`` or ``+SBS`` suffix instead.  This function
+    collapses all three variants to the ``+`` form, strips leading zeros
+    from the numeric part, and leaves all other routes unchanged.
+
+    Examples::
+
+        M34-SBS  → M34+
+        M34+SBS  → M34+
+        M34+     → M34+   (idempotent)
+        Q07      → Q7
+        B63      → B63
+    """
+    import re as _re2
+    n = name.strip()
+    # -SBS / +SBS  →  +
+    n = _re2.sub(r"[-+]SBS$", "+", n, flags=_re2.IGNORECASE)
+    # Remove leading zeros in numeric part (Q07 → Q7)
+    n = _re2.sub(r"(?<=[A-Za-z])0+(?=\d)", "", n)
+    return n
+
+
+# ---------------------------------------------------------------------------
 # Load Route Map (Canonical Source of Truth)
 # ---------------------------------------------------------------------------
 ROUTE_LOOKUP = {}
@@ -122,16 +152,15 @@ try:
                             if stripped_form != short_name:
                                 ROUTE_LOOKUP[stripped_form] = official_id
                                 ROUTE_LOOKUP[stripped_form.lower()] = official_id
-                        # Canonical display name (mixed-case from JSON)
-                        CANONICAL_BUS_DISPLAY[short_name.upper()] = short_name
-                        # SBS routes: the JSON uses "-SBS" suffix (e.g. "M34-SBS")
-                        # but MTA SIRI/OBA feeds use "+" suffix (e.g. "M34+") in
-                        # route IDs.  After agency-prefix stripping, _display_name
-                        # sees "M34+" — register that form so it maps back to the
-                        # canonical "-SBS" display name and merges into one card.
+                        # Canonical display name: always store the normalised
+                        # "M34+" form so every lookup path returns the same
+                        # MTA-standard notation regardless of whether the source
+                        # gave "-SBS", "+SBS", or "+".
+                        canonical = normalize_bus_short_name(short_name)
+                        CANONICAL_BUS_DISPLAY[short_name.upper()] = canonical
                         if "-SBS" in short_name.upper() and "+" in official_id:
                             plus_form = official_id.rsplit("_", 1)[-1]  # e.g. "M34+"
-                            CANONICAL_BUS_DISPLAY[plus_form.upper()] = short_name
+                            CANONICAL_BUS_DISPLAY[plus_form.upper()] = canonical
                         # Collect agency prefix (everything up to and including "_")
                         if "_" in official_id:
                             prefix = official_id[: official_id.index("_") + 1]
@@ -1155,7 +1184,7 @@ async def _fetch_routes_uncached() -> list[BusRoute]:
             results.append(
                 BusRoute(
                     id=rid,
-                    short_name=r.get("shortName", ""),
+                    short_name=normalize_bus_short_name(r.get("shortName", "")),
                     long_name=r.get("longName", ""),
                     color=r.get("color", "0039A6"),
                     description=r.get("description", ""),

@@ -85,18 +85,16 @@ struct ArrivalChipView: View {
     private var cornerR: CGFloat { isFirst ? 20 : 18 }
 
     private var usesSolidAccentCard: Bool {
-        isFirst && !isSched && !isCancelled
+        isFirst && !isSched && !isCancelled && !chip.isTrackedOnly
     }
 
     // MARK: Derived colors
     private var chipAccent: Color {
         isCancelled
             ? AppTheme.Colors.alertRed
-            : isSched
+            : (isSched || chip.isTrackedOnly)
                 ? AppTheme.Colors.textSecondary
-                : chip.isTrackedOnly
-                    ? accentColor.opacity(0.55)
-                    : accentColor
+                : accentColor
     }
 
     private var tagLabel: String {
@@ -145,7 +143,7 @@ struct ArrivalChipView: View {
             .fill(
                 usesSolidAccentCard
                     ? AnyShapeStyle(.white.opacity(0.45))
-                    : isSched
+                    : (isSched || chip.isTrackedOnly)
                     ? AnyShapeStyle(chipAccent.opacity(0.12))
                     : AnyShapeStyle(
                         LinearGradient(

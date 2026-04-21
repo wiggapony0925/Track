@@ -1436,14 +1436,15 @@ final class HomeViewModel {
                 let routePolys: [[CLLocationCoordinate2D]]
 
                 if isBus {
-                    // Bus pipeline: merge + near-duplicate removal + backtrack/spike
-                    // removal + Catmull-Rom smooth + circular-arc fillet.
+                    // Bus pipeline: merge + near-duplicate removal + backtrack/spike removal.
+                    // NO Catmull-Rom smoothing — buses follow the street grid and Catmull-Rom
+                    // rounds what should be sharp 90° turns into sweeping curves that cut
+                    // through city blocks.  The GTFS shape points are already at the right
+                    // density for street-level rendering.
                     let merged = mergeAdjacentPolylines(activeRaw)
                     routePolys = merged.filter { $0.count >= 2 }.map {
                         let cleaned = removeNearDuplicates($0)
-                        let despiked = removeSpikes(removePolylineBacktracks(cleaned))
-                        let smoothed = smoothPolyline(despiked, segmentsPerCurve: 6)
-                        return refineSharpBends(smoothed, angleThreshold: 30.0)
+                        return removeSpikes(removePolylineBacktracks(cleaned))
                     }
                 } else {
                     // Train pipeline: dedup → merge
@@ -1480,11 +1481,14 @@ final class HomeViewModel {
                         return m
                     }()
 
-                // 5) Build inactive polylines from all OTHER directions.
-                //    Now includes bus routes so users can visually distinguish
-                //    the selected direction from alternate paths (dimmed).
+                // 5) Build inactive polylines — subway/commuter only.
+                //    Bus routes run the same street in both directions; showing
+                //    the opposite-direction polyline dimmed is misleading noise
+                //    (the user selected a direction, the reverse path is not relevant).
+                //    For subway/LIRR/MNR, inactive branches give useful context
+                //    (e.g. A train Jamaica vs Rockaway branches).
                 var inactivePolys: [[CLLocationCoordinate2D]] = []
-                if shouldFilter && shape.directions.count > 1 {
+                if !isBus && shouldFilter && shape.directions.count > 1 {
                     let activeDir = shape.matchedDirection(index: dirIndex, name: dirName)
                     let activePolylineSet = Set(activeDir?.polylines ?? [])
                     var seenEncodedPolylines = activePolylineSet
@@ -3083,10 +3087,6 @@ final class HomeViewModel {
         //
         // CRITICAL: Re-read `selectedGroupedRoute` here — enrichGroupWithShapeDirections
         // may have reordered directions and updated `selectedDirectionIndex`.  The original
-        // `group` parameter still has the PRE-enrichment order, so using it with the
-        // POST-enrichment index yields the WRONG direction (e.g. a direction with 0
-        // arrivals instead of the one with 7).  This caused the arrival-based fallback
-        // to fail and select a shape stop with no matching arrivals.
         let currentGroup = selectedGroupedRoute ?? group
         let refLocation = referenceLocation
         let fallbackStops = routeShape?.stopsForDirection(index: selectedDirectionIndex) ?? []
@@ -3094,6 +3094,7 @@ final class HomeViewModel {
         var targetStopCoord: CLLocationCoordinate2D?
         var targetStopId: String?
 
+        // Always pick the geometrically nearest shape stop to the user's GPS.
         if !fallbackStops.isEmpty, let userLoc = refLocation {
             var closestStop: BusStop?
             var minDistance: CLLocationDistance = .greatestFiniteMagnitude
@@ -3108,118 +3109,18 @@ final class HomeViewModel {
             }
 
             if let closest = closestStop {
-                // Verify the shape's nearest stop has at least one live
-                // arrival.  SIRI only reports predictions at monitored
-                // timepoint stops — the shape's nearest stop may NOT be
-                // one of them.  When that happens, the polyline filter in
-                // RouteDetailSheet treats approaching buses as "passed"
-                // and hides the very bus the home row shows as "arriving".
-                let activeDir = currentGroup.directions.indices.contains(selectedDirectionIndex)
-                    ? currentGroup.directions[selectedDirectionIndex]
-                    : currentGroup.directions.first
-                let bareShapeId = stripMTAStopPrefix(closest.id)
-                let arrivalHasStop = activeDir?.liveArrivals.contains(where: { arrival in
-                    guard let sid = arrival.stopId else { return false }
-                    return sid == closest.id
-                        || stripMTAStopPrefix(sid) == bareShapeId
-                        || arrival.stopName == closest.name
-                }) ?? false
-
-                if arrivalHasStop {
-                    targetStopCoord = CLLocationCoordinate2D(
-                        latitude: closest.lat,
-                        longitude: closest.lon)
-                    targetStopId = closest.id
-
-                    #if DEBUG
-                    print(
-                        "[WALK DIST] \(currentGroup.routeId)"
-                        + " (\(currentGroup.mode))"
-                        + "  source=routeShape"
-                        + " (\(fallbackStops.count) stops)"
-                        + "  nearest stop='\(closest.name)'"
-                        + " id=\(closest.id)"
-                        + "  straight-line=\(Int(minDistance))m"
-                        + " ← polyline targets this stop")
-                    #endif
-                } else {
-                    // Shape stop has no arrivals — SIRI only reports
-                    // predictions at monitored timepoint stops, so the
-                    // physically nearest stop may not have an ETA.
-                    //
-                    // Walk the user to the nearest stop that ALSO has
-                    // predicted arrivals — so the walking polyline,
-                    // stop-name pill, and countdown chips all agree.
-                    // Falling back to the shape stop only when no
-                    // arrival stop has coordinates.
-                    targetStopCoord = CLLocationCoordinate2D(
-                        latitude: closest.lat,
-                        longitude: closest.lon)
-                    targetStopId = closest.id  // default to shape stop
-
-                    if let activeDir, let userRef = refLocation {
-                        var bestArrival: NearbyTransitResponse?
-                        var bestDist: CLLocationDistance = .greatestFiniteMagnitude
-                        for arrival in activeDir.liveArrivals {
-                            guard let lat = arrival.stopLat,
-                                  let lon = arrival.stopLon
-                            else { continue }
-                            let dist = userRef.distance(
-                                from: CLLocation(
-                                    latitude: lat,
-                                    longitude: lon))
-                            if dist < bestDist { bestDist = dist; bestArrival = arrival }
-                        }
-                        if let best = bestArrival,
-                           let bestLat = best.stopLat, let bestLon = best.stopLon {
-                            // Align BOTH the walking polyline and the chip
-                            // stop to the nearest arrival stop so the user
-                            // sees consistent information everywhere.
-                            targetStopCoord = CLLocationCoordinate2D(
-                                latitude: bestLat,
-                                longitude: bestLon)
-                            targetStopId = best.stopId
-                            #if DEBUG
-                            print(
-                                "[WALK DIST]"
-                                + " \(currentGroup.routeId)"
-                                + " (\(currentGroup.mode))"
-                                + "  redirected to arrival"
-                                + " stop '\(best.stopName)'"
-                                + "  dist=\(Int(bestDist))m")
-                            #endif
-                        } else if let best = bestArrival {
-                            // Arrival stop has no coords — keep shape stop
-                            // for walking but use arrival stop for chips.
-                            targetStopId = best.stopId
-                            #if DEBUG
-                            print(
-                                "[WALK DIST]"
-                                + " \(currentGroup.routeId)"
-                                + " (\(currentGroup.mode))"
-                                + "  no coords for"
-                                + " '\(best.stopName)'"
-                                + " — walking stays at"
-                                + " shape stop")
-                            #endif
-                        } else {
-                            #if DEBUG
-                            print(
-                                "[WALK DIST]"
-                                + " \(currentGroup.routeId)"
-                                + " (\(currentGroup.mode))"
-                                + "  source=routeShape"
-                                + " (\(fallbackStops.count) stops)"
-                                + "  nearest='\(closest.name)'"
-                                + " dist=\(Int(minDistance))m"
-                                + " (no arrival match)")
-                            #endif
-                        }
-                    }
-                }
+                targetStopCoord = CLLocationCoordinate2D(latitude: closest.lat, longitude: closest.lon)
+                targetStopId = closest.id
+                #if DEBUG
+                print(
+                    "[WALK DIST] \(currentGroup.routeId)"
+                    + " (\(currentGroup.mode))"
+                    + "  nearest='\(closest.name)'"
+                    + "  dist=\(Int(minDistance))m")
+                #endif
             }
         }
-        
+
         // Fallback: zoom to the first arrival's stop coordinates when
         // route shape data is unavailable or user location is missing.
         if targetStopCoord == nil {

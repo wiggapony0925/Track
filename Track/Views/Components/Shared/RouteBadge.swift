@@ -80,13 +80,17 @@ struct RouteBadge: View {
         return nil
     }
 
-    /// Display text for bus badges — strips "-SBS" / "+SBS" suffixes
-    /// so the pill reads "M23" instead of "M23-SBS".
+    /// Display text for bus badges.
+    /// The backend normalises SBS routes to "+" notation (e.g. "M34+"),
+    /// so no client-side suffix stripping is needed. Any residual "-SBS" /
+    /// "+SBS" suffix is stripped as a safety net for stale data.
     private var busDisplayText: String {
         var text = routeID
         for suffix in ["-SBS", "+SBS"] {
             if let range = text.range(of: suffix, options: .caseInsensitive) {
                 text.removeSubrange(range)
+                // Append "+" so the badge reads "M34+" in the worst case
+                if !text.hasSuffix("+") { text += "+" }
             }
         }
         return text

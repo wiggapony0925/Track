@@ -89,6 +89,34 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             return false
         }
 
+        // Directional split: detect when the ahead/behind boundary moves (nearest stop
+        // changes) so the map re-renders the behind-dimmed / ahead-full-color layers.
+        // We compare segment counts + the split-point coordinate (last coord of the
+        // behind segment) as a cheap but accurate proxy.
+        let splitEq: Bool = {
+            let lSplit = lhs.directionalSplit
+            let rSplit = rhs.directionalSplit
+            guard (lSplit == nil) == (rSplit == nil) else { return false }
+            guard let l = lSplit, let r = rSplit else { return true }
+            guard l.ahead.count == r.ahead.count,
+                  l.behind.count == r.behind.count
+            else { return false }
+            // Use the last coordinate of the last "behind" segment as the
+            // split-point fingerprint — this changes whenever nearestStop changes.
+            if let lPt = l.behind.last?.last, let rPt = r.behind.last?.last {
+                return lPt.latitude == rPt.latitude && lPt.longitude == rPt.longitude
+            }
+            return true
+        }()
+        let inactiveSplitEq: Bool = lhs.inactivePolylines.count == rhs.inactivePolylines.count
+        guard splitEq, inactiveSplitEq else { return false }
+
+        // Walking route — must be included so clearing the route on sheet dismiss
+        // actually triggers updateUIView and removes the dotted line from the map.
+        let walkingEq: Bool = (lhs.walkingRouteCoords?.count ?? 0)
+            == (rhs.walkingRouteCoords?.count ?? 0)
+        guard walkingEq else { return false }
+
         // Trip route overlay
         let tripEq: Bool = (lhs.tripRouteLegs?.count ?? 0) == (rhs.tripRouteLegs?.count ?? 0)
             && lhs.tripFitCamera == rhs.tripFitCamera
@@ -2297,6 +2325,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
             // ── Active direction ──
             if let split = representable.directionalSplit {
+                // Clear the non-split source so its old polyline doesn't ghost
+                // on top of the new behind/ahead layers when switching routes.
+                clearSource(style: style, sourceID: "route-active-source")
                 // Bus behind segments get softer dimming so the route stays
                 // readable — bus lines are thinner and less prominent than subway.
                 let behindAlpha: CGFloat = isBus ? 0.18 : 0.12
@@ -2326,6 +2357,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     casingWidth: MapLibreStyleConfig.routeCasingWidth
                 )
             } else if !representable.routePolylines.isEmpty {
+                // Clear the split sources so old behind/ahead geometry doesn't
+                // ghost when switching to a route with no directional split.
+                clearSource(style: style, sourceID: "route-behind-source")
+                clearSource(style: style, sourceID: "route-ahead-source")
                 buildRoutePolylineLayer(
                     style: style,
                     sourceID: "route-active-source",

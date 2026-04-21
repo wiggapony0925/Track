@@ -99,11 +99,23 @@ extension HomeViewModel {
                 }
 
                 // 2) Store new GPS as targets (simulation reads these).
+                // Also record real GPS positions for ETA speed estimation.
+                // Only real GPS (not interpolated animation positions) should
+                // feed the speed history — animation ticks run at 10× speed
+                // and would cause the ETA engine to show falsely low times.
                 self._targetBusGPS = Dictionary(
                     vehicles.map { ($0.vehicleId, $0) },
                     uniquingKeysWith: { $1 }
                 )
-                self.lastBusUpdateTime = Date()
+                let gpsTimestamp = Date()
+                for v in vehicles {
+                    ArrivalETAEngine.recordPosition(
+                        vehicleKey: v.vehicleId,
+                        coordinate: CLLocationCoordinate2D(latitude: v.lat, longitude: v.lon),
+                        at: gpsTimestamp
+                    )
+                }
+                self.lastBusUpdateTime = gpsTimestamp
 
                 // 3) Update the vehicle LIST (add/remove) without changing
                 //    coordinates of existing vehicles. This keeps
@@ -398,8 +410,20 @@ extension HomeViewModel {
                       let sid = arr.stopId, !sid.isEmpty,
                       !coveredStopIds.contains(sid) else { return false }
                 // Don't carry forward if the vehicle is already represented
-                // in the new onward-call data (it just doesn't list this stop).
-                if let vid = arr.vehicleId, liveVehicleIds.contains(vid) { return false }
+                // in the new onward-call data — UNLESS this arrival is at
+                // the user's nearest/selected stop.  A bus may appear in SIRI
+                // at a *future* stop (further along the route) while still
+                // having a valid upcoming arrival at the user's nearest stop.
+                // Dropping it here causes the chip strip to collapse from 5
+                // live chips to 1 on every 10s vehicle-monitoring poll.
+                if let vid = arr.vehicleId, liveVehicleIds.contains(vid) {
+                    // Protect arrivals at the selected stop from being evicted.
+                    let isAtSelectedStop: Bool = {
+                        guard let sel = selectedStopId, !sel.isEmpty else { return false }
+                        return stripMTAStopPrefix(sid) == stripMTAStopPrefix(sel)
+                    }()
+                    if !isAtSelectedStop { return false }
+                }
                 // Drop arrivals that have already passed (negative ETA)
                 if let ts = arr.arrivalTs, ts > 0 {
                     let remaining = TrackingTimeSync.remainingMinutes(
@@ -1125,9 +1149,12 @@ extension HomeViewModel {
                 )
                 anyMoved = true
             }
-            ArrivalETAEngine.recordPosition(
-                vehicleKey: vid,
-                coordinate: newCoord)
+            // NOTE: Do NOT call ArrivalETAEngine.recordPosition here.
+            // Animation-tick interpolated positions move at ~10× real speed
+            // (covering the full GPS delta in 10 s), which poisons the speed
+            // history and causes the engine to compute a vastly under-estimated
+            // ETA (showing "0 min" when the bus is actually 6 min away).
+            // Positions are recorded from real GPS in refreshBusVehicles instead.
         }
         guard anyMoved else { return }
         // Duration < tick interval (1 s) so the animation completes before

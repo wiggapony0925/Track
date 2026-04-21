@@ -456,7 +456,7 @@ struct HomeView: View {
         // user-location zoom that misses the stop entirely.
         // Don't collapse the sheet if the user has already expanded it.
         guard sheetDetent != .large else { return }
-        withAnimation(MapCameraPresets.snapAnimation) {
+        withAnimation(HoverAnimations.snap) {
             sheetDetent = SheetConstants.defaultDetent
         }
     }
@@ -509,7 +509,7 @@ struct HomeView: View {
             userLocation: locationManager.currentLocation,
             is3D: false
         ) {
-            withAnimation(MapCameraPresets.flyAnimation) {
+            withAnimation(HoverAnimations.fly) {
                 cameraPosition = fitCamera
             }
         }
@@ -527,13 +527,13 @@ struct HomeView: View {
         }
         
         if sheetDetent != .large {
-            withAnimation(MapCameraPresets.snapAnimation) {
+            withAnimation(HoverAnimations.snap) {
                 sheetDetent = .large
             }
         }
         
         if let coord = viewModel.coordinateForTappedVehicle(tappedId) {
-            withAnimation(MapCameraPresets.flyAnimation) {
+            withAnimation(HoverAnimations.fly) {
                 cameraPosition = MapCameraPresets.focusVehicle(at: coord, is3D: false)
             }
         }
@@ -706,7 +706,7 @@ struct HomeView: View {
                 // spot with no bus marker — confusing the user.
                 if viewModel.isVehicleLiveOnMap(arrival),
                    let coord = viewModel.trackedVehicleCoordinate {
-                    withAnimation(MapCameraPresets.flyAnimation) {
+                    withAnimation(HoverAnimations.fly) {
                         cameraPosition = MapCameraPresets
                             .focusVehicle(at: coord, is3D: false)
                     }
@@ -736,7 +736,7 @@ struct HomeView: View {
                 }
 
                 if let key, let coord = viewModel.coordinateForTappedVehicle(key) {
-                    withAnimation(MapCameraPresets.flyAnimation) {
+                    withAnimation(HoverAnimations.fly) {
                         cameraPosition = MapCameraPresets
                             .focusVehicle(at: coord, is3D: false)
                     }
@@ -757,7 +757,7 @@ struct HomeView: View {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         isDragSearchActive = true
                     }
-                    withAnimation(MapCameraPresets.flyAnimation) {
+                    withAnimation(HoverAnimations.fly) {
                         cameraPosition = MapCameraPresets.center(on: settled, is3D: false)
                     }
                 } else {
@@ -805,16 +805,16 @@ struct HomeView: View {
                     is3D: false
                 ) {
                     if collapseSheetOnFocus {
-                        withAnimation(MapCameraPresets.snapAnimation) {
+                        withAnimation(HoverAnimations.snap) {
                             sheetDetent = SheetConstants.defaultDetent
                         }
                     }
-                    withAnimation(MapCameraPresets.flyAnimation) {
+                    withAnimation(HoverAnimations.fly) {
                         cameraPosition = fitCamera
                     }
                 } else {
                     let target = effectiveCoordinate ?? AppTheme.MapConfig.nycCenter
-                    withAnimation(MapCameraPresets.flyAnimation) {
+                    withAnimation(HoverAnimations.fly) {
                         cameraPosition = MapCameraPresets.center(on: target, is3D: false)
                     }
                 }

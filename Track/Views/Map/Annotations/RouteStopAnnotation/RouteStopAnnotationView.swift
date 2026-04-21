@@ -2,8 +2,7 @@ import SwiftUI
 
 /// Visual marker for route stops — MTA-style:
 /// large white filled circle with a bold route-colored ring,
-/// pulsing glow when selected, and colored transfer route badges
-/// at stations where other lines connect.
+/// pulsing glow when selected.
 struct RouteStopMarker: View, Equatable {
     let isBusRoute: Bool
     let isSelected: Bool
@@ -15,9 +14,6 @@ struct RouteStopMarker: View, Equatable {
     let stopName: String
     /// Show the stop name label below the dot.
     var showLabel: Bool = false
-    /// Transfer route IDs at this stop (e.g., ["A", "C", "E"]).
-    /// When non-empty, colored route bullets are shown below the stop dot.
-    var transferRouteIds: [String] = []
 
     static func == (lhs: RouteStopMarker, rhs: RouteStopMarker) -> Bool {
         lhs.isBusRoute == rhs.isBusRoute
@@ -26,7 +22,6 @@ struct RouteStopMarker: View, Equatable {
             && lhs.isSkipped == rhs.isSkipped
             && lhs.stopName == rhs.stopName
             && lhs.showLabel == rhs.showLabel
-            && lhs.transferRouteIds == rhs.transferRouteIds
     }
 
     var body: some View {
@@ -63,11 +58,6 @@ struct RouteStopMarker: View, Equatable {
             }
             .frame(width: 30, height: 30)
 
-            // Transfer route badges — MTA-style colored bullets
-            if !transferRouteIds.isEmpty && (showLabel || isSelected) {
-                transferBadges
-            }
-
             if showLabel {
                 Text(stopName)
                     .font(.system(
@@ -96,34 +86,4 @@ struct RouteStopMarker: View, Equatable {
         .accessibilityLabel(stopName)
     }
 
-    /// Row of colored route bullets for transfer connections.
-    @ViewBuilder
-    private var transferBadges: some View {
-        // Cap at 6 badges to avoid overflow
-        let visibleRoutes = Array(transferRouteIds.prefix(6))
-        HStack(spacing: 1.5) {
-            ForEach(visibleRoutes, id: \.self) { routeId in
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.SubwayColors.color(for: routeId))
-                        .frame(width: 11, height: 11)
-                    Text(routeId)
-                        .font(.system(size: 6.5, weight: .heavy))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                }
-            }
-        }
-        .padding(.horizontal, 3)
-        .padding(.vertical, 1.5)
-        .background(
-            Capsule()
-                .fill(AppTheme.Colors.cardFloating.opacity(0.92))
-                .shadow(
-                    color: AppTheme.Colors.shadow.opacity(0.10),
-                    radius: 1.5, x: 0, y: 0.5
-                )
-        )
-    }
 }

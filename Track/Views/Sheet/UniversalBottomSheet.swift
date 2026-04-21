@@ -218,6 +218,24 @@ struct UniversalBottomSheet<Content: View>: View {
                 // Passively record height — do NOT report to observer here.
                 lastKnownHeight = height
             }
+            .onChange(of: navbarHeight) { _, newHeight in
+                // When navbarHeight changes the peek detent is rebuilt as
+                // `.height(newHeight)`.  If sheetDetent still holds the old
+                // peek detent value it is no longer in `sheetDetents`, which
+                // produces the "Cannot set selected sheet detent if it is not
+                // included in supported sheet detents" warning.  Clamp to the
+                // default fraction whenever the current detent would become
+                // invalid so SwiftUI always has a valid selection.
+                let newPeek = SheetConstants.peekDetent(navbarHeight: newHeight)
+                let newDetents: Set<PresentationDetent> = [
+                    newPeek,
+                    .fraction(SheetConstants.defaultFraction),
+                    .large,
+                ]
+                if !newDetents.contains(sheetDetent) {
+                    sheetDetent = SheetConstants.defaultDetent
+                }
+            }
             .onChange(of: sheetDetent) { _, _ in
                 // Sheet has settled at a new snap point — safe to update
                 // the map's contentInset without causing drag-frame jitter.

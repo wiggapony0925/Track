@@ -21,6 +21,7 @@ from app.clients.bus_client import (
     get_static_route_shape,
     get_stops,
     get_vehicle_positions,
+    normalize_bus_short_name,
 )
 from app.config import get_settings
 from app.models import (
@@ -145,7 +146,7 @@ async def bus_tile_data(response: Response) -> BusTileData:
         tile_routes.append(
             BusTileRoute(
                 route_id=route_id,
-                short_name=route_id,
+                short_name=normalize_bus_short_name(route_id),
                 color=color,
                 polylines=shape.polylines,
             )

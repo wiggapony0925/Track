@@ -36,15 +36,22 @@ enum MapCameraPresets {
     static var walkingMaxAltitude: Double { s.walkingZoomMaxAltitude }
 
     // MARK: - Animations
+    //
+    // These are now deprecated aliases forwarding to HoverAnimations,
+    // which is the single source of truth.  Existing call sites continue
+    // to work — migrate to HoverAnimations.fly / .snap / .smooth over time.
 
-    /// Standard camera fly animation (route open, direction change, recenter).
-    static let flyAnimation: Animation = .spring(response: 0.6, dampingFraction: 0.85)
+    /// Standard camera fly animation. Deprecated: use `HoverAnimations.fly`.
+    @available(*, deprecated, renamed: "HoverAnimations.fly")
+    static var flyAnimation: Animation { HoverAnimations.fly }
 
-    /// Snappier animation for sheet transitions + quick recenters.
-    static let snapAnimation: Animation = .spring(response: 0.4, dampingFraction: 0.8)
+    /// Snappier animation for sheet transitions. Deprecated: use `HoverAnimations.snap`.
+    @available(*, deprecated, renamed: "HoverAnimations.snap")
+    static var snapAnimation: Animation { HoverAnimations.snap }
 
-    /// Longer smooth animation for 3D toggles and explore-NYC button.
-    static let smoothAnimation: Animation = .easeInOut(duration: 0.8)
+    /// Longer smooth animation for 3D toggles. Deprecated: use `HoverAnimations.smooth`.
+    @available(*, deprecated, renamed: "HoverAnimations.smooth")
+    static var smoothAnimation: Animation { HoverAnimations.smooth }
 
     // MARK: - Camera Constructors
 
