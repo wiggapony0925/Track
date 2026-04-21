@@ -3312,15 +3312,21 @@ final class HomeViewModel {
                 let placeholderIdx = group.directions.indices.first { idx in
                     guard !usedExistingIndices.contains(idx) else { return false }
                     let dir = group.directions[idx]
-                    // Consider it a placeholder if it has no real (non-placeholder) arrivals,
-                    // or its direction key is a generic backfill label.
-                    // Only treat single-char codes ("N","S") and explicit backfill
-                    // labels as generic.  Two-char compass codes like "NW","SE" are
-                    // meaningful direction labels and must NOT be replaced — doing so
-                    // caused cross-route headsign contamination (e.g. subway headsigns
-                    // leaking into bus routes whose shape API returned wrong headsigns).
-                    let isGeneric = ["opposite", "n/a", "loop"].contains(dir.direction.lowercased())
+                    // Consider it a generic/replaceable direction if:
+                    //   a) its key is an explicit backfill label ("Opposite", single-char code), OR
+                    //   b) its key is "Outbound"/"Inbound" AND it has NO real arrivals.
+                    //      (Routes like Q80/Q37 use "Outbound" as a real direction and DO have
+                    //       live arrivals, so they won't be caught here.  The backend emits
+                    //       "Outbound" as a generic placeholder when it can't resolve the real
+                    //       terminal name — that placeholder has only a fake sentinel arrival
+                    //       and must be replaced by the actual shape headsign.)
+                    // Two-char compass codes like "NW","SE" are NOT treated as generic —
+                    // they are meaningful and replacing them caused cross-route contamination.
+                    let dirLower = dir.direction.lowercased()
+                    let hasRealArrivals = dir.arrivals.contains { !$0.isPlaceholder }
+                    let isGeneric = ["opposite", "n/a", "loop"].contains(dirLower)
                         || dir.direction.count <= 1  // single-char like "N", "S"
+                        || (!hasRealArrivals && (dirLower == "outbound" || dirLower == "inbound"))
                     return dir.liveArrivals.isEmpty && isGeneric
                 }
 
@@ -3370,18 +3376,27 @@ final class HomeViewModel {
         }
 
         // Append any existing directions that didn't match any shape direction,
-        // BUT skip generic compass-code placeholders ("N", "S", "SE", "W", etc.)
-        // that have no live arrivals. These are backfilled by the nearby API
-        // and create confusing extra tabs (e.g. Q10 showing "S", "SE", "W" tabs).
+        // BUT skip:
+        //  • Generic compass-code placeholders ("N", "S", "SE", "W") with no live arrivals.
+        //    These are backfilled by the nearby API and create confusing extra tabs.
+        //  • "Outbound"/"Inbound" backend-generated placeholders with no real arrivals.
+        //    These appear when the opposite headsign couldn't be resolved; after enrichment
+        //    the correct headsign is already in orderedDirections, so the dangling generic
+        //    tab must be dropped to prevent a spurious 3rd direction (e.g. M12 showing
+        //    "Midtown…", "West Village…", "Outbound" instead of just 2 tabs).
         let compassCodes: Set<String> = ["n","s","e","w","ne","nw","se","sw"]
         for (idx, dir) in group.directions.enumerated() where !usedExistingIndices.contains(idx) {
-            let isCompass = compassCodes.contains(dir.direction.lowercased())
+            let dirLower = dir.direction.lowercased()
+            let isCompass = compassCodes.contains(dirLower)
+            let hasRealArrivals = dir.arrivals.contains { !$0.isPlaceholder }
+            let isGenericOpposite = !hasRealArrivals && (dirLower == "outbound" || dirLower == "inbound")
             let hasLive = !dir.liveArrivals.isEmpty
-            if isCompass && !hasLive {
+            if (isCompass && !hasLive) || isGenericOpposite {
                 #if DEBUG
                 print(
-                    "[ENRICH] Dropping empty compass"
-                    + " direction '\(dir.direction)'"
+                    "[ENRICH] Dropping unused direction '\(dir.direction)'"
+                    + " (isCompass=\(isCompass) hasLive=\(hasLive)"
+                    + " isGenericOpposite=\(isGenericOpposite))"
                     + " from \(group.routeId)"
                 )
                 #endif
@@ -3396,6 +3411,21 @@ final class HomeViewModel {
             || zip(orderedDirections, group.directions).contains(where: {
                 $0.direction != $1.direction
             })
+
+        #if DEBUG
+        if orderedDirections.count != existingCount {
+            let before = group.directions.map { $0.direction }.joined(separator: " | ")
+            let after = orderedDirections.map { $0.direction }.joined(separator: " | ")
+            AppLogger.shared.log(
+                "ENRICH",
+                message:
+                    "DIR COUNT CHANGED route=\(group.routeId)"
+                    + " \(existingCount)→\(orderedDirections.count)"
+                    + " before=[\(before)]"
+                    + " after=[\(after)]"
+            )
+        }
+        #endif
 
         if changed {
             let updatedGroup = GroupedNearbyTransitResponse(

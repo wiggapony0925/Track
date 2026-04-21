@@ -337,11 +337,13 @@ struct RouteDetailSheet: View {
     /// 3. First unique destination from live arrivals
     /// 4. Compass fallback ("↑ North")
     ///
-    /// **Intentionally skips `directionLabel`** from the backend because for
-    /// subway routes it concatenates ALL branch destinations
-    /// ("Southbound → Far Rockaway / Lefferts Blvd") which causes duplicated
-    /// or overly long labels.  The headsign/last-stop approach gives ONE clean
-    /// terminal name per direction pill.
+    /// **Subway** routes skip the backend `directionLabel` because it
+    /// concatenates ALL branch destinations ("Southbound → Far Rockaway /
+    /// Lefferts Blvd") — too verbose for a pill.
+    /// **Bus** routes use the backend label as a reliable fallback: it's
+    /// already a clean terminal name ("Midtown West Columbus Circle") and
+    /// avoids falling through to the raw ALL-CAPS SIRI DestinationName
+    /// when the shape hasn't finished loading yet.
     private func resolvedDirectionLabel(
         for dir: DirectionArrivalsResponse,
         at index: Int
@@ -349,11 +351,13 @@ struct RouteDetailSheet: View {
         let matchedDir = routeShape?.matchedDirection(
             index: index, name: dir.direction
         )
+        // Skip backend label only for subway — bus labels are already clean.
+        let skipBackend = !group.isBus
         return ArrivalHelpers.resolveDirectionLabel(
             for: dir,
             shapeHeadsign: matchedDir?.headsign,
             shapeLastStopName: matchedDir?.stops.last?.name,
-            skipBackendLabel: true,
+            skipBackendLabel: skipBackend,
             useShortCompass: true
         )
     }
@@ -2965,8 +2969,29 @@ struct RouteDetailSheet: View {
 
     /// Builds `DirectionPillData` array for the reusable `DirectionPickerView`.
     private func buildDirectionPills() -> [DirectionPillData] {
+        // Safety filter: hide generic placeholder directions (e.g. "Outbound"
+        // with no real arrivals) during the window before enrichGroupWithShapeDirections
+        // fires.  If at least one other direction already has real arrivals we
+        // know real terminal names are available, so suppress the placeholder tab.
+        let hasRealDirection = group.directions.contains { dir in
+            let key = dir.direction.lowercased()
+            let isGenericKey = key == "outbound" || key == "inbound"
+                || key == "northbound" || key == "southbound"
+                || key == "eastbound" || key == "westbound"
+            let hasRealArrivals = dir.arrivals.contains { !$0.isPlaceholder }
+            return hasRealArrivals && !isGenericKey
+        }
+
+        let filtered = group.directions.enumerated().filter { (offset, dir) in
+            guard hasRealDirection else { return true }  // nothing real yet → show all (loading state)
+            let key = dir.direction.lowercased()
+            let isGenericPlaceholder = (key == "outbound" || key == "inbound")
+                && !dir.arrivals.contains { !$0.isPlaceholder }
+            return !isGenericPlaceholder
+        }
+
         // Reorder so the selected direction is first
-        let all = group.directions.enumerated().map { (index: $0.offset, dir: $0.element) }
+        let all = filtered.map { (index: $0.offset, dir: $0.element) }
         var ordered = all
         if selectedDirectionIndex >= 0, selectedDirectionIndex < group.directions.count,
            let pos = ordered.firstIndex(where: { $0.index == selectedDirectionIndex }) {
