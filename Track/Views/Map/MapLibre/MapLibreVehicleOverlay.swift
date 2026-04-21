@@ -36,6 +36,10 @@ struct MapLibreVehicleOverlay: View {
     /// Bumped every camera frame to force SwiftUI re-projection during gestures.
     let cameraChangeToken: UInt64
 
+    /// Optional lookup closure: given a bus routeId, returns the route's color.
+    /// When nil, falls back to the generic MTA blue.
+    var busColorLookup: ((String) -> Color)? = nil
+
     var body: some View {
         GeometryReader { _ in
             ZStack {
@@ -59,10 +63,11 @@ struct MapLibreVehicleOverlay: View {
                 guard let recorded = vehicle.positionRecordedAt else { return false }
                 return Date().timeIntervalSince(recorded) > 120 // >2 min = stale GPS
             }()
+            let markerColor: Color = busColorLookup?(vehicle.routeId) ?? AppTheme.Colors.mtaBlue
             if let point: CGPoint = projectToScreen(coord, mapView: mapView) {
                 VehicleMarkerContent(
                     icon: TransportMode.bus.icon,
-                    color: AppTheme.Colors.mtaBlue,
+                    color: markerColor,
                     isHighlighted: isHighlighted
                 ) {
                     toggleVehicle(vehicle.vehicleId)

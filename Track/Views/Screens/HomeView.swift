@@ -44,7 +44,7 @@ struct HomeView: View {
     @State private var usedSpeculativeLocation = false
     
     // Drag-to-search state
-    @AppStorage("drag_to_search") private var dragToSearchEnabled = true
+    @AppStorage("drag_to_search") private var dragToSearchEnabled = false
     @State private var isDragSearchActive = false
     @State private var isDragSearchPanning = false
     @State private var hasFiredDragHaptic = false
@@ -439,6 +439,9 @@ struct HomeView: View {
         if !enabled && isDragSearchActive {
             dismissDragSearch()
         }
+        // Immediately persist to Supabase so the saved preference
+        // is not overwritten by the next pull during a full sync.
+        Task { await SyncManager.shared.pushUserSettings() }
     }
     
     private func handleMapCenterChange() {

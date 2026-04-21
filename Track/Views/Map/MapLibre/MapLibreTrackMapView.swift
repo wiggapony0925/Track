@@ -91,6 +91,23 @@ struct MapLibreTrackMapView: View {
 
     // MARK: - Computed Properties
 
+    /// Maps bus routeId → its service-type color so vehicle markers on the map
+    /// match the color shown in the Route Detail sheet (e.g. Q10 = purple, not blue).
+    private var busRouteColorLookup: (String) -> Color {
+        var map: [String: Color] = [:]
+        for group in viewModel.nearbyGroupedBusArrivals {
+            map[group.routeId] = AppTheme.BusColors.color(forServiceType: group.busServiceType)
+        }
+        return { routeId in
+            // BusVehicleResponse.routeId may be prefixed (e.g. "MTA NYCT_Q10")
+            // while GroupedNearbyTransitResponse.routeId is the bare route ID.
+            // Try exact match first, then strip the agency prefix.
+            if let color = map[routeId] { return color }
+            let stripped = routeId.components(separatedBy: "_").last ?? routeId
+            return map[stripped] ?? AppTheme.Colors.mtaBlue
+        }
+    }
+
     private var selectedRouteColor: Color {
         if let group = viewModel.selectedGroupedRoute, group.isBus {
             return AppTheme.BusColors.color(forServiceType: group.busServiceType)
@@ -223,7 +240,8 @@ struct MapLibreTrackMapView: View {
             trainVehicles: viewModel.filteredTrainVehicles,
             tappedVehicleId: viewModel.tappedVehicleId,
             onVehicleTap: handleVehicleTap,
-            cameraChangeToken: cameraChangeToken
+            cameraChangeToken: cameraChangeToken,
+            busColorLookup: busRouteColorLookup
         )
 
         // Search pin

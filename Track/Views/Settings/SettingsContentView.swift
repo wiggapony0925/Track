@@ -21,12 +21,12 @@ struct SettingsContentView: View {
     @AppStorage("farther_away_radius_meters") private var fartherAwayRadius: Double = 4023
     @AppStorage("much_farther_away_radius_meters") private var muchFartherAwayRadius: Double = 8047
     @AppStorage("show_search_radius") private var showSearchRadius = false
-    @AppStorage("drag_to_search") private var dragToSearch = true
+    @AppStorage("drag_to_search") private var dragToSearch = false
 
     // MARK: - Draft State
     @State private var draftRadius: Double = 8047
     @State private var draftShowSearchRadius = false
-    @State private var draftDragToSearch = true
+    @State private var draftDragToSearch = false
     @State private var hasUnappliedChanges = false
     @State private var showAppliedConfirmation = false
 
