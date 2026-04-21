@@ -1804,7 +1804,18 @@ def _resolve_opposite_headsign(
                 )
                 if headsigns:
                     break
-        _headsign_cache[lookup_id] = headsigns
+        # Also try the normalised display name (strips agency prefix variants)
+        if not headsigns:
+            dn = _display_name(route_id)
+            if dn != lookup_id:
+                headsigns = schedule_service.get_headsigns_for_route(dn)
+        # CRITICAL: Only cache non-empty results.  Caching an empty dict
+        # poisons the cache for the lifetime of the process — subsequent
+        # requests for the same route (after DB init completes, or after
+        # a hot-reload) would return {} forever and always fall back to
+        # "Outbound" instead of the real GTFS headsign.
+        if headsigns:
+            _headsign_cache[lookup_id] = headsigns
 
     headsigns = _headsign_cache.get(lookup_id, {})
     if not headsigns:
@@ -2225,8 +2236,11 @@ def _group_arrivals(
                         f"on {display}: '{headsign}'"
                     )
                 else:
-                    # Last resort — fall back to generic label
-                    opposite = _OPPOSITE_DIRECTION
+                    # Can't resolve a real headsign — don't emit a generic
+                    # "Outbound" placeholder.  The iOS client creates the
+                    # correct opposite direction from GTFS shape data via
+                    # enrichGroupWithShapeDirections once the route shape loads.
+                    allow_opposite_placeholder = False
 
             if (
                 allow_opposite_placeholder
