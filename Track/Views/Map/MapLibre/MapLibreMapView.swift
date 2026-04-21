@@ -292,15 +292,22 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // and sets contentInset directly in UIKit — zero SwiftUI re-renders.
         if let observer = sheetHeightObserver {
             observer.onHeightChanged = { [weak mapView] height in
-                mapView?.contentInset = UIEdgeInsets(
-                    top: 0, left: 0, bottom: height, right: 0
+                // Use animated:false to prevent MapLibre from internally
+                // animating the camera center on every drag frame, which
+                // causes the sheet to visually shake during interactive drags.
+                mapView?.setContentInset(
+                    UIEdgeInsets(top: 0, left: 0, bottom: height, right: 0),
+                    animated: false,
+                    completionHandler: nil
                 )
             }
             // Apply current height immediately (sheet may already be visible)
             let initial = observer.currentHeight
             if initial > 0 {
-                mapView.contentInset = UIEdgeInsets(
-                    top: 0, left: 0, bottom: initial, right: 0
+                mapView.setContentInset(
+                    UIEdgeInsets(top: 0, left: 0, bottom: initial, right: 0),
+                    animated: false,
+                    completionHandler: nil
                 )
             }
         }

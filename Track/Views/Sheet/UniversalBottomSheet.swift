@@ -48,6 +48,14 @@ struct NavbarHeightKey: PreferenceKey {
     }
 }
 
+/// Tracks sheet pixel height for real-time map contentInset updates.
+struct SheetMinYKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 // MARK: - Sheet Height Observer
 
 /// Bridges real-time sheet height changes directly into the map's
@@ -102,17 +110,6 @@ final class SheetHeightObserver {
     }
 }
 
-// MARK: - Preference Key
-
-/// Tracks the sheet's minY in the global coordinate space so we can
-/// compute its pixel height continuously during interactive drags.
-private struct SheetMinYKey: PreferenceKey {
-    static let defaultValue: CGFloat = .infinity
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = min(value, nextValue())
-    }
-}
-
 /// Universal bottom sheet container that hosts all in-sheet navigation.
 /// Provides consistent presentation, detents, and transition animations.
 /// Note: Individual pages are responsible for their own
@@ -138,8 +135,20 @@ struct UniversalBottomSheet<Content: View>: View {
     /// Drives the peek detent so it adapts to content changes automatically.
     @State private var navbarHeight: CGFloat = 150 // sensible default until measured
 
+    /// Pre-computed detent set to avoid compiler type-check complexity.
+    private var sheetDetents: Set<PresentationDetent> {
+        [SheetConstants.peekDetent(navbarHeight: navbarHeight), .fraction(SheetConstants.defaultFraction), .large]
+    }
+
     /// Brief dimming overlay for smooth dark ↔ light transition.
     @State private var themeTransitionOpacity: Double = 0
+
+    /// Last measured pixel height of the sheet — updated by GeometryReader
+    /// on every frame but only forwarded to the observer at detent snap points.
+    @State private var lastKnownHeight: CGFloat = 0
+
+    /// Tracks whether the initial contentInset has been reported to the map.
+    @State private var hasReportedInitial = false
 
     /// Maps the appTheme string to a ColorScheme for the sheet.
     private var colorScheme: ColorScheme? {
@@ -149,7 +158,7 @@ struct UniversalBottomSheet<Content: View>: View {
         default: return nil
         }
     }
-    
+
     var body: some View {
         // Page content with transitions
         content(navigator.currentPage)
@@ -162,12 +171,7 @@ struct UniversalBottomSheet<Content: View>: View {
                   insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal: .move(edge: .leading).combined(with: .opacity)
             ))
-            .presentationDetents(
-                [SheetConstants.peekDetent(navbarHeight: navbarHeight),
-                 .fraction(SheetConstants.defaultFraction),
-                 .large],
-                selection: $sheetDetent
-            )
+            .presentationDetents(sheetDetents, selection: $sheetDetent)
             .onPreferenceChange(NavbarHeightKey.self) { height in
                 guard height > 0 else { return }
                 navbarHeight = height
@@ -194,10 +198,13 @@ struct UniversalBottomSheet<Content: View>: View {
             .presentationCornerRadius(32)
             .interactiveDismissDisabled()
             .preferredColorScheme(colorScheme)
-            // ── Interactive sheet height tracking ──
-            // The sheet re-proposes its height to the content on every
-            // drag frame, so proxy.size.height tracks the sheet's pixel
-            // height in real-time — no need for screen-height math.
+            // ── Sheet height tracking at snap points only ──
+            // The GeometryReader passively records the sheet's pixel height
+            // each frame, but we only forward it to the map observer when
+            // the detent actually snaps — not on every mid-drag frame.
+            // This prevents per-frame setContentInset calls, which were
+            // causing MapLibre to continuously reposition the camera center
+            // (visible as a shake during interactive drag).
             .background {
                 GeometryReader { proxy in
                     Color.clear
@@ -208,7 +215,21 @@ struct UniversalBottomSheet<Content: View>: View {
                 }
             }
             .onPreferenceChange(SheetMinYKey.self) { height in
-                sheetHeightObserver?.report(height)
+                // Passively record height — do NOT report to observer here.
+                lastKnownHeight = height
+            }
+            .onChange(of: sheetDetent) { _, _ in
+                // Sheet has settled at a new snap point — safe to update
+                // the map's contentInset without causing drag-frame jitter.
+                guard lastKnownHeight > 0 else { return }
+                sheetHeightObserver?.report(lastKnownHeight)
+            }
+            .onChange(of: lastKnownHeight) { _, h in
+                // Report the very first real height so the map inset is
+                // correct as soon as the sheet appears (before any snap).
+                guard !hasReportedInitial, h > 0 else { return }
+                hasReportedInitial = true
+                sheetHeightObserver?.report(h)
             }
             // Smooth dim overlay when color scheme changes
             .overlay {
@@ -227,26 +248,3 @@ struct UniversalBottomSheet<Content: View>: View {
     }
 }
 
-#Preview {
-    @Previewable @State var detent: PresentationDetent = SheetConstants.defaultDetent
-    let navigator = SheetNavigator()
-    
-    Color.gray.opacity(0.3)
-        .sheet(isPresented: .constant(true)) {
-            UniversalBottomSheet(
-                navigator: navigator,
-                sheetDetent: $detent
-            ) { page in
-                switch page {
-                case .dashboard:
-                    Text("Dashboard Content")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(AppTheme.Colors.background)
-                default:
-                    Text("Other Page")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(AppTheme.Colors.background)
-                }
-            }
-        }
-}

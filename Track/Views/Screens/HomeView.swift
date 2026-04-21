@@ -266,7 +266,7 @@ struct HomeView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .animation(.spring(response: 0.4, dampingFraction: 0.88), value: isRouteDetailOverlayPresented)
+            .animation(.spring(response: 0.25, dampingFraction: 0.9), value: isRouteDetailOverlayPresented)
             .onChange(of: isRouteDetailOverlayPresented) { _, isPresented in
                 if isPresented {
                     sheetHeightObserver.report(0)
@@ -454,6 +454,8 @@ struct HomeView: View {
         // nearestStopCoordinate hasn't been calculated yet, so
         // cameraPositionFittingRoute would fall back to a generic
         // user-location zoom that misses the stop entirely.
+        // Don't collapse the sheet if the user has already expanded it.
+        guard sheetDetent != .large else { return }
         withAnimation(MapCameraPresets.snapAnimation) {
             sheetDetent = SheetConstants.defaultDetent
         }
@@ -468,10 +470,12 @@ struct HomeView: View {
             userLocation: locationManager.currentLocation,
             is3D: false
         ) {
-            // Collapse sheet and fly to fit camera in a single animation
-            // to avoid competing transitions that cause jitter.
+            // Fly to fit camera. Only collapse the sheet if the user
+            // hasn't already manually expanded it to .large.
             withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
-                sheetDetent = SheetConstants.defaultDetent
+                if sheetDetent != .large {
+                    sheetDetent = SheetConstants.defaultDetent
+                }
                 cameraPosition = fitCamera
             }
         } else if let coordinate = viewModel.nearestStopCoordinate {
@@ -1324,6 +1328,7 @@ struct HomeView: View {
     
     private func centerMap(on target: CLLocationCoordinate2D? = nil) {
         // Collapse sheet and animate camera in one transaction.
+        // Don't collapse if the user has manually expanded the sheet to full-screen.
         let refCoord = effectiveCoordinate
         let finalTarget = target ?? refCoord ?? AppTheme.MapConfig.nycCenter
 
@@ -1337,7 +1342,9 @@ struct HomeView: View {
         }
 
         withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
-            sheetDetent = SheetConstants.defaultDetent
+            if sheetDetent != .large {
+                sheetDetent = SheetConstants.defaultDetent
+            }
             cameraPosition = targetCamera
         }
     }

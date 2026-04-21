@@ -1256,21 +1256,15 @@ final class HomeViewModel {
         }
     }
 
-    /// Load a shape from disk if it exists and is < 24 h old.
-    /// Uses nonisolated helper to keep FileManager I/O off the main actor.
-    private func loadShapeFromDisk(for routeId: String) -> RouteShapeResponse? {
-        guard let dir = Self._shapeDiskDir else { return nil }
-        let key = Self._shapeDiskKey(routeId)
-        return Self._readShapeFile(dir: dir, key: key, maxAge: Self._shapeDiskMaxAge)
-    }
-
     /// Disk read helper for cached route shapes.
-    /// Kept as a static so it doesn't capture `self`, but remains
-    /// @MainActor-isolated because RouteShapeResponse's Decodable
-    /// conformance is MainActor-isolated in Swift 6.
-    private static func _readShapeFile(
+    /// nonisolated so it can be called from a background Task.detached
+    /// Reads raw bytes from the shape file off the main actor.
+    /// Decoding is intentionally excluded — RouteShapeResponse.Decodable
+    /// is @MainActor-isolated in Swift 6 and cannot run nonisolated.
+    /// The expensive part (disk I/O) is here; JSON decode is fast (memory only).
+    private nonisolated static func _readShapeData(
         dir: URL, key: String, maxAge: TimeInterval
-    ) -> RouteShapeResponse? {
+    ) -> Data? {
         let file = dir.appendingPathComponent(key + ".json")
         guard FileManager.default.fileExists(atPath: file.path) else { return nil }
         do {
@@ -1280,30 +1274,56 @@ final class HomeViewModel {
                 try? FileManager.default.removeItem(at: file)
                 return nil
             }
-            let data = try Data(contentsOf: file)
-            return try JSONDecoder().decode(RouteShapeResponse.self, from: data)
+            return try Data(contentsOf: file)
         } catch {
             return nil
         }
     }
 
+    /// Disk read helper for cached route shapes (main-actor, synchronous).
+    /// Used for non-critical paths. Prefer getCachedRouteShapeAsync on tap paths.
+    private static func _readShapeFile(
+        dir: URL, key: String, maxAge: TimeInterval
+    ) -> RouteShapeResponse? {
+        guard let data = _readShapeData(dir: dir, key: key, maxAge: maxAge) else { return nil }
+        return try? JSONDecoder().decode(RouteShapeResponse.self, from: data)
+    }
+
     /// Returns a cached route shape if it exists and is < 5 min old.
-    /// Falls through to disk cache if memory is empty.
+    /// Checks only the in-memory cache — never blocks the main thread.
     func getCachedRouteShape(for routeId: String) -> RouteShapeResponse? {
-        // L1: In-memory
-        if let entry = _routeShapeCache[routeId] {
-            if Date().timeIntervalSince(entry.fetchedAt) <= _routeShapeCacheMaxAge {
-                return entry.shape
-            }
-            _routeShapeCache.removeValue(forKey: routeId)
+        guard let entry = _routeShapeCache[routeId],
+              Date().timeIntervalSince(entry.fetchedAt) <= _routeShapeCacheMaxAge
+        else { return nil }
+        return entry.shape
+    }
+
+    /// Async variant: L1 memory (main actor, instant) then L2 disk (background thread).
+    /// Use this on tap-to-open paths so the main thread stays free for animations
+    /// during any disk I/O, preventing the shape-decode from freezing the UI.
+    func getCachedRouteShapeAsync(for routeId: String) async -> RouteShapeResponse? {
+        // Fast path: in-memory (no disk I/O, no suspension)
+        if let entry = _routeShapeCache[routeId],
+           Date().timeIntervalSince(entry.fetchedAt) <= _routeShapeCacheMaxAge {
+            return entry.shape
         }
-        // L2: Disk
-        if let disk = loadShapeFromDisk(for: routeId) {
-            _routeShapeCache[routeId] = CachedShape(shape: disk, fetchedAt: Date())
-            AppLogger.shared.log("SHAPE_CACHE", message: "DISK HIT \(routeId)")
-            return disk
-        }
-        return nil
+        // Slow path: read raw Data off the main actor (I/O is the expensive part),
+        // then decode back on main (fast, pure memory work).
+        // RouteShapeResponse.Decodable is @MainActor-isolated in Swift 6 so
+        // decoding must stay on main — but I/O is what was blocking the animation.
+        guard let dir = Self._shapeDiskDir else { return nil }
+        let key = Self._shapeDiskKey(routeId)
+        let maxAge = Self._shapeDiskMaxAge
+        let rawData = await Task.detached(priority: .userInitiated) {
+            Self._readShapeData(dir: dir, key: key, maxAge: maxAge)
+        }.value
+        guard let data = rawData,
+              let shape = try? JSONDecoder().decode(RouteShapeResponse.self, from: data)
+        else { return nil }
+        // Store to memory cache while on main actor
+        _routeShapeCache[routeId] = CachedShape(shape: shape, fetchedAt: Date())
+        AppLogger.shared.log("SHAPE_CACHE", message: "DISK HIT (bg) \(routeId)")
+        return shape
     }
 
     /// Stores a route shape in the LRU cache and persists to disk.
@@ -2827,8 +2847,8 @@ final class HomeViewModel {
         busSchedule = busScheduleByRoute[group.routeId]
 
         // Use cached shape immediately if available (memory or disk).
-        // The shape will be refreshed in the background if stale.
-        let cachedShape: RouteShapeResponse? = getCachedRouteShape(for: group.routeId)
+        // Async disk check keeps the main thread free for the entry animation.
+        let cachedShape: RouteShapeResponse? = await getCachedRouteShapeAsync(for: group.routeId)
         if let cached = cachedShape {
             routeShape = cached
             enrichGroupWithShapeDirections(cached)
@@ -2963,7 +2983,7 @@ final class HomeViewModel {
         } else if group.isLIRR {
             // LIRR: fetch the branch-specific polyline + live arrivals
             do {
-                let cachedLIRRShape: RouteShapeResponse? = getCachedRouteShape(for: group.routeId)
+                let cachedLIRRShape: RouteShapeResponse? = await getCachedRouteShapeAsync(for: group.routeId)
                 async let arrivalsTask = TrackAPI.fetchLIRRArrivals()
 
                 let loadedShape: RouteShapeResponse
@@ -2999,7 +3019,7 @@ final class HomeViewModel {
         } else if group.isMNR {
             // Metro-North: fetch the line-specific polyline + live arrivals
             do {
-                let cachedMNRShape: RouteShapeResponse? = getCachedRouteShape(for: group.routeId)
+                let cachedMNRShape: RouteShapeResponse? = await getCachedRouteShapeAsync(for: group.routeId)
                 async let arrivalsTask = TrackAPI.fetchMNRArrivals()
 
                 let loadedShape: RouteShapeResponse
@@ -3035,7 +3055,7 @@ final class HomeViewModel {
         } else {
             // For subway: fetch the full line geometry AND live arrivals from the backend
             do {
-                let cachedSubwayShape = getCachedRouteShape(for: group.displayName)
+                let cachedSubwayShape = await getCachedRouteShapeAsync(for: group.displayName)
                 async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: group.displayName)
 
                 let loadedShape: RouteShapeResponse
