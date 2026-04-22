@@ -2425,7 +2425,7 @@ struct RouteDetailSheet: View {
                 // the rider can see where the selected vehicle is heading.
                 if let sid = arrival.stopId, !sid.isEmpty {
                     inSheetSelectedStopId = sid
-                    onStopSelected?(sid)
+                    onStopSelected?(coordinateForStopId(sid))
                 }
             }
             HapticManager.impact(.light)
@@ -2479,12 +2479,14 @@ struct RouteDetailSheet: View {
         for arrival in arrivals {
             let eta = smartETA(for: arrival)
             guard !eta.isPastArrival else { continue }
-            // Only arrivals with an actual map marker go in the live (colored) bucket.
-            // Tracked-only arrivals (SIRI real-time but no GPS position) and
-            // scheduled-only arrivals both go in the sched (grey) bucket so the
-            // number of colored chips always matches the number of map markers.
-            let hasMarker = isLiveOnMap?(arrival) ?? false
-            if hasMarker {
+            // Partition by data-stable signal: is this a real-time
+            // arrival (GTFS-RT or SIRI), not a pure schedule entry?
+            // Using `isLiveOnMap` here would race against vehicle-feed
+            // updates and momentarily drop a Live arrival into the
+            // Sched bucket, letting a 5-min SCHED chip leap ahead of
+            // an 8-min Live chip on every refresh.
+            let isLiveData = arrival.isRealTime && !arrival.isScheduledOnly && !arrival.isPlaceholder
+            if isLiveData {
                 live.append((arrival, eta))
             } else {
                 sched.append((arrival, eta))
@@ -2778,7 +2780,11 @@ struct RouteDetailSheet: View {
             scheduledDeparturesForCurrentDirection.count
         )
         let extraBeyondChips = max(0, totalSchedDepth - visibleChips.count)
-        let hasMore = extraBeyondChips > 0 || chips.count > visibleChips.count
+        // Always render the "More departures" chip — the Departures tab is
+        // the user's gateway to the full GTFS timetable for the rest of the
+        // service week, so it must never disappear, even on a quiet route
+        // where only a handful of chips are visible right now.
+        let hasMore = true
         // When chips overflow but the schedule depth is unknown, fall back
         // to the chip overflow count for the badge.
         let badgeCount = max(extraBeyondChips, chips.count - visibleChips.count)
@@ -2822,7 +2828,11 @@ struct RouteDetailSheet: View {
                 logChips(chips)
                 autoSelectFirstChipIfNeeded(visible: visibleChips)
             }
-            .onChange(of: chips.map(\.arrival.id)) { _, _ in
+            // Use a Set keyed on stable arrival.id so reorders or ETA
+            // ticks don't trigger the auto-select cascade.  Only true
+            // membership changes (a chip joins or leaves the strip)
+            // re-fire this handler.
+            .onChange(of: Set(chips.map(\.arrival.id))) { _, _ in
                 logChips(chips)
                 autoSelectFirstChipIfNeeded(visible: visibleChips)
             }
@@ -2862,8 +2872,24 @@ struct RouteDetailSheet: View {
         }
         if let sid = firstLive.arrival.stopId, !sid.isEmpty {
             inSheetSelectedStopId = sid
-            onStopSelected?(sid)
+            onStopSelected?(coordinateForStopId(sid))
         }
+    }
+
+    /// Resolve a stop_id to its `CLLocationCoordinate2D` using the route
+    /// shape's stops for the currently-selected direction. Returns nil if
+    /// the shape is not loaded or the stop is unknown.
+    private func coordinateForStopId(_ stopId: String) -> CLLocationCoordinate2D? {
+        guard let shape = routeShape else { return nil }
+        let stops = shape.stopsForDirection(
+            index: selectedDirectionIndex,
+            name: selectedDirectionName
+        )
+        let parentId = normalizeStopId(stopId)
+        guard let s = stops.first(where: { $0.id == stopId })
+            ?? stops.first(where: { normalizeStopId($0.id) == parentId })
+        else { return nil }
+        return CLLocationCoordinate2D(latitude: s.lat, longitude: s.lon)
     }
 
     /// A trailing chip in the horizontal scroller that switches to the

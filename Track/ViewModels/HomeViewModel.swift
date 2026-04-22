@@ -1990,6 +1990,25 @@ final class HomeViewModel {
         return nil
     }
 
+    /// Like `coordinateForTappedVehicle` but falls back to the unfiltered
+    /// vehicle indices.  Used by chip-focus, where the user has explicitly
+    /// asked to track a specific vehicle and we want the camera to move
+    /// SOMEWHERE rather than silently do nothing when a transient direction-
+    /// filter race hides the vehicle for a tick.
+    func coordinateForTappedVehicleAnywhere(_ vehicleId: String) -> CLLocationCoordinate2D? {
+        if let coord = coordinateForTappedVehicle(vehicleId) { return coord }
+        if let bus = _busVehicleIndex[vehicleId] {
+            return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
+        }
+        if let train = _trainVehicleByTrip[vehicleId] {
+            return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+        }
+        if let train = _trainVehicleById[vehicleId] {
+            return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+        }
+        return nil
+    }
+
     /// Finds the map coordinate for a tracked arrival.
     /// Looks up the live vehicle position first (bus by vehicleId, train by tripId);
     /// falls back to the arrival's stop lat/lon if no live vehicle is found.

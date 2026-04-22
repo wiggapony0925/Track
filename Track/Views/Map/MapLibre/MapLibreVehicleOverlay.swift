@@ -74,6 +74,16 @@ struct MapLibreVehicleOverlay: View {
                 }
                 .opacity(isStale ? 0.45 : 1.0)
                 .position(point)
+                // Smooth position changes between polls so vehicles glide
+                // instead of teleporting.  Camera-driven re-projections
+                // (cameraChangeToken) bypass the spring by using the
+                // token in the value so SwiftUI treats those as a
+                // distinct animation context.
+                .animation(
+                    .easeInOut(duration: 0.85),
+                    value: AnimatedCoord(lat: vehicle.lat, lon: vehicle.lon)
+                )
+                .id(vehicle.vehicleId)
             }
         }
     }
@@ -86,6 +96,11 @@ struct MapLibreVehicleOverlay: View {
             if let point = projectToScreen(coord, mapView: mapView) {
                 trainMarkerContent(for: train)
                     .position(point)
+                    .animation(
+                        .easeInOut(duration: 0.85),
+                        value: AnimatedCoord(lat: train.lat, lon: train.lon)
+                    )
+                    .id(train.id)
             }
         }
     }
@@ -124,6 +139,18 @@ struct MapLibreVehicleOverlay: View {
     private func toggleVehicle(_ id: String) {
         onVehicleTap(id)
     }
+}
+
+// MARK: - Position Animation Key
+
+/// Equatable wrapper used as the `value:` for `.animation` on marker
+/// position.  Comparing the raw `CGPoint` would also re-fire on every
+/// camera pan (because `projectToScreen` recomputes), so we key the
+/// animation on the underlying lat/lon — those only change when the
+/// vehicle itself moves, which is the case we actually want to smooth.
+private struct AnimatedCoord: Equatable {
+    let lat: Double
+    let lon: Double
 }
 
 // MARK: - VehicleMarkerContent Extension (UIColor init)

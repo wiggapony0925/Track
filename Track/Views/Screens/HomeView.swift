@@ -793,11 +793,21 @@ struct HomeView: View {
                     }
                 }
 
-                if let key, let coord = viewModel.coordinateForTappedVehicle(key) {
+                // Use the "anywhere" lookup so a transient direction-filter
+                // race doesn't leave the camera frozen when the user taps a
+                // chip.  If the vehicle truly isn't in any index (e.g. it
+                // dropped from the feed mid-tap), we leave the camera put
+                // rather than fly to an unrelated location.
+                if let key,
+                   let coord = viewModel.coordinateForTappedVehicleAnywhere(key) {
                     withAnimation(HoverAnimations.fly) {
                         cameraPosition = MapCameraPresets
                             .focusVehicle(at: coord, is3D: false)
                     }
+                } else if let key {
+                    #if DEBUG
+                    print("[CHIP_FOCUS] ⚠️ no coordinate for vehicle key \(key) — camera unchanged")
+                    #endif
                 }
             },
             tappedVehicleId: viewModel.tappedVehicleId,

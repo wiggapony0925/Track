@@ -4,17 +4,24 @@ import CoreLocation
 /// Matches the backend's `NearbyTransitArrival` JSON schema.
 struct NearbyTransitResponse: Codable, Identifiable, Equatable {
     /// Stable identity for SwiftUI diffing — must NOT include volatile fields
-    /// like `minutesAway` that change every poll cycle.  Priority:
+    /// like `minutesAway` that change every poll cycle (would make every chip
+    /// look "new" each tick → churn → auto-select jumps → marker teleport).
+    /// Priority:
     ///   1. tripId  — unique per GTFS trip, most stable
     ///   2. vehicleId — unique per vehicle, stable during a trip
     ///   3. arrivalTs — predicted timestamp, stable for scheduled data
-    ///   4. minutesAway — last-resort fallback only (scheduled w/o timestamp)
+    ///   4. direction + destination — coarse but stable for placeholders /
+    ///      scheduled-only arrivals that lack any live identifier
     var id: String {
         let base = "\(routeId)-\(stopName)"
-        if let tripId, !tripId.isEmpty { return "\(base)-\(tripId)" }
-        if let vid = vehicleId, !vid.isEmpty { return "\(base)-\(vid)" }
-        if let ts = arrivalTs { return "\(base)-\(ts)" }
-        return "\(base)-\(minutesAway)"
+        if let tripId, !tripId.isEmpty { return "\(base)-trip:\(tripId)" }
+        if let vid = vehicleId, !vid.isEmpty { return "\(base)-veh:\(vid)" }
+        if let ts = arrivalTs { return "\(base)-ts:\(ts)" }
+        // Final fallback uses only stable descriptive fields. Two
+        // ambiguous scheduled-no-ts arrivals to the same destination
+        // will collide — that is acceptable; identity churn is not.
+        let dest = destination ?? ""
+        return "\(base)-dir:\(direction)-dst:\(dest)"
     }
 
     let routeId: String

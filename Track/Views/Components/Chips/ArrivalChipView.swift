@@ -49,7 +49,6 @@ struct ArrivalChipView: View {
     private var tagLabel: String {
         isCancelled ? "Cancelled"
             : isSched ? "Sched"
-            : chip.isTrackedOnly ? "Tracked"
             : chip.isRealTime ? "Live"
             : "En Route"
     }
@@ -57,7 +56,6 @@ struct ArrivalChipView: View {
     private var tagIcon: String {
         isCancelled ? "xmark.circle.fill"
             : isSched ? "calendar.circle"
-            : chip.isTrackedOnly ? "dot.radiowaves.up.forward"
             : chip.isRealTime ? "antenna.radiowaves.left.and.right"
             : "location.circle"
     }
