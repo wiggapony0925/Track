@@ -2773,7 +2773,11 @@ struct RouteDetailSheet: View {
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("[CHIPS] \(group.routeId) → \(dir) | stop: \(stopName) | \(chips.count) chip(s)")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        for (i, pair) in chips.enumerated() {
+        // Cap log to first 8 entries — schedule-heavy directions can produce
+        // 100+ chips and blow out the console (one Q10 dump = 120 lines).
+        let logCap = 8
+        let toLog = chips.prefix(logCap)
+        for (i, pair) in toLog.enumerated() {
             let a = pair.arrival
             let eta = pair.eta
             let type = a.isScheduledOnly ? "SCHED" : (a.isRealTime ? "LIVE" : "OTHER")
@@ -2798,6 +2802,9 @@ struct RouteDetailSheet: View {
                 + " | arrTs=\(ts)"
                 + " | dist=\(dist)"
             )
+        }
+        if chips.count > logCap {
+            print("  … +\(chips.count - logCap) more chip(s) suppressed")
         }
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
         #endif
