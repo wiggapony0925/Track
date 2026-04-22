@@ -693,7 +693,12 @@ struct RouteDetailSheet: View {
                     }
                 }
                 .padding(.top, 14)
-                .padding(.bottom, safeBottom + 20)
+                // Bottom slack: enough to let the user scroll the LAST
+                // content row well past the foggy top region (~20% of
+                // the panel height).  Without this you hit the natural
+                // end-of-scroll while the bottom row is still sitting
+                // behind the fog and looks "cut off".
+                .padding(.bottom, safeBottom + 240)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

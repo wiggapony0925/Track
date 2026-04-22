@@ -98,13 +98,26 @@ struct MapLibreTrackMapView: View {
         for group in viewModel.nearbyGroupedBusArrivals {
             map[group.routeId] = AppTheme.BusColors.color(forServiceType: group.busServiceType)
         }
+        // When the user has a route selected (e.g. from the Route Detail
+        // sheet), every vehicle in `filteredBusVehicles` belongs to that
+        // route — so prefer the already-resolved selectedRouteColor as
+        // the fallback instead of generic mtaBlue.  Without this, a bus
+        // whose routeId can't be found in `nearbyGroupedBusArrivals`
+        // (e.g. opened from search, or out of nearby radius) renders blue
+        // even when the route's true color is purple/green/etc.
+        let fallback: Color = {
+            if viewModel.selectedGroupedRoute?.isBus == true {
+                return selectedRouteColor
+            }
+            return AppTheme.Colors.mtaBlue
+        }()
         return { routeId in
             // BusVehicleResponse.routeId may be prefixed (e.g. "MTA NYCT_Q10")
             // while GroupedNearbyTransitResponse.routeId is the bare route ID.
             // Try exact match first, then strip the agency prefix.
             if let color = map[routeId] { return color }
             let stripped = routeId.components(separatedBy: "_").last ?? routeId
-            return map[stripped] ?? AppTheme.Colors.mtaBlue
+            return map[stripped] ?? fallback
         }
     }
 
