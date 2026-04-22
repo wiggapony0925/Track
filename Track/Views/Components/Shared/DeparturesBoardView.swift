@@ -11,6 +11,16 @@ struct DeparturesBoardView: View {
     let hasScheduleData: Bool    // busSchedule != nil || trainArrivals non-empty
     var showsHeader: Bool = true
 
+    /// How many rows to show before requiring "See more" taps.
+    private let initialPageSize = 15
+    /// Additional rows revealed per "See more" tap.
+    private let pageIncrement = 15
+
+    /// Number of departure rows currently visible. Grows in `pageIncrement`
+    /// chunks each time the user taps "See more" so the sheet doesn't have
+    /// to render hundreds of timetable rows up front.
+    @State private var visibleCount: Int = 15
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if showsHeader {
@@ -20,10 +30,8 @@ struct DeparturesBoardView: View {
             if departures.isEmpty {
                 departuresEmptyState
             } else {
-                // Group by service day so we can insert a sticky-style
-                // section header before each day's chunk — Transit's
-                // "Tomorrow · Wed Apr 22" treatment.
-                let sections = Self.groupByDay(departures)
+                let visible = Array(departures.prefix(visibleCount))
+                let sections = Self.groupByDay(visible)
                 VStack(spacing: 16) {
                     ForEach(sections, id: \.id) { section in
                         VStack(spacing: 10) {
@@ -42,9 +50,47 @@ struct DeparturesBoardView: View {
                             }
                         }
                     }
+
+                    if departures.count > visibleCount {
+                        seeMoreButton(remaining: departures.count - visibleCount)
+                    }
                 }
             }
         }
+        .onAppear { visibleCount = initialPageSize }
+        .onChange(of: departures.count) { _, _ in visibleCount = initialPageSize }
+    }
+
+    /// Footer button that reveals the next `pageIncrement` rows.
+    private func seeMoreButton(remaining: Int) -> some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.2)) {
+                visibleCount = min(departures.count, visibleCount + pageIncrement)
+            }
+            HapticManager.impact(.light)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+                Text("See \(min(remaining, pageIncrement)) more")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+            }
+            .foregroundColor(routeColor)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(
+                Capsule()
+                    .fill(routeColor.opacity(0.10))
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(routeColor.opacity(0.25), lineWidth: 0.6)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.top, 4)
     }
 
     // MARK: - Day Grouping

@@ -24,7 +24,7 @@ final class SheetNavigator {
     
     /// Navigate to a new page by pushing it onto the stack
     func navigate(to page: SheetPage) {
-        withAnimation(.easeInOut(duration: 0.25)) {
+        withAnimation(.easeOut(duration: 0.18)) {
             pageStack.append(page)
         }
     }
@@ -32,14 +32,14 @@ final class SheetNavigator {
     /// Go back to the previous page
     func goBack() {
         guard canGoBack else { return }
-        withAnimation(.easeInOut(duration: 0.25)) {
+        withAnimation(.easeOut(duration: 0.18)) {
             _ = pageStack.popLast()
         }
     }
     
     /// Return to the dashboard (root)
     func popToRoot() {
-        withAnimation(.easeInOut(duration: 0.25)) {
+        withAnimation(.easeOut(duration: 0.18)) {
             pageStack = [.dashboard]
         }
     }
@@ -50,7 +50,7 @@ final class SheetNavigator {
             pageStack = [page]
             return
         }
-        withAnimation(.easeInOut(duration: 0.25)) {
+        withAnimation(.easeOut(duration: 0.18)) {
             pageStack[pageStack.count - 1] = page
         }
     }

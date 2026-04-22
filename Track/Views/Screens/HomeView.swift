@@ -29,10 +29,14 @@ struct HomeView: View {
     @Binding var currentMapCenter: CLLocationCoordinate2D?
     @Binding var currentMapDistance: Double?
     @State private var sheetNavigator = SheetNavigator()
-    @State private var sheetDetent: PresentationDetent = SheetConstants.defaultDetent
+    @State private var sheetDetent: TrackSheetDetent = SheetConstants.defaultDetent
     /// Bridges sheet pixel height to the map's UIKit contentInset in
     /// real-time (60fps) without SwiftUI re-renders.
     @State private var sheetHeightObserver = SheetHeightObserver()
+    /// Live pixel height of the bottom sheet — mirrored from
+    /// ``SheetHeightObserver`` for SwiftUI consumers (currently the
+    /// floating tab pill, which rides up with the drag).
+    @State private var liveSheetHeight: CGFloat = 0
     @State private var lastUpdated: Date?
     @State private var refreshTimer: Timer?
     @State private var vehiclePollTimer: Timer?
@@ -227,6 +231,13 @@ struct HomeView: View {
                 if sheetDetent != .large
                     && viewModel.selectedRouteId == nil
                     && !viewModel.isRouteDetailPresented {
+                    let pillBottomPad = pillBottom(screenHeight: geo.size.height)
+                    // Hide the pill when its top would collide with the
+                    // top-right map control island.  ~52pt safe-area top
+                    // + ~140pt island height + 16pt gap ≈ 220pt; once the
+                    // pill's bottom padding exceeds (screen - 220), drop it.
+                    let collisionThreshold = geo.size.height - 220
+                    let pillVisible = pillBottomPad < collisionThreshold
                     VStack {
                         Spacer()
                         HStack {
@@ -234,8 +245,11 @@ struct HomeView: View {
                             FloatingTabPill(selectedTab: $selectedTab)
                         }
                         .padding(.trailing, 16)
-                        .padding(.bottom, pillBottom(screenHeight: geo.size.height))
+                        .padding(.bottom, pillBottomPad)
                     }
+                    .opacity(pillVisible ? 1 : 0)
+                    .allowsHitTesting(pillVisible)
+                    .animation(.easeOut(duration: 0.12), value: pillVisible)
                     .transition(
                         .opacity.combined(
                             with: .scale(scale: 0.85, anchor: .bottomTrailing)
@@ -245,15 +259,23 @@ struct HomeView: View {
 
             }
             // MARK: - Universal Bottom Sheet
-            .sheet(isPresented: bottomSheetPresentation) {
-                UniversalBottomSheet(
-                    navigator: sheetNavigator,
-                    sheetDetent: $sheetDetent,
-                    sheetHeightObserver: sheetHeightObserver
-                ) { page in
-                    sheetContent(for: page)
+            // Custom drag-controlled overlay (no `.sheet`) — see TrackBottomSheet.
+            // Visibility gates on the same `bottomSheetPresentation` predicate the
+            // legacy `.sheet(isPresented:)` modifier used.
+            .overlay(alignment: .bottom) {
+                if bottomSheetPresentation.wrappedValue {
+                    UniversalBottomSheet(
+                        navigator: sheetNavigator,
+                        sheetDetent: $sheetDetent,
+                        sheetHeightObserver: sheetHeightObserver,
+                        onLiveHeightChange: { liveSheetHeight = $0 }
+                    ) { page in
+                        sheetContent(for: page)
+                    }
+                    .transition(.move(edge: .bottom))
                 }
             }
+            .animation(.spring(response: 0.32, dampingFraction: 0.95), value: bottomSheetPresentation.wrappedValue)
             // MARK: - Route Detail Floating Panel
             .overlay {
                 if let routeDetailPage = activeRouteDetailPage {
@@ -277,12 +299,20 @@ struct HomeView: View {
 
     // MARK: - Pill Tab Bar Positioning
 
-    /// Bottom padding so the pill sits just above the sheet at default detent.
+    /// Bottom padding so the pill sits just above the sheet.
+    /// Uses the live drag height when available so the pill rides up
+    /// continuously instead of jumping at snap points.
     private func pillBottom(screenHeight: CGFloat) -> CGFloat {
-        if sheetDetent == .fraction(SheetConstants.defaultFraction) {
-            return screenHeight * SheetConstants.defaultFraction + 16
+        // Negative gap = pill overlaps onto the sheet so it sits lower,
+        // closer to (and slightly inside) the sheet edge.
+        let pillGap: CGFloat = -22
+        if liveSheetHeight > 1 {
+            return liveSheetHeight + pillGap
         }
-        return 180
+        if sheetDetent == SheetConstants.defaultDetent {
+            return SheetConstants.defaultHeight + pillGap
+        }
+        return SheetConstants.minimumHeight + pillGap
     }
 
     // MARK: - Modifier Handler Methods (extracted from body)

@@ -3475,13 +3475,21 @@ final class HomeViewModel {
         #endif
 
         if changed {
-            let updatedGroup = GroupedNearbyTransitResponse(
+            var updatedGroup = GroupedNearbyTransitResponse(
                 routeId: group.routeId,
                 displayName: group.displayName,
                 mode: group.mode,
                 colorHex: group.colorHex,
                 directions: orderedDirections
             )
+            // Preserve metadata that the simplified initializer drops.
+            // Without this, `busServiceType` becomes nil after enrichment
+            // and the route detail sheet falls back to localBlue (e.g. a
+            // Limited bus like Q10 showing as blue instead of purple).
+            updatedGroup.sortingKey = group.sortingKey
+            updatedGroup.alerts = group.alerts
+            updatedGroup.expressRoutes = group.expressRoutes
+            updatedGroup.busServiceType = group.busServiceType
 
             // ── Resolve the correct direction index BEFORE publishing the
             //    new group.  Setting selectedDirectionIndex after

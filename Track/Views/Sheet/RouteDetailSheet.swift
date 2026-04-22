@@ -95,13 +95,19 @@ struct RouteDetailSheet: View {
     /// Which content tab is active: arrivals, departures, or alerts.
     @State private var selectedTab: RouteDetailTab = .stops
 
-    /// Current drag offset for the floating panel.
-    /// Negative = dragged up (expanded), 0 = resting position.
-    @State private var panelDragOffset: CGFloat = 0
+    /// Current panel drag offset, expressed as how far the panel is
+    /// pushed DOWN from its fully-expanded position.
+    ///   0          → fully expanded
+    ///   expandRange → collapsed (resting / default)
+    /// Initialized to a large positive sentinel so the very first
+    /// layout pass clamps it to `range` (collapsed) once `range` is
+    /// resolved by the GeometryReader — we don't know `range` here.
+    @State private var panelDragOffset: CGFloat = .greatestFiniteMagnitude
 
     /// Remembered offset from the last completed drag so the
-    /// panel stays wherever the user left it.
-    @State private var panelRestingOffset: CGFloat = 0
+    /// panel stays wherever the user left it.  Same units as
+    /// `panelDragOffset` (positive-down).
+    @State private var panelRestingOffset: CGFloat = .greatestFiniteMagnitude
 
     /// Whether the scroll view is at the very top.
     /// When true and user drags down, the panel collapses.
@@ -309,9 +315,14 @@ struct RouteDetailSheet: View {
     }
 
     /// Route color from the group data or the theme palette.
+    /// For buses with a missing `busServiceType`, infer from displayName
+    /// so we don't flash localBlue while the parent re-emits the group
+    /// with the resolved service type a moment later.
     private var routeColor: Color {
         if group.isBus {
-            return AppTheme.BusColors.color(forServiceType: group.busServiceType)
+            let resolved = group.busServiceType
+                ?? Self.inferBusServiceType(from: group.displayName)
+            return AppTheme.BusColors.color(forServiceType: resolved)
         }
         if let hex = group.colorHex {
             return Color(hex: hex)
@@ -319,6 +330,23 @@ struct RouteDetailSheet: View {
         if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
         if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
         return AppTheme.SubwayColors.color(for: group.displayName)
+    }
+
+    /// Heuristic fallback when `group.busServiceType` is nil — derives the
+    /// service type from common name patterns so the route color is
+    /// stable from the very first render.
+    private static func inferBusServiceType(from name: String) -> String? {
+        let upper = name.uppercased()
+        if upper.contains("+SBS") || upper.contains("SBS") { return "select bus service" }
+        if upper.contains("-LTD") || upper.contains(" LTD") || upper.hasSuffix("LTD") {
+            return "limited"
+        }
+        // Express bus prefixes: BxM, BM, QM, X (e.g. X1, X27).
+        if upper.hasPrefix("BXM") || upper.hasPrefix("BM")
+            || upper.hasPrefix("QM") || upper.hasPrefix("X") {
+            return "express"
+        }
+        return nil
     }
 
     /// The name of the currently selected direction, used to match headsigns in RouteShape.
@@ -482,7 +510,9 @@ struct RouteDetailSheet: View {
             // — that's what was causing the shake / lag (ScrollView, chip
             // TimelineView, frosted material, and gradients all relaying
             // out 60×/sec when the height was changing per frame).
-            let panelTranslation = min(max(-panelDragOffset, 0), range)
+            // panelDragOffset is positive-down: 0 = fully expanded,
+            // `range` = collapsed (default resting position).
+            let panelTranslation = min(max(panelDragOffset, 0), range)
             // How far expanded: 0 = resting, 1 = fully open
             let expandProgress = 1 - panelTranslation / max(range, 1)
 
@@ -526,8 +556,22 @@ struct RouteDetailSheet: View {
                 .ignoresSafeArea(edges: .bottom)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onAppear { cachedExpandRange = range }
-            .onChange(of: range) { _, newRange in cachedExpandRange = newRange }
+            .onAppear {
+                cachedExpandRange = range
+                // Seed default to COLLAPSED on first appear (offset = range).
+                // The sentinel `.greatestFiniteMagnitude` initializer means
+                // we only run this once, before any user drag.
+                if panelRestingOffset > range {
+                    panelRestingOffset = range
+                    panelDragOffset = range
+                }
+            }
+            .onChange(of: range) { _, newRange in
+                cachedExpandRange = newRange
+                // Keep current state proportionally valid when geometry changes.
+                if panelRestingOffset > newRange { panelRestingOffset = newRange }
+                if panelDragOffset > newRange { panelDragOffset = newRange }
+            }
         }
     }
 
@@ -601,100 +645,105 @@ struct RouteDetailSheet: View {
     // the route identity is now shown by the MapControlsOverlay's selectedRouteBanner.
 
     /// Interior content of the floating bottom panel — direction, countdowns, tabs, content.
+    /// Mirrors the dashboard sheet's structure exactly:
+    ///   • A fixed header region (direction picker, chips, countdown, tabs)
+    ///     that doubles as the drag handle — pulling it freeforms the panel.
+    ///   • A ScrollView below it that ALWAYS scrolls so rows are usable
+    ///     at every panel position.
     private func panelContent(
         safeBottom: CGFloat,
         expandRange: CGFloat
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    // Direction picker + destination label
-                    directionPickerContent
-                        .padding(.horizontal, AppTheme.Layout.margin)
-                        .padding(.top, 14)
-
-                    // Supplemental chips (walk distance, weather)
-                    supplementalHeaderChips
-                        .padding(.horizontal, AppTheme.Layout.margin)
-                        .padding(.top, 10)
-
-                    // Countdown chips
-                    countdownSection
-                        .padding(.top, 14)
-
-                    // Tab picker + divider
-                    contentTabPicker
-                        .padding(.top, 16)
-
-                    contentDeckDivider
-                        .padding(.top, 12)
-
-                    // Tab content
-                    VStack(alignment: .leading, spacing: 18) {
-                        tabContent
-                        if selectedTab != .stops {
-                            routeInfoFooter
-                        }
-                    }
+        // One single ScrollView for the WHOLE sheet — header chips, tabs,
+        // and rows are all part of one continuous scroll. No inner box,
+        // no fixed-header / scrolling-body split.
+        //
+        // While the panel is collapsed/partial, scrolling is disabled so
+        // any swipe is captured by `panelDragGesture` and grows the panel.
+        // Once the user has fully expanded the sheet, the ScrollView takes
+        // over and lets them keep scrolling through stops / departures.
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                // NOTE: `directionPickerContent` wraps `DirectionPickerView`
+                // which already applies its own
+                // `.padding(.horizontal, AppTheme.Layout.margin)` inside the
+                // inner horizontal ScrollView. Don't wrap it again or the
+                // pill ends up double-indented and looks misaligned with
+                // the chips / tabs below.
+                directionPickerContent
                     .padding(.top, 14)
-                    .padding(.bottom, safeBottom + 20)
+
+                supplementalHeaderChips
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                    .padding(.top, 10)
+
+                countdownSection
+                    .padding(.top, 14)
+
+                contentTabPicker
+                    .padding(.top, 10)
+
+                contentDeckDivider
+                    .padding(.top, 12)
+
+                VStack(alignment: .leading, spacing: 18) {
+                    tabContent
+                    if selectedTab != .stops {
+                        routeInfoFooter
+                    }
                 }
+                .padding(.top, 14)
+                .padding(.bottom, safeBottom + 20)
             }
-            .scrollDisabled(!panelScrollEnabled)
-            .onScrollGeometryChange(for: Bool.self) { geo in
-                geo.contentOffset.y <= geo.contentInsets.top + 1
-            } action: { _, atTop in
-                scrollAtTop = atTop
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8)
-                    .onChanged { value in
-                        let dy = value.translation.height
-
-                        // Decide once per gesture, then lock in.
-                        if !gestureDecided {
-                            gestureDecided = true
-                            if panelScrollEnabled && !scrollAtTop {
-                                // User is mid-scroll — let ScrollView own it.
-                                isDraggingPanel = false
-                                return
-                            }
-                            if panelScrollEnabled && dy < 0 {
-                                // At top but swiping up — let scroll handle.
-                                isDraggingPanel = false
-                                return
-                            }
-                            isDraggingPanel = true
-                        }
-
-                        guard isDraggingPanel else { return }
-                        panelDragOffset = panelRestingOffset + dy
-                    }
-                    .onEnded { _ in
-                        gestureDecided = false
-                        guard isDraggingPanel else { return }
-                        isDraggingPanel = false
-                        let clamped = min(max(panelDragOffset, -cachedExpandRange), 0)
-                        panelRestingOffset = clamped
-                        let shouldScroll = clamped <= -(cachedExpandRange * 0.95)
-                        // Critically-damped spring (dampingFraction 1.0)
-                        // settles at the release position with no overshoot
-                        // — that's what "stays where I leave it" requires.
-                        // The previous interpolatingSpring(stiffness: 300,
-                        // damping: 30) was slightly under-damped (critical
-                        // ≈ 34.6) so the panel oscillated briefly on release
-                        // — that was the visible "shake" at end-of-drag.
-                        withAnimation(.spring(response: 0.32, dampingFraction: 1.0)) {
-                            panelDragOffset = clamped
-                        }
-                        // Toggle scroll OUTSIDE the animation so the layout
-                        // change doesn't fight the spring.
-                        if shouldScroll != panelScrollEnabled {
-                            panelScrollEnabled = shouldScroll
-                        }
-                    }
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // Collapsed / partial: any swipe expands the panel via the drag
+        // gesture below. Fully expanded: the ScrollView takes over.
+        .scrollDisabled(panelDragOffset > 0.5)
+        // Track whether the ScrollView is at its top edge so we only
+        // arm the collapse-drag when the user can no longer scroll up.
+        .onScrollGeometryChange(for: Bool.self) { geo in
+            geo.contentOffset.y <= geo.contentInsets.top + 1
+        } action: { _, atTop in
+            scrollAtTop = atTop
+        }
+        // Background touches that DON'T hit a row still drag the panel
+        // up/down via simultaneousGesture, mirroring the main sheet.
+        // BUT: only enable while the panel is collapsed/partial OR the
+        // ScrollView is already at its top. Otherwise this gesture would
+        // grab downward swipes from inside the scroll content and tear
+        // the header out of view by partially collapsing the panel mid-
+        // scroll.
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            panelDragGesture,
+            including: (panelDragOffset > 0.5 || scrollAtTop) ? .all : .subviews
+        )
+    }
+
+    /// Continuous drag gesture for the route detail panel.  Same shape
+    /// as the dashboard navbar gesture — `.global` coords, freeform
+    /// offset, momentum-projected snap on release.
+    private var panelDragGesture: some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            .onChanged { value in
+                // Drag DOWN  (dy > 0) → increase offset → collapse.
+                // Drag UP    (dy < 0) → decrease offset → expand.
+                let proposed = panelRestingOffset + value.translation.height
+                let clamped = min(max(proposed, 0), cachedExpandRange)
+                panelDragOffset = clamped
+            }
+            .onEnded { value in
+                // Freeform release — match the main sheet's behavior:
+                // wherever the user lets go is where the panel stays.
+                // No snap to extremes; the resting offset becomes the
+                // final clamped offset so subsequent drags continue from
+                // here.
+                let proposed = panelRestingOffset + value.translation.height
+                let clamped = min(max(proposed, 0), cachedExpandRange)
+                panelRestingOffset = clamped
+                panelDragOffset = clamped
+            }
     }
 
     private var contentDeckDivider: some View {
@@ -2669,7 +2718,7 @@ struct RouteDetailSheet: View {
             }
             .padding(.horizontal, AppTheme.Layout.margin)
             .padding(.top, 8)
-            .padding(.bottom, 4)
+            .padding(.bottom, 0)
             .onAppear { logChips(chips) }
             .onChange(of: chips.map(\.arrival.id)) { _, _ in logChips(chips) }
         }

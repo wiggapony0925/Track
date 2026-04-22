@@ -36,6 +36,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 # JWT algorithm Supabase uses for all project tokens.
 _ALGORITHM = "HS256"
+_missing_secret_warned = False
 
 
 def _verify_token(token: str) -> AuthUser:
@@ -49,9 +50,15 @@ def _verify_token(token: str) -> AuthUser:
     HTTPException (503)
         If ``SUPABASE_JWT_SECRET`` is not configured on the backend.
     """
+    global _missing_secret_warned
     secret = get_supabase_jwt_secret()
     if not secret:
-        TrackLogger.warning("SUPABASE_JWT_SECRET is not configured — auth is disabled", tag="AUTH")
+        if not _missing_secret_warned:
+            TrackLogger.warning(
+                "SUPABASE_JWT_SECRET is not configured — auth is disabled",
+                tag="AUTH",
+            )
+            _missing_secret_warned = True
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authentication is not configured on this server.",

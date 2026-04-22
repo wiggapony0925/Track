@@ -22,16 +22,17 @@ import SwiftUI
 /// All references to sheet detent fractions should go through these
 /// constants so adjusting sheet sizes is a single-line change.
 enum SheetConstants {
-    /// Default resting position — shows navbar + one full favorites row +
-    /// the first transit section header.
-    static let defaultFraction: CGFloat = 0.45
+    /// Default resting position measured from live drag calibration.
+    static let defaultHeight: CGFloat = 350
+    /// Lowest collapsed height measured from live drag calibration.
+    static let minimumHeight: CGFloat = 165
     /// Convenience detent value for the default resting position.
-    static let defaultDetent: PresentationDetent = .fraction(defaultFraction)
+    static let defaultDetent: TrackSheetDetent = .height(defaultHeight)
 
     /// Builds the peek detent from the measured navbar height.
-    /// Adds a small buffer for the drag indicator + corner radius.
-    static func peekDetent(navbarHeight: CGFloat) -> PresentationDetent {
-        .height(navbarHeight) // exact fit — no extra content visible
+    /// Never allow the sheet to collapse below the calibrated minimum.
+    static func peekDetent(navbarHeight: CGFloat) -> TrackSheetDetent {
+        .height(max(navbarHeight, minimumHeight))
     }
 }
 
@@ -111,23 +112,35 @@ final class SheetHeightObserver {
 }
 
 /// Universal bottom sheet container that hosts all in-sheet navigation.
-/// Provides consistent presentation, detents, and transition animations.
-/// Note: Individual pages are responsible for their own
-/// navigation UI (back buttons, close buttons).
+/// Renders through ``TrackBottomSheet`` (custom drag-controlled overlay)
+/// while preserving the legacy `@Binding var sheetDetent: PresentationDetent`
+/// API so every existing call site keeps compiling.
+///
+/// Detent semantics — ``TrackBottomSheet`` props are derived from existing
+/// ``SheetConstants`` so the sheet keeps using the project-wide 45% default
+/// and the navbar-derived peek.  Override by passing a different
+/// `detents` / `defaultDetent` set when constructing.
 struct UniversalBottomSheet<Content: View>: View {
     /// Navigation state manager
     let navigator: SheetNavigator
-    
-    /// Current sheet detent (height)
-    @Binding var sheetDetent: PresentationDetent
+
+    /// Current sheet detent (height) — native ``TrackSheetDetent`` so
+    /// freeform `.height(x)` values written by inner views (e.g. the
+    /// dashboard's continuous drag) propagate without lossy bridging.
+    @Binding var sheetDetent: TrackSheetDetent
 
     /// Continuously reports the sheet's pixel height for interactive
     /// map camera tracking.  Optional — nil in previews.
     var sheetHeightObserver: SheetHeightObserver?
-    
+
+    /// Optional live-height callback for SwiftUI consumers (e.g. the
+    /// floating tab pill) that need to ride along with the drag.  This
+    /// is in addition to ``sheetHeightObserver`` which targets UIKit.
+    var onLiveHeightChange: ((CGFloat) -> Void)? = nil
+
     /// Theme setting — must be read here so the sheet inherits the correct color scheme.
     @AppStorage("appTheme") private var appTheme = "system"
-    
+
     /// Content builder that maps SheetPage to actual views
     let content: (SheetPage) -> Content
 
@@ -135,20 +148,8 @@ struct UniversalBottomSheet<Content: View>: View {
     /// Drives the peek detent so it adapts to content changes automatically.
     @State private var navbarHeight: CGFloat = 150 // sensible default until measured
 
-    /// Pre-computed detent set to avoid compiler type-check complexity.
-    private var sheetDetents: Set<PresentationDetent> {
-        [SheetConstants.peekDetent(navbarHeight: navbarHeight), .fraction(SheetConstants.defaultFraction), .large]
-    }
-
     /// Brief dimming overlay for smooth dark ↔ light transition.
     @State private var themeTransitionOpacity: Double = 0
-
-    /// Last measured pixel height of the sheet — updated by GeometryReader
-    /// on every frame but only forwarded to the observer at detent snap points.
-    @State private var lastKnownHeight: CGFloat = 0
-
-    /// Tracks whether the initial contentInset has been reported to the map.
-    @State private var hasReportedInitial = false
 
     /// Maps the appTheme string to a ColorScheme for the sheet.
     private var colorScheme: ColorScheme? {
@@ -159,110 +160,56 @@ struct UniversalBottomSheet<Content: View>: View {
         }
     }
 
+    /// Detents used by the underlying ``TrackBottomSheet``.
+    /// Order doesn't matter — closest-snap picks the right one.
+    private var trackDetents: [TrackSheetDetent] {
+        [
+            SheetConstants.peekDetent(navbarHeight: navbarHeight),
+            SheetConstants.defaultDetent,
+            .large,
+        ]
+    }
+
     var body: some View {
-        // Page content with transitions
-        content(navigator.currentPage)
-            .id(navigator.currentPage.id)
-            .background {
-                AppTheme.Colors.cardBackground
-                    .ignoresSafeArea()
-            }
-            .transition(.asymmetric(
-                  insertion: .move(edge: .trailing).combined(with: .opacity),
-                removal: .move(edge: .leading).combined(with: .opacity)
-            ))
-            .presentationDetents(sheetDetents, selection: $sheetDetent)
-            .onPreferenceChange(NavbarHeightKey.self) { height in
-                guard height > 0 else { return }
-                navbarHeight = height
-            }
-            .presentationDragIndicator(.visible)
-            .presentationBackgroundInteraction(.enabled)
-            .presentationBackground {
-                ZStack {
-                    AppTheme.Colors.cardBackground
-                    // Gentle accent wash — keeps the sheet warm,
-                    // not dead-dark. Matches Transit-style treatment.
-                    LinearGradient(
-                        stops: [
-                            .init(color: AppTheme.Colors.accent.opacity(0.08), location: 0.0),
-                            .init(color: AppTheme.Colors.accent.opacity(0.04), location: 0.25),
-                            .init(color: AppTheme.Colors.cardBackground.opacity(0.0), location: 0.5),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                }
-                .ignoresSafeArea()
-            }
-            .presentationCornerRadius(32)
-            .interactiveDismissDisabled()
-            .preferredColorScheme(colorScheme)
-            // ── Sheet height tracking at snap points only ──
-            // The GeometryReader passively records the sheet's pixel height
-            // each frame, but we only forward it to the map observer when
-            // the detent actually snaps — not on every mid-drag frame.
-            // This prevents per-frame setContentInset calls, which were
-            // causing MapLibre to continuously reposition the camera center
-            // (visible as a shake during interactive drag).
-            .background {
-                GeometryReader { proxy in
-                    Color.clear
-                        .preference(
-                            key: SheetMinYKey.self,
-                            value: proxy.size.height
-                        )
-                }
-            }
-            .onPreferenceChange(SheetMinYKey.self) { height in
-                // Passively record height — do NOT report to observer here.
-                lastKnownHeight = height
-            }
-            .onChange(of: navbarHeight) { _, newHeight in
-                // When navbarHeight changes the peek detent is rebuilt as
-                // `.height(newHeight)`.  If sheetDetent still holds the old
-                // peek detent value it is no longer in `sheetDetents`, which
-                // produces the "Cannot set selected sheet detent if it is not
-                // included in supported sheet detents" warning.  Clamp to the
-                // default fraction whenever the current detent would become
-                // invalid so SwiftUI always has a valid selection.
-                let newPeek = SheetConstants.peekDetent(navbarHeight: newHeight)
-                let newDetents: Set<PresentationDetent> = [
-                    newPeek,
-                    .fraction(SheetConstants.defaultFraction),
-                    .large,
-                ]
-                if !newDetents.contains(sheetDetent) {
-                    sheetDetent = SheetConstants.defaultDetent
-                }
-            }
-            .onChange(of: sheetDetent) { _, _ in
-                // Sheet has settled at a new snap point — safe to update
-                // the map's contentInset without causing drag-frame jitter.
-                guard lastKnownHeight > 0 else { return }
-                sheetHeightObserver?.report(lastKnownHeight)
-            }
-            .onChange(of: lastKnownHeight) { _, h in
-                // Report the very first real height so the map inset is
-                // correct as soon as the sheet appears (before any snap).
-                guard !hasReportedInitial, h > 0 else { return }
-                hasReportedInitial = true
+        TrackBottomSheet(
+            selection: $sheetDetent,
+            detents: trackDetents,
+            cornerRadius: 0,
+            topInset: 12,
+            topFade: false,
+            onHeightChange: { h in
                 sheetHeightObserver?.report(h)
-            }
-            // Smooth dim overlay when color scheme changes
-            .overlay {
-                Color.black
-                    .opacity(themeTransitionOpacity)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                    .animation(.easeInOut(duration: 0.25), value: themeTransitionOpacity)
-            }
-            .onChange(of: appTheme) { _, _ in
-                themeTransitionOpacity = 0.4
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
-                    themeTransitionOpacity = 0
+                onLiveHeightChange?(h)
+            },
+            freeform: true
+        ) {
+            content(navigator.currentPage)
+                .id(navigator.currentPage.id)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .leading).combined(with: .opacity)
+                ))
+                .onPreferenceChange(NavbarHeightKey.self) { height in
+                    guard height > 0 else { return }
+                    navbarHeight = height
                 }
+                .preferredColorScheme(colorScheme)
+        }
+        // Smooth dim overlay when color scheme changes — preserved from
+        // the original `.sheet`-based implementation.
+        .overlay {
+            Color.black
+                .opacity(themeTransitionOpacity)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .animation(.easeInOut(duration: 0.25), value: themeTransitionOpacity)
+        }
+        .onChange(of: appTheme) { _, _ in
+            themeTransitionOpacity = 0.4
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                themeTransitionOpacity = 0
             }
+        }
     }
 }
 

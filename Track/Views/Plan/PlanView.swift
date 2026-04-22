@@ -98,7 +98,7 @@ struct PlanView: View {
                         FloatingTabPill(selectedTab: $selectedTab)
                     }
                     .padding(.trailing, 16)
-                    .padding(.bottom, 28)
+                    .padding(.bottom, 12)
                 }
             }
             .navigationBarHidden(true)

@@ -14,7 +14,7 @@ struct MapControlsOverlay: View {
     let viewModel: HomeViewModel
     let locationManager: LocationManager
     @Binding var cameraPosition: TrackCameraPosition
-    @Binding var sheetDetent: PresentationDetent
+    @Binding var sheetDetent: TrackSheetDetent
     let currentMapCenter: CLLocationCoordinate2D?
     let currentMapDistance: Double?
 
