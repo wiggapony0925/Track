@@ -37,9 +37,25 @@ struct DirectionPickerView: View {
                     .accessibilityLabel(
                         "\(dir.label), \(dir.vehicleCount) vehicles"
                     )
+                    // New / removed pills slide+fade in instead of popping
+                    // when the backend re-groups directions mid-poll
+                    // (e.g. 7 train splitting from 2 → 4 branches).
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing)
+                                .combined(with: .opacity)
+                                .combined(with: .scale(scale: 0.85)),
+                            removal: .opacity
+                                .combined(with: .scale(scale: 0.85))
+                        )
+                    )
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
+            .animation(
+                .spring(response: 0.42, dampingFraction: 0.85),
+                value: directions.map(\.id)
+            )
         }
     }
 

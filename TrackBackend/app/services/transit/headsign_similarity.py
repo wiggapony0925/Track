@@ -145,9 +145,27 @@ def cluster_headsigns(headsigns: list[str]) -> list[list[int]]:
     fine for the small N we see per direction (typically ≤ 5).
     """
     clusters: list[list[int]] = []
+    # Empty / missing-headsign arrivals all merge into one shared
+    # "unknown terminus" cluster so we don't proliferate ghost branch
+    # tabs when the upstream feed drops the destination field for one
+    # or two trips (Wave 11 — fixed 7-train sometimes showing 4
+    # directions because empty headsigns each spawned their own
+    # singleton cluster).
+    empty_cluster: list[int] | None = None
     for idx, hs in enumerate(headsigns):
+        if not normalise_headsign(hs):
+            if empty_cluster is None:
+                empty_cluster = [idx]
+                clusters.append(empty_cluster)
+            else:
+                empty_cluster.append(idx)
+            continue
         joined = False
         for cluster in clusters:
+            # Skip the empty-headsign cluster — it can only accept
+            # other empty entries.
+            if cluster is empty_cluster:
+                continue
             if any(
                 headsigns_describe_same_terminus(hs, headsigns[j])
                 for j in cluster

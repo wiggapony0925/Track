@@ -397,6 +397,15 @@ struct TrackAPI {
         }
     }
 
+    /// Fetches the predicted arrival time of a single GTFS trip at every
+    /// stop on its path — used by the chip-tap flow so the Stops list can
+    /// re-render ETAs from the selected vehicle's perspective.
+    static func fetchSubwayTripStops(tripId: String) async throws -> [TransitArrivalResponse] {
+        let encoded = tripId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? tripId
+        let data = try await get(path: "/subway/trip/\(encoded)/stops")
+        return try decoder.decode([TransitArrivalResponse].self, from: data)
+    }
+
     // MARK: - Bus
 
     /// Fetches nearby bus stops based on coordinates.

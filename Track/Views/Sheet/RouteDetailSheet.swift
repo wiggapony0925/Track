@@ -195,6 +195,14 @@ struct RouteDetailSheet: View {
     /// Used to dynamically switch the header badge to diamond for express.
     @State private var selectedChipRouteId: String?
 
+    /// Per-stop predicted arrival timestamps for the chip's underlying
+    /// GTFS trip — populated when the user taps a live chip and consumed
+    /// by `buildStopRowData` so the Stops list renders ETAs from the
+    /// selected vehicle's perspective.  Keys are stop IDs in both their
+    /// suffixed (`123N`) and base (`123`) forms.  Cleared when the chip
+    /// is deselected or the direction changes.
+    @State private var selectedTripStopETAs: [String: Int] = [:]
+
     /// True when an API poll arrived while a chip was selected and we
     /// deferred the `stableNearestArrivals` refresh to avoid visual
     /// disruption.  Cleared when the chip is deselected.
@@ -1066,14 +1074,45 @@ struct RouteDetailSheet: View {
 
     /// Called when `selectedChipId` changes.  When the user deselects a
     /// chip (value → nil), catch up with any deferred chip refreshes so
-    /// the strip shows the latest data.
+    /// the strip shows the latest data.  When the user *selects* a chip,
+    /// kick off a fetch for that trip's per-stop predictions so the Stops
+    /// list can re-render ETAs from the selected vehicle's perspective.
     private func handleChipSelectionChange(_ newId: String?) {
-        guard newId == nil, chipRefreshDeferred else { return }
-        chipRefreshDeferred = false
-        let fresh = nearestStopArrivals
-        if shouldRefreshStableArrivals(fresh) {
-            stableNearestArrivals = fresh
-            lastStableRefreshDate = .now
+        guard let newId else {
+            // Deselect → drop trip-specific overrides + run any deferred refresh.
+            selectedTripStopETAs = [:]
+            guard chipRefreshDeferred else { return }
+            chipRefreshDeferred = false
+            let fresh = nearestStopArrivals
+            if shouldRefreshStableArrivals(fresh) {
+                stableNearestArrivals = fresh
+                lastStableRefreshDate = .now
+            }
+            return
+        }
+        // Selection → look up the chip's trip ID and fetch its stop times.
+        // Only subway trips have stable trip_ids in the GTFS-RT cache, so
+        // skip the fetch for buses (their per-stop predictions come from
+        // SIRI and aren't trip-keyed).
+        guard group.mode == "subway",
+              let arrival = stableNearestArrivals.first(where: { $0.id == newId }),
+              let tripId = arrival.tripId, !tripId.isEmpty
+        else {
+            selectedTripStopETAs = [:]
+            return
+        }
+        Task { @MainActor in
+            do {
+                let etas = try await TripStopTimesService.shared.stopETAs(for: tripId)
+                // Guard against the user deselecting/changing chip mid-flight.
+                guard selectedChipId == newId else { return }
+                selectedTripStopETAs = etas
+            } catch {
+                // Network failure → silently fall back to existing per-stop
+                // arrivals.  No UI surface needed; the Stops list keeps its
+                // pre-selection ETAs.
+                selectedTripStopETAs = [:]
+            }
         }
     }
 
@@ -1358,7 +1397,6 @@ struct RouteDetailSheet: View {
         stopFraction: Double,
         polyline: [CLLocationCoordinate2D]
     ) -> Bool {
-        guard polyline.count >= 2 else { return false }
         // Backend says the vehicle is arriving NOW — never filter it out.
         // This prevents chips=0 when the bus is physically at the stop but
         // its polyline fraction is slightly past the stop marker.
@@ -1366,19 +1404,39 @@ struct RouteDetailSheet: View {
         // Only check vehicles that are actually on the map
         guard isLiveOnMap?(arrival) ?? false else { return false }
 
-        // Get vehicle coordinate
         let vehicleCoord: CLLocationCoordinate2D? = vehicleCoordinate(for: arrival)
-        guard let vc = vehicleCoord,
-              let snap = VehicleInterpolator.snap(coordinate: vc, to: polyline),
-              snap.distanceFromPolyline < 500  // must be on-route
-        else { return false }
+        guard let vc = vehicleCoord else { return false }
 
-        // How far past the stop (in meters) the vehicle is
-        // Use totalPolylineLength from snap result — avoids redundant O(N) pass
-        let pastDistance = (snap.fractionAlongPolyline - stopFraction) * snap.totalPolylineLength
+        // Polyline path: high-confidence past-stop check using fraction along.
+        if polyline.count >= 2,
+           let snap = VehicleInterpolator.snap(coordinate: vc, to: polyline),
+           snap.distanceFromPolyline < 500 {
+            // How far past the stop (in meters) the vehicle is
+            // Use totalPolylineLength from snap result — avoids redundant O(N) pass
+            let pastDistance =
+                (snap.fractionAlongPolyline - stopFraction)
+                * snap.totalPolylineLength
+            // Vehicle is past the stop by more than the grace buffer → gone
+            return pastDistance > 150
+        }
 
-        // Vehicle is past the stop by more than the grace buffer → gone
-        return pastDistance > 150
+        // Geographic fallback (Wave 9) — when the polyline isn't usable
+        // (off-route bus, missing shape, or vehicle snapped > 500 m from
+        // the line), guard against past-stop chips by comparing vehicle
+        // GPS to the stop GPS directly.  We only filter when the bus is
+        // both physically far from the stop AND the backend's predicted
+        // arrival is suspiciously soon (<= 1 min) — a strong signal the
+        // RT prediction is stale and the bus has already left.
+        if let stopLat = arrival.stopLat,
+           let stopLon = arrival.stopLon {
+            let stopLoc = CLLocation(latitude: stopLat, longitude: stopLon)
+            let vehLoc = CLLocation(latitude: vc.latitude, longitude: vc.longitude)
+            let metersFromStop = vehLoc.distance(from: stopLoc)
+            if metersFromStop > 600 && arrival.minutesAway <= 1 {
+                return true
+            }
+        }
+        return false
     }
 
     /// Builds the direction polyline and stop fraction used by the passed-stop
@@ -2306,6 +2364,7 @@ struct RouteDetailSheet: View {
         let status = chipStatus(for: arrival)
         let isSched = !arrival.isCancelled && status == .scheduled
         let isTrackedOnly = !arrival.isCancelled && status == .tracked
+        let hasMarker = isLiveOnMap?(arrival) ?? false
         return ArrivalChipData(
             id: arrival.id,
             minutesRemaining: eta.minutesRemaining,
@@ -2315,13 +2374,16 @@ struct RouteDetailSheet: View {
             isCancelled: arrival.isCancelled,
             isScheduled: isSched,
             isTrackedOnly: isTrackedOnly,
+            hasMapMarker: hasMarker,
             arrivalTimestamp: arrival.arrivalTs,
             vehicleId: arrival.vehicleId,
             tripId: arrival.tripId,
             routeId: arrival.routeId,
             isExpressFromServer: arrival.isExpress,
             serviceVariant: arrival.serviceVariant,
-            variantLabel: arrival.variantLabel
+            variantLabel: arrival.variantLabel,
+            stopId: arrival.stopId,
+            mode: arrival.mode
         )
     }
 
@@ -2358,6 +2420,12 @@ struct RouteDetailSheet: View {
                 isSelectedArrivalExpress = arrival.isExpress
                 if let key = vehicleKey {
                     onFocusVehicle?(key)
+                }
+                // Wave 6: scroll the Stops list to this arrival's stop so
+                // the rider can see where the selected vehicle is heading.
+                if let sid = arrival.stopId, !sid.isEmpty {
+                    inSheetSelectedStopId = sid
+                    onStopSelected?(sid)
                 }
             }
             HapticManager.impact(.light)
@@ -2450,19 +2518,20 @@ struct RouteDetailSheet: View {
             return a.arrival.id < b.arrival.id
         }
 
-        // Safety cap: if more than 2 live chips show "NOW" simultaneously,
-        // only keep the first 2.  The GTFS-RT feed occasionally publishes
-        // duplicate trip entries for the same physical train with slightly
-        // different trip IDs — this prevents 4-6 ghost NOWs.
-        let nowThreshold: Double = 15 // seconds — aligned with ArrivalChipData.isNow
+        // Safety cap: if more than `maxNowChipsVisible` live chips show "NOW"
+        // simultaneously, only keep the first N.  The GTFS-RT feed occasionally
+        // publishes duplicate trip entries for the same physical train with
+        // slightly different trip IDs — this prevents 4-6 ghost NOWs.
+        let nowThreshold: Double = ArrivalChipLogic.nowSecondsWindow
+        let maxNows = ArrivalChipLogic.maxNowChipsVisible
         let nowCount = live.prefix(4).filter { $0.eta.secondsRemaining <= nowThreshold }.count
-        if nowCount > 2 {
-            // Keep first 2 NOW chips, skip the rest that are also NOW
+        if nowCount > maxNows {
+            // Keep first N NOW chips, skip the rest that are also NOW
             var keptNows = 0
             live = live.filter { pair in
                 if pair.eta.secondsRemaining <= nowThreshold {
                     keptNows += 1
-                    return keptNows <= 2
+                    return keptNows <= maxNows
                 }
                 return true
             }
@@ -2718,60 +2787,88 @@ struct RouteDetailSheet: View {
             LazyHStack(alignment: .top, spacing: 10) {
                 ForEach(Array(visibleChips.enumerated()), id: \.element.arrival.id) { index, pair in
                     arrivalCard(arrival: pair.arrival, index: index, eta: pair.eta)
+                        // Wave 10: smooth in/out so newly-arrived chips
+                        // and stops dropping off don't pop the strip.
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity
+                                    .combined(with: .scale(scale: 0.92))
+                                    .combined(with: .move(edge: .trailing)),
+                                removal: .opacity
+                                    .combined(with: .scale(scale: 0.92))
+                            )
+                        )
                 }
 
                 if hasMore {
-                    seeMoreChip(remainingCount: badgeCount)
+                    SeeMoreChip(routeColor: routeColor, remainingCount: badgeCount) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = .departures
+                        }
+                    }
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
             .padding(.top, 8)
             .padding(.bottom, 0)
-            .onAppear { logChips(chips) }
-            .onChange(of: chips.map(\.arrival.id)) { _, _ in logChips(chips) }
+            // Wave 10: animate chip-strip changes (insert / remove / reorder)
+            // by binding the animation to the ordered ID list so SwiftUI's
+            // diffing engine has a stable signal to drive the transition.
+            .animation(
+                .spring(response: 0.4, dampingFraction: 0.88),
+                value: visibleChips.map(\.arrival.id)
+            )
+            .onAppear {
+                logChips(chips)
+                autoSelectFirstChipIfNeeded(visible: visibleChips)
+            }
+            .onChange(of: chips.map(\.arrival.id)) { _, _ in
+                logChips(chips)
+                autoSelectFirstChipIfNeeded(visible: visibleChips)
+            }
+        }
+    }
+
+    /// Wave 5: when no chip is currently selected and the strip just
+    /// rendered (or the chip identities changed enough that the prior
+    /// selection is gone), auto-select the first *live* chip.  This
+    /// makes the map open already focused on the next vehicle and
+    /// matches the user's mental model that "the leftmost chip is the
+    /// one you're tracking".
+    private func autoSelectFirstChipIfNeeded(
+        visible: [(arrival: NearbyTransitResponse, eta: SmartETA)]
+    ) {
+        // Honor an existing selection so taps stay sticky.
+        if let sid = selectedChipId, visible.contains(where: { $0.arrival.id == sid }) {
+            return
+        }
+        // Find the first chip that is genuinely live (has a marker) so
+        // tapping focuses something the user can see on the map.
+        guard let firstLive = visible.first(where: { pair in
+            !pair.arrival.isCancelled
+                && !pair.arrival.isPlaceholder
+                && (isLiveOnMap?(pair.arrival) ?? false)
+        }) else {
+            // No live chip available — leave selection nil rather than
+            // selecting a grey chip that has no marker to focus.
+            if selectedChipId != nil { selectedChipId = nil }
+            return
+        }
+        selectedChipId = firstLive.arrival.id
+        selectedChipRouteId = firstLive.arrival.routeId
+        isSelectedArrivalExpress = firstLive.arrival.isExpress
+        if let key = firstLive.arrival.vehicleId ?? firstLive.arrival.tripId {
+            onFocusVehicle?(key)
+        }
+        if let sid = firstLive.arrival.stopId, !sid.isEmpty {
+            inSheetSelectedStopId = sid
+            onStopSelected?(sid)
         }
     }
 
     /// A trailing chip in the horizontal scroller that switches to the
     /// Departures tab so the user can browse the full schedule board.
-    /// Matches the size of a standard (non-first) ArrivalChipView (86×124, r18).
-    /// Title is always "More departures" — count badge only shows when known.
-    private func seeMoreChip(remainingCount: Int) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                selectedTab = .departures
-            }
-        } label: {
-            VStack(spacing: 6) {
-                Spacer(minLength: 0)
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(routeColor)
-                Text("More")
-                    .font(.custom("Helvetica-Bold", fixedSize: 12))
-                    .foregroundColor(routeColor)
-                Text("departures")
-                    .font(.custom("Helvetica-Bold", fixedSize: 12))
-                    .foregroundColor(routeColor)
-                if remainingCount > 0 {
-                    Text("+\(remainingCount)")
-                        .font(.custom("Helvetica", fixedSize: 11))
-                        .foregroundColor(routeColor.opacity(0.6))
-                }
-                Spacer(minLength: 0)
-            }
-            .frame(width: 86, height: 124)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(routeColor.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(routeColor.opacity(0.12), lineWidth: 0.5)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-    }
+    /// Implementation lives in `Track/Views/Components/Chips/SeeMoreChip.swift`.
 
     /// Logs every visible chip for debugging — compare against raw endpoint data.
     private func logChips(_ chips: [(arrival: NearbyTransitResponse, eta: SmartETA)]) {
@@ -3413,6 +3510,16 @@ struct RouteDetailSheet: View {
             let transfers = transferRoutes(for: stop)
             let outages = accessibilityOutages(at: stop)
 
+            // Per-trip override: when the user has tapped a chip, prefer
+            // that specific vehicle's predicted arrival time at this stop
+            // over the generic per-stop arrival.  Falls back to nil — and
+            // therefore to the existing `nextArrival` path — when the
+            // selected trip doesn't visit this stop.
+            let tripOverrideTs: Int? = {
+                guard !selectedTripStopETAs.isEmpty else { return nil }
+                return selectedTripStopETAs[normId] ?? selectedTripStopETAs[stop.id]
+            }()
+
             // Estimate arrival time if no live data for this stop
             let estimatedTs: Int? = {
                 guard nextArrival == nil || nextArrival?.isPlaceholder == true,
@@ -3436,13 +3543,22 @@ struct RouteDetailSheet: View {
                     $0.equipmentType.lowercased()
                         .contains("elevator")
                 },
-                nextArrivalMinutes: nextArrival.flatMap { a -> Int? in
-                    guard !a.isPlaceholder else { return nil }
-                    return smartETA(for: a).minutesRemaining
-                },
-                nextArrivalIsScheduled: nextArrival?.isScheduledOnly ?? true,
-                nextArrivalIsAtStop: nextArrival.map { smartETA(for: $0).isAtStop } ?? false,
-                nextArrivalTimestamp: nextArrival?.arrivalTs,
+                nextArrivalMinutes: {
+                    if let ts = tripOverrideTs {
+                        return max(0, Int((Double(ts) - Date().timeIntervalSince1970) / 60))
+                    }
+                    return nextArrival.flatMap { a -> Int? in
+                        guard !a.isPlaceholder else { return nil }
+                        return smartETA(for: a).minutesRemaining
+                    }
+                }(),
+                nextArrivalIsScheduled: tripOverrideTs != nil
+                    ? false
+                    : (nextArrival?.isScheduledOnly ?? true),
+                nextArrivalIsAtStop: tripOverrideTs != nil
+                    ? false
+                    : (nextArrival.map { smartETA(for: $0).isAtStop } ?? false),
+                nextArrivalTimestamp: tripOverrideTs ?? nextArrival?.arrivalTs,
                 estimatedTimestamp: estimatedTs,
                 isFirst: index == 0,
                 isLast: index == dirStops.count - 1,

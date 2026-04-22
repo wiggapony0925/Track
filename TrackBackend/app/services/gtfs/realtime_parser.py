@@ -607,6 +607,40 @@ _VEHICLE_STATUS_MAP = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Per-trip stop-time lookup
+#
+# When the iOS user taps a chip representing one specific train trip,
+# the app needs to know that exact trip's predicted arrival time at
+# every downstream stop so the Stops list can re-render its ETAs from
+# the rider's perspective.
+#
+# The data is already available — `_PARSED_CACHE` stores a per-feed
+# `trip_index` mapping `trip_id → list[TrackArrival]` (one arrival per
+# stop_time_update on that trip).  This helper just fans out across
+# every cached feed, returning the first match (subway trip_ids are
+# globally unique within a feed family).
+# ---------------------------------------------------------------------------
+def find_arrivals_for_trip(trip_id: str) -> list[TrackArrival]:
+    """Return all cached `TrackArrival` rows for *trip_id* in feed order.
+
+    Returns an empty list when the trip is unknown (either not currently
+    in any active GTFS-RT feed, or all feeds with the trip have expired
+    from `_PARSED_CACHE`).
+    """
+    if not trip_id:
+        return []
+    for cached in _PARSED_CACHE.values():
+        # Tuple shape: (ts, arrivals, siri_obs, entity_count, trip_index)
+        if len(cached) < 5:
+            continue
+        trip_index = cached[4]
+        hits = trip_index.get(trip_id)
+        if hits:
+            return list(hits)
+    return []
+
+
 def _parse_vehicle_positions_sync(
     raw: bytes,
     line_id: str,

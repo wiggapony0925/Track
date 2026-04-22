@@ -28,7 +28,10 @@ from app.models import (
     TrackArrival,
     TrunkGroupPolylines,
 )
-from app.services.gtfs.realtime_parser import get_arrivals_for_line
+from app.services.gtfs.realtime_parser import (
+    find_arrivals_for_trip,
+    get_arrivals_for_line,
+)
 from app.services.mapping.subway.corridor import (
     ROUTE_TO_TRUNK,
     apply_topological_offsets,
@@ -1048,3 +1051,38 @@ def _merge_polyline_segments(
             chains = [c for idx, c in enumerate(chains) if idx not in merged_away]
 
     return chains
+
+
+# ---------------------------------------------------------------------------
+# Per-trip stop times
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/subway/trip/{trip_id}/stops",
+    response_model=list[TrackArrival],
+    summary="Predicted arrival times for one specific trip at every stop",
+    description=(
+        "Returns the GTFS-RT predicted arrival time of a single "
+        "`trip_id` (one specific train run) at each stop on its path, "
+        "in feed order.  Used by the iOS app when the rider taps a "
+        "chip in the countdown strip \u2014 the Stops list then "
+        "re-renders ETAs from that vehicle's perspective.\n\n"
+        "Returns an empty list when the trip is no longer in any "
+        "active GTFS-RT feed."
+    ),
+    responses=RESP_404,
+)
+async def subway_trip_stops(
+    trip_id: str = Path(..., description="GTFS trip identifier."),
+    response: Response = None,  # type: ignore[assignment]
+) -> list[TrackArrival]:
+    """Return the per-stop arrival predictions for one specific trip."""
+    rows = find_arrivals_for_trip(trip_id)
+    if response is not None:
+        # Cached arrivals refresh on the parser's 30-second tick;
+        # the chip-tap flow re-fetches when the user picks a new trip,
+        # so a 10-second public cache is plenty.
+        response.headers["Cache-Control"] = "public, max-age=10"
+    return rows
+
