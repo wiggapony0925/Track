@@ -957,6 +957,17 @@ private struct StopDepartureRowView: View {
 private struct StopDepartureTimeChip: View {
     let time: StopDetailViewModel.DepartureTime
 
+    /// Live label derived from `time.arrivalDate` so the stop-detail page
+    /// stays in sync with the route detail / row chips. When no timestamp
+    /// is available (e.g. cancelled / status-only entries) we fall back
+    /// to the static label produced by the view model.
+    private static func liveLabel(from date: Date, now: Date) -> String {
+        let secs = date.timeIntervalSince(now)
+        if secs <= 30 { return "Now" }
+        let minutes = Int(ceil(secs / 60.0))
+        return "\(minutes) min"
+    }
+
     private var tint: Color {
         if time.isAlert { return AppTheme.Colors.alertRed }
         if time.isScheduledOnly { return AppTheme.Colors.textSecondary }
@@ -965,8 +976,23 @@ private struct StopDepartureTimeChip: View {
     }
 
     var body: some View {
-        if time.isImminent {
-            Text(time.label)
+        if let date = time.arrivalDate {
+            // Recompute every 15 s — same cadence as the row's expanded
+            // detail chip, fast enough for a smooth countdown but cheap.
+            TimelineView(.periodic(from: .now, by: 15.0)) { ctx in
+                let label = Self.liveLabel(from: date, now: ctx.date)
+                let isNow = label == "Now"
+                chipBody(label: label, forceImminent: isNow)
+            }
+        } else {
+            chipBody(label: time.label, forceImminent: time.isImminent)
+        }
+    }
+
+    @ViewBuilder
+    private func chipBody(label: String, forceImminent: Bool) -> some View {
+        if forceImminent {
+            Text(label)
                 .font(.system(size: 13, weight: .heavy, design: .rounded))
                 .foregroundColor(.white)
                 .padding(.horizontal, 10)
@@ -975,7 +1001,7 @@ private struct StopDepartureTimeChip: View {
                     Capsule().fill(tint)
                 )
         } else {
-            Text(time.label)
+            Text(label)
                 .font(.system(size: 15, weight: .bold, design: .monospaced))
                 .foregroundColor(tint)
                 .monospacedDigit()

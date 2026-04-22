@@ -205,8 +205,12 @@ class TestSubwayShape:
 class TestSubwayArrivals:
     """GET /subway/{line_id} — live arrivals for a line."""
 
+    @patch(
+        "app.services.transit.schedule_service.schedule_service.get_line_schedule_async",
+        new_callable=AsyncMock,
+    )
     @patch("app.routers.subway.get_arrivals_for_line", new_callable=AsyncMock)
-    def test_arrivals_returns_fresh(self, mock_arrivals):
+    def test_arrivals_returns_fresh(self, mock_arrivals, mock_sched):
         import time
 
         future_ts = int(time.time()) + 300  # 5 min from now
@@ -222,6 +226,9 @@ class TestSubwayArrivals:
                 status="On Time",
             ),
         ]
+        # Schedule backfill is exercised by its own tests — keep this
+        # endpoint test focused on the live-RT contract.
+        mock_sched.return_value = []
         response = client.get("/subway/L")
         assert response.status_code == 200
         data = response.json()

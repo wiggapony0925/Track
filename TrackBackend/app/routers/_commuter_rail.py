@@ -148,7 +148,12 @@ async def fetch_arrivals(
     tag: str,
     response: Response,
 ) -> list[TrackArrival]:
-    """Fetch real-time commuter rail arrivals with fallback on error.
+    """Fetch real-time commuter rail arrivals with multi-day GTFS backfill.
+
+    For every distinct ``route_id`` that appears in the live feed, the
+    static GTFS schedule is appended (deduplicated by trip_id and
+    (station, arrival_ts)) so the client gets the same Transit-style
+    schedule depth that subway and bus already offer.
 
     Args:
         feed_name: Feed identifier for ``fetch_rail_arrivals``
@@ -157,10 +162,11 @@ async def fetch_arrivals(
         response: FastAPI ``Response`` object for setting degraded headers.
 
     Returns:
-        List of fresh arrivals, or empty list on feed error.
+        Live + scheduled arrivals merged & sorted by ``arrival_ts``.
+        Returns an empty list on feed error.
     """
     try:
-        return filter_fresh_arrivals(await fetch_rail_arrivals(feed_name))
+        live = filter_fresh_arrivals(await fetch_rail_arrivals(feed_name))
     except Exception as exc:
         TrackLogger.warning(
             f"[{tag}] arrivals: feed error ({exc}) — returning empty fallback",
@@ -168,3 +174,52 @@ async def fetch_arrivals(
         )
         response.headers["X-Track-Degraded"] = f"{tag.lower()}-arrivals-fallback"
         return []
+
+    # ── Multi-day schedule backfill (mirrors subway / bus depth) ──
+    try:
+        from app.config import get_settings
+        from app.services.transit.schedule_service import schedule_service
+
+        settings = get_settings()
+        max_sched = settings.app_settings.max_schedule_per_line
+        days_ahead = settings.app_settings.max_schedule_days_ahead
+
+        # Backfill per distinct route to keep the call shape identical
+        # to the per-line subway endpoint.  GTFS stores LIRR/MNR routes
+        # with bare numeric IDs — strip any agency prefix for the lookup.
+        route_ids = {a.route_id for a in live if a.route_id}
+        rt_trip_ids = {a.trip_id for a in live if a.trip_id}
+        rt_keys = {(a.station, a.arrival_ts) for a in live if a.arrival_ts}
+
+        merged: list[TrackArrival] = list(live)
+        for rid in route_ids:
+            lookup = rid
+            for prefix in ("LIRR_", "MNR_"):
+                if lookup.startswith(prefix):
+                    lookup = lookup[len(prefix):]
+                    break
+            try:
+                sched = await schedule_service.get_line_schedule_async(
+                    lookup, limit=max_sched, days_ahead=days_ahead
+                )
+            except Exception as sched_exc:
+                TrackLogger.warning(
+                    f"[{tag}] schedule backfill ({rid}) failed: {sched_exc}",
+                    tag=tag,
+                )
+                continue
+            for s in sched:
+                if s.trip_id and s.trip_id in rt_trip_ids:
+                    continue
+                if (s.station, s.arrival_ts) in rt_keys:
+                    continue
+                merged.append(s)
+
+        merged.sort(key=lambda a: a.arrival_ts or 0)
+        return merged
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[{tag}] backfill wrapper failed ({exc}) — returning live only",
+            tag=tag,
+        )
+        return live

@@ -800,10 +800,15 @@ async def subway_arrivals(
         settings = get_settings()
         max_minutes = settings.app_settings.max_arrival_minutes
         max_results = settings.app_settings.max_arrivals_per_line
+        max_sched = settings.app_settings.max_schedule_per_line
+        days_ahead = settings.app_settings.max_schedule_days_ahead
 
         arrivals = await get_arrivals_for_line(clean_id)
         now = int(time.time())
-        # Filter to: (1) this route only, (2) future, (3) within time horizon
+        # ── LIVE filter: this route only, future, within RT horizon ──
+        # The 60-min cap intentionally applies ONLY to GTFS-RT entries —
+        # static GTFS schedule is allowed to extend days into the future
+        # so the chip strip can show Transit-style depth.
         fresh = [
             a
             for a in arrivals
@@ -818,17 +823,18 @@ async def subway_arrivals(
         # Sort by soonest first, then cap total count
         fresh.sort(key=lambda a: a.arrival_ts)
 
-        # ── Schedule backfill ─────────────────────────────────────
-        # Extend beyond the GTFS-RT horizon with static GTFS schedule
-        # so the client can display "Scheduled" chips hours ahead.
+        # ── Schedule backfill (multi-day) ─────────────────────────
+        # Pull deep static GTFS depth so dormant hours and "next week"
+        # browsing both work — same call shape as LIRR/MNR/bus paths.
         try:
             from app.services.transit.schedule_service import schedule_service
 
             sched = await schedule_service.get_line_schedule_async(
-                clean_id, limit=max_results
+                clean_id, limit=max_sched, days_ahead=days_ahead
             )
             # Deduplicate: skip scheduled entries whose trip_id already
-            # appears in the live RT set.
+            # appears in the live RT set, or that share the same
+            # (station, arrival_ts) tuple.
             rt_trip_ids = {a.trip_id for a in fresh if a.trip_id}
             rt_keys = {
                 (a.station, a.arrival_ts) for a in fresh if a.arrival_ts

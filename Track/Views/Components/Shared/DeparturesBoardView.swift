@@ -20,13 +20,82 @@ struct DeparturesBoardView: View {
             if departures.isEmpty {
                 departuresEmptyState
             } else {
-                VStack(spacing: 10) {
-                    ForEach(departures) { departure in
-                        ScheduledDepartureRow(departure: departure, routeColor: routeColor)
+                // Group by service day so we can insert a sticky-style
+                // section header before each day's chunk — Transit's
+                // "Tomorrow · Wed Apr 22" treatment.
+                let sections = Self.groupByDay(departures)
+                VStack(spacing: 16) {
+                    ForEach(sections, id: \.id) { section in
+                        VStack(spacing: 10) {
+                            DepartureDayHeader(
+                                date: section.date,
+                                count: section.items.count,
+                                routeColor: routeColor
+                            )
+                            VStack(spacing: 10) {
+                                ForEach(section.items) { dep in
+                                    ScheduledDepartureRow(
+                                        departure: dep,
+                                        routeColor: routeColor
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    // MARK: - Day Grouping
+
+    /// One contiguous block of departures sharing a calendar day in NYC time.
+    fileprivate struct DaySection: Identifiable {
+        let id: String
+        let date: Date
+        let items: [ScheduledItem]
+    }
+
+    /// Calendar fixed to America/New_York so Transit's day boundaries
+    /// (and ours) line up regardless of the device timezone.
+    fileprivate static let nycCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        return cal
+    }()
+
+    fileprivate static func groupByDay(
+        _ items: [ScheduledItem]
+    ) -> [DaySection] {
+        // Keep input order — they're already sorted by departure time.
+        var sections: [DaySection] = []
+        var currentKey: String?
+        var currentBucket: [ScheduledItem] = []
+        var currentDate: Date = .now
+
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyyMMdd"
+        fmt.timeZone = nycCalendar.timeZone
+
+        func flush() {
+            guard let key = currentKey, !currentBucket.isEmpty else { return }
+            sections.append(
+                DaySection(id: key, date: currentDate, items: currentBucket)
+            )
+            currentBucket = []
+        }
+
+        for it in items {
+            let key = fmt.string(from: it.departureDate)
+            if key != currentKey {
+                flush()
+                currentKey = key
+                currentDate = it.departureDate
+            }
+            currentBucket.append(it)
+        }
+        flush()
+        return sections
     }
 
     // MARK: - Header
@@ -96,6 +165,103 @@ struct DeparturesBoardView: View {
             )
             .padding(.horizontal, AppTheme.Layout.margin)
         }
+    }
+}
+
+// MARK: - Day Section Header
+
+/// Section header drawn above each day's block of scheduled departures.
+/// Mirrors Transit's "TODAY · Mon Apr 21" / "TOMORROW · 5:00 AM start"
+/// treatment, themed with the current route color.
+private struct DepartureDayHeader: View {
+    let date: Date
+    let count: Int
+    let routeColor: Color
+
+    private static let weekdayFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE MMM d"
+        f.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        return f
+    }()
+
+    private static let firstTimeFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        f.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        return f
+    }()
+
+    /// Returns "TODAY", "TOMORROW", or e.g. "WED" relative to NYC now.
+    private var label: String {
+        let cal = DeparturesBoardView.nycCalendar
+        let now = Date()
+        if cal.isDate(date, inSameDayAs: now) { return "TODAY" }
+        if let tomorrow = cal.date(byAdding: .day, value: 1, to: now),
+           cal.isDate(date, inSameDayAs: tomorrow) {
+            return "TOMORROW"
+        }
+        let f = DateFormatter()
+        f.dateFormat = "EEEE"
+        f.timeZone = cal.timeZone
+        return f.string(from: date).uppercased()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            // Color-bar accent on the left, themed to the route.
+            RoundedRectangle(cornerRadius: 2)
+                .fill(routeColor)
+                .frame(width: 4, height: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(label)
+                        .font(.custom("Helvetica-Bold", size: 13))
+                        .tracking(1.0)
+                        .foregroundColor(routeColor)
+
+                    Text("·")
+                        .font(.custom("Helvetica-Bold", size: 13))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
+
+                    Text(Self.weekdayFmt.string(from: date))
+                        .font(.custom("Helvetica-Bold", size: 13))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                }
+                Text("First at \(Self.firstTimeFmt.string(from: date))")
+                    .font(.custom("Helvetica", size: 11))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+
+            Spacer()
+
+            // Trailing departure-count chip in route color.
+            Text("\(count)")
+                .font(.custom("Helvetica-Bold", size: 12))
+                .foregroundColor(routeColor)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule().fill(routeColor.opacity(0.12))
+                )
+                .overlay(
+                    Capsule().strokeBorder(routeColor.opacity(0.18), lineWidth: 0.5)
+                )
+        }
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .padding(.vertical, 6)
+        .background(
+            // Subtle fade so the header reads as a divider without a hard rule.
+            LinearGradient(
+                colors: [
+                    routeColor.opacity(0.06),
+                    routeColor.opacity(0.0),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
     }
 }
 

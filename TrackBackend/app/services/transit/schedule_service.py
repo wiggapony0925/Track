@@ -320,52 +320,45 @@ class ScheduleService:
     # ── Route-wide schedule query (for chip backfill) ──────────────
 
     def get_line_schedule(
-        self, route_id: str, limit: int = 200
+        self, route_id: str, limit: int = 200, days_ahead: int = 7
     ) -> list[TrackArrival]:
         """Fetch the next ``limit`` scheduled departures for a route
-        across ALL stops.
+        across ALL stops, filling forward up to ``days_ahead`` days.
 
-        Used by the subway endpoint to backfill scheduled arrivals beyond
-        the GTFS-RT horizon so the client can display more chips.
+        Used by every mode (subway / LIRR / MNR / bus) to backfill
+        scheduled arrivals beyond the GTFS-RT horizon so the client can
+        display Transit-style multi-day departure depth uniformly.
         """
         if not self.db_path.exists():
             return []
 
         now = datetime.now(tz=_NY)
-        current_date = now.strftime("%Y%m%d")
-        current_time_str = now.strftime("%H:%M:%S")
-
-        tomorrow = now + timedelta(days=1)
-        tomorrow_date = tomorrow.strftime("%Y%m%d")
-
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-
-            active_services = self._resolve_active_services(cursor, current_date)
             arrivals: list[TrackArrival] = []
 
-            if active_services:
-                arrivals = self._query_route_stop_times(
-                    cursor, active_services, current_time_str, route_id, limit
+            for day_offset in range(max(1, days_ahead)):
+                if len(arrivals) >= limit:
+                    break
+                day = now + timedelta(days=day_offset)
+                day_date = day.strftime("%Y%m%d")
+                time_from = (
+                    now.strftime("%H:%M:%S") if day_offset == 0 else "00:00:00"
                 )
-
-            # Cross-day fill if today didn't reach limit
-            if len(arrivals) < limit:
-                tomorrow_services = self._resolve_active_services(
-                    cursor, tomorrow_date
+                services = self._resolve_active_services(cursor, day_date)
+                if not services:
+                    continue
+                remaining = limit - len(arrivals)
+                day_arrivals = self._query_route_stop_times(
+                    cursor,
+                    services,
+                    time_from,
+                    route_id,
+                    remaining,
+                    day_offset=day_offset,
                 )
-                if tomorrow_services:
-                    remaining = limit - len(arrivals)
-                    next_day = self._query_route_stop_times(
-                        cursor,
-                        tomorrow_services,
-                        "00:00:00",
-                        route_id,
-                        remaining,
-                        day_offset=1,
-                    )
-                    arrivals.extend(next_day)
+                arrivals.extend(day_arrivals)
 
             return arrivals
         except Exception as e:
@@ -379,41 +372,47 @@ class ScheduleService:
             conn.close()
 
     async def get_line_schedule_async(
-        self, route_id: str, limit: int = 200
+        self, route_id: str, limit: int = 200, days_ahead: int = 7
     ) -> list[TrackArrival]:
-        """Native-async version using pooled aiosqlite connections."""
+        """Native-async version using pooled aiosqlite connections.
+
+        Walks forward up to ``days_ahead`` service days, accumulating
+        scheduled departures until ``limit`` is hit.  Same multi-day
+        depth applies to every mode that lives in the GTFS DB.
+        """
         if not self.db_path.exists():
             return []
 
         now = datetime.now(tz=_NY)
-        current_date = now.strftime("%Y%m%d")
-        current_time_str = now.strftime("%H:%M:%S")
-        tomorrow = now + timedelta(days=1)
-        tomorrow_date = tomorrow.strftime("%Y%m%d")
-
         try:
             async with schedule_pool.acquire() as conn:
-                active_services = await self._resolve_active_services_async(
-                    conn, current_date
-                )
                 arrivals: list[TrackArrival] = []
 
-                if active_services:
-                    arrivals = await self._query_route_stop_times_async(
-                        conn, active_services, current_time_str, route_id, limit,
+                for day_offset in range(max(1, days_ahead)):
+                    if len(arrivals) >= limit:
+                        break
+                    day = now + timedelta(days=day_offset)
+                    day_date = day.strftime("%Y%m%d")
+                    time_from = (
+                        now.strftime("%H:%M:%S")
+                        if day_offset == 0
+                        else "00:00:00"
                     )
-
-                if len(arrivals) < limit:
-                    tomorrow_services = await self._resolve_active_services_async(
-                        conn, tomorrow_date
+                    services = await self._resolve_active_services_async(
+                        conn, day_date
                     )
-                    if tomorrow_services:
-                        remaining = limit - len(arrivals)
-                        next_day = await self._query_route_stop_times_async(
-                            conn, tomorrow_services, "00:00:00", route_id, remaining,
-                            day_offset=1,
-                        )
-                        arrivals.extend(next_day)
+                    if not services:
+                        continue
+                    remaining = limit - len(arrivals)
+                    day_arrivals = await self._query_route_stop_times_async(
+                        conn,
+                        services,
+                        time_from,
+                        route_id,
+                        remaining,
+                        day_offset=day_offset,
+                    )
+                    arrivals.extend(day_arrivals)
 
                 return arrivals
         except Exception as e:

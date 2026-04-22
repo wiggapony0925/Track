@@ -225,10 +225,16 @@ def _trip_route_token(trip_id: str) -> str | None:
 
 
 async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
-    """Actual OBA schedule fetch — extracted so the handler can wrap it with caching."""
+    """Actual OBA schedule fetch — extracted so the handler can wrap it with caching.
+
+    Walks ``max_bus_schedule_days_ahead`` consecutive service days so the
+    chip strip and Departures board can show Transit-style multi-day
+    depth, matching the subway / LIRR / MNR backfill paths.
+    """
     settings = get_settings()
     oba_base = settings.urls.bus_oba_base
     api_key = settings.api_keys.mta_bus_key or "test"
+    days_ahead = max(1, settings.app_settings.max_bus_schedule_days_ahead)
 
     if not oba_base:
         TrackLogger.warning("[SCHEDULE] OBA base URL not configured", tag="BUS")
@@ -265,7 +271,7 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
 
     TrackLogger.info(
         f"[SCHEDULE] {route_id}: {len(stop_models)} total stops, "
-        f"sampling {len(sample_stops)} stops",
+        f"sampling {len(sample_stops)} stops × {days_ahead} day(s)",
         tag="BUS",
     )
 
@@ -273,67 +279,75 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
     all_departures: list[BusScheduleDeparture] = []
     interline_skipped = 0
 
-    # Re-use a single httpx client for all stops (connection pooling)
+    # Re-use a single httpx client for all stops & days (connection pooling)
     async with httpx.AsyncClient(timeout=_OBA_REQUEST_TIMEOUT) as client:
-        for stop in sample_stops:
-            if not stop.id:
-                continue
-            try:
-                url = f"{oba_base}/schedule-for-stop/{stop.id}.json"
-                params = {"key": api_key, "date": now.strftime("%Y-%m-%d")}
-                resp = await client.get(url, params=params)
-                if resp.status_code != 200:
+        for day_offset in range(days_ahead):
+            day = now + timedelta(days=day_offset)
+            date_str = day.strftime("%Y-%m-%d")
+            for stop in sample_stops:
+                if not stop.id:
+                    continue
+                try:
+                    url = f"{oba_base}/schedule-for-stop/{stop.id}.json"
+                    params = {"key": api_key, "date": date_str}
+                    resp = await client.get(url, params=params)
+                    if resp.status_code != 200:
+                        TrackLogger.warning(
+                            f"[SCHEDULE] {route_id} stop={stop.id} day={date_str}: "
+                            f"HTTP {resp.status_code}",
+                            tag="BUS",
+                        )
+                        continue
+                    data = resp.json()
+                except Exception as exc:
                     TrackLogger.warning(
-                        f"[SCHEDULE] {route_id} stop={stop.id}: HTTP {resp.status_code}",
+                        f"[SCHEDULE] {route_id} stop={stop.id} day={date_str}: {exc}",
                         tag="BUS",
                     )
                     continue
-                data = resp.json()
-            except Exception as exc:
-                TrackLogger.warning(
-                    f"[SCHEDULE] {route_id} stop={stop.id}: {exc}",
-                    tag="BUS",
-                )
-                continue
 
-            entry = data.get("data", {}).get("entry", {})
-            for srs in entry.get("stopRouteSchedules", []):
-                srs_route = srs.get("routeId", "")
-                srs_token = _normalize_route_token(srs_route)
-                if srs_token != req_token:
-                    continue
-                for dg in srs.get("stopRouteDirectionSchedules", []):
-                    headsign = dg.get("tripHeadsign", "")
-                    for ts in dg.get("scheduleStopTimes", []):
-                        t = ts.get("departureTime", 0) or ts.get("arrivalTime", 0)
-                        if not (t and t / 1000 > now_epoch):
-                            continue
+                entry = data.get("data", {}).get("entry", {})
+                for srs in entry.get("stopRouteSchedules", []):
+                    srs_route = srs.get("routeId", "")
+                    srs_token = _normalize_route_token(srs_route)
+                    if srs_token != req_token:
+                        continue
+                    for dg in srs.get("stopRouteDirectionSchedules", []):
+                        headsign = dg.get("tripHeadsign", "")
+                        for ts in dg.get("scheduleStopTimes", []):
+                            t = ts.get("departureTime", 0) or ts.get("arrivalTime", 0)
+                            if not (t and t / 1000 > now_epoch):
+                                continue
 
-                        trip_id = ts.get("tripId", "")
+                            trip_id = ts.get("tripId", "")
 
-                        # ── Interline guard ────────────────────────
-                        # OBA nests interlined trips inside the
-                        # parent route's SRS block (e.g. M104 trips
-                        # appear under M11).  The trip ID embeds the
-                        # *actual* route — reject mismatches.
-                        trip_token = _trip_route_token(trip_id)
-                        if trip_token is not None and trip_token != req_token:
-                            interline_skipped += 1
-                            continue
+                            # ── Interline guard ────────────────────────
+                            # OBA nests interlined trips inside the
+                            # parent route's SRS block (e.g. M104 trips
+                            # appear under M11).  The trip ID embeds the
+                            # *actual* route — reject mismatches.
+                            trip_token = _trip_route_token(trip_id)
+                            if trip_token is not None and trip_token != req_token:
+                                interline_skipped += 1
+                                continue
 
-                        all_departures.append(
-                            BusScheduleDeparture(
-                                stop_name=stop.name,
-                                stop_id=stop.id,
-                                departure_time=t // 1000,
-                                headsign=headsign,
-                                trip_id=trip_id,
+                            all_departures.append(
+                                BusScheduleDeparture(
+                                    stop_name=stop.name,
+                                    stop_id=stop.id,
+                                    departure_time=t // 1000,
+                                    headsign=headsign,
+                                    trip_id=trip_id,
+                                )
                             )
-                        )
 
-            found_headsigns = {d.headsign for d in all_departures}
-            if len(found_headsigns) >= 2 and len(all_departures) >= 10:
-                break
+                # Per-day early break only when we have a healthy sample
+                # AND we're still on the first day — otherwise we'd skip
+                # the multi-day fan-out entirely.
+                if day_offset == 0:
+                    found_headsigns = {d.headsign for d in all_departures}
+                    if len(found_headsigns) >= 2 and len(all_departures) >= 30:
+                        break
 
     if interline_skipped:
         TrackLogger.info(
@@ -345,6 +359,10 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
     hs_groups: dict[str, list[BusScheduleDeparture]] = {}
     for dep in all_departures:
         hs_groups.setdefault(dep.headsign, []).append(dep)
+
+    # Per-direction cap — generous enough to support browsing days ahead
+    # like Transit does, without flooding the wire for casual chip use.
+    per_direction_cap = settings.app_settings.max_schedule_per_line // 2 or 200
 
     directions: list[BusScheduleDirection] = []
     for headsign, deps in hs_groups.items():
@@ -366,7 +384,7 @@ async def _fetch_bus_schedule_uncached(route_id: str) -> BusScheduleResponse:
                 route_id=route_id,
                 direction=headsign,
                 headsign=headsign,
-                departures=unique[:30],
+                departures=unique[:per_direction_cap],
             )
         )
 

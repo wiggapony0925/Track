@@ -45,15 +45,23 @@ class AppSettings(BaseModel):
         True  # If True, clients should use physics-based interpolation
     )
     max_arrival_minutes: int = (
-        60  # Max minutes into the future to include in subway arrivals
+        60  # Max minutes into the future for LIVE (GTFS-RT) arrivals
     )
-    max_arrivals_per_line: int = 200  # Cap on total arrivals returned per subway line
+    max_arrivals_per_line: int = 500  # Cap on total arrivals returned per line (live + scheduled)
     placeholder_minutes: int = (
         99  # Sentinel value for placeholder arrivals (sorts to bottom)
     )
     max_schedule_per_dormant: int = (
         10  # Max scheduled departures injected per dormant bus route
     )
+    # ── Deep schedule (Transit-style) ──────────────────────────────────
+    # How many days of static GTFS schedule to expose past today, used to
+    # backfill chips beyond the GTFS-RT horizon for ALL modes (subway,
+    # LIRR, MNR, bus).  Mirrors how Transit App caches a week of
+    # timetable so users can browse departures days in advance.
+    max_schedule_days_ahead: int = 7
+    max_schedule_per_line: int = 500  # Cap on scheduled departures returned per line per call
+    max_bus_schedule_days_ahead: int = 3  # OBA per-day calls are expensive — keep bus depth shorter
     nearby_compute_timeout_seconds: int = (
         50  # Timeout (sec) for /nearby/grouped data collection
     )

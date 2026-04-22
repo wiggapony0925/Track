@@ -2053,43 +2053,90 @@ final class HomeViewModel {
 
     // MARK: - Smart ETA
 
-    /// Computes a smart ETA for an arrival using live vehicle position,
-    /// route polyline distance, and speed estimation. Falls back gracefully
-    /// to arrivalTs → static minutesAway when vehicle data is unavailable.
+    /// Canonical, feed-timestamp-based ETA used by every chip / row / card
+    /// in the app (home rows, route detail, dashboard, favorites, stop detail,
+    /// Live Activity sync).
+    ///
+    /// We deliberately do NOT blend live vehicle position or polyline distance
+    /// here.  Those signals are only available for the route currently open in
+    /// the route-detail sheet (`cachedInterpolationPolyline` is empty for every
+    /// other route), so mixing them in caused the same arrival to show
+    /// different times in different views — e.g. row says "5 min", you tap in
+    /// and the sheet says "1 min", then chips collapse to a single value as
+    /// the smoothing cache kicks in.  Transit-style behavior is to derive
+    /// every visible countdown from the same `arrivalTs` the backend already
+    /// ML-corrects, so the number is identical everywhere and only changes
+    /// when wall-clock time advances.
+    ///
+    /// The one exception is the **at-stop override**: if we have the live
+    /// GPS position of the vehicle and it's within `kAtStopRadiusMeters` of
+    /// the arrival's stop coords, we force the chip to "Now".  This brings
+    /// the visible map marker and the chip into agreement at the exact
+    /// moment of arrival ("when the icon is at the stop, the timer reads
+    /// 0").  The override uses straight-line distance only — no polyline,
+    /// no speed model — so every view computes the same answer regardless
+    /// of which route is currently selected.
+    ///
+    /// The backend's `/nearby/grouped` endpoint already ML-corrects
+    /// `minutesAway` (LightGBM + recency + alerts), so we never apply an
+    /// additional `delayFactor` on the client.
     func smartETA(for arrival: NearbyTransitResponse) -> SmartETA {
-        // 1. Find the vehicle's live coordinate
-        let vehicleCoord = coordinateForTrackedArrival(arrival).flatMap { coord in
-            // coordinateForTrackedArrival falls back to stop coords when
-            // no vehicle is found — we only want actual vehicle positions here.
-            // Check if this coord came from a real vehicle vs. the stop fallback.
-            let isVehicle = isVehicleLiveOnMap(arrival)
-            return isVehicle ? coord : nil
+        // ── At-stop override (deterministic, view-independent) ──
+        if let stopLat = arrival.stopLat, let stopLon = arrival.stopLon,
+           let vCoord = liveVehicleCoordinate(for: arrival) {
+            let stopLoc = CLLocation(latitude: stopLat, longitude: stopLon)
+            let vehLoc = CLLocation(latitude: vCoord.latitude, longitude: vCoord.longitude)
+            if vehLoc.distance(from: stopLoc) < Self.kAtStopRadiusMeters {
+                return SmartETA(
+                    secondsRemaining: 0,
+                    isAtStop: true,
+                    isPastArrival: false,
+                    source: .vehiclePosition,
+                    estimatedSpeedMps: nil
+                )
+            }
         }
 
-        // 2. Build stop coordinate
-        let stopCoord: CLLocationCoordinate2D? = {
-            if let lat = arrival.stopLat, let lon = arrival.stopLon {
-                return CLLocationCoordinate2D(latitude: lat, longitude: lon)
-            }
-            return nil
-        }()
-
-        // 3. Vehicle key for speed history
-        let vehicleKey = arrival.vehicleId ?? arrival.tripId
-
-        // NOTE: Do NOT pass delayFactor here. The backend's /nearby/grouped
-        // endpoint already ML-corrects minutesAway (LightGBM + recency + alerts).
-        // Applying the frontend's /predict/delay factor on top would double-dip,
-        // inflating or deflating ETAs well beyond the backend's ±2–4 min cap.
         return ArrivalETAEngine.computeETA(
-            vehicleCoord: vehicleCoord,
-            vehicleKey: vehicleKey,
-            stopCoord: stopCoord,
-            polyline: cachedInterpolationPolyline.count >= 2 ? cachedInterpolationPolyline : nil,
+            vehicleCoord: nil,
+            vehicleKey: nil,
+            stopCoord: nil,
+            polyline: nil,
             arrivalTs: arrival.arrivalTs,
             staticMinutes: arrival.minutesAway,
             mode: arrival.mode
         )
+    }
+
+    /// Distance threshold (meters) under which a live vehicle is considered
+    /// "at the stop" — chip shows "Now" and the map marker is visibly on
+    /// top of the stop dot.  50 m matches the engine's existing arrival
+    /// constant and Transit-app behavior.
+    private static let kAtStopRadiusMeters: CLLocationDistance = 50
+
+    /// Returns the live GPS coordinate of the vehicle backing this arrival,
+    /// or nil if no vehicle is currently in any of the index dictionaries.
+    /// Unlike `coordinateForTrackedArrival`, this does **not** fall back to
+    /// the stop coords — we need to know whether a real vehicle position
+    /// exists before applying the at-stop override.
+    private func liveVehicleCoordinate(
+        for arrival: NearbyTransitResponse
+    ) -> CLLocationCoordinate2D? {
+        if arrival.isBus, let vid = arrival.vehicleId, !vid.isEmpty,
+           let bus = _busVehicleIndex[vid] {
+            return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
+        }
+        if !arrival.isBus {
+            if let tripId = arrival.tripId, !tripId.isEmpty,
+               let train = _trainVehicleByTrip[tripId] {
+                return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+            }
+            if let vid = arrival.vehicleId, !vid.isEmpty,
+               let train = _trainVehicleById[vid] {
+                return CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
+            }
+        }
+        return nil
     }
 
     // MARK: - GO Mode Forwarding (backward compatibility)

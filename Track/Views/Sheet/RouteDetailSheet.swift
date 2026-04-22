@@ -474,10 +474,17 @@ struct RouteDetailSheet: View {
             let minPanelHeight = totalHeight * 0.45
             let maxPanelHeight = totalHeight
             let range = maxPanelHeight - minPanelHeight
-            // Clamp panel height between min and max
-            let panelHeight = min(max(minPanelHeight - panelDragOffset, minPanelHeight), maxPanelHeight)
+            // Drag offset is NEGATIVE when pulled up.
+            // panelTranslation: how far the (maxPanelHeight-tall) panel is
+            // pushed DOWN from the fully-expanded position.  0 = fully open,
+            // `range` = resting / collapsed.  We translate instead of
+            // resizing the panel so children never relayout during the drag
+            // — that's what was causing the shake / lag (ScrollView, chip
+            // TimelineView, frosted material, and gradients all relaying
+            // out 60×/sec when the height was changing per frame).
+            let panelTranslation = min(max(-panelDragOffset, 0), range)
             // How far expanded: 0 = resting, 1 = fully open
-            let expandProgress = (panelHeight - minPanelHeight) / max(range, 1)
+            let expandProgress = 1 - panelTranslation / max(range, 1)
 
             ZStack(alignment: .top) {
                 // ── X button — always visible, top-right, directly under banner ──
@@ -504,99 +511,89 @@ struct RouteDetailSheet: View {
                 }
 
                 // ── Bottom floating panel ──
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-
-                    panelContent(
-                        safeBottom: proxy.safeAreaInsets.bottom,
-                        expandRange: range
-                    )
-                    .frame(height: panelHeight)
-                    .background {
-                        // Transit-style panel: frosted glass with a rich
-                        // route-color gradient that carries the line's
-                        // identity from top to bottom. Strong at the top
-                        // (where the direction picker sits), gracefully
-                        // fading into the base background lower down.
-                        ZStack(alignment: .bottom) {
-                            // Frosted glass — the very tip of the panel is
-                            // transparent so the map bleeds through, then
-                            // material density ramps up quickly around the
-                            // direction picker for a rich frosted-glass look.
-                            GeometryReader { bg in
-                                Rectangle()
-                                    .fill(.ultraThinMaterial)
-                                    .mask(
-                                        VStack(spacing: 0) {
-                                            LinearGradient(
-                                                stops: [
-                                                    .init(color: .clear, location: 0),
-                                                    .init(color: .white.opacity(0.10), location: 0.08),
-                                                    .init(color: .white.opacity(0.45), location: 0.22),
-                                                    .init(color: .white.opacity(0.75), location: 0.38),
-                                                    .init(color: .white.opacity(0.92), location: 0.52),
-                                                    .init(color: .white, location: 0.65),
-                                                ],
-                                                startPoint: .top,
-                                                endPoint: .bottom
-                                            )
-                                            .frame(height: bg.size.height * 0.30)
-
-                                            Color.white
-                                        }
-                                    )
-                            }
-
-                            // Route-color gradient — transparent at the top
-                            // so the map bleeds through, builds intensity
-                            // toward the bottom so the sheet base carries
-                            // the line's identity color (blue for A, purple
-                            // for 7, etc.). Creates a rich colored floor.
-                            GeometryReader { _ in
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: routeColor.opacity(0), location: 0),
-                                        .init(color: routeColor.opacity(0.03), location: 0.10),
-                                        .init(color: routeColor.opacity(0.06), location: 0.20),
-                                        .init(color: routeColor.opacity(0.10), location: 0.30),
-                                        .init(color: routeColor.opacity(0.16), location: 0.42),
-                                        .init(color: routeColor.opacity(0.22), location: 0.55),
-                                        .init(color: routeColor.opacity(0.28), location: 0.68),
-                                        .init(color: routeColor.opacity(0.32), location: 0.80),
-                                        .init(color: routeColor.opacity(0.36), location: 0.92),
-                                        .init(color: routeColor.opacity(0.38), location: 1.0),
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            }
-
-                            // Background fill — gentle base that keeps the
-                            // upper portion clean and lets route color own
-                            // the lower half of the panel.
-                            GeometryReader { _ in
-                                LinearGradient(
-                                    stops: [
-                                        .init(color: AppTheme.Colors.cardBackground.opacity(0), location: 0),
-                                        .init(color: AppTheme.Colors.cardBackground.opacity(0), location: 0.25),
-                                        .init(color: AppTheme.Colors.cardBackground.opacity(0.12), location: 0.40),
-                                        .init(color: AppTheme.Colors.cardBackground.opacity(0.30), location: 0.55),
-                                        .init(color: AppTheme.Colors.cardBackground.opacity(0.50), location: 0.70),
-                                        .init(color: AppTheme.Colors.cardBackground.opacity(0.65), location: 0.85),
-                                        .init(color: AppTheme.Colors.cardBackground.opacity(0.75), location: 1.0),
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            }
-                        }
-                    }
+                // Fixed at maxPanelHeight; we slide it via .offset() so the
+                // gesture is a pure GPU transform — no layout work per frame.
+                panelContent(
+                    safeBottom: proxy.safeAreaInsets.bottom,
+                    expandRange: range
+                )
+                .frame(height: maxPanelHeight, alignment: .top)
+                .background {
+                    panelBackground
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .offset(y: panelTranslation)
                 .ignoresSafeArea(edges: .bottom)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onAppear { cachedExpandRange = range }
             .onChange(of: range) { _, newRange in cachedExpandRange = newRange }
+        }
+    }
+
+    /// Panel background — frosted glass + route-color gradient + base fill.
+    /// Extracted so it's not rebuilt during drag and so we drop the inner
+    /// GeometryReaders that were re-evaluating every frame.  All gradients
+    /// are static; the panel's fixed `maxPanelHeight` frame means none of
+    /// these layers resize during a swipe.
+    private var panelBackground: some View {
+        ZStack(alignment: .bottom) {
+            // Frosted glass — the very tip of the panel is transparent so
+            // the map bleeds through, then material density ramps up
+            // quickly around the direction picker.
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0),
+                            .init(color: .white.opacity(0.10), location: 0.024),
+                            .init(color: .white.opacity(0.45), location: 0.066),
+                            .init(color: .white.opacity(0.75), location: 0.114),
+                            .init(color: .white.opacity(0.92), location: 0.156),
+                            .init(color: .white, location: 0.195),
+                            .init(color: .white, location: 1),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            // Route-color gradient — transparent at the top so the map
+            // bleeds through, builds intensity toward the bottom so the
+            // panel base carries the line's identity color.
+            LinearGradient(
+                stops: [
+                    .init(color: routeColor.opacity(0), location: 0),
+                    .init(color: routeColor.opacity(0.03), location: 0.10),
+                    .init(color: routeColor.opacity(0.06), location: 0.20),
+                    .init(color: routeColor.opacity(0.10), location: 0.30),
+                    .init(color: routeColor.opacity(0.16), location: 0.42),
+                    .init(color: routeColor.opacity(0.22), location: 0.55),
+                    .init(color: routeColor.opacity(0.28), location: 0.68),
+                    .init(color: routeColor.opacity(0.32), location: 0.80),
+                    .init(color: routeColor.opacity(0.36), location: 0.92),
+                    .init(color: routeColor.opacity(0.38), location: 1.0),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Base fill — gentle gradient that keeps the upper portion
+            // clean and lets the route color own the lower half.
+            LinearGradient(
+                stops: [
+                    .init(color: AppTheme.Colors.cardBackground.opacity(0), location: 0),
+                    .init(color: AppTheme.Colors.cardBackground.opacity(0), location: 0.25),
+                    .init(color: AppTheme.Colors.cardBackground.opacity(0.12), location: 0.40),
+                    .init(color: AppTheme.Colors.cardBackground.opacity(0.30), location: 0.55),
+                    .init(color: AppTheme.Colors.cardBackground.opacity(0.50), location: 0.70),
+                    .init(color: AppTheme.Colors.cardBackground.opacity(0.65), location: 0.85),
+                    .init(color: AppTheme.Colors.cardBackground.opacity(0.75), location: 1.0),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         }
     }
 
@@ -680,11 +677,20 @@ struct RouteDetailSheet: View {
                         let clamped = min(max(panelDragOffset, -cachedExpandRange), 0)
                         panelRestingOffset = clamped
                         let shouldScroll = clamped <= -(cachedExpandRange * 0.95)
-                        withAnimation(.interpolatingSpring(stiffness: 300, damping: 30)) {
+                        // Critically-damped spring (dampingFraction 1.0)
+                        // settles at the release position with no overshoot
+                        // — that's what "stays where I leave it" requires.
+                        // The previous interpolatingSpring(stiffness: 300,
+                        // damping: 30) was slightly under-damped (critical
+                        // ≈ 34.6) so the panel oscillated briefly on release
+                        // — that was the visible "shake" at end-of-drag.
+                        withAnimation(.spring(response: 0.32, dampingFraction: 1.0)) {
                             panelDragOffset = clamped
-                            if shouldScroll != panelScrollEnabled {
-                                panelScrollEnabled = shouldScroll
-                            }
+                        }
+                        // Toggle scroll OUTSIDE the animation so the layout
+                        // change doesn't fight the spring.
+                        if shouldScroll != panelScrollEnabled {
+                            panelScrollEnabled = shouldScroll
                         }
                     }
             )
@@ -2627,13 +2633,29 @@ struct RouteDetailSheet: View {
     }
 
     /// Single horizontal row of arrival chips.
-    /// Shows the first 6 chips (always guaranteed by buildOrderedChips),
-    /// then a "See More" chip if more exist.
+    /// Shows the first 6 chips, then a Transit-style "More departures" chip
+    /// whenever the Departures tab can show *anything* — even a single
+    /// scheduled trip later today, or the full GTFS timetable for the rest
+    /// of the service week.  We never hide it just because fewer than 7 chips
+    /// rendered: there is almost always more schedule depth available, and
+    /// the chip is the user's only signal that the full timetable exists.
     private func countdownChipRow(
         chips: [(arrival: NearbyTransitResponse, eta: SmartETA)]
     ) -> some View {
         let visibleChips = Array(chips.prefix(6))
-        let hasMore = chips.count > 6
+        // "More" total = anything in the schedule beyond the chips we just rendered.
+        // Transit shows the chip whenever the Departures board is reachable —
+        // we mirror that by checking the cached departure count (populated by
+        // `refreshArrivalByStopCache`) plus the raw schedule depth as a fallback.
+        let totalSchedDepth = max(
+            cachedDepartureCount,
+            scheduledDeparturesForCurrentDirection.count
+        )
+        let extraBeyondChips = max(0, totalSchedDepth - visibleChips.count)
+        let hasMore = extraBeyondChips > 0 || chips.count > visibleChips.count
+        // When chips overflow but the schedule depth is unknown, fall back
+        // to the chip overflow count for the badge.
+        let badgeCount = max(extraBeyondChips, chips.count - visibleChips.count)
 
         return ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: 10) {
@@ -2642,7 +2664,7 @@ struct RouteDetailSheet: View {
                 }
 
                 if hasMore {
-                    seeMoreChip(remainingCount: chips.count - 6)
+                    seeMoreChip(remainingCount: badgeCount)
                 }
             }
             .padding(.horizontal, AppTheme.Layout.margin)
@@ -2656,6 +2678,7 @@ struct RouteDetailSheet: View {
     /// A trailing chip in the horizontal scroller that switches to the
     /// Departures tab so the user can browse the full schedule board.
     /// Matches the size of a standard (non-first) ArrivalChipView (86×124, r18).
+    /// Title is always "More departures" — count badge only shows when known.
     private func seeMoreChip(remainingCount: Int) -> some View {
         Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -2667,12 +2690,17 @@ struct RouteDetailSheet: View {
                 Image(systemName: "calendar.badge.clock")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(routeColor)
-                Text("See More")
+                Text("More")
                     .font(.custom("Helvetica-Bold", fixedSize: 12))
                     .foregroundColor(routeColor)
-                Text("+\(remainingCount)")
-                    .font(.custom("Helvetica", fixedSize: 11))
-                    .foregroundColor(routeColor.opacity(0.6))
+                Text("departures")
+                    .font(.custom("Helvetica-Bold", fixedSize: 12))
+                    .foregroundColor(routeColor)
+                if remainingCount > 0 {
+                    Text("+\(remainingCount)")
+                        .font(.custom("Helvetica", fixedSize: 11))
+                        .foregroundColor(routeColor.opacity(0.6))
+                }
                 Spacer(minLength: 0)
             }
             .frame(width: 86, height: 124)

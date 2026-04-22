@@ -198,7 +198,15 @@ struct StopDetailClient: Sendable {
 final class StopDetailViewModel {
     struct DepartureTime: Identifiable, Equatable {
         let id: String
+        /// Initial label rendered before the live countdown takes over.
+        /// When `arrivalDate` is non-nil the chip recomputes the label every
+        /// 15 s from the timestamp, so the stop-detail page stays in sync
+        /// with the route detail / row chips and never freezes on a stale
+        /// integer like "5 min" while the bus has actually moved on.
         let label: String
+        /// Wall-clock arrival time. When present, the chip computes minutes
+        /// live from this instead of using the static `label`.
+        let arrivalDate: Date?
         let isRealtime: Bool
         let isImminent: Bool
         let isAlert: Bool
@@ -559,18 +567,24 @@ final class StopDetailViewModel {
 
     private nonisolated static func busDepartureTime(for arrival: BusArrival) -> DepartureTime? {
         let label: String
+        let arrivalDate: Date?
         if let eta = arrival.expectedArrival {
             let minutes = max(0, Int(ceil(eta.timeIntervalSinceNow / 60.0)))
             label = minutes <= 0 ? "Now" : "\(minutes) min"
+            arrivalDate = eta
         } else if !arrival.statusText.isEmpty {
             label = arrival.statusText
+            arrivalDate = nil
         } else {
             return nil
         }
 
+        // Use a stable id (NOT including the label) so SwiftUI keeps the
+        // same chip identity as the live countdown updates each minute.
         return DepartureTime(
-            id: "\(arrival.id)-\(label)",
+            id: arrival.id,
             label: label,
+            arrivalDate: arrivalDate,
             isRealtime: arrival.isRealtime,
             isImminent: label == "Now",
             isAlert: false,
@@ -595,9 +609,15 @@ final class StopDetailViewModel {
             || statusLower.contains("delay")
             || statusLower.contains("late")
 
+        // Cancelled trains have no live countdown — keep the static "Skipped".
+        // Otherwise use `estimatedTime` so the chip recomputes minutes live
+        // and never freezes on a stale `minutesAway` integer.
+        let arrivalDate: Date? = isCancelled ? nil : arrival.estimatedTime
+
         return DepartureTime(
-            id: "\(arrival.id)-\(label)",
+            id: arrival.id,
             label: label,
+            arrivalDate: arrivalDate,
             isRealtime: !isScheduled,
             isImminent: label == "Now",
             isAlert: isAlert,
