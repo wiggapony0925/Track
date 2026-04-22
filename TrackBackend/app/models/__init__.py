@@ -444,9 +444,44 @@ class NearbyTransitArrival(BaseModel):
             "'Limited', 'Select Bus Service', 'Express')."
         ),
     )
+    service_variant: str = Field(
+        "unknown",
+        description=(
+            "Normalised typed service variant for UI pill rendering: "
+            "'local' | 'limited' | 'express' | 'sbs' | 'super_express' | "
+            "'shuttle' | 'unknown'. Single source of truth across modes."
+        ),
+    )
+    variant_label: str | None = Field(
+        None,
+        description=(
+            "Optional override label for the variant pill when the enum's "
+            "default text doesn't capture useful context (e.g. "
+            "'Super Express via Madison Av')."
+        ),
+    )
 
     def model_post_init(self, __context: Any) -> None:
         """Backfill brand metadata so every arrival carries the correct UI color."""
+        # ── Service-variant classification ──
+        # Done first so the variant is set even when color_hex was passed
+        # in by the caller (which short-circuits the rest of this hook).
+        if not self.service_variant or self.service_variant == "unknown":
+            try:
+                from app.services.transit.service_variant import (
+                    classify_variant,
+                    derive_display_label,
+                )
+                variant = classify_variant(self)
+                self.service_variant = variant.value
+                if not self.variant_label:
+                    self.variant_label = derive_display_label(variant, self)
+            except Exception:
+                # Defensive: never let model construction fail because of
+                # variant classification — the field already defaults to
+                # 'unknown' which is a safe sentinel.
+                pass
+
         if self.color_hex:
             return
 
@@ -520,6 +555,25 @@ class DirectionArrivals(BaseModel):
     direction: str = Field(..., description="Direction identifier (e.g. '0', '1').")
     direction_label: str = Field(
         "", description="Human-readable label (e.g. 'Northbound', 'Eastbound')."
+    )
+    direction_id: str | None = Field(
+        None,
+        description=(
+            "Compass direction code (N/S/E/W) extracted from the GTFS "
+            "trip_id. Used by the client to group branch tabs (e.g. "
+            "Inwood-bound vs Lefferts-bound vs Far Rockaway-bound A trains "
+            "all share direction_id='S'). None for non-subway feeds."
+        ),
+    )
+    branch_id: str | None = Field(
+        None,
+        description=(
+            "Stable identifier for a *branch* within a direction. When two "
+            "or more buckets share the same direction_id but go to "
+            "distinct termini (A train: Inwood / Lefferts / Far Rockaway) "
+            "each bucket gets a unique branch_id. None when the route has "
+            "a single terminus per direction."
+        ),
     )
     arrivals: list[NearbyTransitArrival] = Field(
         ..., description="Upcoming arrivals in this direction."

@@ -24,6 +24,14 @@ final class SheetNavigator {
     
     /// Navigate to a new page by pushing it onto the stack
     func navigate(to page: SheetPage) {
+        // Route detail is rendered in its own overlay (HomeView) with its
+        // own move/opacity transition, so animating the stack mutation
+        // here just adds a redundant 180ms ease that delays the overlay
+        // appearing.  Other pages still get the cross-fade transition.
+        if case .routeDetail = page {
+            pageStack.append(page)
+            return
+        }
         withAnimation(.easeOut(duration: 0.18)) {
             pageStack.append(page)
         }

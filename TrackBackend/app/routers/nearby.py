@@ -1651,6 +1651,24 @@ def _is_fallback_direction_key(direction: str) -> bool:
     )
 
 
+def _subway_direction_from_trip(trip_id: str | None) -> str | None:
+    """Extract the GTFS direction code (N/S/E/W) from an MTA subway trip_id.
+
+    MTA subway trip_ids embed the direction immediately after a ``..``
+    delimiter, e.g. ``080350_7..N``, ``AFA24GEN-A089-Sunday-00_000600_A..N65R``.
+    The character right after ``..`` is the GTFS ``direction_id`` letter.
+    Returns ``None`` for trip_ids that don't match the pattern (commuter
+    rail, buses, malformed feeds).
+    """
+    if not trip_id:
+        return None
+    idx = trip_id.find("..")
+    if idx < 0 or idx + 2 >= len(trip_id):
+        return None
+    ch = trip_id[idx + 2].upper()
+    return ch if ch in {"N", "S", "E", "W"} else None
+
+
 def _direction_label(
     direction: str, arrivals: list[NearbyTransitArrival] | None = None
 ) -> str:
@@ -2052,6 +2070,117 @@ def _group_arrivals(
             canonical_id = base if base and a.mode == "subway" else a.route_id
             route_meta[merge_key] = (a.mode, merge_display, canonical_id)
 
+    # ── Collapse duplicate direction buckets for express-merged routes ──
+    # Subway routes that absorb express variants (e.g. 7 + 7X, 6 + 6X,
+    # F + FX) often see two different destination strings for the same
+    # physical direction — the local route advertises the long-form
+    # terminal ("Flushing-Main St") while the express variant uses the
+    # short name ("Flushing").  Bucketing on `a.direction` keys those as
+    # separate buckets and the iOS picker ends up with 4 tabs (N-local,
+    # ── Hybrid direction grouping for subway routes ─────────────────────
+    # The raw `a.direction` headsign is a noisy bucket key:
+    #   - Express variants emit a different headsign than the local
+    #     route ("Flushing" vs "Flushing-Main St" on the 7).
+    #   - Branched routes emit multiple distinct headsigns for the SAME
+    #     compass direction ("Inwood-207 St" stays N, but Lefferts and
+    #     Far Rockaway both go S on the A).
+    #
+    # We re-bucket subway arrivals using GTFS direction_id (N/S/E/W,
+    # extracted from the trip_id) as the primary axis, then cluster the
+    # arrivals inside each direction by *terminus similarity* (see
+    # `app.services.transit.headsign_similarity`):
+    #   - 1 cluster  → 1 merged tab  (collapses "Flushing" ≈ "Flushing-Main St")
+    #   - N clusters → N branch tabs (keeps Inwood/Lefferts/Far Rockaway split)
+    #
+    # `bucket_meta` carries direction_id + branch_id per bucket through to
+    # the build pass below, where they're attached to DirectionArrivals.
+    from app.services.transit.headsign_similarity import (
+        cluster_arrivals_by_terminus,
+    )
+
+    # merge_key → bucket_key → (direction_id, branch_id)
+    bucket_meta: dict[str, dict[str, tuple[str | None, str | None]]] = defaultdict(dict)
+
+    for _mk, _dir_map in list(by_route.items()):
+        if route_meta.get(_mk, (None,))[0] != "subway":
+            continue
+
+        # Flatten all arrivals for this route then re-bucket from scratch.
+        _all_arrivals: list[NearbyTransitArrival] = []
+        for _arrs in _dir_map.values():
+            _all_arrivals.extend(_arrs)
+        if not _all_arrivals:
+            continue
+
+        # Group arrivals by GTFS direction_id (N/S/E/W).  Arrivals whose
+        # trip_id can't be parsed fall into the special bucket "?" so we
+        # don't lose them — they keep their raw headsign as the bucket key.
+        _by_nsew: dict[str, list[NearbyTransitArrival]] = defaultdict(list)
+        _unresolved: list[NearbyTransitArrival] = []
+        for _arr in _all_arrivals:
+            _nsew = _subway_direction_from_trip(_arr.trip_id)
+            if _nsew:
+                _by_nsew[_nsew].append(_arr)
+            else:
+                _unresolved.append(_arr)
+
+        # Replace the existing dir_map with the new bucketing.
+        _new_dir_map: dict[str, list[NearbyTransitArrival]] = {}
+
+        for _nsew, _arrs in _by_nsew.items():
+            # Cluster arrivals by terminus to detect genuine branches.
+            _clusters = cluster_arrivals_by_terminus(_arrs, key="destination")
+            _local_upper = route_meta[_mk][1].upper()
+
+            for _cluster_idx, _cluster in enumerate(_clusters):
+                # Pick the bucket key from the local (non-express) variant
+                # when present so the user sees the canonical headsign.
+                # Tie-break: longer headsign wins (more descriptive).
+                def _key_score(_a: NearbyTransitArrival, _lu: str = _local_upper) -> tuple[int, int]:
+                    _is_local = _display_name(_a.route_id).upper() == _lu
+                    _hs_len = len(_a.destination or _a.direction or "")
+                    return (0 if _is_local else 1, -_hs_len)
+
+                _winner = min(_cluster, key=_key_score)
+                _bucket_key = (_winner.destination or _winner.direction or "").strip()
+                if not _bucket_key:
+                    _bucket_key = f"{_nsew}-{_cluster_idx}"
+
+                # Avoid key collisions across direction_ids (rare but
+                # possible if an N-bound and an S-bound headsign happen
+                # to match — never seen in practice).
+                _final_key = _bucket_key
+                _suffix = 2
+                while _final_key in _new_dir_map:
+                    _final_key = f"{_bucket_key} ({_suffix})"
+                    _suffix += 1
+
+                _new_dir_map[_final_key] = _cluster
+                # Only assign a branch_id when this direction has multiple
+                # branches; single-branch directions get None so the
+                # client renders compass tabs without branch chips.
+                _branch_id: str | None = None
+                if len(_clusters) > 1:
+                    _branch_id = f"{_nsew}-{_cluster_idx}"
+                bucket_meta[_mk][_final_key] = (_nsew, _branch_id)
+
+            if len(_clusters) > 1:
+                TrackLogger.debug(
+                    f"Split {route_meta[_mk][1]} {_nsew}-bound into "
+                    f"{len(_clusters)} branch(es): "
+                    f"{[(c[0].destination or c[0].direction) for c in _clusters]}"
+                )
+            elif len(_arrs) > len(_clusters[0] if _clusters else []):
+                pass  # all merged into single bucket — no log noise
+
+        # Preserve unresolved arrivals (rare) under their original keys.
+        for _arr in _unresolved:
+            _key = _arr.direction or "Unknown"
+            _new_dir_map.setdefault(_key, []).append(_arr)
+
+        by_route[_mk] = defaultdict(list, _new_dir_map)
+    # ────────────────────────────────────────────────────────────────────
+
     groups: list[GroupedNearbyTransit] = []
     single_direction_before = 0
     single_direction_after = 0
@@ -2142,10 +2271,15 @@ def _group_arrivals(
             arrivals = deduped  # noqa: PLW2901
             # ─────────────────────────────────────────────────────────────
 
+            _dir_id, _branch_id = bucket_meta.get(merge_key, {}).get(
+                direction, (None, None)
+            )
             directions.append(
                 DirectionArrivals(
                     direction=direction,
                     direction_label=_direction_label(direction, arrivals),
+                    direction_id=_dir_id,
+                    branch_id=_branch_id,
                     arrivals=arrivals,
                 )
             )

@@ -30,6 +30,13 @@ struct ArrivalChipData: Identifiable {
     /// (A, B, D, E, 2-5, N, Q, Z, 6X, 7X, FX) and SBS/express/limited buses.
     /// Falls back to client-side detection for backward compat.
     var isExpressFromServer: Bool = false
+    /// Typed service variant for pill rendering. When `.showsPill` is
+    /// true the chip renders the `ServiceVariantPill` and suppresses
+    /// the legacy "Exp" diamond.
+    var serviceVariant: ServiceVariant = .unknown
+    /// Optional override label for the variant pill (e.g.
+    /// "Super Exp via Madison Av").
+    var variantLabel: String? = nil
 
     /// Express subway variants end in "X" (6X, 7X, FX).
     private static let expressVariants: Set<String> = ["6X", "7X", "FX"]
@@ -119,7 +126,15 @@ struct ArrivalChipView: View {
         VStack(spacing: 0) {
             accentBar
             statusTag
-            if chip.isExpress {
+            if chip.serviceVariant.showsPill {
+                ServiceVariantPill(
+                    variant: chip.serviceVariant,
+                    customLabel: chip.variantLabel,
+                    routeColor: chipAccent,
+                    isCompact: !isFirst
+                )
+                .padding(.top, 2)
+            } else if chip.isExpress {
                 expressIndicator
             }
             Spacer(minLength: 6)

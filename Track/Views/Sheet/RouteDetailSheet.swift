@@ -95,6 +95,12 @@ struct RouteDetailSheet: View {
     /// Which content tab is active: arrivals, departures, or alerts.
     @State private var selectedTab: RouteDetailTab = .stops
 
+    /// Optional external tab-selection trigger.  HomeView writes a
+    /// non-nil value when the map's route-banner alert pill is
+    /// tapped; the sheet observes the change, switches `selectedTab`,
+    /// then clears the binding so subsequent taps still fire.
+    @Binding var tabRequest: RouteDetailTab?
+
     /// Current panel drag offset, expressed as how far the panel is
     /// pushed DOWN from its fully-expanded position.
     ///   0          → fully expanded
@@ -244,6 +250,7 @@ struct RouteDetailSheet: View {
     enum RouteDetailTab: String, CaseIterable {
         case stops = "Stops"
         case departures = "Departures"
+        case alerts = "Alerts"
     }
 
     init(
@@ -262,6 +269,7 @@ struct RouteDetailSheet: View {
         elevatorOutages: [ElevatorStatus] = [],
         weatherSnapshot: WeatherSnapshot? = nil,
         initialTab: RouteDetailTab? = nil,
+        tabRequest: Binding<RouteDetailTab?> = .constant(nil),
         isSheetExpanded: Bool = false,
         cameraPosition: Binding<TrackCameraPosition> = .constant(.automatic),
         currentLocation: CLLocationCoordinate2D? = nil,
@@ -295,6 +303,7 @@ struct RouteDetailSheet: View {
         self.elevatorOutages = elevatorOutages
         self.weatherSnapshot = weatherSnapshot
         self._selectedTab = State(initialValue: initialTab ?? .stops)
+        self._tabRequest = tabRequest
         self.onTrack = onTrack
         self.isTracking = isTracking
         self.isTrackingAny = isTrackingAny
@@ -430,6 +439,8 @@ struct RouteDetailSheet: View {
             lostAndFoundPrompt
         case .departures:
             arrivalsList
+        case .alerts:
+            alertsList
         }
     }
 
@@ -517,15 +528,10 @@ struct RouteDetailSheet: View {
             let expandProgress = 1 - panelTranslation / max(range, 1)
 
             ZStack(alignment: .top) {
-                // ── X button — always visible, top-right, directly under banner ──
-                // Safe area is already respected so we only offset from safe-area top.
-                // Banner ≈ 8pt top pad + ~78pt body = ~86pt. 8pt gap → 94pt.
-                HStack {
-                    Spacer()
-                    closeRouteButton
-                }
-                .padding(.top, 94)
-                .padding(.horizontal, AppTheme.Layout.margin)
+                // NOTE: The close X has moved to MapControlsOverlay's route
+                // banner (top-right corner), so we no longer render one
+                // here — having two visible X buttons stacked vertically
+                // was redundant.  The recenter button stays put.
 
                 // ── Center button — fades smoothly as panel expands ──
                 if isSheetExpanded {
@@ -533,7 +539,7 @@ struct RouteDetailSheet: View {
                         Spacer()
                         recenterRouteButton
                     }
-                    .padding(.top, 146) // 94 + 42 (X height) + 10 gap
+                    .padding(.top, 94)
                     .padding(.horizontal, AppTheme.Layout.margin)
                     .opacity(max(1.0 - expandProgress * 2.5, 0))
                     .allowsHitTesting(expandProgress < 0.3)
@@ -571,6 +577,16 @@ struct RouteDetailSheet: View {
                 // Keep current state proportionally valid when geometry changes.
                 if panelRestingOffset > newRange { panelRestingOffset = newRange }
                 if panelDragOffset > newRange { panelDragOffset = newRange }
+            }
+            .onChange(of: tabRequest) { _, newValue in
+                // External tab switch (e.g. tapping the alert pill on the
+                // map banner).  Apply, then clear so subsequent taps fire
+                // even if the requested tab matches the current one.
+                guard let requested = newValue else { return }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    selectedTab = requested
+                }
+                DispatchQueue.main.async { tabRequest = nil }
             }
         }
     }
@@ -1205,14 +1221,10 @@ struct RouteDetailSheet: View {
             .animation(.easeInOut(duration: 0.3), value: weatherSnapshot != nil)
     }
 
-    private var routeHeaderActionRail: some View {
-        VStack(spacing: 10) {
-            closeRouteButton
-            if isSheetExpanded {
-                recenterRouteButton
-            }
-        }
-    }
+    // NOTE: `routeHeaderActionRail` and `closeRouteButton` were removed —
+    // the close X now lives on the MapControlsOverlay route banner so we
+    // never have two X buttons on screen.  `recenterRouteButton` is still
+    // rendered directly by the panel's ZStack (see body).
 
     private var recenterRouteButton: some View {
         Button {
@@ -1291,20 +1303,9 @@ struct RouteDetailSheet: View {
         .accessibilityLabel(isFavorited ? "Remove from favorites" : "Add to favorites")
     }
 
-    private var closeRouteButton: some View {
-        Button {
-            onDismiss?()
-        } label: {
-            actionCircle(
-                icon: "xmark",
-                iconColor: AppTheme.Colors.textSecondary,
-                fill: AnyShapeStyle(AppTheme.Gradients.controlSurface),
-                borderColor: AppTheme.Colors.borderSubtle,
-                size: 42
-            )
-        }
-        .accessibilityLabel("Close")
-    }
+    // NOTE: `closeRouteButton` removed — the close X is now provided by
+    // MapControlsOverlay's route banner (top-right) so we don't render
+    // two X buttons.
 
     // MARK: - Action Circle Button
 
@@ -2318,7 +2319,9 @@ struct RouteDetailSheet: View {
             vehicleId: arrival.vehicleId,
             tripId: arrival.tripId,
             routeId: arrival.routeId,
-            isExpressFromServer: arrival.isExpress
+            isExpressFromServer: arrival.isExpress,
+            serviceVariant: arrival.serviceVariant,
+            variantLabel: arrival.variantLabel
         )
     }
 
@@ -3263,7 +3266,7 @@ struct RouteDetailSheet: View {
 
     // MARK: - Content Tab Picker
 
-    /// Horizontal pill-style picker for Stops / Departures tabs.
+    /// Horizontal pill-style picker for Stops / Departures / Alerts tabs.
     private var contentTabPicker: some View {
         let tabs = RouteDetailTab.allCases.map { tab -> PillTab in
             let badge: Int = {
@@ -3275,6 +3278,8 @@ struct RouteDetailSheet: View {
                     ).count ?? 0
                 case .departures:
                     return cachedDepartureCount
+                case .alerts:
+                    return routeServiceAlerts.count
                 }
             }()
             return PillTab(
@@ -3300,6 +3305,33 @@ struct RouteDetailSheet: View {
         switch tab {
         case .stops: return "mappin.and.ellipse"
         case .departures: return "arrow.up.right.circle.fill"
+        case .alerts: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    // MARK: - Alerts List
+
+    /// Active service alerts that affect this route, deduped.  Reuses
+    /// the same matching logic the map banner uses (`routeId` + display
+    /// name on `.matching(routeId:mode:)`) so what's summarized in the
+    /// banner matches exactly what's listed here.
+    private var routeServiceAlerts: [TransitAlert] {
+        let byId = serviceAlerts.matching(routeId: group.routeId, mode: group.mode)
+        let byName = serviceAlerts.matching(routeId: group.displayName, mode: group.mode)
+        var seen = Set<String>()
+        return (byId + byName).filter { seen.insert($0.id).inserted }
+    }
+
+    /// Renders the Alerts tab content — either the full
+    /// `RouteAlertsSection` (with expandable rows + inline route
+    /// badges via `AlertRichText`) or an All-Clear empty state.
+    @ViewBuilder
+    private var alertsList: some View {
+        let alerts = routeServiceAlerts
+        if alerts.isEmpty {
+            NoAlertsEmptyState(routeDisplayName: group.displayName)
+        } else {
+            RouteAlertsSection(alerts: alerts)
         }
     }
 

@@ -50,6 +50,15 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
     var colorHex: String? = nil
     /// Resolved backend bus service type for bus arrivals.
     var busServiceType: String? = nil
+    /// Typed service variant for pill rendering.  Decoded from the
+    /// backend's lowercase token ("local" | "limited" | "express" |
+    /// "sbs" | "super_express" | "shuttle" | "unknown").  Defaults to
+    /// `.unknown` when missing so old API payloads keep decoding.
+    var serviceVariant: ServiceVariant = .unknown
+    /// Optional override label for the variant pill (e.g. "Super Express
+    /// via Madison Av").  When nil, the pill uses
+    /// `serviceVariant.displayLabel`.
+    var variantLabel: String? = nil
 
     var isBus: Bool { mode == "bus" }
     var isLIRR: Bool { mode == "lirr" }
@@ -96,6 +105,8 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         case isExpress = "is_express"
         case colorHex = "color_hex"
         case busServiceType = "bus_service_type"
+        case serviceVariant = "service_variant"
+        case variantLabel = "variant_label"
     }
 
     /// Memberwise initializer (restores the auto-generated one that the
@@ -119,7 +130,9 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         isCancelled: Bool = false,
         isExpress: Bool = false,
         colorHex: String? = nil,
-        busServiceType: String? = nil
+        busServiceType: String? = nil,
+        serviceVariant: ServiceVariant = .unknown,
+        variantLabel: String? = nil
     ) {
         self.routeId = routeId
         self.stopName = stopName
@@ -140,6 +153,8 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         self.isExpress = isExpress
         self.colorHex = colorHex
         self.busServiceType = busServiceType
+        self.serviceVariant = serviceVariant
+        self.variantLabel = variantLabel
     }
 
     init(from decoder: Decoder) throws {
@@ -163,6 +178,8 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         isExpress = try c.decodeIfPresent(Bool.self, forKey: .isExpress) ?? false
         colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
         busServiceType = try c.decodeIfPresent(String.self, forKey: .busServiceType)
+        serviceVariant = try c.decodeIfPresent(ServiceVariant.self, forKey: .serviceVariant) ?? .unknown
+        variantLabel = try c.decodeIfPresent(String.self, forKey: .variantLabel)
     }
 }
 
@@ -174,6 +191,19 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
 
     let direction: String
     let directionLabel: String?
+    /// Compass direction code (N/S/E/W) extracted from the GTFS
+    /// `trip_id` by the backend. Used to group branch tabs that share
+    /// a physical direction (e.g. A train: Inwood-bound = "N";
+    /// Lefferts/Far Rockaway/Rockaway Park = "S").  `nil` for non-
+    /// subway feeds (bus / commuter rail).
+    let directionId: String?
+    /// Stable identifier for a branch within a direction.  Populated
+    /// only when the parent route has more than one terminus per
+    /// direction (e.g. "S-0", "S-1", "S-2" for the A train's three
+    /// southern branches).  `nil` when the route has a single terminus
+    /// per direction — the client renders compass-style tabs without
+    /// branch chips in that case.
+    let branchId: String?
     let arrivals: [NearbyTransitResponse]
 
     /// Live (non-placeholder) arrivals — filters out backend backfill entries
@@ -264,15 +294,25 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
         return vehicleKeys.count
     }
 
-    init(direction: String, directionLabel: String? = nil, arrivals: [NearbyTransitResponse]) {
+    init(
+        direction: String,
+        directionLabel: String? = nil,
+        directionId: String? = nil,
+        branchId: String? = nil,
+        arrivals: [NearbyTransitResponse]
+    ) {
         self.direction = direction
         self.directionLabel = directionLabel
+        self.directionId = directionId
+        self.branchId = branchId
         self.arrivals = arrivals
     }
 
     enum CodingKeys: String, CodingKey {
         case direction
         case directionLabel = "direction_label"
+        case directionId = "direction_id"
+        case branchId = "branch_id"
         case arrivals
     }
 }

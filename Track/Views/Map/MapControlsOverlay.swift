@@ -36,6 +36,18 @@ struct MapControlsOverlay: View {
     /// is active — dismisses the session and recenters on the user.
     var onDismissDragSearch: (() -> Void)?
 
+    /// Called when the user taps the X on the route banner — should
+    /// tear down the route detail sheet and clear the route overlay.
+    /// HomeView wires this to the same close logic used by the sheet's
+    /// own dismiss button so behavior stays consistent.
+    var onCloseRoute: (() -> Void)?
+
+    /// Called when the user taps the alert pill on the route banner
+    /// (only present when the selected route has active alerts).
+    /// HomeView wires this to switch the route-detail sheet to its
+    /// Alerts tab.
+    var onRouteAlertTapped: (() -> Void)?
+
     // MARK: - Internal State
 
     /// Tracks whether the recenter button was just tapped for the
@@ -111,10 +123,14 @@ struct MapControlsOverlay: View {
             controlDivider
 
             // ── Recenter Button ──
+            // Disabled (and dimmed) when the map is already centered on
+            // the user's location.  Re-enables the moment the user pans
+            // or zooms the camera away.
             controlButton(
                 icon: "location.fill",
                 tint: AppTheme.Colors.mtaBlue,
-                a11y: "Recenter on my location"
+                a11y: "Recenter on my location",
+                isEnabled: !isMapCenteredOnUser
             ) {
                 centerMap()
             }
@@ -147,6 +163,7 @@ struct MapControlsOverlay: View {
         icon: String,
         tint: Color,
         a11y: String,
+        isEnabled: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
         Button {
@@ -154,13 +171,15 @@ struct MapControlsOverlay: View {
         } label: {
             Image(systemName: icon)
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(tint)
+                .foregroundStyle(isEnabled ? tint : AppTheme.Colors.textSecondary.opacity(0.45))
                 .frame(width: 44, height: 40)
                 .contentShape(Rectangle())
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(IslandButtonStyle())
+        .disabled(!isEnabled)
         .accessibilityLabel(a11y)
+        .accessibilityHint(isEnabled ? "" : "Map is already centered on your location")
     }
 
     /// Hairline divider between island controls.
@@ -238,6 +257,25 @@ struct MapControlsOverlay: View {
         return AppTheme.Colors.mtaBlue
     }
 
+    /// True when the live map center is essentially the same as the
+    /// user's current GPS location (within ~60m).  Used to dim/disable
+    /// the recenter button — there's nothing to recenter to.
+    private var isMapCenteredOnUser: Bool {
+        guard let center = currentMapCenter,
+              let user = locationManager.currentLocation?.coordinate
+        else {
+            return false
+        }
+        // Skip the check when drag-search has the camera over a chosen
+        // anchor that isn't the user's GPS, or when a route is
+        // selected (the route's fit camera is what "centered" means).
+        if isDragSearchActive { return false }
+        if viewModel.selectedRouteId != nil { return false }
+        let a = CLLocation(latitude: center.latitude, longitude: center.longitude)
+        let b = CLLocation(latitude: user.latitude, longitude: user.longitude)
+        return a.distance(from: b) < 60
+    }
+
     // MARK: - Actions
 
     private func centerMap() {
@@ -313,6 +351,46 @@ struct MapControlsOverlay: View {
         return nil
     }
 
+    /// Headsign for the currently selected direction — the single destination
+    /// the user is heading toward (e.g. "34 St-Hudson Yards" instead of the
+    /// full terminal pair).  Falls back to the second terminal of the pair,
+    /// then the last stop name.
+    private var bannerDestinationHeadsign: String? {
+        if let shape = viewModel.routeShape {
+            let idx = viewModel.selectedDirectionIndex
+            if idx >= 0, idx < shape.directions.count {
+                let h = shape.directions[idx].headsign
+                if !h.isEmpty { return h }
+            }
+        }
+        if let pair = bannerTerminalPair {
+            return pair.1
+        }
+        return viewModel.routeShape?.stops.last?.name
+    }
+
+    /// Optional service-variant badge for the route header (Express,
+    /// SBS, Limited, School).  Returns `nil` for plain Local bus or
+    /// non-express subway so we don't clutter the header with a
+    /// redundant tag.  Reuses the shared `ServiceTypeBadge` component.
+    @ViewBuilder
+    private var bannerServiceBadge: some View {
+        if let group = viewModel.selectedGroupedRoute {
+            if group.isBus {
+                if let badge = ServiceTypeBadge.bus(serviceType: group.busServiceType) {
+                    badge
+                }
+            } else if !group.isCommuterRail {
+                // Subway: flag express variants like <6>, <7>, FX.
+                let rid = group.displayName.uppercased()
+                let isExpress = ["6X", "7X", "FX"].contains(rid)
+                if let badge = ServiceTypeBadge.subway(isExpress: isExpress) {
+                    badge
+                }
+            }
+        }
+    }
+
     /// Route alerts matching the selected route.
     private var bannerRouteAlerts: [TransitAlert] {
         guard let g = viewModel.selectedGroupedRoute else { return [] }
@@ -324,85 +402,180 @@ struct MapControlsOverlay: View {
 
     /// Severity color for the most urgent route alert.
     private var bannerAlertColor: Color {
-        bannerRouteAlerts.contains { $0.severity == "severe" }
+        bannerHasSevereAlert
             ? AppTheme.Colors.alertRed
             : AppTheme.Colors.warningYellow
     }
 
+    /// Whether any of the route's active alerts is marked severe.
+    private var bannerHasSevereAlert: Bool {
+        bannerRouteAlerts.contains { $0.severity == "severe" }
+    }
+
     // MARK: - Route Banner View
 
+    /// Free-form route header that sits above the map.  A subtle
+    /// `ultraThinMaterial` fog tinted with the route color provides
+    /// just enough contrast for the text to read against any map
+    /// background — without the heavy white card or per-glyph
+    /// drop-shadows the previous design relied on.  A red close X
+    /// floats in the top-right corner (matching the Trip Results
+    /// dismiss button) so the user can always tear the route down.
     private var selectedRouteBanner: some View {
-        VStack(spacing: 0) {
-            // ── Route header ──
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 12) {
                 if let group = viewModel.selectedGroupedRoute {
+                    // Large bubble badge — drop shadow gives it lift
+                    // against the live map without needing a card.
                     RouteBadge(
                         routeID: group.displayName.isEmpty
                             ? stripMTAPrefix(group.routeId)
                             : group.displayName,
-                        size: .medium,
+                        size: .custom(56, 26),
                         hexColor: group.colorHex,
                         mode: group.mode,
                         busServiceType: group.busServiceType
                     )
+                    .shadow(color: selectedRouteColor.opacity(0.45), radius: 10, y: 4)
+                    .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(bannerModeLabel)
-                        .font(.system(size: 10, weight: .heavy, design: .rounded))
-                        .foregroundStyle(selectedRouteColor)
-                        .tracking(0.5)
-
-                    if let pair = bannerTerminalPair {
-                        HStack(spacing: 3) {
-                            Text(pair.0)
-                                .lineLimit(1)
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 6, weight: .bold))
-                                .foregroundStyle(AppTheme.Colors.textTertiary)
-                            Text(pair.1)
-                                .lineLimit(1)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 5) {
+                        bannerServiceBadge
+                        if bannerLiveCount > 0 {
+                            liveIndicator
                         }
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                    }
+
+                    if let dest = bannerDestinationHeadsign {
+                        HStack(alignment: .firstTextBaseline, spacing: 5) {
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                                .foregroundStyle(selectedRouteColor)
+                            Text(dest)
+                                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                                .foregroundStyle(selectedRouteColor)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .minimumScaleFactor(0.75)
+                        }
                     } else if viewModel.routeShape == nil {
                         Text("Loading…")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundStyle(AppTheme.Colors.textTertiary)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(AppTheme.Colors.textSecondary)
                     }
                 }
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 8)
 
-                // Live vehicle indicator
-                if bannerLiveCount > 0 {
-                    liveIndicator
+                // Close X — red circle button (matches TripResultsView).
+                // Sized to match `recenterRouteButton` in RouteDetailSheet
+                // (42pt) so the right edges and centers line up cleanly
+                // when both are visible on screen.
+                if onCloseRoute != nil {
+                    Button {
+                        onCloseRoute?()
+                        HapticManager.impact(.light)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .frame(width: 42, height: 42)
+                            .background {
+                                Circle()
+                                    .fill(AppTheme.Colors.alertRed)
+                                    .overlay(
+                                        Circle().strokeBorder(
+                                            .white.opacity(0.18), lineWidth: 0.8)
+                                    )
+                            }
+                            .shadow(color: AppTheme.Colors.alertRed.opacity(0.34), radius: 8, y: 3)
+                            .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+                    }
+                    .buttonStyle(IslandButtonStyle())
+                    .accessibilityLabel("Close route")
                 }
             }
-            .padding(.horizontal, 10)
+            .padding(.leading, 10)
+            .padding(.trailing, 10)
             .padding(.vertical, 8)
+            .background {
+                // Hand-drawn fog — several offset blurred blobs of
+                // material + faint route tint, layered so the
+                // silhouette is irregular (not a rectangle, not an
+                // oval).  Like smudging fog onto the map with a
+                // pencil.  No border, no card, no defined edge.
+                ZStack {
+                    Ellipse()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 320, height: 110)
+                        .offset(x: -30, y: -4)
+                        .blur(radius: 18)
+                    Ellipse()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 220, height: 90)
+                        .offset(x: 60, y: 10)
+                        .blur(radius: 22)
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .frame(width: 140, height: 140)
+                        .offset(x: -90, y: 6)
+                        .blur(radius: 24)
+                    // Route-color smudge — barely there, just enough
+                    // to color the fog with the line's identity.
+                    Ellipse()
+                        .fill(selectedRouteColor.opacity(0.18))
+                        .frame(width: 260, height: 90)
+                        .offset(x: -10, y: 0)
+                        .blur(radius: 28)
+                    Ellipse()
+                        .fill(selectedRouteColor.opacity(0.12))
+                        .frame(width: 160, height: 70)
+                        .offset(x: 70, y: 14)
+                        .blur(radius: 24)
+                }
+                .allowsHitTesting(false)
+            }
 
-            // ── Alert strip ──
+            // Alert strip — tappable summary pill that jumps to the
+            // route-detail Alerts tab.  Uses MTA Mercury's `alertType`
+            // ("Delays", "Suspended", "Reduced Service") for the label
+            // so the banner stays one-glance — the full text lives in
+            // the alerts tab.
             if let topAlert = bannerRouteAlerts.first {
-                alertStrip(
-                    title: topAlert.title,
-                    color: bannerAlertColor,
-                    extraCount: bannerRouteAlerts.count - 1
+                Button {
+                    onRouteAlertTapped?()
+                    HapticManager.impact(.medium)
+                } label: {
+                    alertStrip(
+                        summary: alertSummary(for: topAlert),
+                        color: bannerAlertColor,
+                        extraCount: bannerRouteAlerts.count - 1,
+                        isSevere: bannerHasSevereAlert
+                    )
+                }
+                .buttonStyle(IslandButtonStyle())
+                .accessibilityLabel(
+                    "\(bannerRouteAlerts.count) service \(bannerRouteAlerts.count == 1 ? "alert" : "alerts"). Tap for details."
                 )
             } else if let inlineAlert = viewModel.selectedGroupedRoute?.alerts.first {
-                alertStrip(
-                    title: inlineAlert.title,
-                    color: AppTheme.Colors.warningYellow,
-                    extraCount: 0
-                )
+                Button {
+                    onRouteAlertTapped?()
+                    HapticManager.impact(.light)
+                } label: {
+                    alertStrip(
+                        summary: inlineAlert.alertType ?? "Alert",
+                        color: AppTheme.Colors.warningYellow,
+                        extraCount: 0,
+                        isSevere: false
+                    )
+                }
+                .buttonStyle(IslandButtonStyle())
+                .accessibilityLabel("Service alert. Tap for details.")
             }
         }
-        .trackOverlayGlass(
-            tint: selectedRouteColor,
-            cornerRadius: 16,
-            tintOpacity: 0.04
-        )
-        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 3)
         .transition(.asymmetric(
             insertion: .move(edge: .top).combined(with: .opacity),
             removal: .opacity
@@ -420,47 +593,102 @@ struct MapControlsOverlay: View {
                 .font(.system(size: 10, weight: .bold, design: .rounded))
                 .foregroundStyle(AppTheme.Colors.successGreen)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 7)
         .padding(.vertical, 3)
         .background {
-            Capsule()
-                .fill(AppTheme.Colors.successGreen.opacity(0.12))
+            Capsule().fill(AppTheme.Colors.successGreen.opacity(0.14))
+        }
+        .overlay {
+            Capsule().strokeBorder(AppTheme.Colors.successGreen.opacity(0.45), lineWidth: 0.6)
         }
     }
 
     /// Alert strip shown at the bottom of the route banner.
-    private func alertStrip(title: String, color: Color, extraCount: Int) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.white)
+    /// Distill an alert down to a 1-2 word category badge label.
+    /// Prefers MTA Mercury's `alertType` ("Delays",
+    /// "Planned - Suspended", "Reduced Service"…), falling back to a
+    /// keyword scan of the title so we never spill a paragraph into
+    /// the map header.
+    private func alertSummary(for alert: TransitAlert) -> String {
+        if let raw = alert.alertType?.trimmingCharacters(in: .whitespaces),
+           !raw.isEmpty {
+            // "Planned - Suspended" → "Suspended" (drop the
+            // "Planned - " prefix — the icon already conveys urgency).
+            if let dash = raw.range(of: " - ") {
+                return String(raw[dash.upperBound...])
+            }
+            return raw
+        }
+        let lower = alert.title.lowercased()
+        if lower.contains("suspend") { return "Suspended" }
+        if lower.contains("delay") { return "Delays" }
+        if lower.contains("reroute") { return "Reroute" }
+        if lower.contains("skip") || lower.contains("bypass") { return "Skipping Stops" }
+        if lower.contains("crowd") { return "Crowded" }
+        if lower.contains("weekend") { return "Weekend Work" }
+        if lower.contains("planned") { return "Planned Work" }
+        return "Alert"
+    }
 
-            Text(title)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+    private func alertStrip(
+        summary: String,
+        color: Color,
+        extraCount: Int,
+        isSevere: Bool
+    ) -> some View {
+        HStack(spacing: 6) {
+            // Icon in a tiny white halo so it pops against the colored
+            // capsule on every backdrop.
+            ZStack {
+                Circle()
+                    .fill(.white.opacity(0.22))
+                    .frame(width: 16, height: 16)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .symbolEffect(.pulse, options: .repeating, isActive: isSevere)
+            }
+
+            Text(summary.uppercased())
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .tracking(0.4)
                 .foregroundStyle(.white)
                 .lineLimit(1)
-
-            Spacer(minLength: 0)
 
             if extraCount > 0 {
                 Text("+\(extraCount)")
                     .font(.system(size: 9, weight: .heavy, design: .rounded))
                     .foregroundStyle(color)
                     .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 1)
                     .background {
-                        Capsule().fill(.white.opacity(0.9))
+                        Capsule().fill(.white.opacity(0.95))
                     }
             }
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 8, weight: .black))
+                .foregroundStyle(.white.opacity(0.85))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.leading, 5)
+        .padding(.trailing, 8)
+        .padding(.vertical, 3)
         .background {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(color.gradient)
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [color, color.opacity(0.78)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
         }
-        .padding(.horizontal, 4)
-        .padding(.bottom, 4)
+        .overlay {
+            Capsule(style: .continuous)
+                .strokeBorder(.white.opacity(0.30), lineWidth: 0.6)
+        }
+        .shadow(color: color.opacity(0.55), radius: 8, y: 3)
+        .shadow(color: .black.opacity(0.22), radius: 2, y: 1)
     }
 }
 

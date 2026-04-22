@@ -206,14 +206,44 @@ struct DirectionPickerView: View {
 
 // MARK: - Service Type Badge (Standalone)
 
-/// Reusable service-type badge (Express / Local / Mixed) with icon.
+/// Reusable service-type badge — renders a compact pill describing the
+/// route's service variant (Express subway, SBS / Limited / Express bus,
+/// Local, or a Mixed Express+Local direction).  Used by:
+///   • `DirectionPickerView` to label a direction's express mix
+///   • `MapControlsOverlay` route header to flag SBS / Express / Limited
+///
+/// Returns `nil` for unremarkable defaults (e.g. plain Local bus or
+/// non-express subway) so callers can omit the pill entirely instead
+/// of showing a redundant "Local" tag next to the route badge.
 struct ServiceTypeBadge: View {
     let serviceType: String
+
+    /// Convenience init for a subway route — passes "express" when the
+    /// route is an express variant (e.g. `<6>`, `<7>`, FX), otherwise
+    /// returns nil-equivalent ("local") which the caller can filter on.
+    static func subway(isExpress: Bool) -> ServiceTypeBadge? {
+        isExpress ? ServiceTypeBadge(serviceType: "express") : nil
+    }
+
+    /// Convenience init for a bus route — returns nil for plain "Local"
+    /// (the most common case) so the route badge stands on its own.
+    static func bus(serviceType: String?) -> ServiceTypeBadge? {
+        guard let svc = serviceType?.trimmingCharacters(in: .whitespaces),
+              !svc.isEmpty else { return nil }
+        if svc.lowercased() == "local" { return nil }
+        return ServiceTypeBadge(serviceType: svc)
+    }
 
     private var resolved: (label: String, icon: String, color: Color) {
         switch serviceType.lowercased() {
         case "express":
             return ("Express", "bolt.fill", AppTheme.Colors.successGreen)
+        case "select bus service", "sbs":
+            return ("SBS", "bolt.horizontal.fill", AppTheme.BusColors.sbsCyan)
+        case "limited":
+            return ("Limited", "forward.fill", AppTheme.BusColors.limitedPurple)
+        case "school":
+            return ("School", "graduationcap.fill", AppTheme.BusColors.schoolOrange)
         case "local":
             return ("Local", "circle.fill", AppTheme.Colors.textSecondary)
         case "mixed":

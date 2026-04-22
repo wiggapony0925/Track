@@ -59,6 +59,12 @@ struct HomeView: View {
     /// The settled center after a drag-search debounce fires. `nil` while
     /// the user is still panning — the radius circles hide until this is set.
     @State private var dragSearchSettledCenter: CLLocationCoordinate2D?
+
+    /// External tab-selection trigger for the route detail sheet.
+    /// Set to `.alerts` when the user taps the alert pill on the map's
+    /// route banner — the sheet observes the change and switches tabs,
+    /// then nils it back out.
+    @State private var routeDetailTabRequest: RouteDetailSheet.RouteDetailTab?
     
     // Live walking update state — recalculates nearest stop + walking route
     // as user walks while a route detail sheet is open.
@@ -110,8 +116,14 @@ struct HomeView: View {
     }
 
     private var bottomSheetPresentation: Binding<Bool> {
+        // The route detail overlay is a full-screen panel that visually
+        // covers the bottom sheet, so we keep the sheet mounted in the
+        // view tree instead of toggling it off.  Toggling caused two
+        // cascading transitions (sheet slides DOWN ~320ms while the
+        // overlay slides UP ~250ms) that made tapping a row feel
+        // sluggish.  Now only the overlay animates in.
         Binding(
-            get: { isActive && !isRouteDetailOverlayPresented },
+            get: { isActive },
             set: { _ in }
         )
     }
@@ -213,7 +225,18 @@ struct HomeView: View {
                         },
                         dragToSearchEnabled: $dragToSearchEnabled,
                         isDragSearchActive: isDragSearchActive,
-                        onDismissDragSearch: { dismissDragSearch() }
+                        onDismissDragSearch: { dismissDragSearch() },
+                        onCloseRoute: { closeRouteDetail() },
+                        onRouteAlertTapped: {
+                            // Tapping the alert pill on the route banner
+                            // switches the route-detail sheet to its
+                            // Alerts tab and expands the panel so the
+                            // alerts list is fully visible.
+                            routeDetailTabRequest = .alerts
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                sheetDetent = .large
+                            }
+                        }
                     )
 
                 // MARK: - Drag-to-Search Overlay
@@ -288,7 +311,7 @@ struct HomeView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .animation(.spring(response: 0.25, dampingFraction: 0.9), value: isRouteDetailOverlayPresented)
+            .animation(.spring(response: 0.30, dampingFraction: 0.88), value: isRouteDetailOverlayPresented)
             .onChange(of: isRouteDetailOverlayPresented) { _, isPresented in
                 if isPresented {
                     sheetHeightObserver.report(0)
@@ -587,13 +610,14 @@ struct HomeView: View {
                 sheetDetent: $sheetDetent
             )
             
-        case .routeDetail(let group, _, let initialTab):
-            routeDetailScreen(
-                routeGroup: group,
-                initialTab: initialTab,
-                isExpanded: sheetDetent == .large,
-                collapseSheetOnFocus: true
-            )
+        case .routeDetail:
+            // The route detail screen is rendered as a full-screen overlay
+            // (see `activeRouteDetailPage` in the body) — not inside the
+            // sheet stack — so we deliberately render nothing here to
+            // avoid building the heavy RouteDetailSheet twice.  The sheet
+            // stays mounted (with its dashboard underneath) so dismissing
+            // the route detail returns to the prior page instantly.
+            EmptyView()
 
         case .stopDetail(let selection):
             StopDetailSheet(
@@ -726,6 +750,7 @@ struct HomeView: View {
             elevatorOutages: viewModel.elevatorOutages,
             weatherSnapshot: viewModel.weatherSnapshot,
             initialTab: initialTab,
+            tabRequest: $routeDetailTabRequest,
             isSheetExpanded: isExpanded,
             cameraPosition: $cameraPosition,
             currentLocation: effectiveCoord,
@@ -1033,6 +1058,32 @@ struct HomeView: View {
         viewModel.isRouteDetailPresented = false
         viewModel.selectedGroupedRoute = nil
         viewModel.clearRoute()
+    }
+
+    /// Tears down the route detail sheet and clears the route overlay
+    /// from the map.  Used by both RouteDetailSheet's own dismiss
+    /// button and the close X on `MapControlsOverlay`'s route banner
+    /// so the two paths stay in sync.
+    private func closeRouteDetail() {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            viewModel.isRouteDetailPresented = false
+            viewModel.selectedGroupedRoute = nil
+            viewModel.clearRoute()
+            sheetNavigator.popToRoot()
+        }
+
+        // Restore drag-search overlay if the user had an active
+        // search center before opening the route detail.
+        if viewModel.isSearchPinActive, let settled = dragSearchSettledCenter {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isDragSearchActive = true
+            }
+            withAnimation(HoverAnimations.fly) {
+                cameraPosition = MapCameraPresets.center(on: settled, is3D: false)
+            }
+        } else {
+            recenterOnUser()
+        }
     }
     
     private func handleLocationUpdate() {
