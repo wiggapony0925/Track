@@ -264,6 +264,23 @@ struct TrackAPI {
         cachedUserEmail = email
     }
 
+    // MARK: - Cached Access Token (Supabase JWT for backend auth)
+
+    /// Thread-safe lock protecting `cachedAccessToken`.
+    nonisolated private static let _tokenLock = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+    /// The Supabase access token forwarded by SupabaseManager after login.
+    /// Sent as `Authorization: Bearer <token>` on every backend request.
+    /// Thread-safe: reads/writes go through `_tokenLock`.
+    nonisolated(unsafe) static var cachedAccessToken: String? {
+        get { _tokenLock.withLock { $0 } }
+        set { _tokenLock.withLock { $0 = newValue } }
+    }
+
+    static func setCachedAccessToken(_ token: String?) {
+        cachedAccessToken = token
+    }
+
     // MARK: - Environment Configuration
 
     /// The active backend URL, determined by the Developer Settings in SettingsView.
@@ -348,8 +365,8 @@ struct TrackAPI {
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.timeoutInterval = timeoutSeconds
 
-        if let email = cachedUserEmail, !email.isEmpty {
-            request.setValue(email, forHTTPHeaderField: "x-user-email")
+        if let token = cachedAccessToken, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
         let start = Date()
@@ -773,8 +790,8 @@ struct TrackAPI {
         do {
             var request = URLRequest(url: url)
             request.timeoutInterval = 4
-            if let email = cachedUserEmail, !email.isEmpty {
-                request.setValue(email, forHTTPHeaderField: "x-user-email")
+            if let token = cachedAccessToken, !token.isEmpty {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse,
@@ -799,8 +816,8 @@ struct TrackAPI {
         do {
             var request = URLRequest(url: url)
             request.timeoutInterval = 5
-            if let email = cachedUserEmail, !email.isEmpty {
-                request.setValue(email, forHTTPHeaderField: "x-user-email")
+            if let token = cachedAccessToken, !token.isEmpty {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse,
@@ -1208,8 +1225,8 @@ struct TrackAPI {
                     let attemptStart = Date()
                     var request = URLRequest(url: url)
                     request.timeoutInterval = 45
-                    if let email = cachedUserEmail, !email.isEmpty {
-                        request.setValue(email, forHTTPHeaderField: "x-user-email")
+                    if let token = cachedAccessToken, !token.isEmpty {
+                        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                     }
                     let (data, response) = try await extendedSession.data(for: request)
                     let attemptElapsed = Date().timeIntervalSince(attemptStart)
@@ -1347,8 +1364,8 @@ struct TrackAPI {
                     if wasColdStart {
                         request.timeoutInterval = 25
                     }
-                    if let email = cachedUserEmail, !email.isEmpty {
-                        request.setValue(email, forHTTPHeaderField: "x-user-email")
+                    if let token = cachedAccessToken, !token.isEmpty {
+                        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                     }
 
                     let (data, response) = try await session.data(for: request)
@@ -1433,8 +1450,8 @@ struct TrackAPI {
                 request.timeoutInterval = wasColdStart ? max(timeout, 20) : timeout
                 request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-                if let email = cachedUserEmail, !email.isEmpty {
-                    request.setValue(email, forHTTPHeaderField: "x-user-email")
+                if let token = cachedAccessToken, !token.isEmpty {
+                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                 }
 
                 if let body {

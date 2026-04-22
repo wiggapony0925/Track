@@ -18,8 +18,10 @@ from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import TypeAdapter as _TypeAdapter
+
+from app.auth import AuthUser, optional_user
 
 from app.cache_config import (
     BUS_MAX_SIRI_STOPS,
@@ -937,6 +939,7 @@ async def nearby_transit_grouped(
             "Full results are returned on the next non-quick refresh."
         ),
     ),
+    user: AuthUser | None = Depends(optional_user),
 ) -> list[GroupedNearbyTransit]:
     """Return nearby arrivals grouped by route with direction sub-groups.
 
@@ -984,6 +987,8 @@ async def nearby_transit_grouped(
         radius if radius is not None else settings.app_settings.search_radius_meters
     )
     TrackLogger.location(lat, lon, "nearby/grouped")
+    if user:
+        TrackLogger.info(f"[AUTH] nearby/grouped user={user.user_id}", tag="AUTH")
 
     key = _nearby_cache_key(lat, lon, effective_radius, mode, quick=quick)
     now = _time.time()

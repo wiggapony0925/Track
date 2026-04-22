@@ -68,7 +68,9 @@ class SupabaseManager: ObservableObject {
     
     private let baseURL: URL
     private let apiKey: String
-    private var accessToken: String?
+    private var accessToken: String? {
+        didSet { TrackAPI.setCachedAccessToken(accessToken) }
+    }
 
     /// Dedicated session with a 15-second timeout (vs URLSession.shared's 60s default).
     /// Prevents Supabase calls from hanging the UI when the server is slow or unreachable.

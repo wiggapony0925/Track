@@ -62,6 +62,19 @@ class AppSettings(BaseModel):
     # SUPABASE_URL, SUPABASE_SERVICE_KEY
 
 
+# ── Supabase JWT verification ─────────────────────────────────────────────
+# The JWT secret is used by app/auth/dependencies.py to verify Supabase
+# Bearer tokens from iOS clients.  Find it in:
+#   Supabase Dashboard → Settings → API → JWT Secret
+# Set via env var SUPABASE_JWT_SECRET (never commit the actual value).
+_supabase_jwt_secret: str | None = os.environ.get("SUPABASE_JWT_SECRET") or None
+
+
+def get_supabase_jwt_secret() -> str | None:
+    """Return the Supabase JWT secret from the environment, or None if unset."""
+    return _supabase_jwt_secret
+
+
 class ApiKeys(BaseModel):
     mta_api_key: str = ""
     mta_bus_key: str = ""

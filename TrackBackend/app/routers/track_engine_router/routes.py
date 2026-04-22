@@ -6,8 +6,10 @@ import os
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
+
+from app.auth import AuthUser, optional_user, require_user
 
 from app.models.track_engine import (
     EngineCalendarEventInput,
@@ -325,17 +327,14 @@ def download_engine_schedule_artifact(request: Request) -> FileResponse:
 )
 async def search_engine_places(
     q: str = Query(..., min_length=1, description="Search query."),
-    user_id: str | None = Query(
-        None,
-        description="Stable user identifier for saved places and recents.",
-    ),
     lat: float | None = Query(None, description="Optional current latitude."),
     lon: float | None = Query(None, description="Optional current longitude."),
     limit: int = Query(12, ge=1, le=50, description="Maximum number of results."),
+    user: AuthUser | None = Depends(optional_user),
 ) -> list[EngineSearchResult]:
     results = await get_engine_service().search(
         query=q,
-        user_id=user_id,
+        user_id=str(user.user_id) if user else None,
         near_lat=lat,
         near_lon=lon,
         limit=limit,
@@ -364,7 +363,7 @@ async def search_engine_places(
     description="Returns all saved places for a user, such as Home, Work, or custom pins shown in planner shortcuts.",
 )
 def list_saved_places(
-    user_id: str = Query(..., description="Stable user identifier."),
+    user: AuthUser = Depends(require_user),
 ) -> list[EngineSavedPlace]:
     return [
         EngineSavedPlace(
@@ -380,7 +379,7 @@ def list_saved_places(
             updated_at=place.updated_at,
             last_used_at=place.last_used_at,
         )
-        for place in get_engine_service().list_saved_places(user_id)
+        for place in get_engine_service().list_saved_places(str(user.user_id))
     ]
 
 
@@ -393,9 +392,12 @@ def list_saved_places(
         "and shortcut management UI."
     ),
 )
-def upsert_saved_place(payload: EngineSavedPlaceUpsert) -> EngineSavedPlace:
+def upsert_saved_place(
+    payload: EngineSavedPlaceUpsert,
+    user: AuthUser = Depends(require_user),
+) -> EngineSavedPlace:
     place = get_engine_service().upsert_saved_place(
-        user_id=payload.user_id,
+        user_id=str(user.user_id),
         label=payload.label,
         kind=payload.kind,
         lat=payload.lat,
@@ -426,9 +428,9 @@ def upsert_saved_place(payload: EngineSavedPlaceUpsert) -> EngineSavedPlace:
 )
 def delete_saved_place(
     place_id: int,
-    user_id: str = Query(..., description="Stable user identifier."),
+    user: AuthUser = Depends(require_user),
 ) -> dict[str, str]:
-    get_engine_service().delete_saved_place(user_id, place_id)
+    get_engine_service().delete_saved_place(str(user.user_id), place_id)
     return {"status": "deleted"}
 
 
@@ -439,7 +441,7 @@ def delete_saved_place(
     description="Returns saved trip templates such as commute presets that the planner can reopen with one tap.",
 )
 def list_saved_trips(
-    user_id: str = Query(..., description="Stable user identifier."),
+    user: AuthUser = Depends(require_user),
 ) -> list[EngineSavedTrip]:
     return [
         EngineSavedTrip(
@@ -459,7 +461,7 @@ def list_saved_trips(
             updated_at=trip.updated_at,
             last_used_at=trip.last_used_at,
         )
-        for trip in get_engine_service().list_saved_trips(user_id)
+        for trip in get_engine_service().list_saved_trips(str(user.user_id))
     ]
 
 
@@ -471,9 +473,12 @@ def list_saved_trips(
         "Creates or updates a saved trip template containing origin, destination, and preferred planning constraints."
     ),
 )
-def upsert_saved_trip(payload: EngineSavedTripUpsert) -> EngineSavedTrip:
+def upsert_saved_trip(
+    payload: EngineSavedTripUpsert,
+    user: AuthUser = Depends(require_user),
+) -> EngineSavedTrip:
     trip = get_engine_service().upsert_saved_trip(
-        user_id=payload.user_id,
+        user_id=str(user.user_id),
         name=payload.name,
         origin_label=payload.origin.label,
         origin_lat=float(payload.origin.lat or 0.0),
@@ -512,9 +517,9 @@ def upsert_saved_trip(payload: EngineSavedTripUpsert) -> EngineSavedTrip:
 )
 def delete_saved_trip(
     trip_id: int,
-    user_id: str = Query(..., description="Stable user identifier."),
+    user: AuthUser = Depends(require_user),
 ) -> dict[str, str]:
-    get_engine_service().delete_saved_trip(user_id, trip_id)
+    get_engine_service().delete_saved_trip(str(user.user_id), trip_id)
     return {"status": "deleted"}
 
 
@@ -525,8 +530,8 @@ def delete_saved_trip(
     description="Returns recently planned trips so the app can render quick re-run cards in the planning experience.",
 )
 def list_recent_trips(
-    user_id: str = Query(..., description="Stable user identifier."),
     limit: int = Query(20, ge=1, le=50, description="Maximum number of recent trips."),
+    user: AuthUser = Depends(require_user),
 ) -> list[EngineRecentTrip]:
     return [
         EngineRecentTrip(
@@ -544,7 +549,7 @@ def list_recent_trips(
             summary=trip.summary,
             route_tokens=list(trip.route_tokens),
         )
-        for trip in get_engine_service().list_recent_trips(user_id, limit=limit)
+        for trip in get_engine_service().list_recent_trips(str(user.user_id), limit=limit)
     ]
 
 
@@ -559,7 +564,7 @@ def list_recent_trips(
 )
 def replace_calendar_events(
     events: Annotated[list[EngineCalendarEventInput], Body(...)],
-    user_id: str = Query(..., description="Stable user identifier."),
+    user: AuthUser = Depends(require_user),
 ) -> list[EngineCalendarEventInput]:
     normalized = [
         CalendarEvent(
@@ -574,7 +579,7 @@ def replace_calendar_events(
         )
         for event in events
     ]
-    get_engine_service().replace_calendar_events(user_id=user_id, events=normalized)
+    get_engine_service().replace_calendar_events(user_id=str(user.user_id), events=normalized)
     return events
 
 
@@ -588,18 +593,18 @@ def replace_calendar_events(
     ),
 )
 def get_engine_recommendations(
-    user_id: str = Query(..., description="Stable user identifier."),
     origin_lat: float | None = Query(None, description="Optional current latitude."),
     origin_lon: float | None = Query(None, description="Optional current longitude."),
     origin_label: str = Query("Current location", description="Origin display label."),
     now_ts: int | None = Query(None, description="Unix timestamp override for testing."),
     limit: int = Query(6, ge=1, le=20, description="Maximum number of recommendations."),
+    user: AuthUser = Depends(require_user),
 ) -> list[EngineRecommendation]:
     origin = None
     if origin_lat is not None and origin_lon is not None:
         origin = LocationInput(label=origin_label, lat=origin_lat, lon=origin_lon)
     recommendations = get_engine_service().recommendations(
-        user_id=user_id,
+        user_id=str(user.user_id),
         origin=origin,
         limit=limit,
         now_ts=now_ts,
@@ -631,12 +636,15 @@ def get_engine_recommendations(
         "into recent trips for planner shortcuts."
     ),
 )
-async def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
+async def plan_trip(
+    payload: EnginePlanRequest,
+    user: AuthUser | None = Depends(optional_user),
+) -> EnginePlanResponse:
     service = get_engine_service()
     request = PlanRequest(
         origin=_location_input_from_payload(payload.origin),
         destination=_location_input_from_payload(payload.destination),
-        user_id=payload.user_id,
+        user_id=str(user.user_id) if user else payload.user_id,
         depart_at_ts=payload.depart_at_ts,
         arrive_by_ts=payload.arrive_by_ts,
         max_transfers=payload.max_transfers,
@@ -680,12 +688,15 @@ async def plan_trip(payload: EnginePlanRequest) -> EnginePlanResponse:
         "transfer timing, aggregated alerts, and a 'next action' block on top of the core planner result."
     ),
 )
-async def build_go_trip(payload: EngineGoRequest) -> EngineGoResponse:
+async def build_go_trip(
+    payload: EngineGoRequest,
+    user: AuthUser | None = Depends(optional_user),
+) -> EngineGoResponse:
     service = get_engine_service()
     request = PlanRequest(
         origin=_location_input_from_payload(payload.origin),
         destination=_location_input_from_payload(payload.destination),
-        user_id=payload.user_id,
+        user_id=str(user.user_id) if user else payload.user_id,
         depart_at_ts=payload.depart_at_ts,
         arrive_by_ts=payload.arrive_by_ts,
         max_transfers=payload.max_transfers,

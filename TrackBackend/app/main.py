@@ -25,6 +25,7 @@ from app.routers import (
     subway,
     system,
     track_engine_router,
+    user,
     weather,
 )
 from app.utils.metrics import setup_metrics
@@ -62,6 +63,7 @@ app.include_router(departures.router)
 app.include_router(predict.router)
 app.include_router(weather.router)
 app.include_router(track_engine_router.router)
+app.include_router(user.router)
 app.include_router(system.router)
 
 # ── Static files (docs assets, favicon) ──────────────────────────────────
