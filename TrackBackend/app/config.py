@@ -76,11 +76,17 @@ class AppSettings(BaseModel):
 #   Supabase Dashboard → Settings → API → JWT Secret
 # Set via env var SUPABASE_JWT_SECRET (never commit the actual value).
 _supabase_jwt_secret: str | None = os.environ.get("SUPABASE_JWT_SECRET") or None
+_supabase_url: str | None = os.environ.get("SUPABASE_URL") or None
 
 
 def get_supabase_jwt_secret() -> str | None:
     """Return the Supabase JWT secret from the environment, or None if unset."""
     return _supabase_jwt_secret
+
+
+def get_supabase_url() -> str | None:
+    """Return the Supabase URL from the environment, or None if unset."""
+    return _supabase_url
 
 
 class ApiKeys(BaseModel):

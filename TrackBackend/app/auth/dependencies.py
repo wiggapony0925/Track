@@ -25,18 +25,29 @@ from __future__ import annotations
 import uuid
 
 import jwt
+from jwt import PyJWKClient
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth.user import AuthUser
-from app.config import get_supabase_jwt_secret
+from app.config import get_supabase_jwt_secret, get_supabase_url
 from app.utils.logger import TrackLogger
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
-# JWT algorithm Supabase uses for all project tokens.
-_ALGORITHM = "HS256"
+# JWT algorithms Supabase may use
+_ALLOWED_ALGORITHMS = ["HS256", "RS256", "ES256"]
 _missing_secret_warned = False
+_jwks_client: PyJWKClient | None = None
+
+def _get_jwks_client() -> PyJWKClient:
+    global _jwks_client
+    if _jwks_client is None:
+        # Fallback to the known project URL if not set in environment
+        supabase_url = get_supabase_url() or "https://octpebjxadbufiplgjqg.supabase.co"
+        jwks_url = f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        _jwks_client = PyJWKClient(jwks_url)
+    return _jwks_client
 
 
 def _verify_token(token: str) -> AuthUser:
@@ -48,27 +59,41 @@ def _verify_token(token: str) -> AuthUser:
         If the token is expired, has an invalid signature, or is missing
         required claims (``sub``).
     HTTPException (503)
-        If ``SUPABASE_JWT_SECRET`` is not configured on the backend.
+        If ``SUPABASE_JWT_SECRET`` is not configured on the backend for HS256.
     """
     global _missing_secret_warned
-    secret = get_supabase_jwt_secret()
-    if not secret:
-        if not _missing_secret_warned:
-            TrackLogger.warning(
-                "SUPABASE_JWT_SECRET is not configured — auth is disabled",
-                tag="AUTH",
-            )
-            _missing_secret_warned = True
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication is not configured on this server.",
-        )
 
     try:
+        unverified_header = jwt.get_unverified_header(token)
+        alg = unverified_header.get("alg", "HS256")
+
+        if alg not in _ALLOWED_ALGORITHMS:
+            raise jwt.InvalidAlgorithmError(f"Algorithm {alg} is not supported")
+
+        if alg in ("RS256", "ES256"):
+            # Asymmetric verification via Supabase JWKS
+            jwks_client = _get_jwks_client()
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            key = signing_key.key
+        else:
+            # Symmetric verification via JWT secret
+            key = get_supabase_jwt_secret()
+            if not key:
+                if not _missing_secret_warned:
+                    TrackLogger.warning(
+                        "SUPABASE_JWT_SECRET is not configured — HS256 auth is disabled",
+                        tag="AUTH",
+                    )
+                    _missing_secret_warned = True
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Authentication secret is not configured on this server.",
+                )
+
         payload = jwt.decode(
             token,
-            secret,
-            algorithms=[_ALGORITHM],
+            key,
+            algorithms=[alg],
             # Supabase JWTs are issued with aud="authenticated".
             # Verifying this prevents tokens from other projects being accepted.
             audience="authenticated",
@@ -80,15 +105,11 @@ def _verify_token(token: str) -> AuthUser:
             detail="Token has expired. Please sign in again.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.InvalidAlgorithmError as exc:
-        # If Supabase issues RS256 tokens but the backend expects HS256, this will trigger.
-        unverified_header = jwt.get_unverified_header(token)
-        actual_alg = unverified_header.get("alg", "unknown")
-        TrackLogger.warning(f"JWT algorithm mismatch: expected {_ALGORITHM}, but got {actual_alg}. If your Supabase project uses RS256, you must either change it back to HS256 in the Supabase Dashboard, or update this backend to verify RS256 tokens via JWKS.", tag="AUTH")
+    except jwt.PyJWKClientError as exc:
+        TrackLogger.error(f"Failed to fetch JWKS: {exc}", tag="AUTH")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token algorithm ({actual_alg}).",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to securely verify authentication tokens.",
         )
     except jwt.InvalidTokenError as exc:
         TrackLogger.warning(f"JWT validation failed: {exc}", tag="AUTH")
@@ -97,6 +118,7 @@ def _verify_token(token: str) -> AuthUser:
             detail="Invalid authentication token.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
 
     sub = payload.get("sub")
     if not sub:
