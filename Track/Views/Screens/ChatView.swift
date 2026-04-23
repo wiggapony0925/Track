@@ -100,6 +100,15 @@ final class ChatViewModel {
     /// resolve "current location" planning queries.
     var currentLocation: CLLocationCoordinate2D?
 
+    /// Effective bias point used for "near me" queries. Set by ChatView
+    /// from either the device GPS or a drag-search pin lifted from the
+    /// Home tab. Forwarded to MetroMind on every turn.
+    var biasLat: Double?
+    var biasLon: Double?
+    /// `"gps"` or `"map_pin"`.
+    var biasSource: String?
+    var biasLabel: String?
+
     /// User's first name ("Jeff") for friendly addressing.
     var userName: String?
 
@@ -187,6 +196,10 @@ final class ChatViewModel {
         streamTask?.cancel()
         streamTask = Task { [weak self,
                              location = currentLocation,
+                             biasLat = biasLat,
+                             biasLon = biasLon,
+                             biasSource = biasSource,
+                             biasLabel = biasLabel,
                              userName = userName,
                              savedPlaces = savedPlaces,
                              recentTrips = recentTrips,
@@ -199,6 +212,10 @@ final class ChatViewModel {
                     message: trimmed,
                     history: history,
                     location: location,
+                    biasLat: biasLat,
+                    biasLon: biasLon,
+                    biasSource: biasSource,
+                    biasLabel: biasLabel,
                     userName: userName,
                     savedPlaces: savedPlaces,
                     recentTrips: recentTrips,
@@ -393,6 +410,15 @@ final class ChatViewModel {
 
 struct ChatView: View {
     var locationManager: LocationManager? = nil
+    /// Optional drop-pin location lifted from the Home tab's drag-search.
+    /// When non-nil, MetroMind biases "near me" answers to this pin instead
+    /// of device GPS.
+    @Binding var biasPin: CLLocationCoordinate2D?
+
+    init(locationManager: LocationManager? = nil, biasPin: Binding<CLLocationCoordinate2D?> = .constant(nil)) {
+        self.locationManager = locationManager
+        self._biasPin = biasPin
+    }
 
     @State private var viewModel = ChatViewModel()
     @FocusState private var inputFocused: Bool
@@ -410,6 +436,8 @@ struct ChatView: View {
                 ChatHeader(
                     placesCount: viewModel.savedPlaces.count,
                     recentTripsCount: viewModel.recentTrips.count,
+                    biasSource: viewModel.biasSource,
+                    biasLabel: viewModel.biasLabel,
                     onClear: { withAnimation(.easeInOut(duration: 0.25)) { viewModel.resetConversation() } }
                 )
 
@@ -440,12 +468,34 @@ struct ChatView: View {
         .onAppear {
             syncLocation()
             syncUserData()
+            syncBias()
         }
         .onChange(of: locationManager?.currentLocation) { _, _ in syncLocation() }
+        .onChange(of: biasPin?.latitude) { _, _ in syncBias() }
     }
 
     private func syncLocation() {
         viewModel.currentLocation = locationManager?.currentLocation?.coordinate
+        syncBias()
+    }
+
+    private func syncBias() {
+        if let pin = biasPin {
+            viewModel.biasLat = pin.latitude
+            viewModel.biasLon = pin.longitude
+            viewModel.biasSource = "map_pin"
+            viewModel.biasLabel = "dropped pin"
+        } else if let loc = locationManager?.currentLocation?.coordinate {
+            viewModel.biasLat = loc.latitude
+            viewModel.biasLon = loc.longitude
+            viewModel.biasSource = "gps"
+            viewModel.biasLabel = "current location"
+        } else {
+            viewModel.biasLat = nil
+            viewModel.biasLon = nil
+            viewModel.biasSource = nil
+            viewModel.biasLabel = nil
+        }
     }
 
     /// Pull the user's profile + saved places + recent trips from the
@@ -523,18 +573,20 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(spacing: 14) {
                     ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
-                        ChatMessageRow(
-                            message: message,
-                            isFirstInGroup: isFirstInGroup(at: index),
-                            isLastInGroup: isLastInGroup(at: index),
-                            onChipTap: { chip in viewModel.tapChip(chip) }
-                        )
-                        .id(message.id)
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.96, anchor: message.role == .user ? .bottomTrailing : .bottomLeading)
-                                .combined(with: .opacity),
-                            removal: .opacity
-                        ))
+                        if !isEmptyAssistantPlaceholder(message) {
+                            ChatMessageRow(
+                                message: message,
+                                isFirstInGroup: isFirstInGroup(at: index),
+                                isLastInGroup: isLastInGroup(at: index),
+                                onChipTap: { chip in viewModel.tapChip(chip) }
+                            )
+                            .id(message.id)
+                            .transition(.asymmetric(
+                                insertion: .scale(scale: 0.96, anchor: message.role == .user ? .bottomTrailing : .bottomLeading)
+                                    .combined(with: .opacity),
+                                removal: .opacity
+                            ))
+                        }
                     }
 
                     if viewModel.isAssistantTyping {
@@ -564,6 +616,21 @@ struct ChatView: View {
         }
     }
 
+    private func isEmptyAssistantPlaceholder(_ message: ChatMessage) -> Bool {
+        guard message.role == .assistant else { return false }
+        guard case .text(let body) = message.content else { return false }
+        guard body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        // Treat as a placeholder only when there's no payload to render either.
+        return message.routePayload == nil
+            && message.stationsPayload == nil
+            && message.liveArrivalsPayload == nil
+            && message.stopInfoPayload == nil
+            && message.equipmentOutagesPayload == nil
+            && message.serviceAlertsPayload == nil
+            && (message.suggestedChips?.isEmpty ?? true)
+            && (message.toolStatus?.isEmpty ?? true)
+    }
+
     private func isFirstInGroup(at index: Int) -> Bool {
         guard index > 0 else { return true }
         return viewModel.messages[index - 1].role != viewModel.messages[index].role
@@ -581,38 +648,43 @@ struct ChatView: View {
 private struct ChatHeader: View {
     let placesCount: Int
     let recentTripsCount: Int
+    let biasSource: String?
+    let biasLabel: String?
     let onClear: () -> Void
 
     @State private var avatarPulse: Bool = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.Colors.accent.opacity(0.18))
-                    .frame(width: 56, height: 56)
-                    .blur(radius: 6)
-                    .scaleEffect(avatarPulse ? 1.08 : 0.96)
-                    .animation(.easeInOut(duration: 1.6).repeatForever(), value: avatarPulse)
-                AIAvatar(size: 44)
-            }
-            .onAppear { avatarPulse = true }
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text("MetroMind")
-                        .font(.system(size: 19, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.Gradients.accentVibrant)
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(AppTheme.Gradients.accentVibrant)
+        VStack(spacing: 8) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.Colors.accent.opacity(0.18))
+                        .frame(width: 56, height: 56)
+                        .blur(radius: 6)
+                        .scaleEffect(avatarPulse ? 1.08 : 0.96)
+                        .animation(.easeInOut(duration: 1.6).repeatForever(), value: avatarPulse)
+                    AIAvatar(size: 44)
                 }
-                statusLine
+                .onAppear { avatarPulse = true }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("MetroMind")
+                            .font(.system(size: 19, weight: .heavy, design: .rounded))
+                            .foregroundStyle(AppTheme.Gradients.accentVibrant)
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(AppTheme.Gradients.accentVibrant)
+                    }
+                    statusLine
+                }
+
+                Spacer(minLength: 4)
+
+                CircleIconButton(systemName: "square.and.pencil", action: onClear)
             }
-
-            Spacer(minLength: 4)
-
-            CircleIconButton(systemName: "square.and.pencil", action: onClear)
+            biasChip
         }
         .padding(.horizontal, 18)
         .padding(.top, 14)
@@ -667,6 +739,34 @@ private struct ChatHeader: View {
                     .font(.system(size: 11.5, weight: .medium, design: .rounded))
                     .foregroundColor(AppTheme.Colors.textTertiary)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var biasChip: some View {
+        if let source = biasSource {
+            let isPin = source == "map_pin"
+            HStack(spacing: 6) {
+                Image(systemName: isPin ? "mappin.circle.fill" : "location.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(isPin ? .orange : AppTheme.Colors.accent)
+                Text("Bias to: \(biasLabel ?? (isPin ? "dropped pin" : "current location"))")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule().fill((isPin ? Color.orange : AppTheme.Colors.accent).opacity(0.12))
+            )
+            .overlay(
+                Capsule().stroke(
+                    (isPin ? Color.orange : AppTheme.Colors.accent).opacity(0.35),
+                    lineWidth: 0.6
+                )
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
 

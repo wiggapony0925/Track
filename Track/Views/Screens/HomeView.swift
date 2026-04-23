@@ -33,6 +33,9 @@ struct HomeView: View {
     @Binding var showStations: Bool
     @Binding var currentMapCenter: CLLocationCoordinate2D?
     @Binding var currentMapDistance: Double?
+    /// Mirrors `dragSearchSettledCenter` upward so the Chat tab can
+    /// bias "near me" answers to the dropped pin.
+    @Binding var chatBiasPin: CLLocationCoordinate2D?
     @State private var sheetNavigator = SheetNavigator()
     @State private var sheetDetent: TrackSheetDetent = SheetConstants.defaultDetent
     /// Bridges sheet pixel height to the map's UIKit contentInset in
@@ -1329,6 +1332,7 @@ struct HomeView: View {
                 
                 // Snap the radius circles into place at the settled location
                 dragSearchSettledCenter = center
+                chatBiasPin = center
                 
                 // Satisfying "lock-in" vibration so the user feels the new center
                 HapticManager.impact(.medium)
@@ -1364,6 +1368,7 @@ struct HomeView: View {
             hasFiredDragHaptic = false
             dragSearchSettledCenter = nil
         }
+        chatBiasPin = nil
         
         HapticManager.notification(.success)
         
@@ -1509,6 +1514,7 @@ struct HomeView: View {
         cameraPosition: .constant(.userLocation),
         showStations: .constant(true),
         currentMapCenter: .constant(nil),
-        currentMapDistance: .constant(nil)
+        currentMapDistance: .constant(nil),
+        chatBiasPin: .constant(nil)
     )
 }

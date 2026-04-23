@@ -73,6 +73,24 @@ class UserContext(BaseModel):
         default_factory=list,
         description="Recently planned trips, newest first. Capped to ~10 by the client.",
     )
+    # ── Location bias ("near me" / "around this pin") ─────────────────
+    bias_lat: float | None = Field(
+        None,
+        description=(
+            "Latitude the user wants 'near me' / 'around here' queries to "
+            "focus on. Defaults to device GPS, but switches to a map-pin "
+            "location when the user has dropped a drag-search pin."
+        ),
+    )
+    bias_lon: float | None = Field(None, description="Longitude paired with bias_lat.")
+    bias_source: Literal["gps", "map_pin"] | None = Field(
+        None,
+        description="Where the bias point came from — 'gps' (device) or 'map_pin' (drag-search).",
+    )
+    bias_label: str | None = Field(
+        None,
+        description="Human-readable label for the bias point (e.g. 'Union Square', 'Pinned spot').",
+    )
 
 
 class ChatRequest(BaseModel):

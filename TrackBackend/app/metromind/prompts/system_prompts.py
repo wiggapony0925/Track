@@ -144,7 +144,20 @@ def render_system_prompt(
         if context.user_name:
             lines.append(f"- User's first name: {context.user_name}")
         if context.lat is not None and context.lon is not None:
-            lines.append(f"- User location: ({context.lat:.5f}, {context.lon:.5f})")
+            lines.append(f"- User device location (GPS): ({context.lat:.5f}, {context.lon:.5f})")
+        if context.bias_lat is not None and context.bias_lon is not None:
+            src = context.bias_source or "gps"
+            label = context.bias_label or ("dropped pin" if src == "map_pin" else "current location")
+            lines.append(
+                f"- **Bias point** ({src} \u2014 {label}): ({context.bias_lat:.5f}, {context.bias_lon:.5f})"
+            )
+            lines.append(
+                "  \u2192 For \"near me\", \"around me\", \"by me\", \"close to here\" or "
+                "any proximity-flavoured question, treat **this bias point** as the user's "
+                "current location. When calling tools that accept `lat`/`lon`/`radius_km` "
+                "(get_equipment_outages, search_stations), pass these coordinates with a "
+                "default radius of 1.0 km unless the user implied a wider area."
+            )
         if context.current_station_id:
             lines.append(f"- Nearby station (GTFS stop_id): {context.current_station_id}")
         if context.locale and context.locale != "en-US":

@@ -50,6 +50,10 @@ struct MainTabView: View {
     @State private var showStations: Bool = true
     @State private var currentMapCenter: CLLocationCoordinate2D?
     @State private var currentMapDistance: Double?
+    /// Settled drag-search pin (`nil` when not active). Shared with the
+    /// Chat tab so MetroMind can bias "near me" answers to the pin
+    /// instead of the device GPS.
+    @State private var chatBiasPin: CLLocationCoordinate2D?
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -61,7 +65,8 @@ struct MainTabView: View {
                 cameraPosition: $cameraPosition,
                 showStations: $showStations,
                 currentMapCenter: $currentMapCenter,
-                currentMapDistance: $currentMapDistance
+                currentMapDistance: $currentMapDistance,
+                chatBiasPin: $chatBiasPin
             )
             .tabItem {
                 Label(AppTab.home.rawValue, systemImage: AppTab.home.icon)
@@ -82,7 +87,7 @@ struct MainTabView: View {
             }
             .tag(AppTab.trips)
             
-            ChatView(locationManager: locationManager)
+            ChatView(locationManager: locationManager, biasPin: $chatBiasPin)
             .tabItem {
                 Label(AppTab.chat.rawValue, systemImage: AppTab.chat.icon)
             }

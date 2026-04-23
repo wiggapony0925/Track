@@ -353,6 +353,49 @@ class ScheduleRepository:
             for row in rows
         ]
 
+    async def nearby_stops(
+        self, lat: float, lon: float, radius_km: float, limit: int = 200
+    ) -> list[StopRecord]:
+        """Return stops inside a lat/lon bounding box around (lat, lon).
+
+        The bbox is a fast first-pass filter. Callers should re-rank the
+        result with the haversine distance and apply the true radius.
+        """
+        # 1 degree latitude \u2248 111 km. Longitude scales by cos(latitude).
+        import math as _math
+
+        dlat = radius_km / 111.0
+        cos_lat = max(_math.cos(_math.radians(lat)), 0.01)
+        dlon = radius_km / (111.0 * cos_lat)
+        lat_min, lat_max = lat - dlat, lat + dlat
+        lon_min, lon_max = lon - dlon, lon + dlon
+        async with self._acquire() as conn:
+            try:
+                cursor = await conn.execute(
+                    """
+                    SELECT stop_id, stop_name, stop_lat, stop_lon
+                    FROM stops
+                    WHERE stop_lat BETWEEN ? AND ?
+                      AND stop_lon BETWEEN ? AND ?
+                    LIMIT ?
+                    """,
+                    (lat_min, lat_max, lon_min, lon_max, limit),
+                )
+                rows = await cursor.fetchall()
+            except sqlite3.OperationalError as exc:
+                if "no such table" in str(exc).lower():
+                    return []
+                raise
+        return [
+            StopRecord(
+                stop_id=str(row["stop_id"]),
+                stop_name=str(row["stop_name"]),
+                lat=float(row["stop_lat"]),
+                lon=float(row["stop_lon"]),
+            )
+            for row in rows
+        ]
+
     @staticmethod
     def _route_filter_sql(mode: str) -> str | None:
         metro_north_branches = (

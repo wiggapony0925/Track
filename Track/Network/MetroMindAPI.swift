@@ -361,6 +361,10 @@ enum MetroMindAPI {
         message: String,
         history: [(role: String, content: String)] = [],
         location: CLLocationCoordinate2D? = nil,
+        biasLat: Double? = nil,
+        biasLon: Double? = nil,
+        biasSource: String? = nil,
+        biasLabel: String? = nil,
         userName: String? = nil,
         savedPlaces: [SavedPlaceContext] = [],
         recentTrips: [RecentTripContext] = [],
@@ -397,6 +401,12 @@ enum MetroMindAPI {
                     if let loc = location {
                         ctx["lat"] = loc.latitude
                         ctx["lon"] = loc.longitude
+                    }
+                    if let bLat = biasLat, let bLon = biasLon {
+                        ctx["bias_lat"] = bLat
+                        ctx["bias_lon"] = bLon
+                        if let src = biasSource { ctx["bias_source"] = src }
+                        if let lbl = biasLabel { ctx["bias_label"] = lbl }
                     }
                     if let name = userName, !name.isEmpty {
                         ctx["user_name"] = name

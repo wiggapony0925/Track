@@ -420,7 +420,13 @@ def _pretty_label(name: str, arguments_json: str | None) -> str:
             return f"Checking {mode} alerts"
         return "Checking service alerts"
     if name == "search_stations":
-        return f"Searching stations for '{args.get('query', '')}'"
+        q = (args.get("query") or "").strip()
+        if not q and args.get("lat") is not None and args.get("lon") is not None:
+            r = args.get("radius_km") or 1.0
+            return f"Finding stops within {r:g} km"
+        if not q:
+            return "Searching nearby stops"
+        return f"Searching stations for '{q}'"
     if name == "get_user_places":
         return "Looking up your saved places"
     return name
