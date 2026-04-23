@@ -69,6 +69,12 @@ struct TrackBottomSheet<Content: View>: View {
     /// instead of snapping to the nearest detent.  `detents` is then
     /// only used to derive the min / max drag bounds.
     var freeform: Bool = false
+    /// Optional overlay rendered centered on the sheet card's TOP edge.
+    /// Drawn inside the same `GeometryReader` that lays out the card,
+    /// so it tracks the sheet's height in the same render pass — zero
+    /// chasing lag, even on fast flicks. Use this for floating chrome
+    /// (search bars, pills) that should ride the sheet's top edge.
+    var topEdgeOverlay: (() -> AnyView)? = nil
 
     @ViewBuilder var content: () -> Content
 
@@ -96,6 +102,19 @@ struct TrackBottomSheet<Content: View>: View {
                 sheetCard
                     .frame(height: live, alignment: .top)
                     .frame(maxWidth: .infinity, alignment: .bottom)
+
+                // Top-edge overlay (e.g. floating search bar). Positioned
+                // inside the SAME GeometryReader as the sheet card and
+                // driven by the SAME `live` value, so the two views are
+                // laid out together every frame — no SwiftUI state hop,
+                // no chasing lag during fast drags.
+                if let topEdgeOverlay {
+                    topEdgeOverlay()
+                        .frame(maxWidth: .infinity)
+                        .position(x: geo.size.width / 2,
+                                  y: max(0, available - live))
+                        .allowsHitTesting(true)
+                }
             }
             .onAppear {
                 containerHeight = available

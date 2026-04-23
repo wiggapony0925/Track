@@ -138,6 +138,11 @@ struct UniversalBottomSheet<Content: View>: View {
     /// is in addition to ``sheetHeightObserver`` which targets UIKit.
     var onLiveHeightChange: ((CGFloat) -> Void)? = nil
 
+    /// Optional overlay rendered centered on the sheet card's TOP edge.
+    /// Forwarded directly to ``TrackBottomSheet`` so the overlay shares
+    /// the sheet's render pass and never lags behind during fast drags.
+    var topEdgeOverlay: (() -> AnyView)? = nil
+
     /// Theme setting — must be read here so the sheet inherits the correct color scheme.
     @AppStorage("appTheme") private var appTheme = "system"
 
@@ -182,7 +187,8 @@ struct UniversalBottomSheet<Content: View>: View {
                 sheetHeightObserver?.report(h)
                 onLiveHeightChange?(h)
             },
-            freeform: true
+            freeform: true,
+            topEdgeOverlay: topEdgeOverlay
         ) {
             content(navigator.currentPage)
                 .id(navigator.currentPage.id)

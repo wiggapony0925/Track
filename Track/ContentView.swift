@@ -98,6 +98,12 @@ struct ContentView: View {
                     await SyncManager.shared.performFullSync()
                 }
 
+                // Warm the Trip-page caches in the background BEFORE the
+                // user navigates to the Trips tab, so PlanView renders
+                // instantly from PlannerDataCache instead of waiting on
+                // the network. Per-bucket TTLs prevent over-fetching.
+                PrefetchService.shared.prefetchPlannerData()
+
                 // Auto-request if still undecided (e.g. first launch)
                 if locationManager.authorizationStatus == .notDetermined {
                     locationManager.requestPermission()
@@ -115,6 +121,11 @@ struct ContentView: View {
                         // Trigger a status refresh — CLLocationManager will publish
                         // the latest authorizationStatus via didChangeAuthorization.
                         locationManager.refreshAuthorizationStatus()
+
+                        // Re-warm planner caches on foreground. The service
+                        // is throttled (30 s minimum interval) and only
+                        // refreshes buckets that are actually stale.
+                        PrefetchService.shared.prefetchPlannerData()
                     }
                 }
             }

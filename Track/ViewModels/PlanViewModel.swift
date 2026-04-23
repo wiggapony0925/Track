@@ -155,6 +155,22 @@ final class PlanViewModel {
             tripConfiguration = .makeDefault(userId: uuid)
         }
 
+        // STALE-WHILE-REVALIDATE: paint cached planner data IMMEDIATELY so
+        // the Trip page is never empty on first open. The background
+        // refresh below silently updates the UI when fresh data arrives.
+        if let uid = currentUserID,
+           PlannerDataCache.shared.hasAnyData(for: uid) {
+            let snap = PlannerDataCache.shared.snapshot(for: uid)
+            savedTripTemplates = snap.savedTripTemplates
+            applyPlannerSnapshot(
+                savedPlaces: snap.savedPlaces,
+                recentTrips: snap.recentTrips,
+                recommendations: snap.recommendations
+            )
+            // Mark loaded so the UI skips its initial spinner.
+            isPlanDataLoaded = true
+        }
+
         bootstrapTask = Task {
             async let plannerData: Void = refreshPlannerData()
             async let tripConfig: Void = loadTripConfiguration()
@@ -594,6 +610,22 @@ final class PlanViewModel {
                 savedPlaces: savedPlaces,
                 recentTrips: recentTrips,
                 recommendations: recommendations
+            )
+
+            // Persist for the next launch / next tab visit so the Trip
+            // page can render synchronously instead of waiting on network.
+            PlannerDataCache.shared.save(
+                PlannerSnapshot(
+                    savedPlaces: savedPlaces,
+                    recentTrips: recentTrips,
+                    savedTripTemplates: templates,
+                    recommendations: recommendations,
+                    savedPlacesAt: Date(),
+                    recentTripsAt: Date(),
+                    savedTripTemplatesAt: Date(),
+                    recommendationsAt: Date()
+                ),
+                for: userID
             )
         } catch {
             // Keep the current UI state if the background refresh fails.

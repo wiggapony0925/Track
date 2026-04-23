@@ -38,10 +38,6 @@ struct HomeView: View {
     /// Bridges sheet pixel height to the map's UIKit contentInset in
     /// real-time (60fps) without SwiftUI re-renders.
     @State private var sheetHeightObserver = SheetHeightObserver()
-    /// Live pixel height of the bottom sheet — mirrored from
-    /// ``SheetHeightObserver`` for SwiftUI consumers (currently the
-    /// floating tab pill, which rides up with the drag).
-    @State private var liveSheetHeight: CGFloat = 0
     /// True when the user has dragged the sheet fully down past the minimum.
     /// Shows the peek-restore button and hides the sheet from view.
     @State private var isSheetCollapsed: Bool = false
@@ -272,14 +268,6 @@ struct HomeView: View {
                         sheetDetent: $sheetDetent,
                         sheetHeightObserver: sheetHeightObserver,
                         onLiveHeightChange: { h in
-                            // Disable all SwiftUI animations for this state update.
-                            // liveSheetHeight is driven by CADisplayLink at 60fps;
-                            // any implicit animation creates a 1-frame lag that makes
-                            // the pill feel detached from the sheet during fast drags.
-                            var t = Transaction()
-                            t.disablesAnimations = true
-                            withTransaction(t) { liveSheetHeight = h }
-
                             // Collapse detection: if the user drags the sheet near 0,
                             // snap it to hidden and show the peek indicator.
                             if h < 80 && !isSheetCollapsed {
@@ -292,7 +280,26 @@ struct HomeView: View {
                                 // User is dragging up from collapsed — un-collapse
                                 isSheetCollapsed = false
                             }
-                        }
+                        },
+                        topEdgeOverlay: sheetNavigator.currentPage == .dashboard ? {
+                            // Rendered INSIDE TrackBottomSheet's GeometryReader,
+                            // positioned by the same `live` height the sheet card
+                            // uses. Search bar + sheet move atomically every frame
+                            // — no SwiftUI state hop, no chasing lag on fast flicks.
+                            AnyView(
+                                FloatingSearchBar(
+                                    searchText: Binding(
+                                        get: { viewModel.searchText },
+                                        set: { viewModel.searchText = $0 }
+                                    ),
+                                    locationName: viewModel.currentLocationName,
+                                    isDragSearchActive: viewModel.isSearchPinActive,
+                                    homePlace: savedHomePlace,
+                                    workPlace: savedWorkPlace,
+                                    userCoordinate: locationManager.currentLocation?.coordinate
+                                )
+                            )
+                        } : nil
                     ) { page in
                         sheetContent(for: page)
                     }
@@ -300,57 +307,6 @@ struct HomeView: View {
                 }
             }
             .animation(.spring(response: 0.32, dampingFraction: 0.95), value: bottomSheetPresentation.wrappedValue)
-            // MARK: - Floating Search Bar
-            // Sits above the sheet top edge, straddling the map/sheet boundary
-            // exactly like the reference app (Moovit-style). Uses liveSheetHeight
-            // to stay pinned to the top of the sheet as it drags.
-            .overlay {
-                if bottomSheetPresentation.wrappedValue && sheetNavigator.currentPage == .dashboard {
-                    GeometryReader { geo in
-                        // liveSheetHeight is measured from the TRUE screen bottom
-                        // (the sheet uses .ignoresSafeArea), but this overlay respects
-                        // safe areas — so geo.size.height < screen height.
-                        // We compensate by adding the bottom safe-area inset so both
-                        // measurements share the same origin.
-                        let bottomInset = geo.safeAreaInsets.bottom
-                        let sheetTopFromViewTop = geo.size.height - liveSheetHeight + bottomInset
-                        // .position(x,y) places the view's CENTER at y.
-                        // Setting center = sheetTopFromViewTop gives exactly 50% on the
-                        // map (above) and 50% on the sheet (below).
-                        let pillCenterY = sheetTopFromViewTop
-
-                        FloatingSearchBar(
-                            searchText: Binding(
-                                get: { viewModel.searchText },
-                                set: { viewModel.searchText = $0 }
-                            ),
-                            locationName: viewModel.currentLocationName,
-                            isDragSearchActive: viewModel.isSearchPinActive,
-                            homePlace: savedHomePlace,
-                            workPlace: savedWorkPlace,
-                            userCoordinate: locationManager.currentLocation?.coordinate
-                        )
-                        .frame(maxWidth: .infinity)
-                        .position(x: geo.size.width / 2, y: max(0, pillCenterY))
-                        // During drag: no animation — liveSheetHeight runs at 60fps via
-                        // CADisplayLink so animating would cause the chasing lag.
-                        .transaction { t in
-                            // Preserve the entrance/exit spring set by the outer
-                            // .animation(…, value: bottomSheetPresentation) block
-                            // but kill any other implicit animation (e.g. drag).
-                            if t.animation != nil && t.animation != .spring(response: 0.32, dampingFraction: 0.95) {
-                                t.animation = nil
-                            }
-                        }
-                    }
-                    // Pill slides in/out with the SAME spring as the sheet card.
-                    // Without this transition the pill pops in at its final y-position
-                    // while the sheet is still sliding up — making them look detached.
-                    .transition(.move(edge: .bottom))
-                }
-            }
-            .animation(.spring(response: 0.32, dampingFraction: 0.95), value: bottomSheetPresentation.wrappedValue)
-            .animation(.spring(response: 0.32, dampingFraction: 0.95), value: sheetNavigator.currentPage == .dashboard)
 
             // MARK: - Sheet Peek Button
             // Floats above the tab bar when the sheet has been dragged fully down.
