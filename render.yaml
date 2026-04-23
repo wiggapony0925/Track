@@ -60,6 +60,8 @@ services:
         value: supabase
       - key: TRACK_ENGINE_URL
         sync: false   # set to the internal URL of the standalone C++ TrackEngine service
+      - key: OPENAI_API_KEY
+        sync: false   # required by MetroMind chatbot — set in Render dashboard
       - key: TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT
         value: "1"
       - key: TRACK_ENGINE_REALTIME_TIMEOUT_S

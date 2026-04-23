@@ -14,8 +14,38 @@ enum MetroMindEvent: Sendable {
     case token(String)
     case toolCall(name: String, label: String)
     case toolResult(name: String, ok: Bool, payload: ToolPayload?)
-    case done(toolCalls: [String])
+    case suggestions([SuggestedActionChip])
+    case done(toolCalls: [String], modelUsed: String?, threadId: String?)
     case error(String)
+}
+
+/// One follow-up chip from the backend.
+struct SuggestedActionChip: Sendable, Identifiable, Decodable {
+    let id = UUID()
+    let label: String
+    let kind: String
+    /// Free-form payload — we keep it as a JSON string for now since
+    /// the only consumer (composer prefill) just needs `payload.text`.
+    let promptText: String?
+    let routeId: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case label, kind, payload
+    }
+    private struct Payload: Decodable {
+        let text: String?
+        let route_id: String?
+        let origin: String?
+        let destination: String?
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.label = try c.decode(String.self, forKey: .label)
+        self.kind = try c.decode(String.self, forKey: .kind)
+        let payload = try? c.decode(Payload.self, forKey: .payload)
+        self.promptText = payload?.text
+        self.routeId = payload?.route_id
+    }
 }
 
 // MARK: - Tool result payloads (decoded into rich UI cards)
@@ -23,6 +53,135 @@ enum MetroMindEvent: Sendable {
 enum ToolPayload: Sendable {
     case route(RoutePlanPayload)
     case stations(StationSearchPayload)
+    case liveArrivals(LiveArrivalsPayload)
+    case stopInfo(StopInfoPayload)
+    case equipmentOutages(EquipmentOutagesPayload)
+    case serviceAlerts(ServiceAlertsPayload)
+}
+
+struct StopInfoPayload: Decodable, Sendable {
+    let stop_id: String?
+    let station_name: String?
+    let accessibility: Accessibility?
+    let next_departures: [Departure]?
+
+    struct Accessibility: Decodable, Sendable {
+        let ada_status: String?
+        let ada_status_code: Int?
+        let ada_notes: String?
+        let total_elevators: Int?
+        let total_escalators: Int?
+        let out_of_service_count: Int?
+        let out_of_service_equipment: [Equipment]?
+        let next_accessible_north: String?
+        let next_accessible_south: String?
+
+        struct Equipment: Decodable, Sendable, Identifiable {
+            let id = UUID()
+            let equipment_id: String?
+            let type: String?
+            let description: String?
+            let is_ada: Bool?
+            let outage_reason: String?
+
+            private enum CodingKeys: String, CodingKey {
+                case equipment_id, type, description, is_ada, outage_reason
+            }
+        }
+    }
+
+    struct Departure: Decodable, Sendable, Identifiable {
+        let id = UUID()
+        let route_id: String?
+        let mode: String?
+        let destination: String?
+        let minutes_away: Int?
+        let status: String?
+        let is_real_time: Bool?
+        let is_cancelled: Bool?
+
+        private enum CodingKeys: String, CodingKey {
+            case route_id, mode, destination, minutes_away
+            case status, is_real_time, is_cancelled
+        }
+    }
+}
+
+struct EquipmentOutagesPayload: Decodable, Sendable {
+    let total_outages: Int?
+    let returned: Int?
+    let truncated: Bool?
+    let filters: Filters?
+    let outages: [Outage]
+
+    struct Filters: Decodable, Sendable {
+        let station_filter: String?
+        let equipment_type: String?
+    }
+
+    struct Outage: Decodable, Sendable, Identifiable {
+        let id = UUID()
+        let station: String?
+        let type: String?
+        let description: String?
+        let outage_since: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case station, type, description, outage_since
+        }
+    }
+}
+
+struct ServiceAlertsPayload: Decodable, Sendable {
+    let total_matching: Int?
+    let alerts: [Alert]
+
+    struct Alert: Decodable, Sendable, Identifiable {
+        let id = UUID()
+        let title: String?
+        let description: String?
+        let severity: String?
+        let mode: String?
+        let route_id: String?
+        let affected_routes: [String]?
+        let alert_type: String?
+        let effect: String?
+        let active_period: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case title, description, severity, mode, route_id
+            case affected_routes, alert_type, effect, active_period
+        }
+    }
+}
+
+struct LiveArrivalsPayload: Decodable, Sendable {
+    let route_id: String
+    let direction_filter: String?
+    let station_filter: String?
+    let total_returned: Int?
+    let arrivals: [Arrival]
+    let vehicle_count: Int?
+
+    struct Arrival: Decodable, Sendable, Identifiable {
+        let id = UUID()
+        let station_name: String?
+        let station_id: String?
+        let direction: String?
+        let destination: String?
+        let minutes_away: Int?
+        let arrival_ts: Int?
+        let status: String?
+        let is_cancelled: Bool?
+        let is_skipped: Bool?
+        let delay_seconds: Int?
+
+        private enum CodingKeys: String, CodingKey {
+            case station_name, station_id, direction, destination
+            case minutes_away, arrival_ts, status
+            case is_cancelled, is_skipped, delay_seconds
+        }
+    }
 }
 
 struct RoutePlanPayload: Decodable, Sendable {
@@ -96,6 +255,9 @@ private struct SSEEnvelope: Decodable {
     let ok: Bool?
     let tool_calls: [String]?
     let message: String?
+    let model_used: String?
+    let thread_id: String?
+    let actions: [SuggestedActionChip]?
     // `payload` is a free-form JSON object; we decode it on demand
     // based on the tool name once the envelope is parsed.
     let payload: AnyCodable?
@@ -201,7 +363,9 @@ enum MetroMindAPI {
         location: CLLocationCoordinate2D? = nil,
         userName: String? = nil,
         savedPlaces: [SavedPlaceContext] = [],
-        recentTrips: [RecentTripContext] = []
+        recentTrips: [RecentTripContext] = [],
+        threadId: String? = nil,
+        imageDataURL: String? = nil
     ) -> AsyncThrowingStream<MetroMindEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -222,6 +386,12 @@ enum MetroMindAPI {
                         "stream": true,
                         "history": history.map { ["role": $0.role, "content": $0.content] },
                     ]
+                    if let tid = threadId, !tid.isEmpty {
+                        body["thread_id"] = tid
+                    }
+                    if let img = imageDataURL, !img.isEmpty {
+                        body["image_data_url"] = img
+                    }
 
                     var ctx: [String: Any] = ["timezone": "America/New_York"]
                     if let loc = location {
@@ -310,7 +480,15 @@ enum MetroMindAPI {
                                 )
                             )
                         case "done":
-                            continuation.yield(.done(toolCalls: env.tool_calls ?? []))
+                            continuation.yield(
+                                .done(
+                                    toolCalls: env.tool_calls ?? [],
+                                    modelUsed: env.model_used,
+                                    threadId: env.thread_id
+                                )
+                            )
+                        case "suggestions":
+                            continuation.yield(.suggestions(env.actions ?? []))
                         case "error":
                             continuation.yield(.error(env.message ?? "unknown error"))
                         default:
@@ -341,6 +519,22 @@ enum MetroMindAPI {
         case "search_stations":
             if let p = try? decoder.decode(StationSearchPayload.self, from: data) {
                 return .stations(p)
+            }
+        case "get_live_arrivals":
+            if let p = try? decoder.decode(LiveArrivalsPayload.self, from: data) {
+                return .liveArrivals(p)
+            }
+        case "get_stop_info":
+            if let p = try? decoder.decode(StopInfoPayload.self, from: data) {
+                return .stopInfo(p)
+            }
+        case "get_equipment_outages":
+            if let p = try? decoder.decode(EquipmentOutagesPayload.self, from: data) {
+                return .equipmentOutages(p)
+            }
+        case "get_service_alerts":
+            if let p = try? decoder.decode(ServiceAlertsPayload.self, from: data) {
+                return .serviceAlerts(p)
             }
         default:
             return nil

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from app.metromind.logger import get_logger
@@ -16,6 +17,16 @@ from app.services.track_engine.integration import (
 from .base import ToolError, ToolResult
 
 logger = get_logger("tools.plan")
+
+
+def _iso(ts: int | float | None) -> str | None:
+    """Convert an epoch ts to ISO 8601 (UTC) for client cards."""
+    if ts is None:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 SCHEMA: dict[str, Any] = {
@@ -163,17 +174,26 @@ def _serialise_itinerary(itin: Any) -> dict[str, Any]:
             }
             for a in (leg.alerts or [])
         ]
+        duration_min = round(leg.duration_s / 60, 1)
         legs.append(
             {
                 "mode": leg.mode,
                 "route_id": leg.route_id,
                 "route_name": leg.route_name,
+                # iOS-friendly aliases (RoutePlanPayload.Leg expects these names).
+                "route_label": leg.route_name,
+                "from_name": leg.board_stop_name,
+                "to_name": leg.alight_stop_name,
+                "depart_time": _iso(leg.departure_ts),
+                "arrive_time": _iso(leg.arrival_ts),
+                "duration_minutes": duration_min,
+                "num_stops": leg.stop_count,
                 "headsign": leg.headsign,
                 "board_stop_name": leg.board_stop_name,
                 "alight_stop_name": leg.alight_stop_name,
                 "departure_ts": leg.departure_ts,
                 "arrival_ts": leg.arrival_ts,
-                "duration_min": round(leg.duration_s / 60, 1),
+                "duration_min": duration_min,
                 "stop_count": leg.stop_count,
                 "walk_meters": round(leg.walk_meters or 0, 0),
                 "live_status": (
@@ -190,18 +210,65 @@ def _serialise_itinerary(itin: Any) -> dict[str, Any]:
             }
         )
 
+    total_min = round(itin.total_duration_s / 60, 1)
+    walk_meters = round(itin.walk_meters or 0, 0)
     return {
         "itinerary_id": itin.itinerary_id,
         "summary": itin.summary,
-        "total_duration_min": round(itin.total_duration_s / 60, 1),
+        "total_duration_min": total_min,
+        # iOS-friendly aliases (RoutePlanPayload.Itinerary expects these names).
+        "total_minutes": total_min,
+        "walk_minutes": round(walk_meters / 80.0, 1),  # ~80 m/min walking
+        "transfer_count": itin.transfer_count,
+        "departure_time": _iso(itin.leave_at_ts),
+        "arrival_time": _iso(itin.arrive_at_ts),
         "transfers": itin.transfer_count,
-        "walk_meters": round(itin.walk_meters or 0, 0),
+        "walk_meters": walk_meters,
         "leave_at_ts": itin.leave_at_ts,
         "arrive_at_ts": itin.arrive_at_ts,
         "accessible": itin.accessible,
         "legs": legs,
         "fare_total_cents": getattr(itin.fare, "total_cents", None) if itin.fare else None,
     }
+
+
+def _critique_itinerary(itin_dict: dict[str, Any]) -> list[str]:
+    """Quick critique pass — surface any high-risk facts the LLM should mention.
+
+    Pure local logic (no extra LLM call). Looks at each leg's alerts and
+    live_status to produce 0–N short risk notes the LLM is told to mention.
+    """
+    notes: list[str] = []
+    for leg in itin_dict.get("legs") or []:
+        route = leg.get("route_name") or leg.get("route_id") or "this leg"
+
+        # Severe / suspended alerts.
+        for alert in leg.get("alerts") or []:
+            sev = (alert.get("severity") or "").lower()
+            kind = (alert.get("alert_type") or "").lower()
+            if sev in {"severe", "warning"} or any(
+                k in kind for k in ("suspend", "no service", "reroute")
+            ):
+                title = (alert.get("title") or "alert").strip()
+                notes.append(f"{route}: {title}")
+
+        # Live delays > 4 minutes.
+        live = leg.get("live_status") or {}
+        delay_s = live.get("delay_s") or 0
+        if isinstance(delay_s, (int, float)) and delay_s >= 240:
+            notes.append(
+                f"{route} is currently running ~{int(delay_s/60)} min late"
+            )
+    # Dedupe while preserving order, cap at 3 to keep prompt tight.
+    seen: set[str] = set()
+    out: list[str] = []
+    for n in notes:
+        if n not in seen:
+            seen.add(n)
+            out.append(n)
+        if len(out) >= 3:
+            break
+    return out
 
 
 async def run(arguments: dict[str, Any], context: UserContext | None) -> ToolResult:
@@ -281,11 +348,29 @@ async def run(arguments: dict[str, Any], context: UserContext | None) -> ToolRes
             ) from exc
         raise
 
+    serialised = [_serialise_itinerary(i) for i in itineraries[:num]]
+
+    # Critique pass: surface high-risk facts the LLM should mention.
+    risk_notes: list[str] = []
+    for itin in serialised:
+        risk_notes.extend(_critique_itinerary(itin))
+    # Dedupe across itineraries.
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for n in risk_notes:
+        if n not in seen:
+            seen.add(n)
+            deduped.append(n)
+        if len(deduped) >= 3:
+            break
+
     payload = {
         "origin": origin_label,
         "destination": destination_label,
         "schedule_note": schedule_note,
-        "itineraries": [_serialise_itinerary(i) for i in itineraries[:num]],
+        "itineraries": serialised,
+        # Hint to the LLM — if non-empty, mention briefly in the caption.
+        "risk_notes": deduped,
     }
 
     return ToolResult(

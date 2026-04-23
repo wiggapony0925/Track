@@ -72,15 +72,19 @@ class LLMClient:
         messages: list[dict[str, Any]],
         *,
         tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
     ) -> Any:
         """Single-shot chat completion, returning the raw SDK response.
 
         The orchestrator inspects ``response.choices[0].message`` to decide
         whether the turn is a tool call or a final assistant message.
+
+        Pass ``model`` to override the configured default for one call
+        (used by the complexity router to escalate to ``gpt-4o``).
         """
         try:
             return await self._client.chat.completions.create(
-                model=self._settings.model,
+                model=model or self._settings.model,
                 temperature=self._settings.temperature,
                 max_tokens=self._settings.max_output_tokens,
                 messages=messages,
@@ -96,16 +100,19 @@ class LLMClient:
         messages: list[dict[str, Any]],
         *,
         tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
     ) -> AsyncIterator[Any]:
         """Async iterator over streaming chunks.
 
         Retries are *not* applied to streaming calls because partial
         output cannot be safely rewound; the orchestrator falls back to
         a non-streamed completion on failure.
+
+        Pass ``model`` to override the configured default for one call.
         """
         try:
             stream = await self._client.chat.completions.create(
-                model=self._settings.model,
+                model=model or self._settings.model,
                 temperature=self._settings.temperature,
                 max_tokens=self._settings.max_output_tokens,
                 messages=messages,
@@ -118,6 +125,38 @@ class LLMClient:
 
         async for chunk in stream:
             yield chunk
+
+    # ── Audio transcription (Whisper) ─────────────────────────────────
+    async def transcribe(
+        self,
+        audio_bytes: bytes,
+        *,
+        filename: str = "audio.m4a",
+        language: str | None = "en",
+    ) -> str:
+        """Transcribe a short audio clip using OpenAI's audio API.
+
+        ``audio_bytes`` is the raw file contents (m4a / mp3 / wav / webm).
+        Returns the recognized text, or an empty string on a soft failure.
+        """
+        import io
+
+        buf = io.BytesIO(audio_bytes)
+        buf.name = filename  # OpenAI SDK uses .name to infer mime type
+        try:
+            kwargs: dict[str, Any] = {
+                "model": self._settings.transcription_model,
+                "file": buf,
+            }
+            if language:
+                kwargs["language"] = language
+            resp = await self._client.audio.transcriptions.create(**kwargs)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Whisper transcription failed: %s", exc)
+            raise LLMError(str(exc)) from exc
+
+        text = getattr(resp, "text", "") or ""
+        return text.strip()
 
 
 @lru_cache(maxsize=1)

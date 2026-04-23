@@ -8,13 +8,13 @@ from typing import Any, Awaitable, Callable
 from app.metromind.logger import get_logger
 from app.metromind.schemas import UserContext
 
-from . import alerts, plan, stations, user_data
+from . import alerts, equipment_outages, live_arrivals, plan, stations, stop_info, user_data
 from .base import ToolError, ToolResult
 
 logger = get_logger("tools")
 
 
-# ── Registry ───────────────────────────────────────────────────────────
+# ── Registry ───────────────────────────────────────────────────────────────────────
 
 _ToolFn = Callable[[dict[str, Any], UserContext | None], Awaitable[ToolResult]]
 
@@ -24,6 +24,9 @@ _REGISTRY: dict[str, tuple[dict[str, Any], _ToolFn]] = {
     "get_service_alerts": (alerts.SCHEMA, alerts.run),
     "search_stations": (stations.SCHEMA, stations.run),
     "get_user_places": (user_data.SCHEMA, user_data.run),
+    "get_stop_info": (stop_info.SCHEMA, stop_info.run),
+    "get_equipment_outages": (equipment_outages.SCHEMA, equipment_outages.run),
+    "get_live_arrivals": (live_arrivals.SCHEMA, live_arrivals.run),
 }
 
 

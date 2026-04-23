@@ -17,6 +17,15 @@ class MetroMindSettings(BaseModel):
 
     # ── LLM ────────────────────────────────────────────────────────────
     model: str = "gpt-4o-mini"
+    # Stronger model used when the user turn looks complex (long, multi-clause,
+    # "compare", multiple destinations, attached image, deep history).
+    complex_model: str = "gpt-4o"
+    # Vision-capable model forced when the turn carries an image_data_url.
+    vision_model: str = "gpt-4o"
+    # Audio-to-text model used by /metromind/transcribe (G).
+    transcription_model: str = "whisper-1"
+    # Max audio bytes accepted by /metromind/transcribe (default 5 MB).
+    max_audio_bytes: int = 5 * 1024 * 1024
     temperature: float = 0.3
     max_output_tokens: int = 800
     # Hard ceiling for tool-call hops per user turn. Prevents runaway loops.
@@ -24,11 +33,20 @@ class MetroMindSettings(BaseModel):
     # OpenAI request timeout (seconds).
     request_timeout_s: float = 30.0
 
-    # ── Behaviour ──────────────────────────────────────────────────────
+    # ── Behaviour ───────────────────────────────────────────────────
     # Max messages of history kept in context on each turn.
     history_window: int = 12
     # Enable SSE streaming (set False for easier local debugging).
     streaming_enabled: bool = True
+    # Auto-escalate complex turns to ``complex_model`` (E).
+    auto_escalate_complex: bool = True
+
+    # ── Persistence (J) ──────────────────────────────────────────────────
+    # Server-side thread store DB path. Lives on the Render persistent
+    # disk in production (mounted at /app/app/data).
+    threads_db_path: str = "app/data/metromind_threads.db"
+    # How many messages to load from the store when a thread_id is sent.
+    thread_load_limit: int = 24
 
     # ── Feature flags ──────────────────────────────────────────────────
     # Master kill switch. When False, /metromind/chat returns 503.

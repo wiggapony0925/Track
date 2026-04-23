@@ -15,6 +15,13 @@ class ChatMessage(BaseModel):
 
     role: ChatRole
     content: str
+    # Optional: data URL (``data:image/jpeg;base64,...``) attached to a
+    # user turn. When present, the orchestrator routes the turn through
+    # a vision-capable model.
+    image_data_url: str | None = Field(
+        default=None,
+        description="Optional base64 data URL for an attached image.",
+    )
 
 
 class SavedPlace(BaseModel):
@@ -84,6 +91,41 @@ class ChatRequest(BaseModel):
         default=True,
         description="If true, response is SSE. If false, a single JSON blob.",
     )
+    # ── Persistent threads (J) ─────────────────────────────────────────
+    thread_id: str | None = Field(
+        default=None,
+        description=(
+            "Opaque server-side thread id. When provided, the server "
+            "loads recent messages from its store (overriding ``history`` "
+            "if that is empty) and persists this turn after completion."
+        ),
+    )
+    # ── Multimodal (L) ─────────────────────────────────────────────────
+    image_data_url: str | None = Field(
+        default=None,
+        description=(
+            "Optional ``data:image/...;base64,...`` URL attached to the "
+            "current user message. Forces escalation to a vision model."
+        ),
+    )
+
+
+class SuggestedAction(BaseModel):
+    """A follow-up chip rendered under the assistant reply (D)."""
+
+    label: str = Field(..., description="Short text shown on the chip.")
+    kind: str = Field(
+        ...,
+        description=(
+            "Action verb the client should perform when tapped. "
+            "One of: ``send_prompt``, ``save_trip``, ``start_tracking``, "
+            "``open_alerts``, ``open_place``."
+        ),
+    )
+    payload: dict = Field(
+        default_factory=dict,
+        description="Free-form JSON the client uses to fulfil the action.",
+    )
 
 
 class ChatResponse(BaseModel):
@@ -93,6 +135,18 @@ class ChatResponse(BaseModel):
     tool_calls: list[str] = Field(
         default_factory=list,
         description="Names of tools the model invoked (for telemetry/UI).",
+    )
+    suggested_actions: list[SuggestedAction] = Field(
+        default_factory=list,
+        description="Up to 3 follow-up chips for the UI.",
+    )
+    model_used: str | None = Field(
+        default=None,
+        description="Which LLM model handled the turn (for observability).",
+    )
+    thread_id: str | None = Field(
+        default=None,
+        description="Echoed back so the client can persist it.",
     )
 
 
@@ -124,9 +178,18 @@ class SSEToolResultEvent(BaseModel):
     payload: dict | None = None
 
 
+class SSESuggestionsEvent(BaseModel):
+    """Emitted just before ``done`` so the UI can render chips (D)."""
+
+    type: Literal["suggestions"] = "suggestions"
+    actions: list[SuggestedAction] = Field(default_factory=list)
+
+
 class SSEDoneEvent(BaseModel):
     type: Literal["done"] = "done"
     tool_calls: list[str] = Field(default_factory=list)
+    model_used: str | None = None
+    thread_id: str | None = None
 
 
 class SSEErrorEvent(BaseModel):
@@ -143,8 +206,10 @@ __all__ = [
     "SavedPlace",
     "SSEDoneEvent",
     "SSEErrorEvent",
+    "SSESuggestionsEvent",
     "SSEToolCallEvent",
     "SSEToolResultEvent",
     "SSETokenEvent",
+    "SuggestedAction",
     "UserContext",
 ]

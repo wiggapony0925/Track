@@ -7,7 +7,9 @@
 // Markdown: assistant text bubbles render full GitHub-flavored markdown
 // (bold, italics, lists, inline code, links) via `MarkdownText`.
 
+import AVFoundation
 import CoreLocation
+import PhotosUI
 import SwiftUI
 
 // MARK: - Models
@@ -52,30 +54,24 @@ struct ChatMessage: Identifiable {
     /// Optional structured station-search payload — renders a compact
     /// list of matching stops beneath the bubble.
     var stationsPayload: StationSearchPayload? = nil
+    /// Optional live-arrivals payload (Batch 6 — M) — renders a colored
+    /// route badge with upcoming arrivals.
+    var liveArrivalsPayload: LiveArrivalsPayload? = nil
+    /// Optional stop-info payload — renders accessibility + departures card.
+    var stopInfoPayload: StopInfoPayload? = nil
+    /// Optional equipment-outages payload — renders broken elevator/escalator list.
+    var equipmentOutagesPayload: EquipmentOutagesPayload? = nil
+    /// Optional service-alerts payload — renders alert summary card.
+    var serviceAlertsPayload: ServiceAlertsPayload? = nil
+    /// Optional follow-up suggestion chips from the backend (Batch 2 — D).
+    var suggestedChips: [SuggestedActionChip]? = nil
+    /// Optional image attached by the user (data URL). Renders a small
+    /// thumbnail under user bubbles.
+    var imageDataURL: String? = nil
 
     static let mockConversation: [ChatMessage] = [
         .init(role: .assistant, content: .text(
             "Hey, I'm **MetroMind** \u{1F9E0}\u{1F687} — your NYC transit brain. Ask me about routes, delays, or the smartest way to get anywhere."
-        )),
-        .init(role: .user, content: .text(
-            "What's the fastest way from Times Square to Brooklyn Bridge right now?"
-        ), showActions: false),
-        .init(role: .assistant, content: .text(
-            """
-            Here are your **best options** right now:
-
-            1. **N/Q/R/W** from Times Sq–42 St → City Hall · *2 stops, ~12 min*
-            2. **4/5** from 42 St–Grand Central → Brooklyn Bridge · *~14 min*
-            3. **2/3** from Times Sq–42 St → Park Pl, then walk 5 min
-
-            Service is running on schedule. Want me to start a live trip?
-            """
-        )),
-        .init(role: .user, content: .voice(durationSeconds: 19), showActions: false),
-        .init(role: .assistant, content: .file(
-            name: "MTA_Service_Alerts_April.pdf",
-            sizeLabel: "PDF · 2 MB",
-            kind: .pdf
         )),
     ]
 }
@@ -116,13 +112,54 @@ final class ChatViewModel {
     /// follow-ups like "replan your last trip".
     var recentTrips: [MetroMindAPI.RecentTripContext] = []
 
+    /// Server-side thread id (Batch 2 — J). Persisted in UserDefaults
+    /// so the conversation survives app restarts.
+    var threadId: String? = UserDefaults.standard.string(forKey: "metromind.thread_id")
+
+    /// Image the user is about to attach to their next message (Batch 2 — L).
+    /// Stored as a data URL so it can drop straight into the request body.
+    var pendingImageDataURL: String? = nil
+
+    // MARK: Voice (Batch 4 — G)
+
+    /// On-device speech recognizer used by the mic button. Starts/stops
+    /// when ``toggleRecording()`` is called.
+    private let speechManager = SpeechRecognitionManager()
+
+    /// Whether assistant replies should be spoken aloud after streaming
+    /// completes. Persisted in UserDefaults.
+    var speakReplies: Bool = UserDefaults.standard.bool(forKey: "metromind.speak_replies") {
+        didSet { UserDefaults.standard.set(speakReplies, forKey: "metromind.speak_replies") }
+    }
+
+    /// Shared TTS synthesizer.
+    private let tts = AVSpeechSynthesizer()
+
+    /// Last message id we've spoken — prevents re-speaking on view re-renders.
+    private var spokenMessageIds: Set<UUID> = []
+
+    init() {
+        // Wire the recognizer's transcription back into the composer draft.
+        speechManager.onTranscription = { [weak self] text in
+            guard let self else { return }
+            self.draft = text
+        }
+    }
+
     func send(_ overrideText: String? = nil) {
         let raw = overrideText ?? draft
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
+        // Snapshot + clear the pending image so the next message doesn't
+        // re-send it.
+        let attachedImage = pendingImageDataURL
+        pendingImageDataURL = nil
+
         // Record the user turn + clear the input.
-        messages.append(.init(role: .user, content: .text(trimmed), showActions: false))
+        var userMsg = ChatMessage(role: .user, content: .text(trimmed), showActions: false)
+        userMsg.imageDataURL = attachedImage
+        messages.append(userMsg)
         draft = ""
         isAssistantTyping = true
 
@@ -152,7 +189,9 @@ final class ChatViewModel {
                              location = currentLocation,
                              userName = userName,
                              savedPlaces = savedPlaces,
-                             recentTrips = recentTrips] in
+                             recentTrips = recentTrips,
+                             threadId = threadId,
+                             imageDataURL = attachedImage] in
             guard let self else { return }
             var receivedAnyToken = false
             do {
@@ -162,7 +201,9 @@ final class ChatViewModel {
                     location: location,
                     userName: userName,
                     savedPlaces: savedPlaces,
-                    recentTrips: recentTrips
+                    recentTrips: recentTrips,
+                    threadId: threadId,
+                    imageDataURL: imageDataURL
                 )
                 for try await event in stream {
                     if Task.isCancelled { break }
@@ -181,11 +222,25 @@ final class ChatViewModel {
                                 self.setRoutePayload(p, on: assistantId)
                             case .stations(let p):
                                 self.setStationsPayload(p, on: assistantId)
+                            case .liveArrivals(let p):
+                                self.setLiveArrivalsPayload(p, on: assistantId)
+                            case .stopInfo(let p):
+                                self.setStopInfoPayload(p, on: assistantId)
+                            case .equipmentOutages(let p):
+                                self.setEquipmentOutagesPayload(p, on: assistantId)
+                            case .serviceAlerts(let p):
+                                self.setServiceAlertsPayload(p, on: assistantId)
                             }
                         }
                         _ = name
-                    case .done:
+                    case .suggestions(let chips):
+                        self.setChips(chips, on: assistantId)
+                    case .done(_, _, let tid):
                         self.setToolStatus(nil, on: assistantId)
+                        if let tid = tid, !tid.isEmpty {
+                            self.persistThreadId(tid)
+                        }
+                        self.speakIfNeeded(messageId: assistantId)
                     case .error(let msg):
                         self.replaceText(
                             "_⚠️ \(msg)_",
@@ -239,6 +294,92 @@ final class ChatViewModel {
         messages[idx].stationsPayload = payload
     }
 
+    private func setLiveArrivalsPayload(_ payload: LiveArrivalsPayload, on id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].liveArrivalsPayload = payload
+    }
+
+    private func setStopInfoPayload(_ payload: StopInfoPayload, on id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].stopInfoPayload = payload
+    }
+
+    private func setEquipmentOutagesPayload(_ payload: EquipmentOutagesPayload, on id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].equipmentOutagesPayload = payload
+    }
+
+    private func setServiceAlertsPayload(_ payload: ServiceAlertsPayload, on id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].serviceAlertsPayload = payload
+    }
+
+    private func setChips(_ chips: [SuggestedActionChip], on id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].suggestedChips = chips
+    }
+
+    private func persistThreadId(_ tid: String) {
+        threadId = tid
+        UserDefaults.standard.set(tid, forKey: "metromind.thread_id")
+    }
+
+    /// Called when the user taps a suggestion chip.
+    func tapChip(_ chip: SuggestedActionChip) {
+        if let text = chip.promptText, !text.isEmpty {
+            send(text)
+        }
+    }
+
+    /// Attach an image picked from the photo library to the next message.
+    func attachImage(_ data: Data, mime: String = "image/jpeg") {
+        let b64 = data.base64EncodedString()
+        pendingImageDataURL = "data:\(mime);base64,\(b64)"
+    }
+
+    // MARK: Voice (Batch 4 — G)
+
+    /// Mic-button action — toggle on-device speech recognition.
+    /// While active, partial transcriptions stream into ``draft``.
+    func toggleRecording() {
+        speechManager.toggle()
+        isRecording = speechManager.isRecording
+    }
+
+    /// Toggle whether assistant replies should be spoken aloud.
+    func toggleSpeakReplies() {
+        speakReplies.toggle()
+        if !speakReplies {
+            tts.stopSpeaking(at: .immediate)
+        }
+    }
+
+    /// Speak the final reply for the assistant message, once.
+    private func speakIfNeeded(messageId: UUID) {
+        guard speakReplies, !spokenMessageIds.contains(messageId) else { return }
+        guard let msg = messages.first(where: { $0.id == messageId }),
+              case .text(let body) = msg.content,
+              !body.isEmpty,
+              !body.hasPrefix("_⚠️") else { return }
+        spokenMessageIds.insert(messageId)
+        let utterance = AVSpeechUtterance(string: stripMarkdown(body))
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        // Make sure playback isn't blocked by the recording session.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        tts.speak(utterance)
+    }
+
+    /// Strip basic markdown tokens before passing to TTS.
+    private func stripMarkdown(_ s: String) -> String {
+        var out = s
+        for token in ["**", "*", "_", "`", "#"] {
+            out = out.replacingOccurrences(of: token, with: "")
+        }
+        return out
+    }
+
     /// Wipe the conversation back to the opening greeting.
     func resetConversation() {
         streamTask?.cancel()
@@ -285,7 +426,13 @@ struct ChatView: View {
                     text: $viewModel.draft,
                     isRecording: $viewModel.isRecording,
                     isFocused: $inputFocused,
-                    onSend: { viewModel.send() }
+                    pendingImageDataURL: viewModel.pendingImageDataURL,
+                    speakReplies: viewModel.speakReplies,
+                    onSend: { viewModel.send() },
+                    onAttachImage: { data in viewModel.attachImage(data) },
+                    onClearImage: { viewModel.pendingImageDataURL = nil },
+                    onToggleMic: { viewModel.toggleRecording() },
+                    onToggleSpeak: { viewModel.toggleSpeakReplies() }
                 )
             }
         }
@@ -379,7 +526,8 @@ struct ChatView: View {
                         ChatMessageRow(
                             message: message,
                             isFirstInGroup: isFirstInGroup(at: index),
-                            isLastInGroup: isLastInGroup(at: index)
+                            isLastInGroup: isLastInGroup(at: index),
+                            onChipTap: { chip in viewModel.tapChip(chip) }
                         )
                         .id(message.id)
                         .transition(.asymmetric(
@@ -570,6 +718,7 @@ private struct ChatMessageRow: View {
     let message: ChatMessage
     let isFirstInGroup: Bool
     let isLastInGroup: Bool
+    var onChipTap: (SuggestedActionChip) -> Void = { _ in }
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
@@ -592,6 +741,20 @@ private struct ChatMessageRow: View {
 
                 bubble
 
+                if let dataURL = message.imageDataURL,
+                   message.role == .user,
+                   let img = decodeDataURL(dataURL) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 140, height: 140)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(AppTheme.Colors.borderSubtle, lineWidth: 0.6)
+                        )
+                }
+
                 if let payload = message.routePayload, message.role == .assistant {
                     ItineraryCardList(payload: payload)
                         .padding(.top, 2)
@@ -601,6 +764,38 @@ private struct ChatMessageRow: View {
                 if let payload = message.stationsPayload, message.role == .assistant {
                     StationListCard(payload: payload)
                         .padding(.top, 2)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                if let payload = message.liveArrivalsPayload, message.role == .assistant {
+                    LiveArrivalsCard(payload: payload)
+                        .padding(.top, 2)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                if let payload = message.stopInfoPayload, message.role == .assistant {
+                    StopInfoCard(payload: payload)
+                        .padding(.top, 2)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                if let payload = message.equipmentOutagesPayload, message.role == .assistant {
+                    EquipmentOutagesCard(payload: payload)
+                        .padding(.top, 2)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                if let payload = message.serviceAlertsPayload, message.role == .assistant {
+                    ServiceAlertsCard(payload: payload)
+                        .padding(.top, 2)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                if let chips = message.suggestedChips,
+                   !chips.isEmpty,
+                   message.role == .assistant {
+                    SuggestionChipStrip(chips: chips, onTap: onChipTap)
+                        .padding(.top, 4)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
@@ -615,6 +810,13 @@ private struct ChatMessageRow: View {
             }
         }
         .padding(.top, isFirstInGroup ? 6 : 0)
+    }
+
+    private func decodeDataURL(_ s: String) -> UIImage? {
+        guard let comma = s.firstIndex(of: ",") else { return nil }
+        let b64 = String(s[s.index(after: comma)...])
+        guard let data = Data(base64Encoded: b64) else { return nil }
+        return UIImage(data: data)
     }
 
     @ViewBuilder
@@ -862,6 +1064,54 @@ private struct ToolStatusPill: View {
     }
 }
 
+// MARK: - Suggestion Chip Strip
+
+private struct SuggestionChipStrip: View {
+    let chips: [SuggestedActionChip]
+    let onTap: (SuggestedActionChip) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(chips) { chip in
+                    Button { onTap(chip) } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: iconName(for: chip.kind))
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(AppTheme.Colors.accent)
+                            Text(chip.label)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(AppTheme.Colors.textPrimary)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(
+                            Capsule().fill(AppTheme.Colors.cardBackground)
+                        )
+                        .overlay(
+                            Capsule().strokeBorder(
+                                AppTheme.Colors.borderSubtle, lineWidth: 0.6
+                            )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func iconName(for kind: String) -> String {
+        switch kind {
+        case "save_trip":      return "bookmark"
+        case "start_tracking": return "location.fill"
+        case "open_alerts":    return "exclamationmark.triangle"
+        case "open_place":     return "mappin.circle"
+        default:               return "sparkles"
+        }
+    }
+}
+
 // MARK: - Itinerary Card
 
 private struct ItineraryCardList: View {
@@ -1068,6 +1318,492 @@ private struct StationListCard: View {
             }
         }
         .frame(maxWidth: 320, alignment: .leading)
+    }
+}
+
+// MARK: - Live Arrivals Card
+
+private struct LiveArrivalsCard: View {
+    let payload: LiveArrivalsPayload
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header — colored route bullet + caption
+            HStack(spacing: 8) {
+                ChatRouteBullet(routeId: payload.route_id)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(headerTitle)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    Text(headerCaption)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+                Spacer(minLength: 0)
+                if let n = payload.vehicle_count, n > 0 {
+                    Label("\(n)", systemImage: "tram.fill")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+
+            if payload.arrivals.isEmpty {
+                Text("No upcoming trains right now.")
+                    .font(.system(size: 12))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(payload.arrivals.prefix(6)) { arr in
+                        ChatArrivalRow(arrival: arr, routeId: payload.route_id)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 320, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.55), lineWidth: 0.6)
+        )
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 10, x: 0, y: 4)
+    }
+
+    private var headerTitle: String {
+        let route = payload.route_id
+        let dir = (payload.direction_filter ?? "both").lowercased()
+        switch dir {
+        case "north": return "Northbound \(route)"
+        case "south": return "Southbound \(route)"
+        default:      return "\(route) train arrivals"
+        }
+    }
+
+    private var headerCaption: String {
+        if let f = payload.station_filter, !f.isEmpty {
+            return "Live · filtered by \"\(f)\""
+        }
+        return "Live · GTFS-RT"
+    }
+}
+
+private struct ChatRouteBullet: View {
+    let routeId: String
+
+    var body: some View {
+        Text(routeId)
+            .font(.system(size: 13, weight: .heavy, design: .rounded))
+            .foregroundColor(AppTheme.SubwayColors.textColor(for: routeId))
+            .frame(width: 28, height: 28)
+            .background(Circle().fill(AppTheme.SubwayColors.color(for: routeId)))
+    }
+}
+
+private struct ChatArrivalRow: View {
+    let arrival: LiveArrivalsPayload.Arrival
+    let routeId: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 6, height: 6)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(arrival.station_name ?? "Unknown stop")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(1)
+                if let dest = arrival.destination, !dest.isEmpty {
+                    Text("→ \(dest)")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(etaText)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundColor(statusColor)
+                if let label = statusLabel {
+                    Text(label)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(AppTheme.SubwayColors.color(for: routeId).opacity(0.06))
+        )
+    }
+
+    private var etaText: String {
+        if arrival.is_cancelled == true { return "—" }
+        guard let m = arrival.minutes_away else { return "—" }
+        if m <= 0 { return "Now" }
+        return "\(m) min"
+    }
+
+    private var statusColor: Color {
+        if arrival.is_cancelled == true || arrival.is_skipped == true {
+            return .red
+        }
+        if let d = arrival.delay_seconds, d >= 120 {
+            return .orange
+        }
+        return AppTheme.Colors.accent
+    }
+
+    private var statusLabel: String? {
+        if arrival.is_cancelled == true { return "Cancelled" }
+        if arrival.is_skipped == true { return "Skipped" }
+        if let d = arrival.delay_seconds, d >= 120 {
+            return "+\(d / 60) min late"
+        }
+        if let s = arrival.status, s.lowercased() != "on time" {
+            return s
+        }
+        return nil
+    }
+}
+
+// MARK: - Stop Info Card
+
+private struct StopInfoCard: View {
+    let payload: StopInfoPayload
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: adaIcon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(adaColor))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(payload.station_name ?? "Stop")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                    Text(adaCaption)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if let acc = payload.accessibility {
+                if let outages = acc.out_of_service_equipment, !outages.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(outages.prefix(4)) { eq in
+                            HStack(spacing: 6) {
+                                Image(systemName: eq.type == "elevator"
+                                      ? "figure.roll"
+                                      : "stairs")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.orange)
+                                Text(eq.description ?? eq.equipment_id ?? "Equipment")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                                Text("OUT")
+                                    .font(.system(size: 9, weight: .heavy))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(Capsule().fill(Color.orange))
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let deps = payload.next_departures, !deps.isEmpty {
+                Divider().opacity(0.4)
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(deps.prefix(5)) { d in
+                        HStack(spacing: 8) {
+                            ChatRouteBullet(routeId: d.route_id ?? "?")
+                                .scaleEffect(0.75)
+                                .frame(width: 22, height: 22)
+                            Text(d.destination ?? "")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textPrimary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Text(etaLabel(d))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundColor(d.is_cancelled == true
+                                                 ? .red
+                                                 : AppTheme.Colors.accent)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 320, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.55), lineWidth: 0.6)
+        )
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 10, x: 0, y: 4)
+    }
+
+    private var adaIcon: String {
+        switch payload.accessibility?.ada_status_code {
+        case 1: return "figure.roll"
+        case 2: return "exclamationmark.triangle.fill"
+        default: return "tram.fill"
+        }
+    }
+
+    private var adaColor: Color {
+        switch payload.accessibility?.ada_status_code {
+        case 1: return .green
+        case 2: return .orange
+        case 0: return .gray
+        default: return AppTheme.Colors.accent
+        }
+    }
+
+    private var adaCaption: String {
+        guard let acc = payload.accessibility else { return "Stop info" }
+        var bits: [String] = []
+        if let s = acc.ada_status { bits.append(s.capitalized) }
+        if let n = acc.out_of_service_count, n > 0 {
+            bits.append("\(n) out of service")
+        }
+        return bits.joined(separator: " · ")
+    }
+
+    private func etaLabel(_ d: StopInfoPayload.Departure) -> String {
+        if d.is_cancelled == true { return "—" }
+        guard let m = d.minutes_away else { return "—" }
+        if m <= 0 { return "Now" }
+        return "\(m)m"
+    }
+}
+
+// MARK: - Equipment Outages Card
+
+private struct EquipmentOutagesCard: View {
+    let payload: EquipmentOutagesPayload
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.orange))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(headerTitle)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    Text(headerCaption)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if payload.outages.isEmpty {
+                Text("No outages reported.")
+                    .font(.system(size: 12))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(payload.outages.prefix(6)) { o in
+                        HStack(spacing: 8) {
+                            Image(systemName: o.type == "elevator"
+                                  ? "figure.roll"
+                                  : "stairs")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.orange)
+                                .frame(width: 22, height: 22)
+                                .background(Circle().fill(Color.orange.opacity(0.15)))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(o.station ?? "Unknown station")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(AppTheme.Colors.textPrimary)
+                                    .lineLimit(1)
+                                Text(o.description ?? "")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(AppTheme.Colors.textTertiary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.orange.opacity(0.06))
+                        )
+                    }
+                }
+                if payload.truncated == true,
+                   let total = payload.total_outages,
+                   let returned = payload.returned {
+                    Text("Showing \(returned) of \(total)")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 320, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.55), lineWidth: 0.6)
+        )
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 10, x: 0, y: 4)
+    }
+
+    private var headerTitle: String {
+        let kind = (payload.filters?.equipment_type ?? "equipment").capitalized
+        return "\(kind) Outages"
+    }
+
+    private var headerCaption: String {
+        if let f = payload.filters?.station_filter, !f.isEmpty {
+            return "Filtered by \"\(f)\""
+        }
+        if let total = payload.total_outages {
+            return "\(total) total system-wide"
+        }
+        return "MTA equipment feed"
+    }
+}
+
+// MARK: - Service Alerts Card
+
+private struct ServiceAlertsCard: View {
+    let payload: ServiceAlertsPayload
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.red))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Service Alerts")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    Text("\(payload.total_matching ?? payload.alerts.count) total")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if payload.alerts.isEmpty {
+                Text("No active alerts.")
+                    .font(.system(size: 12))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(payload.alerts.prefix(4)) { a in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                ForEach(routeBadges(for: a), id: \.self) { rid in
+                                    ChatRouteBullet(routeId: rid)
+                                        .scaleEffect(0.7)
+                                        .frame(width: 20, height: 20)
+                                }
+                                Text(severityLabel(a.severity))
+                                    .font(.system(size: 9, weight: .heavy))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(Capsule().fill(severityColor(a.severity)))
+                                Spacer(minLength: 0)
+                            }
+                            Text(a.title ?? "Alert")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textPrimary)
+                                .lineLimit(2)
+                            if let desc = a.description, !desc.isEmpty {
+                                Text(desc)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(AppTheme.Colors.textTertiary)
+                                    .lineLimit(2)
+                            }
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(severityColor(a.severity).opacity(0.07))
+                        )
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: 320, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.55), lineWidth: 0.6)
+        )
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 10, x: 0, y: 4)
+    }
+
+    private func routeBadges(for a: ServiceAlertsPayload.Alert) -> [String] {
+        var ids: [String] = []
+        if let r = a.route_id, !r.isEmpty { ids.append(r) }
+        for r in (a.affected_routes ?? []) where !ids.contains(r) {
+            ids.append(r)
+        }
+        return Array(ids.prefix(4))
+    }
+
+    private func severityLabel(_ sev: String?) -> String {
+        switch (sev ?? "").lowercased() {
+        case "severe", "high":   return "MAJOR"
+        case "moderate":         return "DELAY"
+        case "info", "low":      return "INFO"
+        default:                 return "ALERT"
+        }
+    }
+
+    private func severityColor(_ sev: String?) -> Color {
+        switch (sev ?? "").lowercased() {
+        case "severe", "high":   return .red
+        case "moderate":         return .orange
+        case "info", "low":      return .blue
+        default:                 return AppTheme.Colors.accent
+        }
     }
 }
 
@@ -1499,7 +2235,15 @@ private struct ChatComposer: View {
     @Binding var text: String
     @Binding var isRecording: Bool
     var isFocused: FocusState<Bool>.Binding
+    var pendingImageDataURL: String? = nil
+    var speakReplies: Bool = false
     let onSend: () -> Void
+    var onAttachImage: (Data) -> Void = { _ in }
+    var onClearImage: () -> Void = { }
+    var onToggleMic: () -> Void = { }
+    var onToggleSpeak: () -> Void = { }
+
+    @State private var photoSelection: PhotosPickerItem? = nil
 
     private var hasText: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1511,8 +2255,15 @@ private struct ChatComposer: View {
                 .fill(AppTheme.Colors.borderSubtle.opacity(0.4))
                 .frame(height: 0.5)
 
+            if pendingImageDataURL != nil {
+                pendingImagePreview
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+            }
+
             HStack(spacing: 10) {
                 attachmentButton
+                speakerToggleButton
                 inputField
                 trailingButton
             }
@@ -1521,10 +2272,49 @@ private struct ChatComposer: View {
             .padding(.bottom, 10)
         }
         .background(.ultraThinMaterial.opacity(0.85))
+        .onChange(of: photoSelection) { _, newItem in
+            guard let item = newItem else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    await MainActor.run { onAttachImage(data) }
+                }
+                await MainActor.run { photoSelection = nil }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var pendingImagePreview: some View {
+        HStack(spacing: 10) {
+            if let url = pendingImageDataURL,
+               let comma = url.firstIndex(of: ","),
+               let data = Data(base64Encoded: String(url[url.index(after: comma)...])),
+               let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            Text("Image attached")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+            Spacer()
+            Button(action: onClearImage) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var attachmentButton: some View {
-        Button { } label: {
+        PhotosPicker(
+            selection: $photoSelection,
+            matching: .images,
+            photoLibrary: .shared()
+        ) {
             Image(systemName: "plus")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundColor(AppTheme.Colors.textSecondary)
@@ -1534,7 +2324,23 @@ private struct ChatComposer: View {
                 .shadow(color: AppTheme.Colors.shadow.opacity(0.06),
                         radius: 4, x: 0, y: 2)
         }
+    }
+
+    private var speakerToggleButton: some View {
+        Button(action: onToggleSpeak) {
+            Image(systemName: speakReplies
+                  ? "speaker.wave.2.fill"
+                  : "speaker.slash.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(speakReplies
+                                 ? AppTheme.Colors.accent
+                                 : AppTheme.Colors.textSecondary)
+                .frame(width: 32, height: 38)
+        }
         .buttonStyle(.plain)
+        .accessibilityLabel(speakReplies
+                            ? "Mute spoken replies"
+                            : "Speak replies aloud")
     }
 
     private var inputField: some View {
@@ -1582,7 +2388,7 @@ private struct ChatComposer: View {
         } else {
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    isRecording.toggle()
+                    onToggleMic()
                 }
             } label: {
                 Image(systemName: isRecording ? "stop.fill" : "mic.fill")

@@ -40,7 +40,7 @@ async def test_run_turn_no_tools_returns_reply() -> None:
         complete=AsyncMock(return_value=_make_response("Hello from MetroMind!"))
     )
 
-    reply, tools_used = await run_turn(
+    reply, tools_used, _chips, _model = await run_turn(
         client=client,
         history=[],
         user_message="Hi",
@@ -75,7 +75,7 @@ async def test_run_turn_single_tool_then_final_reply() -> None:
         "app.metromind.orchestrator.dispatch",
         AsyncMock(return_value=fake_result),
     ):
-        reply, tools_used = await run_turn(
+        reply, tools_used, _chips, _model = await run_turn(
             client=client,
             history=[],
             user_message="any delays?",
@@ -106,7 +106,7 @@ async def test_run_turn_hits_max_iterations_gracefully() -> None:
         "app.metromind.orchestrator.dispatch",
         AsyncMock(return_value=fake_result),
     ):
-        reply, tools_used = await run_turn(
+        reply, tools_used, _chips, _model = await run_turn(
             client=client,
             history=[],
             user_message="loop pls",
