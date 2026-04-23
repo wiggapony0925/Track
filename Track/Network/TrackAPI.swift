@@ -660,6 +660,33 @@ struct TrackAPI {
         return try decoder.decode(RouteShapeResponse.self, from: data)
     }
 
+    /// Fetches live GTFS-RT vehicle positions for a subway line.
+    ///
+    /// Backend: `GET /subway/vehicles/{line_id}` returns one entry per
+    /// active train with real GPS lat/lon, bearing, speed, occupancy and
+    /// VehicleStopStatus. Used by the map to overlay accurate live
+    /// positions on top of (or in place of) the client's interpolated
+    /// markers — see `HomeViewModel.updateTrainPositions`.
+    ///
+    /// Returns an empty array on transport / decode failure so callers
+    /// can fall back to interpolation without throwing.
+    ///
+    /// - Parameter line: Subway line letter/number (e.g. "A", "7", "L").
+    static func fetchSubwayVehicles(line: String) async -> [TrainVehicle] {
+        let encoded =
+            line.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? line
+        do {
+            let data = try await get(path: "/subway/vehicles/\(encoded)")
+            return try decoder.decode([TrainVehicle].self, from: data)
+        } catch {
+            AppLogger.shared.logError(
+                "fetchSubwayVehicles(\(line)) — falling back to interpolation",
+                error: error
+            )
+            return []
+        }
+    }
+
     /// Fetches the full route geometry for a single LIRR branch.
     ///
     /// - Parameter routeID: LIRR branch ID (e.g. "LIRR_9" or "9").

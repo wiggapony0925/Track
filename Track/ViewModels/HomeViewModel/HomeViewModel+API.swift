@@ -485,7 +485,14 @@ extension HomeViewModel {
     func refreshTrainVehicles() async {
         guard let routeId = selectedRouteId else { return }
         do {
-            let arrivals = try await TrackAPI.fetchSubwayArrivals(lineID: routeId)
+            // Fetch arrivals and live GTFS-RT vehicle positions in parallel.
+            // Real positions (when present) supersede the client's
+            // interpolated markers; arrivals remain the source of truth
+            // for `nextStationName` / `estimatedArrival` / dwell metadata.
+            async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: routeId)
+            async let vehiclesTask = TrackAPI.fetchSubwayVehicles(line: routeId)
+            let arrivals = try await arrivalsTask
+            let realVehicles = await vehiclesTask
 
             // Staleness check: user may have dismissed while the fetch ran.
             guard selectedRouteId == routeId else { return }
@@ -501,7 +508,7 @@ extension HomeViewModel {
             // its own .linear(duration: 1.0). Double-wrapping caused stuttering.
             await MainActor.run {
                 guard self.selectedRouteId == routeId else { return }
-                updateTrainPositions(arrivals: arrivals)
+                updateTrainPositions(arrivals: arrivals, realVehicles: realVehicles)
                 if let updatedGroup,
                    self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
                     self.selectedGroupedRoute = updatedGroup
@@ -1175,9 +1182,25 @@ extension HomeViewModel {
     ///  • Vehicles that vanish for a single poll cycle are kept in a grace
     ///    buffer (≤12 s) so their Annotation isn't destroyed and recreated,
     ///    which would cause a visible pop/flash.
-    func updateTrainPositions(arrivals: [TrainArrival]) {
+    func updateTrainPositions(
+        arrivals: [TrainArrival],
+        realVehicles: [TrainVehicle] = []
+    ) {
         guard let shape = routeShape else { return }
         self.cachedTrainArrivals = arrivals
+
+        // Hybrid lookup: prefer real GTFS-RT vehicle positions when the
+        // backend feed publishes them. NYCT subway feeds are inconsistent
+        // (some lines publish VehiclePosition entities, some don't), so
+        // we fall back to client-side interpolation when no real entry
+        // matches the trip.  Keyed by tripId AND vehicle id so we catch
+        // both NYCT-style (vehicle_id == trip_id) and feeds where they
+        // diverge.
+        var realByTrip: [String: TrainVehicle] = [:]
+        for v in realVehicles {
+            if let tid = v.tripId, !tid.isEmpty { realByTrip[tid] = v }
+            realByTrip[v.id] = v
+        }
 
         // Build stops and polyline per direction so we can match arrivals
         // against the correct direction's stops.
@@ -1358,7 +1381,18 @@ extension HomeViewModel {
                 // marker permanently lagging behind the computed position.
                 var finalLat = targetLat
                 var finalLon = targetLon
-                if let prev = _previousTrainPositions[tripId] {
+
+                // Hybrid override: if the GTFS-RT feed reported a real
+                // position for this trip, use it verbatim (no interpolation
+                // smoothing) — that's the actual signal-system reading.
+                let real = realByTrip[tripId]
+                if let real {
+                    finalLat = real.lat
+                    finalLon = real.lon
+                    if let b = real.bearing { bearing = b }
+                }
+
+                if real == nil, let prev = _previousTrainPositions[tripId] {
                     // Distance-adaptive blend: move faster when far away
                     // (catch up after a next-stop shift), slower when close
                     // (smooth micro-jitter).  0.55 per tick covers ~90% in
@@ -1379,8 +1413,17 @@ extension HomeViewModel {
                         lat: finalLat,
                         lon: finalLon,
                         bearing: bearing,
-                        nextStationName: dirStops[nextStopIndex].name,
-                        estimatedArrival: nextStop.estimatedTime
+                        nextStationName: real?.nextStationName ?? dirStops[nextStopIndex].name,
+                        estimatedArrival: nextStop.estimatedTime,
+                        occupancy: real?.occupancy,
+                        speedMph: real?.speedMph,
+                        currentStopId: real?.currentStopId,
+                        status: real?.status,
+                        mode: real?.mode ?? "subway",
+                        timestamp: real?.timestamp,
+                        colorHex: real?.colorHex,
+                        congestionLevel: real?.congestionLevel,
+                        currentStatusCode: real?.currentStatusCode
                     ))
                 newIds.insert(tripId)
                 // Record position for smart ETA speed estimation
@@ -1389,6 +1432,22 @@ extension HomeViewModel {
                     coordinate: CLLocationCoordinate2D(latitude: finalLat, longitude: finalLon))
                 break  // Found a matching direction, stop searching
             }
+        }
+
+        // Surface real GTFS-RT vehicles that didn't match any arrival-derived
+        // trip (e.g. a train just spawned at a terminal before an arrival
+        // entity was published).  These come straight from the feed —
+        // no interpolation needed.  Skip if direction is empty AND we have
+        // no next-stop name, to avoid drawing markers with no context.
+        for real in realVehicles {
+            let key = real.tripId ?? real.id
+            if newIds.contains(key) { continue }
+            if real.lat == 0 && real.lon == 0 { continue }
+            newVehicles.append(real)
+            newIds.insert(key)
+            ArrivalETAEngine.recordPosition(
+                vehicleKey: key,
+                coordinate: CLLocationCoordinate2D(latitude: real.lat, longitude: real.lon))
         }
 
         // Grace buffer: keep vehicles that vanished this tick for up to 12 s

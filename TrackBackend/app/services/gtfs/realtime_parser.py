@@ -699,27 +699,48 @@ def _parse_vehicle_positions_sync(
         if not entity.HasField("vehicle"):
             continue
         vp = entity.vehicle
-        if not vp.HasField("position"):
-            continue
+
+        # NYCT subway feeds publish VehiclePosition entities with real
+        # signal-system data (current_stop_id, current_status, timestamp)
+        # but NO GPS position.  When position is missing we fall back to
+        # the GTFS stop coordinates of vp.stop_id — that still gives the
+        # client the actual platform the train is at, anchored to the
+        # right map location, instead of dropping the entity entirely.
+        has_position = vp.HasField("position")
 
         route_id = vp.trip.route_id if vp.trip.HasField("route_id") else ""
         trip_id = vp.trip.trip_id if vp.trip.HasField("trip_id") else None
         vehicle_id = vp.vehicle.id if vp.HasField("vehicle") and vp.vehicle.id else (trip_id or entity.id)
 
-        lat = vp.position.latitude
-        lon = vp.position.longitude
-        bearing = vp.position.bearing if vp.position.bearing else None
-        speed = None
-        if vp.position.speed > 0:
-            speed = round(vp.position.speed * 2.23694, 1)  # m/s → mph
-
         stop_id = vp.stop_id if vp.stop_id else None
-        stop_name_resolved = get_stop_name(stop_id) if stop_id else None
-        if stop_name_resolved in (None, "Unknown", stop_id) and stop_id:
-            base = stop_id[:-1] if len(stop_id) > 1 and stop_id[-1] in "NS" else stop_id
-            resolved = get_stop_name(base)
-            if resolved != "Unknown":
-                stop_name_resolved = resolved
+        stop_info = get_stop_info(stop_id) if stop_id else None
+        if stop_info is None and stop_id and len(stop_id) > 1 and stop_id[-1] in "NS":
+            stop_info = get_stop_info(stop_id[:-1])
+
+        if has_position:
+            lat = vp.position.latitude
+            lon = vp.position.longitude
+            bearing = vp.position.bearing if vp.position.bearing else None
+            speed = None
+            if vp.position.speed > 0:
+                speed = round(vp.position.speed * 2.23694, 1)  # m/s → mph
+        elif stop_info is not None:
+            lat = stop_info.lat
+            lon = stop_info.lon
+            bearing = None
+            speed = None
+        else:
+            # No GPS and no resolvable stop — skip; client interpolation
+            # will draw something sensible from the trip's arrivals.
+            continue
+
+        stop_name_resolved = stop_info.name if stop_info else None
+        if stop_name_resolved is None and stop_id:
+            stop_name_resolved = get_stop_name(stop_id)
+            if stop_name_resolved in (None, "Unknown", stop_id) and len(stop_id) > 1 and stop_id[-1] in "NS":
+                resolved = get_stop_name(stop_id[:-1])
+                if resolved != "Unknown":
+                    stop_name_resolved = resolved
 
         status_enum = vp.current_status if vp.HasField("current_status") else 2
         status_str = _VEHICLE_STATUS_MAP.get(status_enum, "IN_TRANSIT_TO")
