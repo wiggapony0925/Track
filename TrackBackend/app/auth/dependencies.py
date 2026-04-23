@@ -80,6 +80,16 @@ def _verify_token(token: str) -> AuthUser:
             detail="Token has expired. Please sign in again.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    except jwt.InvalidAlgorithmError as exc:
+        # If Supabase issues RS256 tokens but the backend expects HS256, this will trigger.
+        unverified_header = jwt.get_unverified_header(token)
+        actual_alg = unverified_header.get("alg", "unknown")
+        TrackLogger.warning(f"JWT algorithm mismatch: expected {_ALGORITHM}, but got {actual_alg}. If your Supabase project uses RS256, you must either change it back to HS256 in the Supabase Dashboard, or update this backend to verify RS256 tokens via JWKS.", tag="AUTH")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token algorithm ({actual_alg}).",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     except jwt.InvalidTokenError as exc:
         TrackLogger.warning(f"JWT validation failed: {exc}", tag="AUTH")
         raise HTTPException(
