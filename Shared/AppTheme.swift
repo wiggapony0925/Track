@@ -13,6 +13,7 @@ enum AppTheme {
         // NYC Identity
         static let subwayBlack = AppThemeUtilities.adaptiveColor(\.subwayBlack)
         static let accent = AppThemeUtilities.adaptiveColor(\.accent)
+        static let turquoise = Color(red: 0 / 255, green: 194 / 255, blue: 168 / 255) // Bright turquoise from reference
 
         /// Legacy name kept so existing views inherit the transit-purple
         /// accent without touching every call site in the app.

@@ -90,16 +90,6 @@ struct PlanView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
-                // Floating pill tab bar — bottom-trailing, same as Home tab
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        FloatingTabPill(selectedTab: $selectedTab)
-                    }
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 12)
-                }
             }
             .navigationBarHidden(true)
             .onAppear {
@@ -123,6 +113,13 @@ struct PlanView: View {
                 // so the UI loads first and critical requests take priority.
                 try? await Task.sleep(for: .seconds(3))
                 await viewModel.prefetchCommutePlans()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .quickDestination)) { notification in
+                // Posted by FloatingSearchBar shortcut button.
+                // Sets the destination and immediately plans the trip.
+                guard let location = notification.object as? PlanLocation else { return }
+                viewModel.selectDestination(location)
+                Task { await viewModel.planTrip() }
             }
             .sheet(isPresented: $viewModel.showDestinationSearch) {
                 DestinationSearchView(viewModel: viewModel, isOrigin: false)
@@ -1447,7 +1444,7 @@ private struct DashedConnector: Shape {
     PlanView(
         locationManager: LocationManager(),
         homeViewModel: HomeViewModel(),
-        selectedTab: .constant(.plan),
+        selectedTab: .constant(.trips),
         cameraPosition: .constant(.userLocation),
         showStations: .constant(true),
         currentMapCenter: .constant(nil),

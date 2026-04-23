@@ -10,6 +10,7 @@
 // - DashboardView: Dashboard content with mode-specific views
 
 import CoreLocation
+import SwiftData
 import SwiftUI
 import WidgetKit
 
@@ -20,6 +21,10 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Bindable var viewModel: HomeViewModel
     var locationManager: LocationManager
+    /// Saved home/work places — sourced from SavedPlacesCache which
+    /// PlanViewModel keeps current after each backend sync.
+    private var savedHomePlace: SavedLocation? { SavedPlacesCache.shared.homePlace }
+    private var savedWorkPlace: SavedLocation? { SavedPlacesCache.shared.workPlace }
     /// When false, the universal bottom sheet is suppressed so it
     /// doesn't bleed through on top of the Plan tab.
     var isActive: Bool = true
@@ -37,6 +42,9 @@ struct HomeView: View {
     /// ``SheetHeightObserver`` for SwiftUI consumers (currently the
     /// floating tab pill, which rides up with the drag).
     @State private var liveSheetHeight: CGFloat = 0
+    /// True when the user has dragged the sheet fully down past the minimum.
+    /// Shows the peek-restore button and hides the sheet from view.
+    @State private var isSheetCollapsed: Bool = false
     @State private var lastUpdated: Date?
     @State private var refreshTimer: Timer?
     @State private var vehiclePollTimer: Timer?
@@ -250,35 +258,7 @@ struct HomeView: View {
                     )
                 }
 
-                // MARK: - Floating Pill Tab Bar
-                if sheetDetent != .large
-                    && viewModel.selectedRouteId == nil
-                    && !viewModel.isRouteDetailPresented {
-                    let pillBottomPad = pillBottom(screenHeight: geo.size.height)
-                    // Hide the pill when its top would collide with the
-                    // top-right map control island.  ~52pt safe-area top
-                    // + ~140pt island height + 16pt gap ≈ 220pt; once the
-                    // pill's bottom padding exceeds (screen - 220), drop it.
-                    let collisionThreshold = geo.size.height - 220
-                    let pillVisible = pillBottomPad < collisionThreshold
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            FloatingTabPill(selectedTab: $selectedTab)
-                        }
-                        .padding(.trailing, 16)
-                        .padding(.bottom, pillBottomPad)
-                    }
-                    .opacity(pillVisible ? 1 : 0)
-                    .allowsHitTesting(pillVisible)
-                    .animation(.easeOut(duration: 0.12), value: pillVisible)
-                    .transition(
-                        .opacity.combined(
-                            with: .scale(scale: 0.85, anchor: .bottomTrailing)
-                        )
-                    )
-                }
+
 
             }
             // MARK: - Universal Bottom Sheet
@@ -291,7 +271,28 @@ struct HomeView: View {
                         navigator: sheetNavigator,
                         sheetDetent: $sheetDetent,
                         sheetHeightObserver: sheetHeightObserver,
-                        onLiveHeightChange: { liveSheetHeight = $0 }
+                        onLiveHeightChange: { h in
+                            // Disable all SwiftUI animations for this state update.
+                            // liveSheetHeight is driven by CADisplayLink at 60fps;
+                            // any implicit animation creates a 1-frame lag that makes
+                            // the pill feel detached from the sheet during fast drags.
+                            var t = Transaction()
+                            t.disablesAnimations = true
+                            withTransaction(t) { liveSheetHeight = h }
+
+                            // Collapse detection: if the user drags the sheet near 0,
+                            // snap it to hidden and show the peek indicator.
+                            if h < 80 && !isSheetCollapsed {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    isSheetCollapsed = true
+                                }
+                                sheetDetent = .height(0)
+                                HapticManager.notification(.warning)
+                            } else if h > 120 && isSheetCollapsed {
+                                // User is dragging up from collapsed — un-collapse
+                                isSheetCollapsed = false
+                            }
+                        }
                     ) { page in
                         sheetContent(for: page)
                     }
@@ -299,6 +300,74 @@ struct HomeView: View {
                 }
             }
             .animation(.spring(response: 0.32, dampingFraction: 0.95), value: bottomSheetPresentation.wrappedValue)
+            // MARK: - Floating Search Bar
+            // Sits above the sheet top edge, straddling the map/sheet boundary
+            // exactly like the reference app (Moovit-style). Uses liveSheetHeight
+            // to stay pinned to the top of the sheet as it drags.
+            .overlay {
+                if bottomSheetPresentation.wrappedValue && sheetNavigator.currentPage == .dashboard {
+                    GeometryReader { geo in
+                        // liveSheetHeight is measured from the TRUE screen bottom
+                        // (the sheet uses .ignoresSafeArea), but this overlay respects
+                        // safe areas — so geo.size.height < screen height.
+                        // We compensate by adding the bottom safe-area inset so both
+                        // measurements share the same origin.
+                        let bottomInset = geo.safeAreaInsets.bottom
+                        let sheetTopFromViewTop = geo.size.height - liveSheetHeight + bottomInset
+                        // .position(x,y) places the view's CENTER at y.
+                        // Setting center = sheetTopFromViewTop gives exactly 50% on the
+                        // map (above) and 50% on the sheet (below).
+                        let pillCenterY = sheetTopFromViewTop
+
+                        FloatingSearchBar(
+                            searchText: Binding(
+                                get: { viewModel.searchText },
+                                set: { viewModel.searchText = $0 }
+                            ),
+                            locationName: viewModel.currentLocationName,
+                            isDragSearchActive: viewModel.isSearchPinActive,
+                            homePlace: savedHomePlace,
+                            workPlace: savedWorkPlace,
+                            userCoordinate: locationManager.currentLocation?.coordinate
+                        )
+                        .frame(maxWidth: .infinity)
+                        .position(x: geo.size.width / 2, y: max(0, pillCenterY))
+                        // During drag: no animation — liveSheetHeight runs at 60fps via
+                        // CADisplayLink so animating would cause the chasing lag.
+                        .transaction { t in
+                            // Preserve the entrance/exit spring set by the outer
+                            // .animation(…, value: bottomSheetPresentation) block
+                            // but kill any other implicit animation (e.g. drag).
+                            if t.animation != nil && t.animation != .spring(response: 0.32, dampingFraction: 0.95) {
+                                t.animation = nil
+                            }
+                        }
+                    }
+                    // Pill slides in/out with the SAME spring as the sheet card.
+                    // Without this transition the pill pops in at its final y-position
+                    // while the sheet is still sliding up — making them look detached.
+                    .transition(.move(edge: .bottom))
+                }
+            }
+            .animation(.spring(response: 0.32, dampingFraction: 0.95), value: bottomSheetPresentation.wrappedValue)
+            .animation(.spring(response: 0.32, dampingFraction: 0.95), value: sheetNavigator.currentPage == .dashboard)
+
+            // MARK: - Sheet Peek Button
+            // Floats above the tab bar when the sheet has been dragged fully down.
+            // Pulses with a glow, and restores the sheet on tap or swipe up.
+            .overlay(alignment: .bottom) {
+                if isSheetCollapsed {
+                    SheetPeekButton {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            isSheetCollapsed = false
+                            sheetDetent = SheetConstants.defaultDetent
+                        }
+                        HapticManager.impact(.medium)
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 100) // sits above the tab bar
+                }
+            }
             // MARK: - Route Detail Floating Panel
             .overlay {
                 if let routeDetailPage = activeRouteDetailPage {
@@ -320,23 +389,7 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Pill Tab Bar Positioning
 
-    /// Bottom padding so the pill sits just above the sheet.
-    /// Uses the live drag height when available so the pill rides up
-    /// continuously instead of jumping at snap points.
-    private func pillBottom(screenHeight: CGFloat) -> CGFloat {
-        // Negative gap = pill overlaps onto the sheet so it sits lower,
-        // closer to (and slightly inside) the sheet edge.
-        let pillGap: CGFloat = -22
-        if liveSheetHeight > 1 {
-            return liveSheetHeight + pillGap
-        }
-        if sheetDetent == SheetConstants.defaultDetent {
-            return SheetConstants.defaultHeight + pillGap
-        }
-        return SheetConstants.minimumHeight + pillGap
-    }
 
     // MARK: - Modifier Handler Methods (extracted from body)
     
@@ -629,9 +682,6 @@ struct HomeView: View {
             )
             .id(selection.id)
             
-        case .settings:
-            SettingsContentView(sheetNavigator: sheetNavigator)
-
         case .profileSettings:
             ProfileSettingsContentView(sheetNavigator: sheetNavigator)
             
@@ -938,6 +988,11 @@ struct HomeView: View {
         locationManager.startUpdating()
         startRefreshTimer()
     }
+
+    // fetchSavedPlaces() removed — HomeView now reads SavedPlacesCache
+    // which PlanViewModel populates from the backend after each login/refresh.
+    // The old SwiftData FetchDescriptor approach found nothing because saved
+    // locations are never written to the local store.
     
     /// Creates the auto-refresh timer. Safe to call multiple times.
     private func startRefreshTimer() {

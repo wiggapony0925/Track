@@ -247,7 +247,11 @@ struct  GroupedRouteRow: View {
     @ViewBuilder
     private var rowBackground: some View {
         RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous)
-            .fill(AppTheme.Colors.cardBackground)
+            .fill(Color.clear)
+            .overlay {
+                RoundedRectangle(cornerRadius: containerCornerRadius, style: .continuous)
+                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.25), lineWidth: 0.5)
+            }
     }
 
     private var mainRowAccessibilityLabel: String {
@@ -312,7 +316,7 @@ struct  GroupedRouteRow: View {
             if hasAlert {
                 ZStack {
                     Circle()
-                        .fill(AppTheme.Colors.cardBackground)
+                        .fill(AppTheme.Colors.cardInset)
                         .frame(width: 20, height: 20)
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 10, weight: .bold))

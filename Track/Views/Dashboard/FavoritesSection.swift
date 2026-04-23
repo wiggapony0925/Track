@@ -22,6 +22,8 @@ struct FavoritesSection: View {
     /// When true, favorite cards render desaturated and non-interactive
     /// while fresh backend data is being fetched.
     var isStale: Bool = false
+    /// Optional weather snapshot — shown as a compact badge in the section header.
+    var weatherSnapshot: WeatherSnapshot? = nil
 
     /// Favorites sorted closest-first using route-level distance
     /// (`groupMinDistance` — nearest stop anywhere on the route).
@@ -94,6 +96,10 @@ struct FavoritesSection: View {
                                 Capsule()
                                     .fill(AppTheme.Colors.accent.opacity(0.12))
                             }
+                    }
+                    // Weather badge — sits inline with the section title
+                    if let weather = weatherSnapshot {
+                        WeatherBadge(snapshot: weather)
                     }
                 }
                 Spacer()
@@ -216,7 +222,14 @@ private struct FavoritesEmptyCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 13)
-        .trackCardBackground(cornerRadius: AppTheme.Layout.cornerRadius)
+        .background {
+            RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+                .fill(Color.clear)
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.25), lineWidth: 0.5)
+                }
+        }
     }
 }
 
@@ -536,7 +549,11 @@ struct FavoriteCard: View {
 
     private var cardChrome: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(AppTheme.Colors.cardBackground)
+            .fill(Color.clear)
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.25), lineWidth: 0.5)
+            }
     }
 
     private var favoriteModeIcon: String {

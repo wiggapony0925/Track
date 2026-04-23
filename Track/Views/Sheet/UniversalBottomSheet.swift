@@ -164,6 +164,7 @@ struct UniversalBottomSheet<Content: View>: View {
     /// Order doesn't matter — closest-snap picks the right one.
     private var trackDetents: [TrackSheetDetent] {
         [
+            .height(0),                                            // fully collapsed — shows peek button
             SheetConstants.peekDetent(navbarHeight: navbarHeight),
             SheetConstants.defaultDetent,
             .large,
@@ -174,7 +175,7 @@ struct UniversalBottomSheet<Content: View>: View {
         TrackBottomSheet(
             selection: $sheetDetent,
             detents: trackDetents,
-            cornerRadius: 0,
+            cornerRadius: 28,
             topInset: 12,
             topFade: false,
             onHeightChange: { h in

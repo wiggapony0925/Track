@@ -20,9 +20,6 @@ enum SheetPage: Equatable, Identifiable {
     /// Stop-level information for a tapped bus stop or train station
     case stopDetail(selection: StopDetailSelection)
     
-    /// Settings and preferences
-    case settings
-
     /// User profile management
     case profileSettings
     
@@ -53,8 +50,6 @@ enum SheetPage: Equatable, Identifiable {
             return "routeDetail-\(group.routeId)"
         case .stopDetail(let selection):
             return "stopDetail-\(selection.id)"
-        case .settings:
-            return "settings"
         case .profileSettings:
             return "profileSettings"
         case .serviceAlerts:
@@ -82,8 +77,6 @@ enum SheetPage: Equatable, Identifiable {
             return g1.routeId == g2.routeId && d1 == d2 && tab1 == tab2
         case (.stopDetail(let lhsSelection), .stopDetail(let rhsSelection)):
             return lhsSelection == rhsSelection
-        case (.settings, .settings):
-            return true
         case (.profileSettings, .profileSettings):
             return true
         case (.serviceAlerts, .serviceAlerts):

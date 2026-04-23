@@ -1118,6 +1118,11 @@ final class PlanViewModel {
                 }
             )
         }
+        // Populate the shared cache so HomeView's FloatingSearchBar shortcut
+        // always reflects the user's actual home/work without hitting SwiftData.
+        Task { @MainActor in
+            SavedPlacesCache.shared.update(all: savedLocations)
+        }
 
         self.recommendations = recommendations
         calendarLocations = recommendations

@@ -40,14 +40,7 @@ struct DashboardView: View {
                 // Stays anchored to the top of the sheet.  Doubles as the
                 // primary drag region — pulling it up grows the sheet.
                 ModalNavbar(
-                    searchText: searchTextBinding,
-                    showSettings: showSettingsBinding,
-                    selectedMode: selectedModeBinding,
-                    lastUpdated: lastUpdated,
-                    isRefreshing: viewModel.isRefreshing,
-                    weatherSnapshot: viewModel.weatherSnapshot,
-                    locationName: viewModel.currentLocationName,
-                    isDragSearchActive: viewModel.isSearchPinActive
+                    selectedMode: selectedModeBinding
                 )
                 .background {
                     GeometryReader { p in
@@ -65,7 +58,6 @@ struct DashboardView: View {
                 // never resize the sheet.
                 scrollableContent
             }
-            .trackScreenBackground()
             .onAppear {
                 containerHeight = proxy.size.height
                 if case .height(let h) = sheetDetent, h < SheetConstants.minimumHeight {
@@ -121,12 +113,6 @@ struct DashboardView: View {
             }
     }
 
-    private var searchTextBinding: Binding<String> {
-        Binding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 })
-    }
-    private var showSettingsBinding: Binding<Bool> {
-        Binding(get: { false }, set: { _ in sheetNavigator.navigate(to: .settings) })
-    }
     private var selectedModeBinding: Binding<TransportMode> {
         Binding(get: { viewModel.selectedMode }, set: { viewModel.selectedMode = $0 })
     }
@@ -137,10 +123,37 @@ struct DashboardView: View {
                     let initialLoad = !viewModel.hasLoadedOnce && viewModel.isLoading
                     let showTransitSkeleton = initialLoad && !hasTransitData
 
+                    // ── Live status row ───────────────────────────────────────
+                    // "● Updated Xs ago" — lives here above Favorites so it's
+                    // contextually tied to the transit data, not the search bar.
+                    HStack(spacing: 5) {
+                        if viewModel.isRefreshing {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(AppTheme.Colors.textSecondary)
+                            Text("Updating…")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                        } else if let updated = lastUpdated {
+                            Circle()
+                                .fill(AppTheme.Colors.successGreen)
+                                .frame(width: 5, height: 5)
+                            Text("Updated \(updated, style: .relative) ago")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                        } else {
+                            Circle()
+                                .fill(AppTheme.Colors.textTertiary)
+                                .frame(width: 5, height: 5)
+                            Text("Locating…")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textSecondary)
+                        }
+                    }
+                    .padding(.horizontal, AppTheme.Layout.margin)
+                    .padding(.top, 4)
+
                     // ── Favorites: skeleton OR real section ───────────────────
-                    // Shown immediately on load alongside the transit skeleton
-                    // so both placeholders are visible at the same time.
-                    // Transitions to the real section once favorites have loaded.
                     let favsLoading = favoritesManager.isLoading
                         && favoritesManager.favorites.isEmpty
                     Group {
@@ -169,7 +182,8 @@ struct DashboardView: View {
                                 },
                                 selectedMode: viewModel.selectedMode,
                                 smartETAProvider: { viewModel.smartETA(for: $0) },
-                                isStale: viewModel.showStaleRows
+                                isStale: viewModel.showStaleRows,
+                                weatherSnapshot: viewModel.weatherSnapshot
                             )
                             .transition(.opacity.animation(.easeIn(duration: 0.25)))
                         }
@@ -259,6 +273,7 @@ struct DashboardView: View {
                 await viewModel.refresh(location: loc, force: true)
                 lastUpdated = Date()
             }
+            .clipped()
     }
     
     // MARK: - Helpers

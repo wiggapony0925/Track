@@ -9,26 +9,32 @@ import SwiftUI
 
 enum AppTab: String, CaseIterable {
     case home = "Home"
-    case plan = "Plan"
+    case trips = "Trips"
+    case chat = "Chat"
+    case alarms = "Alarms"
+    case settings = "Settings"
 
     var icon: String {
         switch self {
-        case .home: return "tram.fill"
-        case .plan: return "arrow.up.arrow.down"
+        case .home: return "house.fill"
+        case .trips: return "arrow.triangle.swap"
+        case .chat: return "message.fill"
+        case .alarms: return "alarm.fill"
+        case .settings: return "gearshape.fill"
         }
     }
 
     var selectedIcon: String {
-        switch self {
-        case .home: return "tram.fill"
-        case .plan: return "arrow.up.arrow.down"
-        }
+        return icon
     }
 }
 
-// Notification for switching tabs from anywhere
+// Notifications for switching tabs or firing quick actions from anywhere
 extension Notification.Name {
     static let switchToTab = Notification.Name("switchToTab")
+    /// Payload: a `PlanLocation` — tells PlanView to set this as the destination
+    /// and begin planning immediately, then switches to the Trips tab.
+    static let quickDestination = Notification.Name("quickDestination")
 }
 
 // MARK: - MainTabView
@@ -57,7 +63,10 @@ struct MainTabView: View {
                 currentMapCenter: $currentMapCenter,
                 currentMapDistance: $currentMapDistance
             )
-                .tag(AppTab.home)
+            .tabItem {
+                Label(AppTab.home.rawValue, systemImage: AppTab.home.icon)
+            }
+            .tag(AppTab.home)
 
             PlanView(
                 locationManager: locationManager,
@@ -68,11 +77,29 @@ struct MainTabView: View {
                 currentMapCenter: $currentMapCenter,
                 currentMapDistance: $currentMapDistance
             )
-                .tag(AppTab.plan)
+            .tabItem {
+                Label(AppTab.trips.rawValue, systemImage: AppTab.trips.icon)
+            }
+            .tag(AppTab.trips)
+            
+            ChatView()
+            .tabItem {
+                Label(AppTab.chat.rawValue, systemImage: AppTab.chat.icon)
+            }
+            .tag(AppTab.chat)
+            
+            AlarmsView()
+            .tabItem {
+                Label(AppTab.alarms.rawValue, systemImage: AppTab.alarms.icon)
+            }
+            .tag(AppTab.alarms)
+            
+            SettingsView()
+            .tabItem {
+                Label(AppTab.settings.rawValue, systemImage: AppTab.settings.icon)
+            }
+            .tag(AppTab.settings)
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .ignoresSafeArea()
-        .ignoresSafeArea(.keyboard)
         .onReceive(NotificationCenter.default.publisher(for: .switchToTab)) { notification in
             if let tab = notification.object as? AppTab {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -80,13 +107,6 @@ struct MainTabView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Floating Pill Tab Bar
-
-    private var floatingTabBar: some View {
-        FloatingTabPill(selectedTab: $selectedTab)
-            .padding(.bottom, 28)
     }
 }
 

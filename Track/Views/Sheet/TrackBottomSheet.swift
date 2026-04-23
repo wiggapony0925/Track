@@ -62,6 +62,7 @@ struct TrackBottomSheet<Content: View>: View {
     var topInset: CGFloat = 12
     var topFade: Bool = false
     var background: AnyView? = nil
+    var headerOverflow: CGFloat = 0
     var onHeightChange: ((CGFloat) -> Void)? = nil
     var dragHandleAccessibility: String = "Resize sheet"
     /// When true, the sheet keeps whatever height the user releases at
@@ -113,19 +114,18 @@ struct TrackBottomSheet<Content: View>: View {
         // (e.g. DashboardView's navbar gesture).
         content()
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .clipped()
         .frame(maxWidth: .infinity, alignment: .top)
         .background(
             sheetBackground
                 .clipShape(SheetTopRoundedShape(radius: cornerRadius))
+                // Three-layer elevation — wide ambient halo + medium drop +
+                // tight contact shadow. Mimics the shadow stack used by
+                // first-class iOS sheets (Maps, Stocks, Transit).
+                .shadow(color: Color.black.opacity(0.10), radius: 36, x: 0, y: -12)
+                .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: -4)
+                .shadow(color: Color.black.opacity(0.05), radius: 1,  x: 0, y: -0.5)
+                .padding(.top, headerOverflow)
         )
-        .clipShape(SheetTopRoundedShape(radius: cornerRadius))
-        // Three-layer elevation — wide ambient halo + medium drop +
-        // tight contact shadow.  Mimics the shadow stack used by
-        // first-class iOS sheets (Maps, Stocks, Transit).
-        .shadow(color: Color.black.opacity(0.10), radius: 36, x: 0, y: -12)
-        .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: -4)
-        .shadow(color: Color.black.opacity(0.05), radius: 1,  x: 0, y: -0.5)
     }
 
     /// iOS 26 no longer permits `UIScreen.main`.  Pull the screen size
