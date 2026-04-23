@@ -32,6 +32,11 @@ class TrackArrival(BaseModel):
                     "is_cancelled": False,
                     "stop_lat": 40.6923,
                     "stop_lon": -73.9872,
+                    "departure_ts": 1719500430,
+                    "delay_seconds": 45,
+                    "departure_delay_seconds": 60,
+                    "is_skipped": False,
+                    "is_no_data": False,
                 }
             ]
         }
@@ -57,6 +62,36 @@ class TrackArrival(BaseModel):
     )
     stop_lat: float | None = Field(None, description="Latitude of the stop.")
     stop_lon: float | None = Field(None, description="Longitude of the stop.")
+    departure_ts: int | None = Field(
+        None,
+        description=(
+            "GTFS-RT StopTimeUpdate.departure.time as Unix epoch seconds. "
+            "Useful when arrival and departure differ (long dwells, terminal layovers)."
+        ),
+    )
+    delay_seconds: int | None = Field(
+        None,
+        description=(
+            "GTFS-RT StopTimeUpdate.arrival.delay in seconds. "
+            "Positive = late, negative = early. None when feed omits delay."
+        ),
+    )
+    departure_delay_seconds: int | None = Field(
+        None,
+        description=(
+            "GTFS-RT StopTimeUpdate.departure.delay in seconds. "
+            "Useful for terminals/long dwells where departure delay diverges "
+            "from arrival.delay. None when feed omits the field."
+        ),
+    )
+    is_skipped: bool = Field(
+        False,
+        description="True when GTFS-RT schedule_relationship is SKIPPED for this stop.",
+    )
+    is_no_data: bool = Field(
+        False,
+        description="True when GTFS-RT schedule_relationship is NO_DATA (no realtime info).",
+    )
 
 
 class TransitAlert(BaseModel):
@@ -77,6 +112,9 @@ class TransitAlert(BaseModel):
                     "sort_order": 10,
                     "display_before_active": None,
                     "active_period_end": 1719504000,
+                    "cause": "MEDICAL_EMERGENCY",
+                    "effect": "SIGNIFICANT_DELAYS",
+                    "human_readable_active_period": "Until 11:30 PM",
                 }
             ]
         }
@@ -104,6 +142,27 @@ class TransitAlert(BaseModel):
     )
     active_period_end: int | None = Field(
         None, description="When the alert expires (Unix epoch seconds)."
+    )
+    cause: str | None = Field(
+        None,
+        description=(
+            "GTFS-RT Alert.Cause enum name (e.g. 'ACCIDENT', 'MEDICAL_EMERGENCY', "
+            "'POLICE_ACTIVITY', 'WEATHER', 'MAINTENANCE'). Drives icon selection."
+        ),
+    )
+    effect: str | None = Field(
+        None,
+        description=(
+            "GTFS-RT Alert.Effect enum name (e.g. 'NO_SERVICE', 'REDUCED_SERVICE', "
+            "'SIGNIFICANT_DELAYS', 'DETOUR', 'STOP_MOVED'). Drives status pill."
+        ),
+    )
+    human_readable_active_period: str | None = Field(
+        None,
+        description=(
+            "MTA Mercury extension human_readable_active_period.translation[0].text "
+            "(e.g. 'Until 11:30 PM' or 'Saturday and Sunday'). Display verbatim."
+        ),
     )
 
 
@@ -363,6 +422,64 @@ class BusArrival(BaseModel):
         True,
         description="False when position is estimated from schedule, not live GPS.",
     )
+    progress_status: str | None = Field(
+        None,
+        description=(
+            "SIRI ProgressStatus value (e.g. 'spooking', 'layover', 'prevTrip', "
+            "'noProgress'). 'noProgress' indicates the bus is stuck \u2014 surface "
+            "as a delay pill on the client."
+        ),
+    )
+    occupancy_status: str | None = Field(
+        None,
+        description=(
+            "SIRI Extensions.Capacities.OccupancyStatus value: 'seatsAvailable', "
+            "'standingAvailable', 'full'. Optional \u2014 most NYC SIRI feeds omit this."
+        ),
+    )
+    block_ref: str | None = Field(
+        None,
+        description=(
+            "SIRI BlockRef \u2014 vehicle-block (run) identifier. Lets the client "
+            "chain consecutive trips of the same physical vehicle."
+        ),
+    )
+    arrival_proximity_text: str | None = Field(
+        None,
+        description=(
+            "SIRI MonitoredCall.ArrivalProximityText (e.g. 'at stop', 'approaching', "
+            "'1 stop away', '0.3 miles away'). MTA's pre-formatted distance text \u2014 "
+            "richer than the bare meters value in distance_meters."
+        ),
+    )
+    progress_rate: str | None = Field(
+        None,
+        description=(
+            "SIRI ProgressRate value: 'normalProgress', 'slowProgress', 'noProgress', "
+            "or 'unknown'. 'noProgress' means the bus is stuck (signal loss / breakdown) \u2014 "
+            "surface as a yellow/red 'Stalled' pill on the client."
+        ),
+    )
+    destination_ref: str | None = Field(
+        None,
+        description=(
+            "SIRI DestinationRef \u2014 GTFS stop_id of the trip's terminal stop. "
+            "Pair with destination_name to deep-link the headsign to a stop page."
+        ),
+    )
+    expected_departure: dt.datetime | None = Field(
+        None,
+        description=(
+            "SIRI MonitoredCall.ExpectedDepartureTime (UTC ISO 8601). "
+            "At terminals/timepoints, ExpectedArrivalTime == time bus reaches the stop, "
+            "ExpectedDepartureTime == time bus actually leaves. Display the gap "
+            "as a 'dwell' indicator."
+        ),
+    )
+    aimed_departure: dt.datetime | None = Field(
+        None,
+        description="SIRI MonitoredCall.AimedDepartureTime \u2014 scheduled departure time.",
+    )
 
 
 class NearbyTransitArrival(BaseModel):
@@ -391,6 +508,11 @@ class NearbyTransitArrival(BaseModel):
                     "is_express": False,
                     "color_hex": "#B933AD",
                     "bus_service_type": None,
+                    "service_variant": "local",
+                    "variant_label": None,
+                    "delay_seconds": 30,
+                    "is_stalled": False,
+                    "arrival_proximity_text": "approaching",
                 }
             ]
         }
@@ -458,6 +580,32 @@ class NearbyTransitArrival(BaseModel):
             "Optional override label for the variant pill when the enum's "
             "default text doesn't capture useful context (e.g. "
             "'Super Express via Madison Av')."
+        ),
+    )
+    delay_seconds: int | None = Field(
+        None,
+        description=(
+            "Schedule deviation in seconds (positive = late, negative = early). "
+            "For trains: GTFS-RT StopTimeUpdate.arrival.delay. "
+            "For buses: SIRI ExpectedArrivalTime - AimedArrivalTime. "
+            "None when feed omits the field. Drives the chip's 'Late 3m' / "
+            "'Early 1m' badge."
+        ),
+    )
+    is_stalled: bool = Field(
+        False,
+        description=(
+            "True when the upstream feed flags this vehicle as stuck "
+            "(SIRI ProgressRate/ProgressStatus = 'noProgress'). Drives a red "
+            "'Stalled' chip pill so riders know the bus isn't moving."
+        ),
+    )
+    arrival_proximity_text: str | None = Field(
+        None,
+        description=(
+            "SIRI MonitoredCall.ArrivalProximityText (e.g. 'at stop', "
+            "'approaching', '1 stop away'). MTA's pre-formatted distance text. "
+            "Bus arrivals only."
         ),
     )
 
@@ -819,6 +967,44 @@ class BusVehicle(BaseModel):
         None,
         description="When the GPS position was last recorded (RecordedAtTime). Stale > 3 min may indicate signal loss.",
     )
+    occupancy_status: int | None = Field(
+        None,
+        description=(
+            "GTFS-RT VehiclePosition.OccupancyStatus enum: "
+            "0=empty, 1=many_seats, 2=few_seats, 3=standing_room, "
+            "4=crushed_standing, 5=full, 6=not_accepting. "
+            "Optional \u2014 most NYC SIRI bus feeds omit this."
+        ),
+    )
+    progress_status: str | None = Field(
+        None,
+        description=(
+            "SIRI ProgressStatus on the vehicle journey \u2014 'noProgress' means "
+            "the bus is stuck/broken down, 'layover' means at terminal, etc."
+        ),
+    )
+    block_ref: str | None = Field(
+        None,
+        description="SIRI BlockRef \u2014 vehicle-block (run) identifier.",
+    )
+    origin_aimed_departure_time: dt.datetime | None = Field(
+        None,
+        description=(
+            "SIRI OriginAimedDepartureTime \u2014 scheduled start of this trip from "
+            "its origin terminal. Used by the client to label 'departed 12 min ago'."
+        ),
+    )
+    progress_rate: str | None = Field(
+        None,
+        description=(
+            "SIRI ProgressRate value on the vehicle journey: 'normalProgress', "
+            "'slowProgress', 'noProgress', 'unknown'. 'noProgress' = bus is stuck."
+        ),
+    )
+    destination_ref: str | None = Field(
+        None,
+        description="SIRI DestinationRef \u2014 GTFS stop_id of the trip's terminal.",
+    )
 
 
 class TransitVehicle(BaseModel):
@@ -840,6 +1026,28 @@ class TransitVehicle(BaseModel):
     mode: str = Field("subway", description="Transit mode (subway, lirr, mnr).")
     timestamp: int | None = Field(None, description="Unix timestamp of position report.")
     color_hex: str | None = Field(None, description="Brand color for the route.")
+    occupancy_status: int | None = Field(
+        None,
+        description=(
+            "GTFS-RT VehiclePosition.OccupancyStatus enum (0=empty \u2026 6=not_accepting). "
+            "NYCT subway publishes this only on select lines."
+        ),
+    )
+    congestion_level: int | None = Field(
+        None,
+        description=(
+            "GTFS-RT VehiclePosition.CongestionLevel enum: 0=unknown_congestion, "
+            "1=running_smoothly, 2=stop_and_go, 3=congestion, 4=severe_congestion. "
+            "None when feed omits the field."
+        ),
+    )
+    current_status_code: int | None = Field(
+        None,
+        description=(
+            "Raw GTFS-RT VehicleStopStatus enum value (0=incoming_at, 1=stopped_at, "
+            "2=in_transit_to). Mirrors the human-readable `status` field."
+        ),
+    )
 
 
 class DirectionShape(BaseModel):

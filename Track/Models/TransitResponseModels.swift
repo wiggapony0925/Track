@@ -66,6 +66,16 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
     /// via Madison Av").  When nil, the pill uses
     /// `serviceVariant.displayLabel`.
     var variantLabel: String? = nil
+    /// Schedule deviation in seconds (positive = late, negative = early).
+    /// Drives the chip's "Late 3m" / "Early 1m" badge.  Nil when feed omits delay.
+    var delaySeconds: Int? = nil
+    /// True when the upstream feed flags this vehicle as stalled
+    /// (SIRI ProgressRate/ProgressStatus = "noProgress").  Drives a red
+    /// "Stalled" chip pill.  Bus-only.
+    var isStalled: Bool = false
+    /// SIRI MonitoredCall.ArrivalProximityText (e.g. "at stop", "approaching").
+    /// Bus-only.
+    var arrivalProximityText: String? = nil
 
     var isBus: Bool { mode == "bus" }
     var isLIRR: Bool { mode == "lirr" }
@@ -114,6 +124,9 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         case busServiceType = "bus_service_type"
         case serviceVariant = "service_variant"
         case variantLabel = "variant_label"
+        case delaySeconds = "delay_seconds"
+        case isStalled = "is_stalled"
+        case arrivalProximityText = "arrival_proximity_text"
     }
 
     /// Memberwise initializer (restores the auto-generated one that the
@@ -139,7 +152,10 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         colorHex: String? = nil,
         busServiceType: String? = nil,
         serviceVariant: ServiceVariant = .unknown,
-        variantLabel: String? = nil
+        variantLabel: String? = nil,
+        delaySeconds: Int? = nil,
+        isStalled: Bool = false,
+        arrivalProximityText: String? = nil
     ) {
         self.routeId = routeId
         self.stopName = stopName
@@ -162,6 +178,9 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         self.busServiceType = busServiceType
         self.serviceVariant = serviceVariant
         self.variantLabel = variantLabel
+        self.delaySeconds = delaySeconds
+        self.isStalled = isStalled
+        self.arrivalProximityText = arrivalProximityText
     }
 
     init(from decoder: Decoder) throws {
@@ -187,6 +206,9 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         busServiceType = try c.decodeIfPresent(String.self, forKey: .busServiceType)
         serviceVariant = try c.decodeIfPresent(ServiceVariant.self, forKey: .serviceVariant) ?? .unknown
         variantLabel = try c.decodeIfPresent(String.self, forKey: .variantLabel)
+        delaySeconds = try c.decodeIfPresent(Int.self, forKey: .delaySeconds)
+        isStalled = try c.decodeIfPresent(Bool.self, forKey: .isStalled) ?? false
+        arrivalProximityText = try c.decodeIfPresent(String.self, forKey: .arrivalProximityText)
     }
 }
 

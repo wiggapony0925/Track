@@ -800,9 +800,13 @@ struct HomeView: View {
                 // rather than fly to an unrelated location.
                 if let key,
                    let coord = viewModel.coordinateForTappedVehicleAnywhere(key) {
+                    // Tilt the camera to 3D when locking onto a vehicle —
+                    // the perspective shift makes "this is the bus you're
+                    // tracking" instantly readable.  Transit-style flat pan
+                    // is preserved when the user later deselects.
                     withAnimation(HoverAnimations.fly) {
                         cameraPosition = MapCameraPresets
-                            .focusVehicle(at: coord, is3D: false)
+                            .focusVehicle(at: coord, is3D: true)
                     }
                 } else if let key {
                     #if DEBUG

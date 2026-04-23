@@ -61,6 +61,35 @@ struct ArrivalChipData: Identifiable, Equatable {
     /// (route 1234, etc.); train IDs are not.
     var mode: String = "subway"
 
+    // MARK: - Live status enrichments (drive secondary pills)
+
+    /// Schedule deviation in seconds (positive = late, negative = early).
+    /// Nil when the upstream feed omits delay info.  Drives the
+    /// "Late 3m" / "Early 1m" badge.
+    var delaySeconds: Int? = nil
+    /// True when the upstream feed flags the vehicle as stuck
+    /// (SIRI ProgressRate == "noProgress").  Drives a red "Stalled" pill.
+    var isStalled: Bool = false
+    /// SIRI MonitoredCall.ArrivalProximityText (e.g. "at stop",
+    /// "approaching", "1 stop away").  Bus-only.  When present and the
+    /// chip can't otherwise show NOW/Live, render under the ETA as a
+    /// human-friendly proximity hint.
+    var arrivalProximityText: String? = nil
+
+    /// Shorthand for the late/early badge.  Returns nil when:
+    ///   - no `delaySeconds` is provided,
+    ///   - deviation is < 60 s in either direction (within "On Time" band),
+    ///   - the chip is scheduled or cancelled (badge would be misleading).
+    var delayBadge: (label: String, isLate: Bool)? {
+        guard !isCancelled, !isScheduled, let secs = delaySeconds else { return nil }
+        let abs = Swift.abs(secs)
+        guard abs >= 60 else { return nil }
+        let mins = abs / 60
+        return (mins >= 1 ? "\(secs > 0 ? "Late" : "Early") \(mins)m"
+                          : "\(secs > 0 ? "Late" : "Early") <1m",
+                secs > 0)
+    }
+
     // MARK: - Legacy express fallback (kept for backward compat)
 
     /// Express subway variants end in "X" (6X, 7X, FX).

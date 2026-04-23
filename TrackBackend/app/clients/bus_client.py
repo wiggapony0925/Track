@@ -1710,6 +1710,19 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
         if aimed_str:
             with contextlib.suppress(ValueError, TypeError):
                 aimed_arrival = datetime.fromisoformat(aimed_str)
+
+        # Departure-side timestamps — useful at terminals/timepoints where dwell is non-zero
+        expected_departure: datetime | None = None
+        exp_dep_str = monitored_call.get("ExpectedDepartureTime")
+        if exp_dep_str:
+            with contextlib.suppress(ValueError, TypeError):
+                expected_departure = datetime.fromisoformat(exp_dep_str)
+        aimed_departure: datetime | None = None
+        aimed_dep_str = monitored_call.get("AimedDepartureTime")
+        if aimed_dep_str:
+            with contextlib.suppress(ValueError, TypeError):
+                aimed_departure = datetime.fromisoformat(aimed_dep_str)
+
         schedule_deviation_s: int | None = None
         if expected_arrival and aimed_arrival:
             schedule_deviation_s = int(
@@ -1719,6 +1732,29 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
         # MTA bus spooking detection — stop-monitoring visit
         monitored_raw_visit = journey.get("Monitored", True)
         is_realtime_visit = monitored_raw_visit not in (False, "false", "False", "0")
+
+        # Extra SIRI fields useful to the client
+        # ProgressStatus may be a string or a list of strings; normalise to first non-empty.
+        raw_progress = journey.get("ProgressStatus")
+        progress_status: str | None
+        if isinstance(raw_progress, list):
+            progress_status = next((str(s) for s in raw_progress if s), None)
+        elif isinstance(raw_progress, str) and raw_progress:
+            progress_status = raw_progress
+        else:
+            progress_status = None
+        progress_rate: str | None = journey.get("ProgressRate") or None
+        destination_ref: str | None = journey.get("DestinationRef") or None
+        block_ref: str | None = journey.get("BlockRef") or None
+        # ArrivalProximityText lives on MonitoredCall directly
+        arrival_proximity_text: str | None = (
+            monitored_call.get("ArrivalProximityText") or None
+        )
+        # Occupancy: Extensions.Capacities.OccupancyStatus (rare for NYC bus)
+        siri_occupancy: str | None = None
+        capacities = extensions.get("Capacities") if isinstance(extensions, dict) else None
+        if isinstance(capacities, dict):
+            siri_occupancy = capacities.get("OccupancyStatus") or None
 
         arrivals.append(
             BusArrival(
@@ -1734,6 +1770,14 @@ async def _fetch_realtime_arrivals_uncached(stop_id: str) -> list[BusArrival]:
                 direction_ref=direction_ref,
                 destination_name=destination_name,
                 is_realtime=is_realtime_visit,
+                progress_status=progress_status,
+                occupancy_status=siri_occupancy,
+                block_ref=block_ref,
+                arrival_proximity_text=arrival_proximity_text,
+                progress_rate=progress_rate,
+                destination_ref=destination_ref,
+                expected_departure=expected_departure,
+                aimed_departure=aimed_departure,
             )
         )
         # Accumulate SIRI deviation for batch write after the loop.
@@ -2066,6 +2110,18 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 with contextlib.suppress(ValueError, TypeError):
                     call_expected = datetime.fromisoformat(call_exp_str)
 
+            # Expected/Aimed Departure on the onward call (terminals/timepoints)
+            call_expected_dep: datetime | None = None
+            call_exp_dep_str = call.get("ExpectedDepartureTime")
+            if call_exp_dep_str:
+                with contextlib.suppress(ValueError, TypeError):
+                    call_expected_dep = datetime.fromisoformat(call_exp_dep_str)
+            call_aimed_dep: datetime | None = None
+            call_aimed_dep_str = call.get("AimedDepartureTime")
+            if call_aimed_dep_str:
+                with contextlib.suppress(ValueError, TypeError):
+                    call_aimed_dep = datetime.fromisoformat(call_aimed_dep_str)
+
             # Accumulate onward call deviation for batch write
             call_aimed_str = call.get("AimedArrivalTime")
             if call_expected and call_aimed_str and stop_ref:
@@ -2112,8 +2168,27 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                     direction_ref=direction_ref,  # Inherit direction
                     destination_name=veh_destination,  # Inherit headsign from vehicle journey
                     is_realtime=is_realtime,  # Propagate spooking state
+                    expected_departure=call_expected_dep,
+                    aimed_departure=call_aimed_dep,
+                    destination_ref=journey.get("DestinationRef") or None,
+                    progress_rate=journey.get("ProgressRate") or None,
                 )
             )
+
+        origin_dep_str = journey.get("OriginAimedDepartureTime")
+        origin_aimed_dt: datetime | None = None
+        if origin_dep_str:
+            with contextlib.suppress(ValueError, TypeError):
+                origin_aimed_dt = datetime.fromisoformat(origin_dep_str)
+
+        # ProgressStatus normalisation — may arrive as list or string
+        raw_progress = journey.get("ProgressStatus")
+        if isinstance(raw_progress, list):
+            veh_progress_status = next((str(s) for s in raw_progress if s), None)
+        elif isinstance(raw_progress, str) and raw_progress:
+            veh_progress_status = raw_progress
+        else:
+            veh_progress_status = None
 
         vehicles.append(
             BusVehicle(
@@ -2129,6 +2204,11 @@ async def _get_vehicles_impl(route_id: str) -> list[BusVehicle]:
                 onward_calls=onward_calls,
                 is_realtime=is_realtime,
                 position_recorded_at=position_recorded_at,
+                progress_status=veh_progress_status,
+                block_ref=journey.get("BlockRef") or None,
+                origin_aimed_departure_time=origin_aimed_dt,
+                progress_rate=journey.get("ProgressRate") or None,
+                destination_ref=journey.get("DestinationRef") or None,
             )
         )
 

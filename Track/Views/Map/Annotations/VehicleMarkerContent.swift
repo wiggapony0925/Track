@@ -13,6 +13,10 @@ struct VehicleMarkerContent: View {
     let isHighlighted: Bool
     /// When true, the marker uses a diamond shape instead of circle (express subway).
     var isExpress: Bool = false
+    /// GTFS-RT VehiclePosition.OccupancyStatus enum (0=empty \u2026 6=not_accepting).
+    /// When present, a small colored dot appears at the marker's top-right
+    /// to telegraph crowding without cluttering the icon.
+    var occupancy: Int? = nil
     var onTap: (() -> Void)? = nil
 
     var body: some View {
@@ -26,6 +30,16 @@ struct VehicleMarkerContent: View {
                 AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle()))
                     .stroke(isHighlighted ? Color.white : Color.clear, lineWidth: 3)
             )
+            .overlay(alignment: .topTrailing) {
+                if let dotColor = occupancyDotColor {
+                    Circle()
+                        .fill(dotColor)
+                        .overlay(Circle().stroke(.white, lineWidth: 1.2))
+                        .frame(width: 9, height: 9)
+                        .offset(x: 2, y: -2)
+                        .accessibilityHidden(true)
+                }
+            }
             .shadow(
                 color: isHighlighted ? color.opacity(0.6) : AppTheme.Colors.shadow.opacity(0.22),
                 radius: isHighlighted ? 6 : 2,
@@ -35,6 +49,18 @@ struct VehicleMarkerContent: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHighlighted)
             .drawingGroup()
             .onTapGesture { onTap?() }
+    }
+
+    /// Maps GTFS-RT OccupancyStatus to a traffic-light color.
+    /// Returns nil for unknown / "many seats available" so the dot
+    /// only appears when there's actionable signal for the rider.
+    private var occupancyDotColor: Color? {
+        switch occupancy {
+        case 2: return .yellow         // few seats available
+        case 3: return .orange         // standing room only
+        case 4, 5, 6: return .red      // crushed / full / not accepting
+        default: return nil            // 0/1/nil \u2192 plenty of room or unknown
+        }
     }
 }
 

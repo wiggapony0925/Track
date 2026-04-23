@@ -23,6 +23,16 @@ struct TransitAlert: Identifiable, Codable {
     let displayBeforeActive: Int?
     let activePeriodEnd: Int?           // epoch seconds – when the alert expires
 
+    /// GTFS-RT Alert.Cause enum name (e.g. "ACCIDENT", "MEDICAL_EMERGENCY",
+    /// "POLICE_ACTIVITY", "WEATHER", "MAINTENANCE"). Drives the cause icon.
+    let cause: String?
+    /// GTFS-RT Alert.Effect enum name (e.g. "NO_SERVICE", "REDUCED_SERVICE",
+    /// "SIGNIFICANT_DELAYS", "DETOUR", "STOP_MOVED"). Drives the status pill.
+    let effect: String?
+    /// MTA Mercury extension human-readable active window
+    /// (e.g. "Until 11:30 PM", "Saturday and Sunday"). Display verbatim.
+    let humanReadableActivePeriod: String?
+
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
         case title
@@ -35,6 +45,9 @@ struct TransitAlert: Identifiable, Codable {
         case sortOrder = "sort_order"
         case displayBeforeActive = "display_before_active"
         case activePeriodEnd = "active_period_end"
+        case cause
+        case effect
+        case humanReadableActivePeriod = "human_readable_active_period"
     }
     
     init(
@@ -48,7 +61,10 @@ struct TransitAlert: Identifiable, Codable {
         alertType: String? = nil,
         sortOrder: Int = 0,
         displayBeforeActive: Int? = nil,
-        activePeriodEnd: Int? = nil
+        activePeriodEnd: Int? = nil,
+        cause: String? = nil,
+        effect: String? = nil,
+        humanReadableActivePeriod: String? = nil
     ) {
         self.routeId = routeId
         self.title = title
@@ -61,6 +77,9 @@ struct TransitAlert: Identifiable, Codable {
         self.sortOrder = sortOrder
         self.displayBeforeActive = displayBeforeActive
         self.activePeriodEnd = activePeriodEnd
+        self.cause = cause
+        self.effect = effect
+        self.humanReadableActivePeriod = humanReadableActivePeriod
     }
     
     init(from decoder: Decoder) throws {
@@ -78,6 +97,11 @@ struct TransitAlert: Identifiable, Codable {
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         displayBeforeActive = try container.decodeIfPresent(Int.self, forKey: .displayBeforeActive)
         activePeriodEnd = try container.decodeIfPresent(Int.self, forKey: .activePeriodEnd)
+        cause = try container.decodeIfPresent(String.self, forKey: .cause)
+        effect = try container.decodeIfPresent(String.self, forKey: .effect)
+        humanReadableActivePeriod = try container.decodeIfPresent(
+            String.self, forKey: .humanReadableActivePeriod
+        )
     }
 
     /// SF Symbol icon matching the app's tab icons.

@@ -2625,6 +2625,7 @@ async def _fetch_nearby_subway(
                 is_express=_is_express_service(
                     arrival.route_id or line, "subway",
                 ),
+                delay_seconds=arrival.delay_seconds,
             )
         )
 
@@ -3042,6 +3043,11 @@ async def _fetch_nearby_buses(
         _bus_kept
     ):
         bus_status = arrival.status_text if arrival.is_realtime else "Scheduled"
+        # Stalled = SIRI ProgressRate or ProgressStatus == "noProgress".
+        is_stalled = (
+            (arrival.progress_rate or "").lower() == "noprogress"
+            or (arrival.progress_status or "").lower() == "noprogress"
+        )
         results.append(
             NearbyTransitArrival(
                 route_id=normalised_route,
@@ -3062,6 +3068,9 @@ async def _fetch_nearby_buses(
                 destination=arrival.destination_name or arrival.status_text,
                 is_real_time=arrival.is_realtime,
                 is_express=_is_express_service(normalised_route, "bus"),
+                delay_seconds=arrival.schedule_deviation_s,
+                is_stalled=is_stalled,
+                arrival_proximity_text=arrival.arrival_proximity_text,
             )
         )
 

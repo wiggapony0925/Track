@@ -68,7 +68,8 @@ struct MapLibreVehicleOverlay: View {
                 VehicleMarkerContent(
                     icon: TransportMode.bus.icon,
                     color: markerColor,
-                    isHighlighted: isHighlighted
+                    isHighlighted: isHighlighted,
+                    occupancy: vehicle.occupancy
                 ) {
                     toggleVehicle(vehicle.vehicleId)
                 }
@@ -115,13 +116,15 @@ struct MapLibreVehicleOverlay: View {
                 VehicleMarkerContent(
                     icon: TransportMode.lirr.icon,
                     color: UIColor(AppTheme.CommuterRailColors.lirrBlue),
-                    isHighlighted: isHighlighted
+                    isHighlighted: isHighlighted,
+                    occupancy: train.occupancy
                 ) { toggleVehicle(vehicleKey) }
             } else if rid.contains("mnr") || rid.contains("metro") {
                 VehicleMarkerContent(
                     icon: TransportMode.mnr.icon,
                     color: UIColor(AppTheme.CommuterRailColors.mnrBlue),
-                    isHighlighted: isHighlighted
+                    isHighlighted: isHighlighted,
+                    occupancy: train.occupancy
                 ) { toggleVehicle(vehicleKey) }
             } else {
                 let expressVariants: Set<String> = ["6X", "7X", "FX"]
@@ -130,7 +133,8 @@ struct MapLibreVehicleOverlay: View {
                     icon: TransportMode.subway.icon,
                     color: AppTheme.SubwayColors.color(for: train.routeId),
                     isHighlighted: isHighlighted,
-                    isExpress: isExpress
+                    isExpress: isExpress,
+                    occupancy: train.occupancy
                 ) { toggleVehicle(vehicleKey) }
             }
         }
@@ -157,7 +161,21 @@ private struct AnimatedCoord: Equatable {
 
 extension VehicleMarkerContent {
     /// Convenience initializer accepting UIColor for MapLibre bridge.
-    init(icon: String, color: UIColor, isHighlighted: Bool, isExpress: Bool = false, onTap: (() -> Void)? = nil) {
-        self.init(icon: icon, color: Color(color), isHighlighted: isHighlighted, isExpress: isExpress, onTap: onTap)
+    init(
+        icon: String,
+        color: UIColor,
+        isHighlighted: Bool,
+        isExpress: Bool = false,
+        occupancy: Int? = nil,
+        onTap: (() -> Void)? = nil
+    ) {
+        self.init(
+            icon: icon,
+            color: Color(color),
+            isHighlighted: isHighlighted,
+            isExpress: isExpress,
+            occupancy: occupancy,
+            onTap: onTap
+        )
     }
 }

@@ -195,14 +195,31 @@ def _parse_feed_sync(
                 continue
 
             stop_cancelled = trip_cancelled
+            stop_skipped = False
+            stop_no_data = False
             if not stop_cancelled and stu.HasField("schedule_relationship"):
-                stop_cancelled = stu.schedule_relationship == 1
+                # GTFS-RT StopTimeUpdate.ScheduleRelationship enum:
+                # 0=SCHEDULED, 1=SKIPPED, 2=NO_DATA, 3=UNSCHEDULED
+                sr = stu.schedule_relationship
+                stop_cancelled = sr == 1
+                stop_skipped = sr == 1
+                stop_no_data = sr == 2
 
             minutes = _minutes_until(arrival_time)
             direction = "N" if stu.stop_id.endswith("N") else "S"
 
+            departure_time: int | None = None
+            if stu.HasField("departure") and stu.departure.time:
+                departure_time = int(stu.departure.time)
+
+            arrival_delay: int | None = None
             if stu.HasField("arrival") and stu.arrival.delay != 0:
+                arrival_delay = int(stu.arrival.delay)
                 siri_obs.append((route, stu.stop_id, float(stu.arrival.delay)))
+
+            departure_delay: int | None = None
+            if stu.HasField("departure") and stu.departure.delay != 0:
+                departure_delay = int(stu.departure.delay)
 
             resolved_name = get_stop_name(stu.stop_id)
             if (
@@ -230,6 +247,11 @@ def _parse_feed_sync(
                     is_cancelled=stop_cancelled,
                     stop_lat=stop_info.lat if stop_info else None,
                     stop_lon=stop_info.lon if stop_info else None,
+                    departure_ts=departure_time,
+                    delay_seconds=arrival_delay,
+                    departure_delay_seconds=departure_delay,
+                    is_skipped=stop_skipped,
+                    is_no_data=stop_no_data,
                 )
             )
 
@@ -425,6 +447,23 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
         mercury = alert_data.get("transit_realtime.mercury_alert", {})
         alert_type: str | None = mercury.get("alert_type")  # e.g. "Delays"
         display_before_active: int | None = mercury.get("display_before_active")
+        # human_readable_active_period (translation array, take first text)
+        hrap_translations = (
+            mercury.get("human_readable_active_period", {}).get("translation", [])
+            if isinstance(mercury, dict)
+            else []
+        )
+        human_readable_active_period: str | None = (
+            hrap_translations[0].get("text") if hrap_translations else None
+        )
+
+        # GTFS-RT Cause / Effect (string enum names in the JSON feed)
+        cause: str | None = alert_data.get("cause") or None
+        effect: str | None = alert_data.get("effect") or None
+        if cause in ("UNKNOWN_CAUSE", ""):
+            cause = None
+        if effect in ("UNKNOWN_EFFECT", ""):
+            effect = None
 
         # ── Active-period filtering (Gap #1) ────────────────────────────
         # An alert is visible when ANY active_period bracket contains 'now'
@@ -516,6 +555,9 @@ async def _parse_alert_feed(url: str, mode: str) -> list[TransitAlert]:
                 sort_order=max_sort_order,
                 display_before_active=display_before_active,
                 active_period_end=active_period_end,
+                cause=cause,
+                effect=effect,
+                human_readable_active_period=human_readable_active_period,
             )
         )
 
@@ -684,6 +726,23 @@ def _parse_vehicle_positions_sync(
 
         timestamp = vp.timestamp if vp.timestamp else None
 
+        # GTFS-RT VehiclePosition.OccupancyStatus is an optional enum.
+        # Treat default-zero as "unset" only when the field wasn't actually
+        # present — protobuf lacks HasField for scalar enums in proto3, so
+        # we approximate by checking for any non-default value.  NYCT
+        # currently publishes this on a subset of lines (e.g. 7) and the
+        # enum value 0 ("empty") is rare enough at peak that a None
+        # default better matches reality than "empty".
+        occupancy_raw = getattr(vp, "occupancy_status", 0)
+        occupancy_value: int | None = (
+            int(occupancy_raw) if occupancy_raw and occupancy_raw > 0 else None
+        )
+
+        congestion_raw = getattr(vp, "congestion_level", 0)
+        congestion_value: int | None = (
+            int(congestion_raw) if congestion_raw and congestion_raw > 0 else None
+        )
+
         color = None
         if color_fn and route_id:
             color = color_fn(route_id)
@@ -702,6 +761,9 @@ def _parse_vehicle_positions_sync(
             mode=mode,
             timestamp=timestamp,
             color_hex=color,
+            occupancy_status=occupancy_value,
+            congestion_level=congestion_value,
+            current_status_code=int(status_enum) if vp.HasField("current_status") else None,
         ))
 
     return vehicles

@@ -20,6 +20,19 @@ struct TransitArrivalResponse: Codable {
     let arrivalTs: Int? // Optional timestamp in seconds
     /// True when GTFS-RT reports this trip as CANCELED or a stop as SKIPPED.
     var isCancelled: Bool = false
+    /// GTFS-RT StopTimeUpdate.departure.time as Unix epoch seconds.
+    /// Useful when arrival and departure differ (long dwells, terminal layovers).
+    var departureTs: Int? = nil
+    /// GTFS-RT StopTimeUpdate.arrival.delay in seconds.
+    /// Positive = late, negative = early. nil when feed omits delay.
+    var delaySeconds: Int? = nil
+    /// GTFS-RT StopTimeUpdate.departure.delay in seconds.
+    /// Useful for terminals/long dwells where departure delay diverges from arrival.
+    var departureDelaySeconds: Int? = nil
+    /// True when GTFS-RT schedule_relationship is SKIPPED for this stop.
+    var isSkipped: Bool = false
+    /// True when GTFS-RT schedule_relationship is NO_DATA (no realtime info).
+    var isNoData: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
@@ -34,8 +47,75 @@ struct TransitArrivalResponse: Codable {
         case tripId = "trip_id"
         case arrivalTs = "arrival_ts"
         case isCancelled = "is_cancelled"
+        case departureTs = "departure_ts"
+        case delaySeconds = "delay_seconds"
+        case departureDelaySeconds = "departure_delay_seconds"
+        case isSkipped = "is_skipped"
+        case isNoData = "is_no_data"
     }
-    
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        routeId = try c.decode(String.self, forKey: .routeId)
+        station = try c.decode(String.self, forKey: .station)
+        stationName = try c.decodeIfPresent(String.self, forKey: .stationName)
+        direction = try c.decode(String.self, forKey: .direction)
+        destination = try c.decodeIfPresent(String.self, forKey: .destination)
+        minutesAway = try c.decode(Int.self, forKey: .minutesAway)
+        status = try c.decode(String.self, forKey: .status)
+        stopLat = try c.decodeIfPresent(Double.self, forKey: .stopLat)
+        stopLon = try c.decodeIfPresent(Double.self, forKey: .stopLon)
+        tripId = try c.decodeIfPresent(String.self, forKey: .tripId)
+        arrivalTs = try c.decodeIfPresent(Int.self, forKey: .arrivalTs)
+        isCancelled = try c.decodeIfPresent(Bool.self, forKey: .isCancelled) ?? false
+        departureTs = try c.decodeIfPresent(Int.self, forKey: .departureTs)
+        delaySeconds = try c.decodeIfPresent(Int.self, forKey: .delaySeconds)
+        departureDelaySeconds = try c.decodeIfPresent(
+            Int.self, forKey: .departureDelaySeconds
+        )
+        isSkipped = try c.decodeIfPresent(Bool.self, forKey: .isSkipped) ?? false
+        isNoData = try c.decodeIfPresent(Bool.self, forKey: .isNoData) ?? false
+    }
+
+    /// Memberwise init kept for tests / preview code that build instances directly.
+    init(
+        routeId: String,
+        station: String,
+        stationName: String? = nil,
+        direction: String,
+        destination: String? = nil,
+        minutesAway: Int,
+        status: String,
+        stopLat: Double? = nil,
+        stopLon: Double? = nil,
+        tripId: String? = nil,
+        arrivalTs: Int? = nil,
+        isCancelled: Bool = false,
+        departureTs: Int? = nil,
+        delaySeconds: Int? = nil,
+        departureDelaySeconds: Int? = nil,
+        isSkipped: Bool = false,
+        isNoData: Bool = false
+    ) {
+        self.routeId = routeId
+        self.station = station
+        self.stationName = stationName
+        self.direction = direction
+        self.destination = destination
+        self.minutesAway = minutesAway
+        self.status = status
+        self.stopLat = stopLat
+        self.stopLon = stopLon
+        self.tripId = tripId
+        self.arrivalTs = arrivalTs
+        self.isCancelled = isCancelled
+        self.departureTs = departureTs
+        self.delaySeconds = delaySeconds
+        self.departureDelaySeconds = departureDelaySeconds
+        self.isSkipped = isSkipped
+        self.isNoData = isNoData
+    }
+
     // Helper to map to domain model (TrainArrival defined in TransitRepository.swift)
     func toTrainArrival() -> TrainArrival {
         let now = Date()
@@ -70,7 +150,12 @@ struct TransitArrivalResponse: Codable {
             destination: destination,
             status: status,
             tripId: tripId,
-            isCancelled: isCancelled
+            isCancelled: isCancelled,
+            isSkipped: isSkipped,
+            isNoData: isNoData,
+            delaySeconds: delaySeconds,
+            departureDelaySeconds: departureDelaySeconds,
+            departureTs: departureTs
         )
     }
 }

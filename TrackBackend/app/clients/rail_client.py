@@ -110,11 +110,17 @@ def _parse_rail_feed_sync(
 
             minutes = _minutes_until(arrival_time)
 
-            delay_secs = 0
+            arrival_delay_val: int | None = None
+            departure_delay_val: int | None = None
             if stu.HasField("arrival") and stu.arrival.HasField("delay"):
-                delay_secs = stu.arrival.delay
-            elif stu.HasField("departure") and stu.departure.HasField("delay"):
-                delay_secs = stu.departure.delay
+                arrival_delay_val = int(stu.arrival.delay)
+            if stu.HasField("departure") and stu.departure.HasField("delay"):
+                departure_delay_val = int(stu.departure.delay)
+
+            # Choose the most informative delay for the status pill.
+            delay_secs = arrival_delay_val if arrival_delay_val is not None else (
+                departure_delay_val if departure_delay_val is not None else 0
+            )
 
             if delay_secs >= _LATE_THRESHOLD_SECS:
                 status = f"Late ({delay_secs // 60}m)"
@@ -122,6 +128,10 @@ def _parse_rail_feed_sync(
                 status = f"Delayed ({delay_secs // 60}m)"
             else:
                 status = "On Time"
+
+            departure_time_val: int | None = None
+            if stu.HasField("departure") and stu.departure.time:
+                departure_time_val = int(stu.departure.time)
 
             stop_info = get_stop_info(stu.stop_id, agency=lookup_agency)
             arrivals.append(
@@ -137,6 +147,9 @@ def _parse_rail_feed_sync(
                     trip_id=trip_update.trip.trip_id,
                     stop_lat=stop_info.lat if stop_info else None,
                     stop_lon=stop_info.lon if stop_info else None,
+                    departure_ts=departure_time_val,
+                    delay_seconds=arrival_delay_val,
+                    departure_delay_seconds=departure_delay_val,
                 )
             )
 

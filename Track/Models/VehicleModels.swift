@@ -21,6 +21,10 @@ struct TrainVehicle: Codable, Identifiable, Equatable {
     /// Stored as a Date so `minutesAway` is computed live (matches row countdowns).
     var estimatedArrival: Date?
 
+    /// GTFS-RT VehiclePosition.OccupancyStatus (0=empty … 6=not_accepting).
+    /// Optional — NYC subway publishes per-car crowding only on some lines.
+    var occupancy: Int? = nil
+
     /// Minutes until arrival at the next station. Computed live from
     /// `estimatedArrival` using ceil() to match `ArrivalETAEngine.minutesRemaining`.
     var minutesAway: Int? {
@@ -40,6 +44,7 @@ struct TrainVehicle: Codable, Identifiable, Equatable {
         case bearing
         case nextStationName = "next_station_name"
         case estimatedArrival = "estimated_arrival"
+        case occupancy = "occupancy_status"
     }
 }
 

@@ -2383,7 +2383,10 @@ struct RouteDetailSheet: View {
             serviceVariant: arrival.serviceVariant,
             variantLabel: arrival.variantLabel,
             stopId: arrival.stopId,
-            mode: arrival.mode
+            mode: arrival.mode,
+            delaySeconds: arrival.delaySeconds,
+            isStalled: arrival.isStalled,
+            arrivalProximityText: arrival.arrivalProximityText
         )
     }
 
@@ -2393,21 +2396,23 @@ struct RouteDetailSheet: View {
         eta: SmartETA
     ) -> some View {
         let chip = makeChipData(arrival: arrival, eta: eta)
-        let isChipLive = !chip.isScheduled && !chip.isTrackedOnly
-        // Colored = has a real map marker. Tracked-only (SIRI, no GPS) renders grey
-        // alongside scheduled chips so colored-chip count always matches marker count.
+        // Tappable for any non-disabled chip: live or tracked-only.
+        // Scheduled and cancelled chips remain informational.
+        let isChipTappable = !chip.isScheduled && !chip.isCancelled
+        // Always pass the route's theme color — `ArrivalChipView` greys out
+        // tracked-only / scheduled chips internally, and promotes the color
+        // back when the user selects a tracked chip.
         let chipAccent: Color = chip.isCancelled
             ? AppTheme.Colors.alertRed
-            : (chip.isScheduled || chip.isTrackedOnly) ? AppTheme.Colors.textSecondary : routeColor
+            : chip.isScheduled ? AppTheme.Colors.textSecondary : routeColor
         return ArrivalChipView(
             chip: chip,
             index: index,
             accentColor: chipAccent,
             isSelected: selectedChipId == arrival.id
         ) {
-            // Scheduled and tracked-only chips are informational — not tappable
-            // for map zoom because there's no marker to show.
-            guard isChipLive else { return }
+            // Scheduled and cancelled chips are informational — not tappable.
+            guard isChipTappable else { return }
             let vehicleKey = arrival.vehicleId ?? arrival.tripId
             if selectedChipId == arrival.id {
                 selectedChipId = nil
@@ -2428,7 +2433,10 @@ struct RouteDetailSheet: View {
                     onStopSelected?(coordinateForStopId(sid))
                 }
             }
-            HapticManager.impact(.light)
+            // Selection-style haptic: Transit-grade snappy click instead
+            // of a heavier impact thud.  Matches the chip's instantaneous
+            // visual response (scale → 1.06 spring).
+            HapticManager.selection()
         }
     }
 
@@ -2949,12 +2957,81 @@ struct RouteDetailSheet: View {
         return VStack(alignment: .leading, spacing: 10) {
             countdownHeader(displayStopName: displayStopName, isUserSelected: isUserSelected)
 
+            if let tip = catchThisOneTip(source: source) {
+                catchThisOneBanner(tip)
+            }
+
             if source.isEmpty {
                 countdownEmptyState
             } else {
                 countdownChipScroller(arrivals: source)
             }
         }
+    }
+
+    /// Computes a "walk now to catch the next one" hint when the user is
+    /// close enough that a brisk walk could realistically intercept the
+    /// next live arrival.  Returns nil when the math doesn't work out
+    /// (too far, plenty of time, no live arrivals, etc.).
+    private func catchThisOneTip(
+        source: [NearbyTransitResponse]
+    ) -> (mins: Int, walkMins: Int, routeId: String)? {
+        // Only show when the user is at the auto-nearest stop \u2014 if they've
+        // explicitly selected a different stop, the walking math is wrong.
+        guard inSheetSelectedStopId == nil,
+              let distance = nearestStopWalkingDistance,
+              distance >= 50, distance <= 600 else { return nil }
+        // Brisk walking pace ~1.4 m/s = 84 m/min; ceil to be conservative.
+        let walkMins = max(1, Int(ceil(distance / 84.0)))
+        // Look at the soonest LIVE arrival (chip-relevant, not pure schedule).
+        let firstLive = source.first {
+            $0.isRealTime && !$0.isScheduledOnly && !$0.isPlaceholder
+        }
+        guard let arrival = firstLive else { return nil }
+        let eta = smartETA(for: arrival)
+        guard !eta.isPastArrival else { return nil }
+        let mins = eta.minutesRemaining
+        // Sweet spot: arrival is reachable on foot but not trivial.
+        // Need at least 1 min slack, no more than 4 min over walking time.
+        guard mins >= walkMins + 1, mins <= walkMins + 4 else { return nil }
+        return (mins, walkMins, arrival.displayName)
+    }
+
+    private func catchThisOneText(tip: (mins: Int, walkMins: Int, routeId: String)) -> Text {
+        let secondary = AppTheme.Colors.textSecondary
+        let primary = AppTheme.Colors.textPrimary
+        let route = Text(tip.routeId).foregroundStyle(routeColor).fontWeight(.bold)
+        let walk = Text("\(tip.walkMins) min walk").foregroundStyle(primary).fontWeight(.semibold)
+        let mins = Text("\(tip.mins) min").foregroundStyle(primary).fontWeight(.semibold)
+        return Text("\(Text("Catch the ").foregroundStyle(secondary))\(route)\(Text(" — ").foregroundStyle(secondary))\(walk)\(Text(" for a ").foregroundStyle(secondary))\(mins)\(Text(" arrival").foregroundStyle(secondary))")
+    }
+
+    @ViewBuilder
+    private func catchThisOneBanner(
+        _ tip: (mins: Int, walkMins: Int, routeId: String)
+    ) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "figure.walk.motion")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(routeColor)
+            catchThisOneText(tip: tip)
+            .font(.system(size: 12, weight: .regular, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(routeColor.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(routeColor.opacity(0.18), lineWidth: 0.5)
+                )
+        )
+        .padding(.horizontal, AppTheme.Layout.margin)
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     // MARK: - Scheduled Departures (Unified: Bus + Train)

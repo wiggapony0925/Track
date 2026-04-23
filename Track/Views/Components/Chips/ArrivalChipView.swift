@@ -34,16 +34,18 @@ struct ArrivalChipView: View {
     private var cornerR: CGFloat { isFirst ? 20 : 18 }
 
     private var usesSolidAccentCard: Bool {
-        isFirst && !isSched && !isCancelled && !chip.isTrackedOnly
+        (isFirst || isSelected) && !isSched && !isCancelled
     }
 
     // MARK: Colors
     private var chipAccent: Color {
         isCancelled
             ? AppTheme.Colors.alertRed
-            : (isSched || chip.isTrackedOnly)
+            : isSched
                 ? AppTheme.Colors.textSecondary
-                : accentColor
+                : (chip.isTrackedOnly && !isSelected)
+                    ? AppTheme.Colors.textSecondary
+                    : accentColor
     }
 
     private var tagLabel: String {
@@ -65,7 +67,7 @@ struct ArrivalChipView: View {
     var body: some View {
         VStack(spacing: 0) {
             accentBar
-            tagRow
+            if showsTagRow { tagRow }
             Spacer(minLength: 4)
             etaCounter
             Spacer(minLength: 4)
@@ -108,15 +110,75 @@ struct ArrivalChipView: View {
             .padding(.top, 11)
     }
 
-    /// Status tag + service-variant pill on the same line so they
-    /// don't compete with the ETA number for vertical space.
+    /// Whether the secondary tag row has any content to show.
+    /// The "Tracked"-style pill (shown for real-time arrivals with no GPS
+    /// marker) was removed as redundant — the chip's grey color already
+    /// conveys that state.  All other status pills (Live / Sched /
+    /// Cancelled) are still rendered.
+    private var showsTagRow: Bool {
+        showsStatusPill
+            || chip.serviceVariant.showsPill
+            || chip.isExpress
+            || chip.isStalled
+            || chip.delayBadge != nil
+    }
+
+    /// Suppress the status pill for tracked-only chips; show it for live,
+    /// scheduled, and cancelled arrivals.
+    private var showsStatusPill: Bool {
+        !chip.isTrackedOnly
+    }
+
+    /// Status pill + service-variant / express pill row.  Hidden entirely
+    /// when neither has content so the ETA number gets the vertical space.
     private var tagRow: some View {
         HStack(spacing: 4) {
-            statusTag
+            if showsStatusPill { statusTag }
             variantOrExpressIndicator
+            liveStatusBadge
         }
         .padding(.top, 7)
         .padding(.horizontal, 6)
+    }
+
+    /// Secondary live-status badge.  Priority:
+    ///   1. Stalled (red)  — bus flagged ProgressRate=noProgress
+    ///   2. Late Xm (orange) / Early Xm (blue)
+    /// Only one shows at a time so the chip stays readable.
+    @ViewBuilder
+    private var liveStatusBadge: some View {
+        if isCancelled {
+            EmptyView()  // cancelled pill already conveys the state
+        } else if chip.isStalled {
+            badgePill(
+                label: "Stalled",
+                icon: "exclamationmark.triangle.fill",
+                color: AppTheme.Colors.alertRed
+            )
+        } else if let delay = chip.delayBadge {
+            badgePill(
+                label: delay.label,
+                icon: delay.isLate ? "clock.badge.exclamationmark" : "clock.arrow.circlepath",
+                color: delay.isLate ? Color.orange : Color.blue
+            )
+        }
+    }
+
+    private func badgePill(label: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 8, weight: .bold))
+            Text(label)
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .lineLimit(1)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3.5)
+        .background(
+            Capsule().fill(color.opacity(0.16))
+        )
+        .dynamicTypeSize(...DynamicTypeSize.large)
     }
 
     private var statusTag: some View {

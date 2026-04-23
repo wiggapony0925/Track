@@ -45,6 +45,48 @@ struct BusArrival: Identifiable, Codable, Equatable {
     /// static schedule rather than live GPS.  Show "Scheduled" instead of "Live".
     var isRealtime: Bool = true
 
+    // MARK: - Extended SIRI fields
+
+    /// Scheduled arrival time from SIRI AimedArrivalTime.
+    /// Combined with `expectedArrival` to compute `scheduleDeviationS`.
+    var aimedArrival: Date? = nil
+    /// Delay in seconds (positive = late, negative = early).
+    var scheduleDeviationS: Int? = nil
+    /// SIRI ProgressStatus value (e.g. "layover", "prevTrip", "noProgress").
+    /// `"noProgress"` means the bus is stuck — surface as a stalled pill.
+    var progressStatus: String? = nil
+    /// SIRI ProgressRate value: "normalProgress", "slowProgress", "noProgress".
+    /// `"noProgress"` means stuck/broken-down — the strongest "stalled" signal.
+    var progressRate: String? = nil
+    /// SIRI MonitoredCall.ArrivalProximityText (e.g. "at stop", "approaching").
+    /// MTA's pre-formatted distance text — richer than `distanceMeters`.
+    var arrivalProximityText: String? = nil
+    /// SIRI Extensions.Capacities.OccupancyStatus string (rare for NYC bus).
+    var occupancyStatus: String? = nil
+    /// SIRI BlockRef — vehicle-block (run) identifier.
+    var blockRef: String? = nil
+    /// SIRI DestinationRef — GTFS stop_id of the trip's terminal stop.
+    var destinationRef: String? = nil
+    /// SIRI MonitoredCall.ExpectedDepartureTime — when the bus actually leaves
+    /// the stop. At terminals the gap between this and `expectedArrival` is the dwell.
+    var expectedDeparture: Date? = nil
+    /// SIRI MonitoredCall.AimedDepartureTime — scheduled departure time.
+    var aimedDeparture: Date? = nil
+
+    /// Computed dwell duration (seconds) at this stop, when both arrival and
+    /// departure timestamps are available.  Useful for terminal/timepoint UIs.
+    var dwellSeconds: Int? {
+        guard let arr = expectedArrival, let dep = expectedDeparture else { return nil }
+        let s = Int(dep.timeIntervalSince(arr))
+        return s > 0 ? s : nil
+    }
+
+    /// True when the SIRI feed flags this vehicle as stalled (no progress)
+    /// — either via ProgressRate or ProgressStatus.  Drives the "Stalled" pill.
+    var isStalled: Bool {
+        progressRate == "noProgress" || progressStatus == "noProgress"
+    }
+
     enum CodingKeys: String, CodingKey {
         case routeId = "route_id"
         case vehicleId = "vehicle_id"
@@ -58,6 +100,16 @@ struct BusArrival: Identifiable, Codable, Equatable {
         case directionRef = "direction_ref"
         case destinationName = "destination_name"
         case isRealtime = "is_realtime"
+        case aimedArrival = "aimed_arrival"
+        case scheduleDeviationS = "schedule_deviation_s"
+        case progressStatus = "progress_status"
+        case progressRate = "progress_rate"
+        case arrivalProximityText = "arrival_proximity_text"
+        case occupancyStatus = "occupancy_status"
+        case blockRef = "block_ref"
+        case destinationRef = "destination_ref"
+        case expectedDeparture = "expected_departure"
+        case aimedDeparture = "aimed_departure"
     }
 
     /// Memberwise initializer.
@@ -73,7 +125,17 @@ struct BusArrival: Identifiable, Codable, Equatable {
         bearing: Double? = nil,
         directionRef: Int? = nil,
         destinationName: String? = nil,
-        isRealtime: Bool = true
+        isRealtime: Bool = true,
+        aimedArrival: Date? = nil,
+        scheduleDeviationS: Int? = nil,
+        progressStatus: String? = nil,
+        progressRate: String? = nil,
+        arrivalProximityText: String? = nil,
+        occupancyStatus: String? = nil,
+        blockRef: String? = nil,
+        destinationRef: String? = nil,
+        expectedDeparture: Date? = nil,
+        aimedDeparture: Date? = nil
     ) {
         self.routeId = routeId
         self.vehicleId = vehicleId
@@ -87,6 +149,16 @@ struct BusArrival: Identifiable, Codable, Equatable {
         self.directionRef = directionRef
         self.destinationName = destinationName
         self.isRealtime = isRealtime
+        self.aimedArrival = aimedArrival
+        self.scheduleDeviationS = scheduleDeviationS
+        self.progressStatus = progressStatus
+        self.progressRate = progressRate
+        self.arrivalProximityText = arrivalProximityText
+        self.occupancyStatus = occupancyStatus
+        self.blockRef = blockRef
+        self.destinationRef = destinationRef
+        self.expectedDeparture = expectedDeparture
+        self.aimedDeparture = aimedDeparture
     }
 
     init(from decoder: Decoder) throws {
@@ -103,6 +175,16 @@ struct BusArrival: Identifiable, Codable, Equatable {
         directionRef = try c.decodeIfPresent(Int.self, forKey: .directionRef)
         destinationName = try c.decodeIfPresent(String.self, forKey: .destinationName)
         isRealtime = try c.decodeIfPresent(Bool.self, forKey: .isRealtime) ?? true
+        aimedArrival = try c.decodeIfPresent(Date.self, forKey: .aimedArrival)
+        scheduleDeviationS = try c.decodeIfPresent(Int.self, forKey: .scheduleDeviationS)
+        progressStatus = try c.decodeIfPresent(String.self, forKey: .progressStatus)
+        progressRate = try c.decodeIfPresent(String.self, forKey: .progressRate)
+        arrivalProximityText = try c.decodeIfPresent(String.self, forKey: .arrivalProximityText)
+        occupancyStatus = try c.decodeIfPresent(String.self, forKey: .occupancyStatus)
+        blockRef = try c.decodeIfPresent(String.self, forKey: .blockRef)
+        destinationRef = try c.decodeIfPresent(String.self, forKey: .destinationRef)
+        expectedDeparture = try c.decodeIfPresent(Date.self, forKey: .expectedDeparture)
+        aimedDeparture = try c.decodeIfPresent(Date.self, forKey: .aimedDeparture)
     }
 }
 
@@ -144,6 +226,33 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
     /// Positions older than ~3 minutes may indicate a vehicle has lost signal.
     var positionRecordedAt: Date? = nil
 
+    /// GTFS-RT VehiclePosition.OccupancyStatus (0=empty … 6=not_accepting).
+    /// Optional — only present when the agency publishes crowding data
+    /// (NYC bus support is partial).  UI surfaces this as a small dot on
+    /// the chip + marker so riders can pick the less-packed bus.
+    var occupancy: Int? = nil
+
+    // MARK: - Extended SIRI fields
+
+    /// SIRI ProgressStatus: "layover", "prevTrip", "noProgress", etc.
+    /// `"noProgress"` indicates the bus is stuck — surface as a stalled badge.
+    var progressStatus: String? = nil
+    /// SIRI ProgressRate: "normalProgress", "slowProgress", "noProgress".
+    var progressRate: String? = nil
+    /// SIRI BlockRef — vehicle-block (run) identifier; lets the UI chain
+    /// consecutive trips of the same physical vehicle.
+    var blockRef: String? = nil
+    /// SIRI DestinationRef — GTFS stop_id of the trip's terminal stop.
+    var destinationRef: String? = nil
+    /// SIRI OriginAimedDepartureTime — scheduled start of this trip from
+    /// origin terminal.  Lets UI label "departed N min ago".
+    var originAimedDepartureTime: Date? = nil
+
+    /// True when the SIRI feed flags this vehicle as stalled.
+    var isStalled: Bool {
+        progressRate == "noProgress" || progressStatus == "noProgress"
+    }
+
     /// Minutes until arrival at next stop, or nil if unavailable.
     /// Uses ceil() to match ArrivalETAEngine.minutesRemaining and row countdowns.
     var minutesAway: Int? {
@@ -164,6 +273,12 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         case onwardCalls = "onward_calls"
         case isRealtime = "is_realtime"
         case positionRecordedAt = "position_recorded_at"
+        case occupancy = "occupancy_status"
+        case progressStatus = "progress_status"
+        case progressRate = "progress_rate"
+        case blockRef = "block_ref"
+        case destinationRef = "destination_ref"
+        case originAimedDepartureTime = "origin_aimed_departure_time"
     }
 
     /// Memberwise initializer.
@@ -179,7 +294,13 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         expectedArrival: Date? = nil,
         onwardCalls: [BusArrival]? = [],
         isRealtime: Bool = true,
-        positionRecordedAt: Date? = nil
+        positionRecordedAt: Date? = nil,
+        occupancy: Int? = nil,
+        progressStatus: String? = nil,
+        progressRate: String? = nil,
+        blockRef: String? = nil,
+        destinationRef: String? = nil,
+        originAimedDepartureTime: Date? = nil
     ) {
         self.vehicleId = vehicleId
         self.routeId = routeId
@@ -193,6 +314,12 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         self.onwardCalls = onwardCalls
         self.isRealtime = isRealtime
         self.positionRecordedAt = positionRecordedAt
+        self.occupancy = occupancy
+        self.progressStatus = progressStatus
+        self.progressRate = progressRate
+        self.blockRef = blockRef
+        self.destinationRef = destinationRef
+        self.originAimedDepartureTime = originAimedDepartureTime
     }
 
     init(from decoder: Decoder) throws {
@@ -209,6 +336,12 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         onwardCalls = try c.decodeIfPresent([BusArrival].self, forKey: .onwardCalls) ?? []
         isRealtime = try c.decodeIfPresent(Bool.self, forKey: .isRealtime) ?? true
         positionRecordedAt = try c.decodeIfPresent(Date.self, forKey: .positionRecordedAt)
+        occupancy = try c.decodeIfPresent(Int.self, forKey: .occupancy)
+        progressStatus = try c.decodeIfPresent(String.self, forKey: .progressStatus)
+        progressRate = try c.decodeIfPresent(String.self, forKey: .progressRate)
+        blockRef = try c.decodeIfPresent(String.self, forKey: .blockRef)
+        destinationRef = try c.decodeIfPresent(String.self, forKey: .destinationRef)
+        originAimedDepartureTime = try c.decodeIfPresent(Date.self, forKey: .originAimedDepartureTime)
     }
 
     /// Returns a copy with an interpolated position for smooth map animation.
