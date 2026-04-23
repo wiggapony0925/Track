@@ -28,6 +28,7 @@ from app.routers import (
     user,
     weather,
 )
+from app.metromind import router as metromind_router
 from app.utils.metrics import setup_metrics
 
 # ---------------------------------------------------------------------------
@@ -65,6 +66,7 @@ app.include_router(weather.router)
 app.include_router(track_engine_router.router)
 app.include_router(user.router)
 app.include_router(system.router)
+app.include_router(metromind_router)
 
 # ── Static files (docs assets, favicon) ──────────────────────────────────
 _STATIC_DIR = Path(__file__).resolve().parent / "static"

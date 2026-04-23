@@ -7,6 +7,7 @@
 // Markdown: assistant text bubbles render full GitHub-flavored markdown
 // (bold, italics, lists, inline code, links) via `MarkdownText`.
 
+import CoreLocation
 import SwiftUI
 
 // MARK: - Models
@@ -39,9 +40,18 @@ enum ChatMessageContent {
 struct ChatMessage: Identifiable {
     let id = UUID()
     let role: ChatRole
-    let content: ChatMessageContent
+    var content: ChatMessageContent
     var showActions: Bool = true
     var timestamp: Date = .now
+    /// Optional status line shown above streaming assistant bubbles
+    /// (e.g. "Checking alerts…"). Cleared once the reply text arrives.
+    var toolStatus: String? = nil
+    /// Optional structured route payload — when set, an itinerary card
+    /// is rendered beneath the markdown bubble.
+    var routePayload: RoutePlanPayload? = nil
+    /// Optional structured station-search payload — renders a compact
+    /// list of matching stops beneath the bubble.
+    var stationsPayload: StationSearchPayload? = nil
 
     static let mockConversation: [ChatMessage] = [
         .init(role: .assistant, content: .text(
@@ -80,35 +90,142 @@ final class ChatViewModel {
     var isRecording: Bool = false
     var isAssistantTyping: Bool = false
 
+    /// Active streaming task — cancelled if the user sends another
+    /// message before the previous one completes.
+    private var streamTask: Task<Void, Never>?
+
     let suggestedPrompts: [String] = [
         "Next train at Union Sq",
         "Fastest to JFK",
         "Any L delays?",
     ]
 
+    /// Optional device coordinate forwarded to MetroMind so it can
+    /// resolve "current location" planning queries.
+    var currentLocation: CLLocationCoordinate2D?
+
     func send(_ overrideText: String? = nil) {
         let raw = overrideText ?? draft
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        // Record the user turn + clear the input.
         messages.append(.init(role: .user, content: .text(trimmed), showActions: false))
         draft = ""
         isAssistantTyping = true
 
-        Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(900))
+        // Snapshot history (excluding the just-added user turn — the
+        // backend appends `message` itself).
+        let history: [(role: String, content: String)] = messages
+            .dropLast()
+            .compactMap { msg in
+                guard case .text(let body) = msg.content else { return nil }
+                let role = msg.role == .user ? "user" : "assistant"
+                return (role, body)
+            }
+
+        // Append a placeholder assistant bubble we'll mutate as tokens
+        // stream in.
+        let placeholder = ChatMessage(
+            role: .assistant,
+            content: .text(""),
+            showActions: false
+        )
+        messages.append(placeholder)
+        let assistantId = placeholder.id
+
+        // Cancel any in-flight stream before starting a new one.
+        streamTask?.cancel()
+        streamTask = Task { [weak self, location = currentLocation] in
             guard let self else { return }
+            var receivedAnyToken = false
+            do {
+                let stream = MetroMindAPI.chatStream(
+                    message: trimmed,
+                    history: history,
+                    location: location
+                )
+                for try await event in stream {
+                    if Task.isCancelled { break }
+                    switch event {
+                    case .token(let chunk):
+                        if !chunk.isEmpty {
+                            receivedAnyToken = true
+                            self.appendToken(chunk, to: assistantId)
+                        }
+                    case .toolCall(_, let label):
+                        self.setToolStatus(label, on: assistantId)
+                    case .toolResult(let name, let ok, let payload):
+                        if ok, let payload = payload {
+                            switch payload {
+                            case .route(let p):
+                                self.setRoutePayload(p, on: assistantId)
+                            case .stations(let p):
+                                self.setStationsPayload(p, on: assistantId)
+                            }
+                        }
+                        _ = name
+                    case .done:
+                        self.setToolStatus(nil, on: assistantId)
+                    case .error(let msg):
+                        self.replaceText(
+                            "_⚠️ \(msg)_",
+                            on: assistantId
+                        )
+                    }
+                }
+                if !receivedAnyToken {
+                    self.replaceText(
+                        "_(No reply received.)_",
+                        on: assistantId
+                    )
+                }
+            } catch {
+                self.replaceText(
+                    "_⚠️ Couldn't reach MetroMind: \(error.localizedDescription)_",
+                    on: assistantId
+                )
+            }
             self.isAssistantTyping = false
-            self.messages.append(.init(
-                role: .assistant,
-                content: .text("Got it — looking into that for you. *(Backend coming soon.)*")
-            ))
+            self.setToolStatus(nil, on: assistantId)
         }
+    }
+
+    // MARK: - Streaming mutators
+
+    private func appendToken(_ token: String, to id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        if case .text(let current) = messages[idx].content {
+            messages[idx].content = .text(current + token)
+        }
+    }
+
+    private func replaceText(_ text: String, on id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].content = .text(text)
+    }
+
+    private func setToolStatus(_ status: String?, on id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].toolStatus = status
+    }
+
+    private func setRoutePayload(_ payload: RoutePlanPayload, on id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].routePayload = payload
+    }
+
+    private func setStationsPayload(_ payload: StationSearchPayload, on id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].stationsPayload = payload
     }
 }
 
 // MARK: - ChatView
 
 struct ChatView: View {
+    var locationManager: LocationManager? = nil
+
     @State private var viewModel = ChatViewModel()
     @FocusState private var inputFocused: Bool
 
@@ -141,6 +258,12 @@ struct ChatView: View {
             }
         }
         .navigationBarHidden(true)
+        .onAppear { syncLocation() }
+        .onChange(of: locationManager?.currentLocation) { _, _ in syncLocation() }
+    }
+
+    private func syncLocation() {
+        viewModel.currentLocation = locationManager?.currentLocation?.coordinate
     }
 
     // MARK: - Ambient Background
@@ -324,7 +447,24 @@ private struct ChatMessageRow: View {
             }
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
+                if let status = message.toolStatus, message.role == .assistant {
+                    ToolStatusPill(label: status)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+
                 bubble
+
+                if let payload = message.routePayload, message.role == .assistant {
+                    ItineraryCardList(payload: payload)
+                        .padding(.top, 2)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                if let payload = message.stationsPayload, message.role == .assistant {
+                    StationListCard(payload: payload)
+                        .padding(.top, 2)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
                 if message.role == .assistant && message.showActions && isLastInGroup {
                     AssistantActionRow()
@@ -360,39 +500,187 @@ private struct ChatMessageRow: View {
 
 // MARK: - Markdown Text
 
-/// Renders a string as markdown with sensible inline-style attributes.
-/// Falls back to plain text if parsing fails.
+/// Renders multi-line markdown text with sensible block handling:
+/// paragraphs, bullet lists (`- ` / `* `), numbered lists (`1. `),
+/// headings (`# ` / `## ` / `### `), and inline emphasis. Inline
+/// formatting in each line is parsed via SwiftUI's built-in
+/// `AttributedString(markdown:)`.
 private struct MarkdownText: View {
     let text: String
     let textColor: Color
     var accentColor: Color = AppTheme.Colors.accent
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(parseBlocks().enumerated()), id: \.offset) { _, block in
+                renderBlock(block)
+            }
+        }
+    }
+
+    // MARK: Block model
+
+    private enum Block {
+        case heading(level: Int, text: String)
+        case paragraph(String)
+        case bullets([String])
+        case ordered([String])
+    }
+
+    private func parseBlocks() -> [Block] {
+        let lines = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: "\n")
+
+        var blocks: [Block] = []
+        var paraBuf: [String] = []
+        var bulletBuf: [String] = []
+        var orderedBuf: [String] = []
+
+        func flushParagraph() {
+            if !paraBuf.isEmpty {
+                let body = paraBuf.joined(separator: " ")
+                    .trimmingCharacters(in: .whitespaces)
+                if !body.isEmpty { blocks.append(.paragraph(body)) }
+                paraBuf.removeAll()
+            }
+        }
+        func flushBullets() {
+            if !bulletBuf.isEmpty {
+                blocks.append(.bullets(bulletBuf))
+                bulletBuf.removeAll()
+            }
+        }
+        func flushOrdered() {
+            if !orderedBuf.isEmpty {
+                blocks.append(.ordered(orderedBuf))
+                orderedBuf.removeAll()
+            }
+        }
+        func flushAll() { flushParagraph(); flushBullets(); flushOrdered() }
+
+        for raw in lines {
+            let line = raw
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.isEmpty {
+                flushAll()
+                continue
+            }
+
+            // Headings
+            if trimmed.hasPrefix("### ") {
+                flushAll()
+                blocks.append(.heading(level: 3, text: String(trimmed.dropFirst(4))))
+                continue
+            }
+            if trimmed.hasPrefix("## ") {
+                flushAll()
+                blocks.append(.heading(level: 2, text: String(trimmed.dropFirst(3))))
+                continue
+            }
+            if trimmed.hasPrefix("# ") {
+                flushAll()
+                blocks.append(.heading(level: 1, text: String(trimmed.dropFirst(2))))
+                continue
+            }
+
+            // Bullets — accept `- `, `* `, or `• `
+            if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("• ") {
+                flushParagraph(); flushOrdered()
+                bulletBuf.append(String(trimmed.dropFirst(2)))
+                continue
+            }
+
+            // Numbered lists — `1. `, `2. `, etc.
+            if let dot = trimmed.firstIndex(of: "."),
+               trimmed.distance(from: trimmed.startIndex, to: dot) <= 2,
+               Int(trimmed[..<dot]) != nil,
+               trimmed.index(after: dot) < trimmed.endIndex,
+               trimmed[trimmed.index(after: dot)] == " " {
+                flushParagraph(); flushBullets()
+                orderedBuf.append(
+                    String(trimmed[trimmed.index(dot, offsetBy: 2)...])
+                )
+                continue
+            }
+
+            flushBullets(); flushOrdered()
+            paraBuf.append(trimmed)
+        }
+        flushAll()
+        return blocks
+    }
+
+    @ViewBuilder
+    private func renderBlock(_ block: Block) -> some View {
+        switch block {
+        case .heading(let level, let text):
+            inlineMarkdown(text)
+                .font(.system(
+                    size: level == 1 ? 19 : level == 2 ? 17 : 15,
+                    weight: .bold,
+                    design: .rounded
+                ))
+                .foregroundColor(textColor)
+                .padding(.top, 2)
+        case .paragraph(let text):
+            inlineMarkdown(text)
+                .font(.system(size: 15))
+                .foregroundColor(textColor)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+        case .bullets(let items):
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("•")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(accentColor)
+                            .frame(width: 12, alignment: .center)
+                        inlineMarkdown(item)
+                            .font(.system(size: 15))
+                            .foregroundColor(textColor)
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        case .ordered(let items):
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("\(idx + 1).")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundColor(accentColor)
+                            .frame(width: 18, alignment: .trailing)
+                        inlineMarkdown(item)
+                            .font(.system(size: 15))
+                            .foregroundColor(textColor)
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+
+    private func inlineMarkdown(_ text: String) -> Text {
         if let attributed = try? AttributedString(
             markdown: text,
             options: .init(
                 allowsExtendedAttributes: false,
-                interpretedSyntax: .full,
+                interpretedSyntax: .inlineOnlyPreservingWhitespace,
                 failurePolicy: .returnPartiallyParsedIfPossible
             )
         ) {
-            Text(styled(attributed))
-                .font(.system(size: 15))
-                .foregroundColor(textColor)
-                .tint(accentColor)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-        } else {
-            Text(text)
-                .font(.system(size: 15))
-                .foregroundColor(textColor)
-                .lineSpacing(3)
+            return Text(styled(attributed))
         }
+        return Text(text)
     }
 
     private func styled(_ input: AttributedString) -> AttributedString {
         var s = input
-        // Style code spans with a monospaced font.
         for run in s.runs {
             if run.inlinePresentationIntent?.contains(.code) == true {
                 s[run.range].font = .system(size: 14, weight: .medium, design: .monospaced)
@@ -401,6 +689,250 @@ private struct MarkdownText: View {
         return s
     }
 }
+
+// MARK: - Tool Status Pill
+
+private struct ToolStatusPill: View {
+    let label: String
+    @State private var pulse: Bool = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(AppTheme.Colors.accent)
+                .scaleEffect(pulse ? 1.15 : 0.95)
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+            Capsule().fill(AppTheme.Colors.accentTint.opacity(0.85))
+        )
+        .overlay(
+            Capsule().strokeBorder(
+                AppTheme.Colors.accent.opacity(0.25), lineWidth: 0.6
+            )
+        )
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.7).repeatForever()) {
+                pulse = true
+            }
+        }
+    }
+}
+
+// MARK: - Itinerary Card
+
+private struct ItineraryCardList: View {
+    let payload: RoutePlanPayload
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(payload.itineraries.prefix(3).enumerated()), id: \.element.id) { idx, itin in
+                ItineraryCard(itinerary: itin, index: idx + 1)
+            }
+        }
+        .frame(maxWidth: 320, alignment: .leading)
+    }
+}
+
+private struct ItineraryCard: View {
+    let itinerary: RoutePlanPayload.Itinerary
+    let index: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("Option \(index)")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(AppTheme.Gradients.accentVibrant))
+
+                if let total = itinerary.total_minutes {
+                    Label("\(Int(total.rounded())) min", systemImage: "clock")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                }
+
+                Spacer(minLength: 0)
+
+                if let xfer = itinerary.transfer_count, xfer > 0 {
+                    Label("\(xfer)", systemImage: "arrow.triangle.swap")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+            }
+
+            if let legs = itinerary.legs, !legs.isEmpty {
+                LegStrip(legs: legs)
+            } else if let summary = itinerary.summary {
+                Text(summary)
+                    .font(.system(size: 13))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+                    .lineLimit(3)
+            }
+
+            if let dep = itinerary.departure_time, let arr = itinerary.arrival_time {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(AppTheme.Colors.accent)
+                    Text("Depart \(formatTime(dep)) · Arrive \(formatTime(arr))")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.55), lineWidth: 0.6)
+        )
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 10, x: 0, y: 4)
+    }
+
+    private func formatTime(_ iso: String) -> String {
+        let isoFmt = ISO8601DateFormatter()
+        isoFmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = isoFmt.date(from: iso)
+            ?? ISO8601DateFormatter().date(from: iso)
+        guard let date = date else { return iso }
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        return f.string(from: date)
+    }
+}
+
+private struct LegStrip: View {
+    let legs: [RoutePlanPayload.Leg]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(legs.enumerated()), id: \.element.id) { idx, leg in
+                    LegChip(leg: leg)
+                    if idx < legs.count - 1 {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.textTertiary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct LegChip: View {
+    let leg: RoutePlanPayload.Leg
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: iconName)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(routeColor))
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(label)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                if let duration = leg.duration_minutes {
+                    Text("\(Int(duration.rounded())) min")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(routeColor.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(routeColor.opacity(0.3), lineWidth: 0.6)
+        )
+    }
+
+    private var label: String {
+        if let r = leg.route_label, !r.isEmpty { return r }
+        if let r = leg.route_id, !r.isEmpty { return r }
+        return (leg.mode ?? "walk").capitalized
+    }
+
+    private var iconName: String {
+        switch (leg.mode ?? "").lowercased() {
+        case "walk", "walking": return "figure.walk"
+        case "subway", "transit", "rail", "train": return "tram.fill"
+        case "bus": return "bus.fill"
+        default: return "arrow.right"
+        }
+    }
+
+    private var routeColor: Color {
+        switch (leg.mode ?? "").lowercased() {
+        case "walk", "walking": return AppTheme.Colors.textSecondary
+        case "bus": return .blue
+        default: return AppTheme.Colors.accent
+        }
+    }
+}
+
+// MARK: - Station List Card
+
+private struct StationListCard: View {
+    let payload: StationSearchPayload
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(payload.stops.prefix(5)) { stop in
+                HStack(spacing: 10) {
+                    Image(systemName: "tram.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(AppTheme.Gradients.accentVibrant))
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(stop.stop_name ?? "Unknown")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                            .lineLimit(1)
+                        if let id = stop.stop_id {
+                            Text(id)
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(AppTheme.Colors.textTertiary)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppTheme.Colors.cardBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.5), lineWidth: 0.6)
+                )
+            }
+        }
+        .frame(maxWidth: 320, alignment: .leading)
+    }
+}
+
 
 // MARK: - Text Bubble
 

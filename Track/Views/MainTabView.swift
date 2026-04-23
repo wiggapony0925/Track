@@ -82,7 +82,7 @@ struct MainTabView: View {
             }
             .tag(AppTab.trips)
             
-            ChatView()
+            ChatView(locationManager: locationManager)
             .tabItem {
                 Label(AppTab.chat.rawValue, systemImage: AppTab.chat.icon)
             }
