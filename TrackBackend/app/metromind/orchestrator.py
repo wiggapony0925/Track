@@ -308,6 +308,8 @@ def _pretty_label(name: str, arguments_json: str | None) -> str:
         return "Checking service alerts"
     if name == "search_stations":
         return f"Searching stations for '{args.get('query', '')}'"
+    if name == "get_user_places":
+        return "Looking up your saved places"
     return name
 
 

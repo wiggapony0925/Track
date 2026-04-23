@@ -104,6 +104,18 @@ final class ChatViewModel {
     /// resolve "current location" planning queries.
     var currentLocation: CLLocationCoordinate2D?
 
+    /// User's first name ("Jeff") for friendly addressing.
+    var userName: String?
+
+    /// User's saved places (Home, Work, custom) loaded from the
+    /// Plan tab's cache. Forwarded to MetroMind every turn so it can
+    /// answer "how do I get home" without asking.
+    var savedPlaces: [MetroMindAPI.SavedPlaceContext] = []
+
+    /// User's recent trips (newest first). Lets MetroMind suggest
+    /// follow-ups like "replan your last trip".
+    var recentTrips: [MetroMindAPI.RecentTripContext] = []
+
     func send(_ overrideText: String? = nil) {
         let raw = overrideText ?? draft
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -136,14 +148,21 @@ final class ChatViewModel {
 
         // Cancel any in-flight stream before starting a new one.
         streamTask?.cancel()
-        streamTask = Task { [weak self, location = currentLocation] in
+        streamTask = Task { [weak self,
+                             location = currentLocation,
+                             userName = userName,
+                             savedPlaces = savedPlaces,
+                             recentTrips = recentTrips] in
             guard let self else { return }
             var receivedAnyToken = false
             do {
                 let stream = MetroMindAPI.chatStream(
                     message: trimmed,
                     history: history,
-                    location: location
+                    location: location,
+                    userName: userName,
+                    savedPlaces: savedPlaces,
+                    recentTrips: recentTrips
                 )
                 for try await event in stream {
                     if Task.isCancelled { break }
@@ -219,6 +238,14 @@ final class ChatViewModel {
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
         messages[idx].stationsPayload = payload
     }
+
+    /// Wipe the conversation back to the opening greeting.
+    func resetConversation() {
+        streamTask?.cancel()
+        messages = ChatMessage.mockConversation.prefix(1).map { $0 }
+        draft = ""
+        isAssistantTyping = false
+    }
 }
 
 // MARK: - ChatView
@@ -239,14 +266,19 @@ struct ChatView: View {
                 .allowsHitTesting(false)
 
             VStack(spacing: 0) {
-                ChatHeader()
+                ChatHeader(
+                    placesCount: viewModel.savedPlaces.count,
+                    recentTripsCount: viewModel.recentTrips.count,
+                    onClear: { withAnimation(.easeInOut(duration: 0.25)) { viewModel.resetConversation() } }
+                )
 
                 messagesList
 
                 if viewModel.messages.count <= 1 {
-                    SuggestionChipsRow(prompts: viewModel.suggestedPrompts) { prompt in
-                        viewModel.send(prompt)
-                    }
+                    SuggestionChipsRow(
+                        prompts: dynamicSuggestions,
+                        onTap: { prompt in viewModel.send(prompt) }
+                    )
                 }
 
                 ChatComposer(
@@ -258,12 +290,65 @@ struct ChatView: View {
             }
         }
         .navigationBarHidden(true)
-        .onAppear { syncLocation() }
+        .onAppear {
+            syncLocation()
+            syncUserData()
+        }
         .onChange(of: locationManager?.currentLocation) { _, _ in syncLocation() }
     }
 
     private func syncLocation() {
         viewModel.currentLocation = locationManager?.currentLocation?.coordinate
+    }
+
+    /// Pull the user's profile + saved places + recent trips from the
+    /// app caches and push them into the view-model so every chat turn
+    /// carries them along.
+    private func syncUserData() {
+        let user = SupabaseManager.shared.currentUser
+        viewModel.userName = user?.givenName
+            ?? user?.fullName?.split(separator: " ").first.map(String.init)
+
+        guard let uid = user?.id.uuidString.lowercased() else {
+            viewModel.savedPlaces = []
+            viewModel.recentTrips = []
+            return
+        }
+        let snap = PlannerDataCache.shared.snapshot(for: uid)
+        viewModel.savedPlaces = snap.savedPlaces.map { p in
+            MetroMindAPI.SavedPlaceContext(
+                label: p.label,
+                kind: p.kind,
+                lat: p.lat,
+                lon: p.lon,
+                address: p.address
+            )
+        }
+        viewModel.recentTrips = snap.recentTrips.prefix(8).map { t in
+            MetroMindAPI.RecentTripContext(
+                originLabel: t.originLabel,
+                destinationLabel: t.destinationLabel,
+                summary: t.summary,
+                requestedAt: t.requestedAt
+            )
+        }
+    }
+
+    /// Surface user-specific shortcuts in the empty-state suggestion strip.
+    /// Falls back to generic prompts when the user has no saved places yet.
+    private var dynamicSuggestions: [String] {
+        var out: [String] = []
+        if viewModel.savedPlaces.contains(where: { $0.kind == "home" }) {
+            out.append("How do I get home?")
+        }
+        if viewModel.savedPlaces.contains(where: { $0.kind == "work" }) {
+            out.append("How long to work?")
+        }
+        if let last = viewModel.recentTrips.first {
+            out.append("Replan: \(last.destinationLabel)")
+        }
+        out.append(contentsOf: viewModel.suggestedPrompts)
+        return Array(out.prefix(6))
     }
 
     // MARK: - Ambient Background
@@ -346,49 +431,102 @@ struct ChatView: View {
 // MARK: - Header
 
 private struct ChatHeader: View {
-    @Environment(\.dismiss) private var dismiss
+    let placesCount: Int
+    let recentTripsCount: Int
+    let onClear: () -> Void
+
+    @State private var avatarPulse: Bool = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            CircleIconButton(systemName: "chevron.left") { dismiss() }
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.accent.opacity(0.18))
+                    .frame(width: 56, height: 56)
+                    .blur(radius: 6)
+                    .scaleEffect(avatarPulse ? 1.08 : 0.96)
+                    .animation(.easeInOut(duration: 1.6).repeatForever(), value: avatarPulse)
+                AIAvatar(size: 44)
+            }
+            .onAppear { avatarPulse = true }
 
-            Spacer()
-
-            HStack(spacing: 10) {
-                AIAvatar(size: 32)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 5) {
-                        Text("MetroMind")
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppTheme.Gradients.accentVibrant)
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(AppTheme.Colors.accent)
-                    }
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 6, height: 6)
-                        Text("Online · Ready to help")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(AppTheme.Colors.textTertiary)
-                    }
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("MetroMind")
+                        .font(.system(size: 19, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.Gradients.accentVibrant)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(AppTheme.Gradients.accentVibrant)
                 }
+                statusLine
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
-            CircleIconButton(systemName: "ellipsis") { }
+            CircleIconButton(systemName: "square.and.pencil", action: onClear)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial.opacity(0.85))
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
+        .padding(.bottom, 14)
+        .background(
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        AppTheme.Colors.accent.opacity(0.10),
+                        AppTheme.Colors.accentSecondary.opacity(0.04),
+                        Color.clear,
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .blendMode(.plusLighter)
+                .opacity(0.85)
+                .ignoresSafeArea(edges: .top)
+
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .opacity(0.78)
+                    .ignoresSafeArea(edges: .top)
+            }
+        )
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppTheme.Colors.borderSubtle.opacity(0.5))
-                .frame(height: 0.5)
+            LinearGradient(
+                colors: [
+                    AppTheme.Colors.borderSubtle.opacity(0.55),
+                    AppTheme.Colors.borderSubtle.opacity(0.0),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(height: 0.6)
         }
+    }
+
+    @ViewBuilder
+    private var statusLine: some View {
+        if placesCount > 0 || recentTripsCount > 0 {
+            HStack(spacing: 6) {
+                Circle().fill(Color.green).frame(width: 6, height: 6)
+                Text(personalisedStatus)
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            }
+        } else {
+            HStack(spacing: 6) {
+                Circle().fill(Color.green).frame(width: 6, height: 6)
+                Text("Online · Ask me anything transit")
+                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+            }
+        }
+    }
+
+    private var personalisedStatus: String {
+        var bits: [String] = []
+        if placesCount > 0 { bits.append("\(placesCount) place\(placesCount == 1 ? "" : "s")") }
+        if recentTripsCount > 0 { bits.append("\(recentTripsCount) recent trip\(recentTripsCount == 1 ? "" : "s")") }
+        return "Online · knows " + bits.joined(separator: ", ")
     }
 }
 

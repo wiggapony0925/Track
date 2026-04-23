@@ -17,6 +17,27 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class SavedPlace(BaseModel):
+    """A user-saved destination (Home, Work, custom)."""
+
+    label: str = Field(..., description='Display name (e.g. "Home", "Mom\'s house").')
+    kind: str = Field(..., description='"home", "work", or "custom".')
+    lat: float
+    lon: float
+    address: str | None = None
+
+
+class RecentTrip(BaseModel):
+    """A recently planned trip — used for personalised follow-ups."""
+
+    origin_label: str
+    destination_label: str
+    summary: str | None = None
+    requested_at: int | None = Field(
+        None, description="Unix epoch seconds when the trip was last planned."
+    )
+
+
 class UserContext(BaseModel):
     """Optional client-provided context attached to each turn.
 
@@ -34,6 +55,17 @@ class UserContext(BaseModel):
         None, description="GTFS stop_id of the station the user is near, if any."
     )
     locale: str = Field(default="en-US", description="Preferred response language.")
+    user_name: str | None = Field(
+        None, description="The user's first name, if known (for friendly addressing)."
+    )
+    saved_places: list[SavedPlace] = Field(
+        default_factory=list,
+        description="User's saved places (Home, Work, custom). Used for queries like 'how do I get home'.",
+    )
+    recent_trips: list[RecentTrip] = Field(
+        default_factory=list,
+        description="Recently planned trips, newest first. Capped to ~10 by the client.",
+    )
 
 
 class ChatRequest(BaseModel):
@@ -107,6 +139,8 @@ __all__ = [
     "ChatRequest",
     "ChatResponse",
     "ChatRole",
+    "RecentTrip",
+    "SavedPlace",
     "SSEDoneEvent",
     "SSEErrorEvent",
     "SSEToolCallEvent",

@@ -27,9 +27,14 @@ say so before suggesting it.
 
 ## Tools
 
-You have tools for route planning, service alerts, nearby stops, live arrivals, and station search. \
-Call them whenever they'd make the answer more accurate. Prefer **one well-scoped tool call** over \
-several speculative ones.
+You have tools for route planning, service alerts, nearby stops, live arrivals, station search, \
+and looking up the user's saved places + recent trips. Call them whenever they'd make the answer \
+more accurate. Prefer **one well-scoped tool call** over several speculative ones.
+
+When the user mentions "home", "work", or another saved place by name, the coordinates are \
+already in your **Saved places** context block — pass them straight to `plan_route` as \
+``origin``/``destination`` strings (e.g. ``"40.71570,-73.95680"``). Only call `get_user_places` \
+when the user *asks* about their saved list itself.
 
 ## Output shape
 
@@ -52,12 +57,42 @@ def render_system_prompt(context: UserContext | None) -> str:
     lines.append(f"- Current time: {now.strftime('%A, %b %d %Y — %I:%M %p %Z')}")
 
     if context is not None:
+        if context.user_name:
+            lines.append(f"- User's first name: {context.user_name}")
         if context.lat is not None and context.lon is not None:
             lines.append(f"- User location: ({context.lat:.5f}, {context.lon:.5f})")
         if context.current_station_id:
             lines.append(f"- Nearby station (GTFS stop_id): {context.current_station_id}")
         if context.locale and context.locale != "en-US":
             lines.append(f"- Preferred language: {context.locale}")
+
+        if context.saved_places:
+            lines.append("")
+            lines.append("## Saved places")
+            lines.append(
+                "When the user says 'home', 'work', or names a saved place, "
+                "use these coordinates as the destination — no need to ask. "
+                "Pass `lat,lon` strings to plan_route."
+            )
+            for place in context.saved_places[:8]:
+                addr = f" — {place.address}" if place.address else ""
+                lines.append(
+                    f"- **{place.label}** ({place.kind}): "
+                    f"{place.lat:.5f},{place.lon:.5f}{addr}"
+                )
+
+        if context.recent_trips:
+            lines.append("")
+            lines.append("## Recent trips (newest first)")
+            lines.append(
+                "Use these to suggest follow-ups like 'replan your last trip' "
+                "or to disambiguate vague questions."
+            )
+            for trip in context.recent_trips[:6]:
+                summary = f" — _{trip.summary}_" if trip.summary else ""
+                lines.append(
+                    f"- {trip.origin_label} → {trip.destination_label}{summary}"
+                )
 
     return "\n".join(lines)
 

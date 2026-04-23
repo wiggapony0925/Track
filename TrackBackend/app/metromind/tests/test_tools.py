@@ -20,7 +20,7 @@ def test_tool_schemas_shape() -> None:
     """Each registered tool should conform to the OpenAI function schema."""
     schemas = tool_schemas()
     names = {entry["function"]["name"] for entry in schemas}
-    assert names == {"plan_route", "get_service_alerts", "search_stations"}
+    assert names == {"plan_route", "get_service_alerts", "search_stations", "get_user_places"}
     for entry in schemas:
         assert entry["type"] == "function"
         fn = entry["function"]

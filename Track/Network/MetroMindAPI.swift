@@ -174,13 +174,34 @@ enum MetroMindAPI {
         }
     }
 
+    /// A user-saved place (Home, Work, custom) sent to MetroMind so the
+    /// LLM knows where "home" is without an extra round-trip.
+    struct SavedPlaceContext: Sendable {
+        let label: String
+        let kind: String
+        let lat: Double
+        let lon: Double
+        let address: String?
+    }
+
+    /// A recently planned trip — surfaced to the LLM for follow-ups.
+    struct RecentTripContext: Sendable {
+        let originLabel: String
+        let destinationLabel: String
+        let summary: String?
+        let requestedAt: Int?
+    }
+
     /// Streams a chat turn. Yields events in order until the server
     /// closes the connection. Throws on transport / HTTP errors; soft
     /// errors from the model are surfaced as `.error(msg)` events.
     static func chatStream(
         message: String,
         history: [(role: String, content: String)] = [],
-        location: CLLocationCoordinate2D? = nil
+        location: CLLocationCoordinate2D? = nil,
+        userName: String? = nil,
+        savedPlaces: [SavedPlaceContext] = [],
+        recentTrips: [RecentTripContext] = []
     ) -> AsyncThrowingStream<MetroMindEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -201,12 +222,40 @@ enum MetroMindAPI {
                         "stream": true,
                         "history": history.map { ["role": $0.role, "content": $0.content] },
                     ]
+
+                    var ctx: [String: Any] = ["timezone": "America/New_York"]
                     if let loc = location {
-                        body["context"] = [
-                            "lat": loc.latitude,
-                            "lon": loc.longitude,
-                            "timezone": "America/New_York",
-                        ]
+                        ctx["lat"] = loc.latitude
+                        ctx["lon"] = loc.longitude
+                    }
+                    if let name = userName, !name.isEmpty {
+                        ctx["user_name"] = name
+                    }
+                    if !savedPlaces.isEmpty {
+                        ctx["saved_places"] = savedPlaces.map { p -> [String: Any] in
+                            var d: [String: Any] = [
+                                "label": p.label,
+                                "kind": p.kind,
+                                "lat": p.lat,
+                                "lon": p.lon,
+                            ]
+                            if let addr = p.address { d["address"] = addr }
+                            return d
+                        }
+                    }
+                    if !recentTrips.isEmpty {
+                        ctx["recent_trips"] = recentTrips.map { t -> [String: Any] in
+                            var d: [String: Any] = [
+                                "origin_label": t.originLabel,
+                                "destination_label": t.destinationLabel,
+                            ]
+                            if let s = t.summary { d["summary"] = s }
+                            if let r = t.requestedAt { d["requested_at"] = r }
+                            return d
+                        }
+                    }
+                    if ctx.count > 1 || location != nil {
+                        body["context"] = ctx
                     }
                     req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
