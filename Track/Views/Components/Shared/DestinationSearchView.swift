@@ -1,6 +1,12 @@
 // Destination / origin search sheet — rich search experience with
 // animated focus ring, categorised suggestions, MapKit autocomplete,
 // and premium row treatments. Every action is wired to live logic.
+//
+// SHARED COMPONENT: used by both the Plan tab (origin/destination picker)
+// and the Home tab's floating search bar. When ``transitMatchesProvider``
+// is supplied, an extra "Transit" section renders matching subway/bus
+// routes alongside the location results so users can jump straight to a
+// route detail sheet without leaving the search popup.
 
 import MapKit
 import SwiftUI
@@ -8,6 +14,20 @@ import SwiftUI
 struct DestinationSearchView: View {
     @Bindable var viewModel: PlanViewModel
     let isOrigin: Bool
+
+    /// Optional supplier of transit groups matching the current query.
+    /// When non-nil and returns a non-empty array, a "Transit" section
+    /// is prepended to the search results. The closure receives the live
+    /// search text from ``PlanViewModel.searchText``.
+    var transitMatchesProvider: ((String) -> [GroupedNearbyTransitResponse])? = nil
+
+    /// Tap handler for transit rows. Caller is responsible for navigation
+    /// (e.g. presenting the route detail sheet) and dismissing this sheet.
+    var onSelectTransit: ((GroupedNearbyTransitResponse) -> Void)? = nil
+
+    /// Optional user location used by the embedded ``GroupedRouteRow`` to
+    /// display walking distance to the closest stop in each transit match.
+    var transitUserLocation: CLLocation? = nil
 
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isSearchFocused: Bool
@@ -505,28 +525,158 @@ struct DestinationSearchView: View {
         let completions = viewModel.locationSearchService.completions
         let localResults = viewModel.searchResults
         let isSearching = viewModel.locationSearchService.isSearching
+        let transitMatches = transitMatchesProvider?(viewModel.searchText) ?? []
 
-        if localResults.isEmpty && completions.isEmpty && !isSearching {
+        if localResults.isEmpty && completions.isEmpty && transitMatches.isEmpty && !isSearching {
             emptySearchState
         } else {
             LazyVStack(spacing: 0) {
+                // ── Places (local saved/recent + Apple Maps suggestions) ──
                 if !localResults.isEmpty {
+                    sectionHeader("Places")
                     ForEach(localResults) { result in
                         searchResultRow(result)
                     }
-                    if !completions.isEmpty {
-                        sectionHeader("Suggestions")
+                }
+                if !completions.isEmpty {
+                    sectionHeader(localResults.isEmpty ? "Places" : "Suggestions")
+                    ForEach(completions) { completion in
+                        completionRow(completion)
                     }
                 }
-                ForEach(completions) { completion in
-                    completionRow(completion)
-                }
-                if isSearching && completions.isEmpty {
+                if isSearching && completions.isEmpty && localResults.isEmpty {
                     searchingIndicator
+                }
+
+                // ── Transit (live route matches) ──
+                // Reuses the same ``GroupedRouteRow`` rendered on the
+                // dashboard so the search results look identical to the
+                // main page list.
+                if !transitMatches.isEmpty {
+                    sectionHeader("Transit")
+                    ForEach(transitMatches) { group in
+                        GroupedRouteRow(
+                            group: group,
+                            userLocation: transitUserLocation,
+                            onSelect: { _ in onSelectTransit?(group) }
+                        )
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                    }
                 }
             }
             .padding(.top, 6)
         }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // MARK: - Transit Row
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    private func transitRow(_ group: GroupedNearbyTransitResponse) -> some View {
+        Button {
+            onSelectTransit?(group)
+        } label: {
+            HStack(spacing: 13) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(transitBadgeColor(for: group))
+                        .frame(width: 40, height: 40)
+                    Text(transitBadgeLabel(for: group))
+                        .font(.system(
+                            size: transitBadgeFontSize(for: group),
+                            weight: .heavy, design: .rounded
+                        ))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(width: 36, height: 36)
+                }
+                .frame(width: 40, height: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(transitTitle(for: group))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+                    if let subtitle = transitSubtitle(for: group) {
+                        Text(subtitle)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppTheme.Colors.textTertiary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.25))
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(AppTheme.Colors.cardInset.opacity(0.4)))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+        .buttonStyle(SearchRowButtonStyle())
+    }
+
+    private func transitBadgeColor(for group: GroupedNearbyTransitResponse) -> Color {
+        if group.isBus {
+            return AppTheme.BusColors.color(forServiceType: group.busServiceType)
+        }
+        if let hex = group.colorHex {
+            return Color(hex: hex)
+        }
+        if group.isLIRR { return AppTheme.CommuterRailColors.lirrBlue }
+        if group.isMNR { return AppTheme.CommuterRailColors.mnrBlue }
+        return AppTheme.SubwayColors.color(for: group.displayName)
+    }
+
+    /// Compact label that always fits inside a 40×40 badge — short
+    /// route IDs render as-is ("F", "E", "Q26"); long branch / line
+    /// names collapse to initials ("FRB", "HMP", "MNR").
+    private func transitBadgeLabel(for group: GroupedNearbyTransitResponse) -> String {
+        let candidate = group.displayName.trimmingCharacters(in: .whitespaces)
+        if candidate.count <= 3 { return candidate }
+        if group.isLIRR { return "LIRR" }
+        if group.isMNR { return "MNR" }
+        // Take first letter of up to 3 words for an initialism.
+        let initials = candidate
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .prefix(3)
+            .compactMap { $0.first.map(String.init) }
+            .joined()
+        return initials.isEmpty ? String(candidate.prefix(3)) : initials.uppercased()
+    }
+
+    private func transitBadgeFontSize(for group: GroupedNearbyTransitResponse) -> CGFloat {
+        let label = transitBadgeLabel(for: group)
+        switch label.count {
+        case ...2: return 16
+        case 3:    return 13
+        default:   return 11
+        }
+    }
+
+    private func transitTitle(for group: GroupedNearbyTransitResponse) -> String {
+        if group.isBus { return "\(group.displayName) Bus" }
+        if group.isLIRR { return "\(group.displayName) — LIRR" }
+        if group.isMNR { return "\(group.displayName) — Metro-North" }
+        return "\(group.displayName) Train"
+    }
+
+    private func transitSubtitle(for group: GroupedNearbyTransitResponse) -> String? {
+        let dirs = group.directions.compactMap { $0.arrivals.first?.destination }
+        let unique = Array(NSOrderedSet(array: dirs)) as? [String] ?? []
+        if !unique.isEmpty {
+            return "To " + unique.prefix(2).joined(separator: " / ")
+        }
+        if let first = group.directions.first?.direction, !first.isEmpty {
+            return first
+        }
+        return nil
     }
 
     private var emptySearchState: some View {

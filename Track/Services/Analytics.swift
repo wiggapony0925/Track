@@ -72,7 +72,7 @@ final class Analytics {
     func appDidBecomeActive(entrySource: String = "warm") {
         let now = Date()
         // Resume an existing session if we just briefly backgrounded.
-        if let sid = sessionId,
+        if sessionId != nil,
            let lastBg = lastBackgroundedAt,
            now.timeIntervalSince(lastBg) < backgroundSessionGap {
             lastBackgroundedAt = nil
@@ -103,12 +103,14 @@ final class Analytics {
     func event(_ name: String,
                properties: [String: Any] = [:],
                screen: String? = nil) {
-        enqueue(merge([
+        var row: [String: Any?] = [
             "type": "event",
             "event_name": name,
             "properties": sanitizeProperties(properties),
             "screen": screen,
-        ], commonFields()))
+        ]
+        for (k, v) in commonFields() { row[k] = v }
+        enqueue(row)
     }
 
     func screenView(_ screen: String,
@@ -296,11 +298,12 @@ final class Analytics {
 
     // ── Flushing ──────────────────────────────────────────────────────────
 
-    private func enqueue(_ row: [String: Any]) {
+    private func enqueue(_ row: [String: Any?]) {
         sessionEventCount += 1
-        let cleaned = row.compactMapValues { v -> Any? in
-            if let s = v as? String, s.isEmpty { return nil }
-            return v is NSNull ? nil : v
+        let cleaned = row.compactMapValues { value -> Any? in
+            guard let value = value else { return nil }
+            if let s = value as? String, s.isEmpty { return nil }
+            return value is NSNull ? nil : value
         }
         buffer.append(cleaned)
         if buffer.count >= flushThreshold {
@@ -310,8 +313,9 @@ final class Analytics {
 
     private func startFlushTimer() {
         flushTimer?.invalidate()
-        flushTimer = Timer.scheduledTimer(withTimeInterval: flushInterval, repeats: true) { _ in
-            Task { @MainActor in
+        flushTimer = Timer.scheduledTimer(withTimeInterval: flushInterval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            MainActor.assumeIsolated {
                 self.flush(reason: "timer", waitForResult: false)
             }
         }
@@ -333,18 +337,19 @@ final class Analytics {
 
         Task.detached { [weak self] in
             let success = await Analytics.send(events: toSend, sessionId: sid)
+            let captured = self
             await MainActor.run {
-                guard let self else { return }
-                self.inFlight = false
+                guard let strongSelf = captured else { return }
+                strongSelf.inFlight = false
                 if !success {
                     // Re-queue at the front so we don't lose them.
-                    self.buffer.insert(contentsOf: toSend, at: 0)
-                    if self.buffer.count > self.maxBufferOnDisk {
-                        self.buffer.removeFirst(self.buffer.count - self.maxBufferOnDisk)
+                    strongSelf.buffer.insert(contentsOf: toSend, at: 0)
+                    if strongSelf.buffer.count > strongSelf.maxBufferOnDisk {
+                        strongSelf.buffer.removeFirst(strongSelf.buffer.count - strongSelf.maxBufferOnDisk)
                     }
-                    self.persistBuffer()
+                    strongSelf.persistBuffer()
                 } else {
-                    self.persistBuffer()
+                    strongSelf.persistBuffer()
                 }
             }
         }

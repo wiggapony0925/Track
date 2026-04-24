@@ -33,6 +33,12 @@ struct FloatingSearchBar: View {
     var workPlace: SavedLocation? = nil
     var userCoordinate: CLLocationCoordinate2D? = nil
 
+    /// Optional override for the pill tap. When supplied, the default
+    /// behavior of focusing the inline TextField is replaced — callers
+    /// typically use this to open a richer search sheet (e.g. the
+    /// ``DestinationSearchView`` popup on the Home tab).
+    var onTap: (() -> Void)? = nil
+
     @State private var speechManager = SpeechRecognitionManager()
     @FocusState private var isTextFieldFocused: Bool
 
@@ -134,9 +140,16 @@ struct FloatingSearchBar: View {
         .onAppear {
             speechManager.onTranscription = { text in searchText = text }
         }
-        // Whole pill is tappable — focuses the field and shows the keyboard
+        // Whole pill is tappable — either fire the caller's hook
+        // (e.g. open the search sheet) or fall back to focusing the
+        // inline TextField for legacy in-place typing.
         .onTapGesture {
-            isTextFieldFocused = true
+            if let onTap {
+                HapticManager.impact(.light)
+                onTap()
+            } else {
+                isTextFieldFocused = true
+            }
         }
     }
 

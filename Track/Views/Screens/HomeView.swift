@@ -83,6 +83,13 @@ struct HomeView: View {
     /// When true, the `.onChange(of: walkingRoute)` handler skips camera
     /// re-zoom because the update came from a live GPS tick, not a route open.
     @State private var suppressWalkingRouteZoom = false
+
+    /// Search popup state. Tapping the FloatingSearchBar opens the
+    /// shared ``DestinationSearchView`` sheet so users get the same rich
+    /// "Where to?" experience the Plan tab uses, but augmented with
+    /// matching transit routes from the live nearby feed.
+    @State private var showSearchSheet = false
+    @State private var planSearchVM = PlanViewModel()
     
     /// When true, the next `handleTappedVehicle` call was triggered by a chip
     /// tap inside the route detail sheet — the sheet should collapse (not expand)
@@ -186,6 +193,30 @@ struct HomeView: View {
             .onChange(of: locationManager.currentLocation) { handleLocationUpdate() }
             .onChange(of: sheetNavigator.currentPage) { oldPage, newPage in
                 handleSheetPageChange(from: oldPage, to: newPage)
+            }
+            .sheet(isPresented: $showSearchSheet, onDismiss: { handleSearchSheetDismiss() }) {
+                DestinationSearchView(
+                    viewModel: planSearchVM,
+                    isOrigin: false,
+                    transitMatchesProvider: { query in
+                        transitMatchesForSearch(query)
+                    },
+                    onSelectTransit: { group in
+                        handleSearchSheetTransitSelection(group)
+                    },
+                    transitUserLocation: locationManager.currentLocation
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+            }
+            // "Choose on Map" from the search popup toggles
+            // ``planSearchVM.showMapPicker``. Mirror Plan tab's presenter
+            // here so the chip works identically when invoked from Home.
+            .fullScreenCover(
+                isPresented: $planSearchVM.showMapPicker,
+                onDismiss: { handleSearchSheetDismiss() }
+            ) {
+                MapLocationPickerView(viewModel: planSearchVM)
             }
     }
     
@@ -302,7 +333,8 @@ struct HomeView: View {
                                     isDragSearchActive: viewModel.isSearchPinActive,
                                     homePlace: savedHomePlace,
                                     workPlace: savedWorkPlace,
-                                    userCoordinate: locationManager.currentLocation?.coordinate
+                                    userCoordinate: locationManager.currentLocation?.coordinate,
+                                    onTap: { presentSearchSheet() }
                                 )
                             )
                         } : nil
@@ -354,7 +386,94 @@ struct HomeView: View {
 
 
     // MARK: - Modifier Handler Methods (extracted from body)
-    
+
+    // MARK: Search sheet plumbing
+
+    /// Opens the shared ``DestinationSearchView`` sheet pre-seeded with
+    /// whatever the user already typed in the floating search bar so the
+    /// transition feels seamless.
+    ///
+    /// Also lazily configures the local ``PlanViewModel`` (modelContext +
+    /// locationManager) so saved places, recents, and recommendations are
+    /// fetched / restored from cache the very first time the popup opens.
+    /// `PlanViewModel.configure` is idempotent — repeat calls are no-ops.
+    private func presentSearchSheet() {
+        planSearchVM.configure(
+            modelContext: modelContext,
+            locationManager: locationManager
+        )
+        planSearchVM.searchText = viewModel.searchText
+        planSearchVM.performSearch(query: viewModel.searchText)
+        showSearchSheet = true
+    }
+
+    /// Filters the live nearby transit feed by the sheet's current query.
+    /// Reuses the existing ``HomeViewModel.groupMatchesQuery`` matcher so
+    /// the search results stay perfectly consistent with the dashboard.
+    private func transitMatchesForSearch(_ rawQuery: String) -> [GroupedNearbyTransitResponse] {
+        let trimmed = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 1 else { return [] }
+        let query = trimmed.lowercased()
+        let stationRoutes = viewModel.stationRoutesForQuery(query)
+        let base = viewModel.groupedTransit.filter {
+            $0.hasRealArrivals && (!$0.isExpired || viewModel.showStaleRows)
+        }
+        return base.filter {
+            viewModel.groupMatchesQuery($0, query: query, stationRoutes: stationRoutes)
+        }
+    }
+
+    /// Handles a user tapping a transit row in the search popup. Dismisses
+    /// the sheet and routes through the existing ``SheetNavigator`` so the
+    /// route detail sheet appears with the same UX as a dashboard tap.
+    private func handleSearchSheetTransitSelection(_ group: GroupedNearbyTransitResponse) {
+        showSearchSheet = false
+        HapticManager.impact(.medium)
+        // Brief delay so the sheet finishes dismissing before the route
+        // detail floating panel takes over the screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            sheetNavigator.navigate(to: .routeDetail(group: group, directionIndex: 0))
+            Task {
+                await viewModel.handleRouteSelection(
+                    group,
+                    directionIndex: 0,
+                    userLocation: locationManager.currentLocation
+                )
+            }
+        }
+    }
+
+    /// When the search sheet dismisses with a destination chosen, hand it
+    /// off to the Plan tab via the existing ``.quickDestination`` +
+    /// ``.switchToTab`` notifications \u2014 the same plumbing the floating
+    /// shortcut button uses.
+    ///
+    /// IMPORTANT ordering: ``PlanView`` is lazily created by ``TabView`` —
+    /// if the user has never visited the Trips tab before, it doesn't yet
+    /// have an ``onReceive`` subscription. We must therefore (1) flip the
+    /// tab first so PlanView mounts and registers its publisher, then
+    /// (2) deliver the destination on a later runloop tick so the freshly
+    /// mounted view actually receives it.
+    private func handleSearchSheetDismiss() {
+        let dest = planSearchVM.destination
+        // Always reset so the next time the sheet opens, it starts clean.
+        planSearchVM.destination = nil
+        planSearchVM.searchText = ""
+        planSearchVM.locationSearchService.cancel()
+
+        guard let dest else { return }
+
+        NotificationCenter.default.post(name: .switchToTab, object: AppTab.trips)
+        Task { @MainActor in
+            // ~150 ms gives PlanView enough time to (a) mount, (b) run
+            // .onAppear (which configures the locationManager so planTrip
+            // can resolve a current-location origin), and (c) attach its
+            // .onReceive(.quickDestination) subscription before we post.
+            try? await Task.sleep(for: .milliseconds(150))
+            NotificationCenter.default.post(name: .quickDestination, object: dest)
+        }
+    }
+
     private func onAppearSetup() {
         setupLocationAndTimers()
         // Cold-launch deep link: check if TrackApp stored a pending flag
