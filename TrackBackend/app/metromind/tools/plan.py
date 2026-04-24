@@ -335,16 +335,25 @@ async def run(arguments: dict[str, Any], context: UserContext | None) -> ToolRes
     try:
         itineraries, schedule_note = await engine.plan(request)
     except RuntimeError as exc:
-        # The C++ TrackEngine routing service may be offline locally.
-        # Surface a clean error so the model stops retry-spamming
-        # search_stations and instead apologises to the user.
+        # The C++ TrackEngine routing service is offline / unreachable / timing
+        # out. Surface a clear, *user-facing* error so the model tells the rider
+        # the engine is down instead of deflecting or retry-spamming.
         msg = str(exc)
-        if "TRACK_ENGINE_URL" in msg or "TrackEngine" in msg:
+        if (
+            "TRACK_ENGINE_URL" in msg
+            or "TrackEngine" in msg
+            or "circuit open" in msg
+            or "unreachable" in msg
+            or "timed out" in msg
+        ):
             logger.warning("Routing engine unavailable: %s", msg)
             raise ToolError(
-                "Route planning is temporarily unavailable "
-                "(routing engine offline). Apologise to the user and offer "
-                "to check service alerts or look up specific stations instead."
+                "ENGINE_DOWN: The Track routing engine is currently down or "
+                "unreachable, so trip planning is temporarily unavailable. "
+                "You MUST tell the user plainly that the trip-planning engine "
+                "is down right now (don't hide it, don't be vague). Then offer "
+                "alternatives you CAN do: check service alerts, look up live "
+                "arrivals, or look up a specific station."
             ) from exc
         raise
 
