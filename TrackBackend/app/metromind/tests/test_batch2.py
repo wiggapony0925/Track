@@ -126,9 +126,10 @@ def test_suggestions_walk_only_trip_skips_track_chip() -> None:
 
 def test_suggestions_arrivals_offers_track_and_alerts() -> None:
     chips = build_suggestions(
-        used_tools=["get_arrivals"],
+        used_tools=["get_live_arrivals"],
         tool_payloads={
-            "get_arrivals": {
+            "get_live_arrivals": {
+                "route_id": "6",
                 "arrivals": [{"route_id": "6", "minutes_away": 3}],
             }
         },

@@ -1666,6 +1666,7 @@ private struct SuggestionChipStrip: View {
         case "start_tracking":        return "location.fill"
         case "open_alerts":           return "exclamationmark.triangle"
         case "open_place":            return "mappin.circle"
+        case "open_plan":             return "map"
         case "generate_alternatives": return "arrow.triangle.2.circlepath"
         default:                      return "sparkles"
         }

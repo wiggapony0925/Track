@@ -214,12 +214,24 @@ def build_suggestions(
             payload={"text": "Are there alerts on any other lines right now?"},
         ))
 
-    # ── Post get_arrivals ────────────────────────────────────────────
-    if "get_arrivals" in used_tools:
-        payload = tool_payloads.get("get_arrivals") or {}
+    # ── Post get_live_arrivals ───────────────────────────────────────
+    # The registered tool is `get_live_arrivals` (see tools/live_arrivals.py).
+    # Earlier drafts of this file used `get_arrivals`, which silently never
+    # fired. Keep both keys so a future rename of the tool doesn't break
+    # chips again.
+    arrivals_tool = next(
+        (t for t in ("get_live_arrivals", "get_arrivals") if t in used_tools),
+        None,
+    )
+    if arrivals_tool is not None:
+        payload = tool_payloads.get(arrivals_tool) or {}
         arrivals = payload.get("arrivals") or []
-        first_arrival = arrivals[0] if arrivals else {}
-        route_id = _short_route(first_arrival.get("route_id"))
+        # Prefer the tool-level route_id (always present) over digging
+        # into the first arrival.
+        route_id = _short_route(
+            payload.get("route_id")
+            or (arrivals[0].get("route_id") if arrivals else None)
+        )
         if route_id:
             _add(SuggestedAction(
                 label=f"Track the {route_id}",
