@@ -28,6 +28,13 @@ struct SuggestedActionChip: Sendable, Identifiable, Decodable {
     /// the only consumer (composer prefill) just needs `payload.text`.
     let promptText: String?
     let routeId: String?
+    /// Origin label from the original `plan_route` response — used by
+    /// `save_trip` chips so the iOS layer can persist the trip locally
+    /// without another tool roundtrip.
+    let originLabel: String?
+    let destinationLabel: String?
+    let tripSummary: String?
+    let placeLabel: String?
 
     private enum CodingKeys: String, CodingKey {
         case label, kind, payload
@@ -37,6 +44,8 @@ struct SuggestedActionChip: Sendable, Identifiable, Decodable {
         let route_id: String?
         let origin: String?
         let destination: String?
+        let summary: String?
+        let place_label: String?
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -45,6 +54,10 @@ struct SuggestedActionChip: Sendable, Identifiable, Decodable {
         let payload = try? c.decode(Payload.self, forKey: .payload)
         self.promptText = payload?.text
         self.routeId = payload?.route_id
+        self.originLabel = payload?.origin
+        self.destinationLabel = payload?.destination
+        self.tripSummary = payload?.summary
+        self.placeLabel = payload?.place_label
     }
 }
 

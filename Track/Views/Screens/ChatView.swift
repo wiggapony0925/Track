@@ -377,11 +377,115 @@ final class ChatViewModel {
         UserDefaults.standard.set(tid, forKey: "metromind.thread_id")
     }
 
-    /// Called when the user taps a suggestion chip.
+    /// Called when the user taps a suggestion chip. Behaviour depends
+    /// on `chip.kind`:
+    ///
+    /// * `save_trip` → persist origin/destination as a saved-trip template
+    ///   via the same `/engine/trips/saved` endpoint the Plan tab uses,
+    ///   then drop a confirmation bubble in the conversation.
+    /// * `open_alerts` → switch to the Home tab (where alerts surface)
+    ///   in addition to re-prompting so the LLM context is updated.
+    /// * Everything else → just resend the chip's prompt text as a new
+    ///   user turn (lets the LLM handle alternatives, place lookups, etc.).
     func tapChip(_ chip: SuggestedActionChip) {
-        if let text = chip.promptText, !text.isEmpty {
-            send(text)
+        switch chip.kind {
+        case "save_trip":
+            persistSavedTrip(
+                origin: chip.originLabel,
+                destination: chip.destinationLabel,
+                summary: chip.tripSummary
+            )
+        case "open_alerts":
+            NotificationCenter.default.post(name: .switchToTab, object: AppTab.home)
+            if let text = chip.promptText, !text.isEmpty { send(text) }
+        case "send_prompt", "generate_alternatives", "open_place", "start_tracking":
+            if let text = chip.promptText, !text.isEmpty {
+                send(text)
+            }
+        default:
+            if let text = chip.promptText, !text.isEmpty {
+                send(text)
+            }
         }
+    }
+
+    /// Persist a chat-suggested trip template. Mirrors `PlanViewModel.saveTripTemplate`
+    /// but works with just origin/destination labels (no resolved coordinates yet —
+    /// the engine will geocode on next plan).
+    private func persistSavedTrip(origin: String?, destination: String?, summary: String?) {
+        guard let userID = SupabaseManager.shared.currentUser?.id.uuidString.lowercased(),
+              let originLabel = origin,
+              let destinationLabel = destination else {
+            appendInlineNotice("⚠️ Couldn't save — missing trip details.")
+            return
+        }
+        let name = (summary?.isEmpty == false) ? summary! : "\(originLabel) → \(destinationLabel)"
+
+        let request = EngineSavedTripUpsertRequest(
+            userID: userID,
+            name: name,
+            origin: EngineLocationPayloadRequest(
+                label: originLabel, lat: nil, lon: nil, stopID: nil, address: nil
+            ),
+            destination: EngineLocationPayloadRequest(
+                label: destinationLabel, lat: nil, lon: nil, stopID: nil, address: nil
+            ),
+            preferredDepartureHour: nil,
+            preferredArrivalHour: nil,
+            preferredModes: ["subway", "bus", "walk"],
+            tripID: nil
+        )
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await TrackAPI.upsertEngineSavedTrip(request: request)
+                self.appendInlineNotice("✅ Saved **\(name)** to your trips.")
+                Analytics.shared.event(
+                    "chat_trip_saved",
+                    properties: ["origin": originLabel, "destination": destinationLabel],
+                    screen: "ChatView"
+                )
+            } catch {
+                self.appendInlineNotice(
+                    "⚠️ Couldn't save trip: \(error.localizedDescription)"
+                )
+            }
+        }
+    }
+
+    /// Insert a non-actionable assistant bubble into the transcript.
+    /// Used for inline confirmations (e.g. "Saved trip ✓").
+    private func appendInlineNotice(_ markdown: String) {
+        var msg = ChatMessage(
+            role: .assistant,
+            content: .text(markdown),
+            showActions: false
+        )
+        msg.modelUsed = nil
+        messages.append(msg)
+    }
+
+    /// Save the route attached to a specific assistant message — invoked
+    /// from the itinerary detail sheet's "Save this trip" button.
+    func saveItinerary(forMessageId id: UUID) {
+        guard let msg = messages.first(where: { $0.id == id }),
+              let payload = msg.routePayload else {
+            appendInlineNotice("⚠️ Couldn't save — trip details unavailable.")
+            return
+        }
+        persistSavedTrip(
+            origin: payload.origin,
+            destination: payload.destination,
+            summary: payload.itineraries.first?.summary
+        )
+    }
+
+    /// Re-prompt MetroMind with a "plan from this station" query when
+    /// the user taps a row in a `StationListCard`.
+    func planFromStation(_ stop: StationSearchPayload.Stop) {
+        guard let name = stop.stop_name, !name.isEmpty else { return }
+        send("How do I get home from \(name)?")
     }
 
     /// Attach an image picked from the photo library to the next message.
@@ -523,11 +627,130 @@ final class ChatViewModel {
         }
     }
 
-    /// Plain-text payload suitable for share sheets / clipboard.
+    /// Rich plain-text payload for share sheets / clipboard.
+    /// Includes (when available): the user's original prompt, the
+    /// markdown-stripped reply, a one-line itinerary summary, live
+    /// arrivals, station hits, and a MetroMind branding footer.
     func shareText(for messageId: UUID) -> String {
-        guard let msg = messages.first(where: { $0.id == messageId }),
-              case .text(let body) = msg.content else { return "" }
-        return stripMarkdown(body)
+        guard let msg = messages.first(where: { $0.id == messageId }) else { return "" }
+
+        var sections: [String] = []
+
+        if let prompt = msg.promptedBy?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !prompt.isEmpty {
+            sections.append("Q: \(prompt)")
+        }
+
+        if case .text(let body) = msg.content {
+            let stripped = stripMarkdown(body).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !stripped.isEmpty {
+                sections.append("A: \(stripped)")
+            }
+        }
+
+        if let route = msg.routePayload, let summary = renderRouteForShare(route) {
+            sections.append(summary)
+        }
+
+        if let arrivals = msg.liveArrivalsPayload, let summary = renderArrivalsForShare(arrivals) {
+            sections.append(summary)
+        }
+
+        if let stations = msg.stationsPayload, let summary = renderStationsForShare(stations) {
+            sections.append(summary)
+        }
+
+        if let alerts = msg.serviceAlertsPayload, let summary = renderAlertsForShare(alerts) {
+            sections.append(summary)
+        }
+
+        sections.append("— Sent from MetroMind 🚇")
+
+        return sections.joined(separator: "\n\n")
+    }
+
+    private func renderRouteForShare(_ route: RoutePlanPayload) -> String? {
+        guard let first = route.itineraries.first else { return nil }
+        var lines: [String] = ["🗺️ Trip"]
+        if let origin = route.origin, let destination = route.destination {
+            lines.append("\(origin) → \(destination)")
+        }
+        var stats: [String] = []
+        if let total = first.total_minutes { stats.append("\(Int(total.rounded())) min") }
+        if let xfer = first.transfer_count {
+            stats.append("\(xfer) transfer\(xfer == 1 ? "" : "s")")
+        }
+        if let walk = first.walk_minutes, walk > 0 {
+            stats.append("\(Int(walk.rounded())) min walk")
+        }
+        if !stats.isEmpty { lines.append(stats.joined(separator: " · ")) }
+        if let dep = first.departure_time, let arr = first.arrival_time {
+            lines.append("Depart \(formatShareTime(dep)) → Arrive \(formatShareTime(arr))")
+        }
+        if let legs = first.legs, !legs.isEmpty {
+            let badges = legs.compactMap { leg -> String? in
+                if let label = leg.route_label, !label.isEmpty { return label }
+                if let id = leg.route_id, !id.isEmpty { return id }
+                if (leg.mode ?? "").lowercased().contains("walk") { return "🚶" }
+                return nil
+            }
+            if !badges.isEmpty {
+                lines.append("Route: " + badges.joined(separator: " → "))
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func renderArrivalsForShare(_ payload: LiveArrivalsPayload) -> String? {
+        guard !payload.arrivals.isEmpty else { return nil }
+        let dir = (payload.direction_filter ?? "both").lowercased()
+        let header: String
+        switch dir {
+        case "north": header = "🚇 Northbound \(payload.route_id) — next trains"
+        case "south": header = "🚇 Southbound \(payload.route_id) — next trains"
+        default:      header = "🚇 \(payload.route_id) — next trains"
+        }
+        let rows = payload.arrivals.prefix(4).compactMap { arr -> String? in
+            let stop = arr.station_name ?? "—"
+            let eta: String
+            if let m = arr.minutes_away {
+                eta = m <= 0 ? "Now" : "\(m) min"
+            } else {
+                eta = arr.status ?? "—"
+            }
+            let dest = arr.destination.map { " → \($0)" } ?? ""
+            return "• \(stop): \(eta)\(dest)"
+        }
+        return ([header] + rows).joined(separator: "\n")
+    }
+
+    private func renderStationsForShare(_ payload: StationSearchPayload) -> String? {
+        let names = payload.stops.prefix(5).compactMap { $0.stop_name }
+        guard !names.isEmpty else { return nil }
+        return "📍 Stations\n" + names.map { "• \($0)" }.joined(separator: "\n")
+    }
+
+    private func renderAlertsForShare(_ payload: ServiceAlertsPayload) -> String? {
+        guard !payload.alerts.isEmpty else { return nil }
+        let rows = payload.alerts.prefix(3).compactMap { alert -> String? in
+            let title = alert.title ?? alert.effect ?? "Alert"
+            let routes = alert.affected_routes?.prefix(4).joined(separator: ", ")
+            if let routes, !routes.isEmpty {
+                return "• [\(routes)] \(title)"
+            }
+            return "• \(title)"
+        }
+        return ("⚠️ Service alerts\n" + rows.joined(separator: "\n"))
+    }
+
+    private func formatShareTime(_ iso: String) -> String {
+        let isoFmt = ISO8601DateFormatter()
+        isoFmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = isoFmt.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        guard let date = date else { return iso }
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        return f.string(from: date)
     }
 
     /// Wipe the conversation back to the opening greeting.
@@ -740,6 +963,12 @@ struct ChatView: View {
                                 onRegenerate: { viewModel.regenerate(messageId: message.id) },
                                 onCopy: {
                                     UIPasteboard.general.string = viewModel.shareText(for: message.id)
+                                },
+                                onSaveItinerary: {
+                                    viewModel.saveItinerary(forMessageId: message.id)
+                                },
+                                onTapStation: { stop in
+                                    viewModel.planFromStation(stop)
                                 },
                                 shareText: viewModel.shareText(for: message.id)
                             )
@@ -988,6 +1217,8 @@ private struct ChatMessageRow: View {
     var onSpeak: () -> Void = { }
     var onRegenerate: () -> Void = { }
     var onCopy: () -> Void = { }
+    var onSaveItinerary: () -> Void = { }
+    var onTapStation: (StationSearchPayload.Stop) -> Void = { _ in }
     var shareText: String = ""
 
     var body: some View {
@@ -1028,13 +1259,13 @@ private struct ChatMessageRow: View {
                 }
 
                 if let payload = message.routePayload, message.role == .assistant {
-                    ItineraryCardList(payload: payload)
+                    ItineraryCardList(payload: payload, onSave: onSaveItinerary)
                         .padding(.top, 2)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 if let payload = message.stationsPayload, message.role == .assistant {
-                    StationListCard(payload: payload)
+                    StationListCard(payload: payload, onTap: onTapStation)
                         .padding(.top, 2)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
@@ -1393,11 +1624,12 @@ private struct SuggestionChipStrip: View {
 
     private func iconName(for kind: String) -> String {
         switch kind {
-        case "save_trip":      return "bookmark"
-        case "start_tracking": return "location.fill"
-        case "open_alerts":    return "exclamationmark.triangle"
-        case "open_place":     return "mappin.circle"
-        default:               return "sparkles"
+        case "save_trip":             return "bookmark"
+        case "start_tracking":        return "location.fill"
+        case "open_alerts":           return "exclamationmark.triangle"
+        case "open_place":            return "mappin.circle"
+        case "generate_alternatives": return "arrow.triangle.2.circlepath"
+        default:                      return "sparkles"
         }
     }
 }
@@ -1406,11 +1638,18 @@ private struct SuggestionChipStrip: View {
 
 private struct ItineraryCardList: View {
     let payload: RoutePlanPayload
+    var onSave: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(payload.itineraries.prefix(3).enumerated()), id: \.element.id) { idx, itin in
-                ItineraryCard(itinerary: itin, index: idx + 1)
+                ItineraryCard(
+                    itinerary: itin,
+                    index: idx + 1,
+                    origin: payload.origin,
+                    destination: payload.destination,
+                    onSave: onSave
+                )
             }
         }
         .frame(maxWidth: 320, alignment: .leading)
@@ -1420,62 +1659,93 @@ private struct ItineraryCardList: View {
 private struct ItineraryCard: View {
     let itinerary: RoutePlanPayload.Itinerary
     let index: Int
+    var origin: String? = nil
+    var destination: String? = nil
+    var onSave: (() -> Void)? = nil
+
+    @State private var showDetail = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text("Option \(index)")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(AppTheme.Gradients.accentVibrant))
+        Button(action: { showDetail = true }) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text("Option \(index)")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(AppTheme.Gradients.accentVibrant))
 
-                if let total = itinerary.total_minutes {
-                    Label("\(Int(total.rounded())) min", systemImage: "clock")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    if let total = itinerary.total_minutes {
+                        Label("\(Int(total.rounded())) min", systemImage: "clock")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textPrimary)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    if let xfer = itinerary.transfer_count, xfer > 0 {
+                        Label("\(xfer)", systemImage: "arrow.triangle.swap")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textSecondary)
+                    }
                 }
 
-                Spacer(minLength: 0)
-
-                if let xfer = itinerary.transfer_count, xfer > 0 {
-                    Label("\(xfer)", systemImage: "arrow.triangle.swap")
-                        .font(.system(size: 11, weight: .semibold))
+                if let legs = itinerary.legs, !legs.isEmpty {
+                    LegStrip(legs: legs)
+                } else if let summary = itinerary.summary {
+                    Text(summary)
+                        .font(.system(size: 13))
                         .foregroundColor(AppTheme.Colors.textSecondary)
+                        .lineLimit(3)
                 }
-            }
 
-            if let legs = itinerary.legs, !legs.isEmpty {
-                LegStrip(legs: legs)
-            } else if let summary = itinerary.summary {
-                Text(summary)
-                    .font(.system(size: 13))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .lineLimit(3)
-            }
-
-            if let dep = itinerary.departure_time, let arr = itinerary.arrival_time {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(AppTheme.Colors.accent)
-                    Text("Depart \(formatTime(dep)) · Arrive \(formatTime(arr))")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textTertiary)
+                if let dep = itinerary.departure_time, let arr = itinerary.arrival_time {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(AppTheme.Colors.accent)
+                        Text("Depart \(formatTime(dep)) · Arrive \(formatTime(arr))")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(AppTheme.Colors.textTertiary)
+                    }
                 }
+
+                Divider().opacity(0.4)
+
+                HStack(spacing: 4) {
+                    Image(systemName: "list.bullet.rectangle.portrait")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Tap for full details")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .foregroundColor(AppTheme.Colors.accent)
             }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(AppTheme.Colors.cardBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.55), lineWidth: 0.6)
+            )
+            .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 10, x: 0, y: 4)
+            .contentShape(Rectangle())
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AppTheme.Colors.cardBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.55), lineWidth: 0.6)
-        )
-        .shadow(color: AppTheme.Colors.shadow.opacity(0.06), radius: 10, x: 0, y: 4)
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showDetail) {
+            ItineraryDetailSheet(
+                itinerary: itinerary,
+                index: index,
+                origin: origin,
+                destination: destination,
+                onSave: onSave
+            )
+        }
     }
 
     private func formatTime(_ iso: String) -> String {
@@ -1487,6 +1757,260 @@ private struct ItineraryCard: View {
         let f = DateFormatter()
         f.dateFormat = "h:mm a"
         return f.string(from: date)
+    }
+}
+
+// MARK: - Itinerary Detail Sheet
+
+/// Full-screen breakdown of a chat-suggested itinerary. Renders every
+/// leg with route badges, stop counts, departure/arrival times, plus
+/// quick "Save trip" / "Open in Plan" actions at the bottom.
+private struct ItineraryDetailSheet: View {
+    let itinerary: RoutePlanPayload.Itinerary
+    let index: Int
+    var origin: String? = nil
+    var destination: String? = nil
+    var onSave: (() -> Void)? = nil
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var didSave = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    summaryRow
+                    if let legs = itinerary.legs, !legs.isEmpty {
+                        legsSection(legs)
+                    }
+                    actions
+                }
+                .padding(20)
+            }
+            .background(AppTheme.Colors.background.ignoresSafeArea())
+            .navigationTitle("Trip Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .font(.system(size: 15, weight: .semibold))
+                }
+            }
+        }
+    }
+
+    // MARK: Sections
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Option \(index)")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(AppTheme.Gradients.accentVibrant))
+            if let origin = origin, let destination = destination {
+                Text("\(origin) → \(destination)")
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .lineLimit(2)
+            } else if let summary = itinerary.summary {
+                Text(summary)
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+            }
+        }
+    }
+
+    private var summaryRow: some View {
+        HStack(spacing: 12) {
+            if let total = itinerary.total_minutes {
+                detailStat(icon: "clock.fill", value: "\(Int(total.rounded())) min", label: "Total")
+            }
+            if let xfer = itinerary.transfer_count {
+                detailStat(icon: "arrow.triangle.swap", value: "\(xfer)", label: xfer == 1 ? "Transfer" : "Transfers")
+            }
+            if let walk = itinerary.walk_minutes, walk > 0 {
+                detailStat(icon: "figure.walk", value: "\(Int(walk.rounded())) min", label: "Walking")
+            }
+        }
+    }
+
+    private func detailStat(icon: String, value: String, label: String) -> some View {
+        VStack(spacing: 2) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(AppTheme.Colors.accent)
+            Text(value)
+                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(AppTheme.Colors.textTertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppTheme.Colors.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.4), lineWidth: 0.6)
+        )
+    }
+
+    @ViewBuilder
+    private func legsSection(_ legs: [RoutePlanPayload.Leg]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Step by step")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textSecondary)
+                .textCase(.uppercase)
+            VStack(spacing: 0) {
+                ForEach(Array(legs.enumerated()), id: \.element.id) { idx, leg in
+                    LegDetailRow(leg: leg, isLast: idx == legs.count - 1)
+                }
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(AppTheme.Colors.cardBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.4), lineWidth: 0.6)
+            )
+        }
+    }
+
+    private var actions: some View {
+        VStack(spacing: 10) {
+            if let save = onSave {
+                Button {
+                    save()
+                    didSave = true
+                    dismiss()
+                } label: {
+                    Label(didSave ? "Saved" : "Save this trip",
+                          systemImage: didSave ? "checkmark.circle.fill" : "bookmark.fill")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(AppTheme.Gradients.accentVibrant)
+                        )
+                }
+                .disabled(didSave)
+            }
+
+            if let origin = origin, let destination = destination {
+                Button {
+                    NotificationCenter.default.post(name: .switchToTab, object: AppTab.trips)
+                    dismiss()
+                } label: {
+                    Label("Open in Trip Planner", systemImage: "arrow.triangle.swap")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.accent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(AppTheme.Colors.accent, lineWidth: 1)
+                        )
+                }
+                .accessibilityLabel("Open \(origin) to \(destination) in trip planner")
+            }
+        }
+        .padding(.top, 6)
+    }
+}
+
+private struct LegDetailRow: View {
+    let leg: RoutePlanPayload.Leg
+    let isLast: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 0) {
+                Image(systemName: iconName)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(routeColor))
+                if !isLast {
+                    Rectangle()
+                        .fill(AppTheme.Colors.borderSubtle.opacity(0.5))
+                        .frame(width: 2)
+                        .frame(maxHeight: .infinity)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(label)
+                        .font(.system(size: 14, weight: .heavy, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.textPrimary)
+                    if let stops = leg.num_stops, stops > 0 {
+                        Text("· \(stops) stop\(stops == 1 ? "" : "s")")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(AppTheme.Colors.textTertiary)
+                    }
+                }
+                if let from = leg.from_name {
+                    Text("From **\(from)**")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                if let to = leg.to_name {
+                    Text("To **\(to)**")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                }
+                if let head = leg.headsign, !head.isEmpty {
+                    Text("→ \(head)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                }
+                if let duration = leg.duration_minutes {
+                    Text("\(Int(duration.rounded())) min")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.accent)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, isLast ? 0 : 14)
+    }
+
+    private var label: String {
+        if let r = leg.route_label, !r.isEmpty { return r }
+        if let r = leg.route_id, !r.isEmpty { return r }
+        return (leg.mode ?? "walk").capitalized
+    }
+
+    private var iconName: String {
+        switch (leg.mode ?? "").lowercased() {
+        case "walk", "walking": return "figure.walk"
+        case "subway", "transit", "rail", "train": return "tram.fill"
+        case "bus": return "bus.fill"
+        default: return "arrow.right"
+        }
+    }
+
+    private var routeColor: Color {
+        switch (leg.mode ?? "").lowercased() {
+        case "walk", "walking": return AppTheme.Colors.textSecondary
+        case "bus": return .blue
+        default:
+            if let id = leg.route_id, !id.isEmpty {
+                return AppTheme.SubwayColors.color(for: id)
+            }
+            return AppTheme.Colors.accent
+        }
     }
 }
 
@@ -1571,40 +2095,50 @@ private struct LegChip: View {
 
 private struct StationListCard: View {
     let payload: StationSearchPayload
+    var onTap: (StationSearchPayload.Stop) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(payload.stops.prefix(5)) { stop in
-                HStack(spacing: 10) {
-                    Image(systemName: "tram.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 26, height: 26)
-                        .background(Circle().fill(AppTheme.Gradients.accentVibrant))
+                Button {
+                    onTap(stop)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "tram.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 26, height: 26)
+                            .background(Circle().fill(AppTheme.Gradients.accentVibrant))
 
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(stop.stop_name ?? "Unknown")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-                            .lineLimit(1)
-                        if let id = stop.stop_id {
-                            Text(id)
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundColor(AppTheme.Colors.textTertiary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(stop.stop_name ?? "Unknown")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(AppTheme.Colors.textPrimary)
+                                .lineLimit(1)
+                            if let id = stop.stop_id {
+                                Text(id)
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .foregroundColor(AppTheme.Colors.textTertiary)
+                            }
                         }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(AppTheme.Colors.textTertiary)
                     }
-                    Spacer(minLength: 0)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AppTheme.Colors.cardBackground)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.5), lineWidth: 0.6)
+                    )
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(AppTheme.Colors.cardBackground)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.5), lineWidth: 0.6)
-                )
+                .buttonStyle(.plain)
             }
         }
         .frame(maxWidth: 320, alignment: .leading)

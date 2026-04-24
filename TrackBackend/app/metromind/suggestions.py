@@ -13,6 +13,7 @@ The client decides what to do with each ``kind``:
 * ``start_tracking`` → kick off a Live Activity for the itinerary.
 * ``open_alerts`` → open the Alerts tab filtered to ``payload["route_id"]``.
 * ``open_place``  → open Plan tab focused on ``payload["place_label"]``.
+* ``generate_alternatives`` → re-prompt the LLM for different itineraries.
 
 Keep payloads small; the iOS layer can hydrate further from local state.
 """
@@ -70,6 +71,15 @@ def build_suggestions(
                 "origin": payload.get("origin"),
                 "destination": payload.get("destination"),
                 "summary": first.get("summary"),
+            },
+        ))
+        # Always offer a way to ask for different itineraries — keeps the
+        # conversation moving when the first option isn't ideal.
+        _add(SuggestedAction(
+            label="Show me other options",
+            kind="generate_alternatives",
+            payload={
+                "text": "Show me alternative routes — different transfers or modes please.",
             },
         ))
         if primary_route:
