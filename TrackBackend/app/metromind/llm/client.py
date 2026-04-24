@@ -91,6 +91,10 @@ class LLMClient:
         }
         if tools:
             kwargs["tools"] = tools
+            # Disable parallel tool calls — our tools are mostly used one
+            # at a time per turn and this lets gpt-4o-mini emit the
+            # tool_call faster (no need to plan a multi-call schedule).
+            kwargs["parallel_tool_calls"] = False
         if tool_choice is not None:
             kwargs["tool_choice"] = tool_choice
         try:
@@ -125,6 +129,8 @@ class LLMClient:
         }
         if tools:
             kwargs["tools"] = tools
+            # See note in complete(): single-tool turns are faster.
+            kwargs["parallel_tool_calls"] = False
         if tool_choice is not None:
             kwargs["tool_choice"] = tool_choice
         try:
