@@ -111,6 +111,20 @@ def build_suggestions(
         ),
         None,
     )
+    # Location signal — either device GPS or a dropped map pin. The
+    # bias_label is what we surface in chip text ("near Union Sq",
+    # "near pinned spot") so users see *why* a chip is being offered.
+    has_location = (
+        context is not None
+        and context.bias_lat is not None
+        and context.bias_lon is not None
+    )
+    location_label: str | None = None
+    if context is not None and context.bias_label:
+        location_label = context.bias_label.strip() or None
+    location_is_pin = (
+        context is not None and context.bias_source == "map_pin"
+    )
 
     # ── Post plan_route ──────────────────────────────────────────────
     if "plan_route" in used_tools:
@@ -244,7 +258,22 @@ def build_suggestions(
     # filled the slot. We always personalise on top_routes if available
     # so the chip never advertises a line the user doesn't ride.
     if len(chips) < _MAX_CHIPS:
-        if home_label:
+        # Location-aware "get me home from this pin" — highest-value
+        # default chip when the user has both dropped a pin AND saved a
+        # home address. The prompt encodes the pin's label so the LLM
+        # can route from there even though the chip is pure text.
+        if has_location and home_label and location_label and location_is_pin:
+            _add(SuggestedAction(
+                label=f"Get home from {location_label}",
+                kind="send_prompt",
+                payload={
+                    "text": (
+                        f"How do I get from {location_label} to "
+                        f"{home_label.lower()}?"
+                    ),
+                },
+            ))
+        elif home_label:
             _add(SuggestedAction(
                 label=f"How do I get {home_label.lower()}?"
                 if home_label.lower() != "home"
@@ -260,13 +289,30 @@ def build_suggestions(
             payload={"text": f"Any delays on the {route_for_chip}?"},
         ))
 
-        # Personalised "track my usual line" only when we actually know
-        # the user has a usual line — never as a generic suggestion.
+        # Location-aware "what's nearby" — when we have GPS or a pin we
+        # can phrase the prompt around it so the LLM scopes its tool
+        # call. Without location we still offer the same idea, just
+        # generically. Personalised "track my line" wins if the user
+        # has a usual route, since that's higher signal than "nearby".
         if personal_route:
             _add(SuggestedAction(
                 label=f"Track the {personal_route}",
                 kind="start_tracking",
                 payload={"route_id": personal_route},
+            ))
+        elif has_location and location_label:
+            _add(SuggestedAction(
+                label=f"Stations near {location_label}",
+                kind="send_prompt",
+                payload={
+                    "text": f"What stations are near {location_label}?",
+                },
+            ))
+        elif has_location:
+            _add(SuggestedAction(
+                label="What's near me?",
+                kind="send_prompt",
+                payload={"text": "What stations are near me right now?"},
             ))
         else:
             _add(SuggestedAction(

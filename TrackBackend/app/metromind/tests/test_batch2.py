@@ -149,6 +149,44 @@ def test_suggestions_no_personal_route_rotates_popular_lines() -> None:
     assert route in {"6", "F", "L", "7", "A", "N", "E", "G"}
 
 
+def test_suggestions_use_dropped_pin_for_nearby_chip() -> None:
+    """When a map pin is dropped, the "nearby" chip should name it."""
+    ctx = UserContext(
+        bias_lat=40.7359,
+        bias_lon=-73.9911,
+        bias_source="map_pin",
+        bias_label="Union Square",
+    )
+    chips = build_suggestions(used_tools=[], tool_payloads={}, context=ctx)
+    assert any("Union Square" in c.label for c in chips)
+
+
+def test_suggestions_use_gps_for_nearby_chip_without_pin_label() -> None:
+    """Plain GPS (no pin) still produces a 'near me' chip."""
+    ctx = UserContext(
+        bias_lat=40.7359,
+        bias_lon=-73.9911,
+        bias_source="gps",
+    )
+    chips = build_suggestions(used_tools=[], tool_payloads={}, context=ctx)
+    assert any("near me" in c.label.lower() for c in chips)
+
+
+def test_suggestions_pin_plus_home_offers_get_home_from_pin() -> None:
+    """Pin + saved Home should produce a 'Get home from {pin}' shortcut."""
+    ctx = UserContext(
+        saved_places=[SavedPlace(label="Home", kind="home", lat=0, lon=0)],
+        bias_lat=40.7359,
+        bias_lon=-73.9911,
+        bias_source="map_pin",
+        bias_label="Union Sq",
+    )
+    chips = build_suggestions(used_tools=[], tool_payloads={}, context=ctx)
+    assert any(
+        "Union Sq" in c.label and "home" in c.label.lower() for c in chips
+    )
+
+
 # ── E — Model router ─────────────────────────────────────────────────
 
 
