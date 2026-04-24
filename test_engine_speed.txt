@@ -1,0 +1,323 @@
+  → Chatbot stress test against https://track-vkrr.onrender.com
+  → 270 prompts (of 270 unique), concurrency=4
+
+  ✓ #  3   7361ms   ttft=6904  'plan from times square to union square        ' trip     chars=116 plan×1 itin=3
+  ✓ #  1   8552ms   ttft=6878  'how do i get from times square to grand centra' trip     chars=396 plan×1 itin=2
+  ✓ #  4   8748ms   ttft=7642  'fastest from times square to brooklyn bridge  ' trip     chars=298 plan×1 itin=3
+  ✓ #  2   9448ms   ttft=7068  'trip from times square to penn station        ' trip     chars=489 plan×1 itin=3
+  ✓ #  5   5235ms   ttft=3173  'times square to wall street                   ' trip     chars=446 plan×1 itin=3
+  ✓ #  6   8120ms   ttft=6388  'how do i get from times square to dumbo       ' trip     chars=434 plan×1 itin=3
+  ✓ #  9   5071ms   ttft=4718  'times square to atlantic terminal             ' trip     chars=157 plan×1 itin=3
+  ✓ #  8   8389ms   ttft=6603  'times square to bushwick                      ' trip     chars=467 plan×1 itin=3
+  ✓ #  7   9158ms   ttft=6994  'times square to williamsburg                  ' trip     chars=598 plan×1 itin=3
+  ✓ # 13   1107ms    ttft=507  'times square to newark airport                ' trip     chars=154
+  ✓ # 10   9842ms   ttft=6553  'times square to coney island                  ' trip     chars=535 plan×1 itin=3
+  ✓ # 11   9609ms   ttft=7038  'how do i get to jfk from times square         ' trip     chars=445 plan×1 itin=1
+  ✓ # 12   9671ms   ttft=6940  'times square to laguardia                     ' trip     chars=481 plan×1 itin=3
+  ✓ # 14  11281ms   ttft=6814  'times square to flushing                      ' trip     chars=740 plan×1 itin=3
+  ✓ # 15   8276ms   ttft=6862  'times square to astoria                       ' trip     chars=288 plan×1 itin=2
+  ✓ # 18   5709ms   ttft=5161  'times square to harlem                        ' trip     chars=149 plan×1 itin=3
+  ✓ # 16   8783ms   ttft=6553  'times square to forest hills                  ' trip     chars=387 plan×1 itin=3
+  ✓ # 17  11422ms   ttft=6968  'times square to jamaica center                ' trip     chars=849 plan×1 itin=3
+  ✓ # 19   7600ms   ttft=5136  'times square to washington heights            ' trip     chars=493 plan×1 itin=3
+  ✓ # 21   7997ms   ttft=6832  'times square to yankee stadium                ' trip     chars=344 plan×1 itin=3
+  ✓ # 20   9848ms   ttft=6887  'times square to inwood                        ' trip     chars=557 plan×1 itin=3
+  ✓ # 23   6140ms   ttft=4063  'times square to upper east side               ' trip     chars=454 plan×1 itin=3
+  ✓ # 22  10519ms   ttft=6825  'times square to bronx zoo                     ' trip     chars=671 plan×1 itin=3
+  ✓ # 24   6813ms   ttft=3244  'times square to upper west side               ' trip     chars=670 plan×1 itin=3
+  ✓ # 25   7287ms   ttft=2716  'times square to columbia university           ' trip     chars=830 plan×1 itin=3
+  ✓ # 27   4617ms   ttft=3156  'times square to chelsea market                ' trip     chars=336 plan×1 itin=3
+  ✓ # 26   5692ms   ttft=3235  'times square to nyu washington square         ' trip     chars=471 plan×1 itin=3
+  ✓ # 28   5058ms   ttft=2917  'times square to high line                     ' trip     chars=483 plan×1 itin=3
+  ✓ # 31   6655ms   ttft=5853  'times square to world trade center            ' trip     chars=148 plan×1 itin=3
+  ✓ # 29   8216ms   ttft=6813  'times square to met museum                    ' trip     chars=375 plan×1 itin=1
+  ✓ # 30   7517ms   ttft=5479  'times square to lincoln center                ' trip     chars=443 plan×1 itin=2
+  ✓ # 32   7224ms   ttft=4992  'times square to south street seaport          ' trip     chars=566 plan×1 itin=3
+  ✓ # 33   8871ms   ttft=6609  'times square to roosevelt island              ' trip     chars=602 plan×1 itin=2
+  ✓ # 34   9066ms   ttft=6486  'times square to long island city              ' trip     chars=598 plan×1 itin=2
+  ✓ # 35   9207ms   ttft=6400  'times square to greenpoint                    ' trip     chars=631 plan×1 itin=1
+  ✓ # 36   8927ms   ttft=5863  'times square to park slope                    ' trip     chars=694 plan×1 itin=3
+  ✓ # 37   8504ms   ttft=6812  'times square to prospect park                 ' trip     chars=430 plan×1 itin=3
+  ✓ # 39   9016ms   ttft=6456  'times square to barclays center               ' trip     chars=598 plan×1 itin=3
+  ✓ # 40   8708ms   ttft=6406  'times square to ridgewood                     ' trip     chars=513 plan×1 itin=3
+  ✓ # 38  10381ms   ttft=9131  'times square to bedford avenue                ' trip     chars=335 plan×1 itin=3
+  ✓ # 41   9347ms   ttft=7241  'trip from grand central to brooklyn           ' trip     chars=460 plan×1 itin=3
+  ✓ # 44   8586ms   ttft=6934  'wall street to times square                   ' trip     chars=469 plan×1 itin=3
+  ✓ # 43   8947ms   ttft=6782  'how do i get from union square to harlem      ' trip     chars=453 plan×1 itin=3
+  ✓ # 46   8400ms   ttft=6568  'dumbo to laguardia                            ' trip     chars=494 plan×1 itin=3
+  ✓ # 47   9369ms   ttft=7110  'williamsburg to grand central                 ' trip     chars=538 plan×1 itin=3
+  ✓ # 45  12948ms  ttft=12229  'brooklyn bridge to flushing                   ' trip     chars=239 plan×1 itin=1
+  ✓ # 48   8656ms   ttft=6402  'bushwick to upper east side                   ' trip     chars=429 plan×1 itin=3
+  ✓ # 49   9316ms   ttft=6691  'atlantic terminal to columbia university      ' trip     chars=690 plan×1 itin=3
+  ✓ # 50   9423ms   ttft=7302  'coney island to times square                  ' trip     chars=493 plan×1 itin=3
+  ✓ # 51   4750ms   ttft=3523  'ts to gc                                      ' trip_abb chars=346 plan×1 itin=2
+  ✓ # 52   6460ms   ttft=4103  'ts -> penn                                    ' trip_abb chars=648 plan×1 itin=3
+  ✓ # 53   9255ms   ttft=7243  'wtc to bk                                     ' trip_abb chars=652 plan×1 itin=3
+  ✓ # 55   5082ms   ttft=3625  'lic to soho                                   ' trip_abb chars=496 plan×1 itin=3
+  ✓ # 54   9412ms   ttft=6470  'ues to uws                                    ' trip_abb chars=752 plan×1 itin=3
+  ✓ # 56   5428ms   ttft=4154  'fidi to midtown                               ' trip_abb chars=397 plan×1 itin=3
+  ✓ # 59   2804ms   ttft=1358  'trip 2 grand central                          ' trip_abb chars=402 plan×1 itin=2
+  ✓ # 57   8151ms   ttft=6309  'lower east side to harlem                     ' trip_abb chars=493 plan×1 itin=3
+  ✓ # 60   1045ms    ttft=486  'go from bx to qns                             ' trip_abb chars=178
+  ✓ # 42  52965ms  ttft=52338  'fastest way from penn station to jfk          ' trip     chars=210 plan×1 itin=0
+  ✓ # 58  13933ms  ttft=11783  'how do i get 2 jfk                            ' trip_abb chars=440 plan×1 itin=1
+  ✓ # 61   8742ms   ttft=7041  'manhattan to bk                               ' trip_abb chars=564 plan×1 itin=3
+  ✓ # 63   5129ms   ttft=3635  'ges me to penn from ts plz                    ' trip_abb chars=412 plan×1 itin=3
+  ✓ # 64   5984ms   ttft=4429  'ts -> ues                                     ' trip_abb chars=304 plan×1 itin=3
+  ✓ # 66   5038ms   ttft=3406  'wsq to gc                                     ' trip_abb chars=475 plan×1 itin=3
+  ✓ # 67   4982ms   ttft=3746  'ts to gct                                     ' trip_abb chars=349 plan×1 itin=2
+  ✓ # 69   3679ms   ttft=2093  'ts to ewr                                     ' trip_abb chars=207
+  ✓ # 65  15811ms  ttft=14738  'best route ts -> jfk                          ' trip_abb chars=274 plan×1 itin=1
+  ✓ # 68   9960ms   ttft=7063  'ts to lga                                     ' trip_abb chars=505 plan×1 itin=3
+  ✓ # 71    817ms    ttft=466  'msg to barclays                               ' trip_abb chars=146
+  ✓ # 70   7644ms   ttft=5153  'ts to bbridge                                 ' trip_abb chars=445 plan×1 itin=3
+  ✓ # 73   7512ms   ttft=4949  'lic to dumbo                                  ' trip_abb chars=452 plan×1 itin=2
+  ✓ # 74   6771ms   ttft=4951  'harlem -> wash heights                        ' trip_abb chars=461 plan×1 itin=2
+  ✓ # 75   4906ms   ttft=4057  'soho to noho                                  ' trip_abb chars=235 plan×1 itin=1
+  ✓ # 76   3136ms   ttft=1654  'tims sqr to grand cntrl                       ' trip_typ chars=367 plan×1 itin=2
+  ✓ # 77   4045ms   ttft=1612  'trip from tymes square to penn statoin        ' trip_typ chars=626 plan×1 itin=3
+  ✓ # 79   3243ms   ttft=1608  'times sqaure to brklyn bridge                 ' trip_typ chars=479 plan×1 itin=3
+  ✓ # 62  53439ms  ttft=52581  'from astoria 2 the village                    ' trip_abb chars=229 plan×1 itin=0
+  ✓ # 80   9143ms   ttft=7429  'wall stret to times sqaure                    ' trip_typ chars=407 plan×1 itin=3
+  ✓ # 82   7931ms   ttft=7123  'times sq to colombia university               ' trip_typ chars=249 plan×1 itin=1
+  ✓ # 81   9404ms   ttft=7088  'times square to washingtom heights            ' trip_typ chars=579 plan×1 itin=3
+  ✓ # 78  28283ms  ttft=27195  'how do i get to jffk                          ' trip_typ chars=403 plan×1 itin=1
+  ✓ # 83   8589ms   ttft=6646  'ts to flushinng                               ' trip_typ chars=510 plan×1 itin=2
+  ✓ # 84   8236ms   ttft=7353  'midtown to grenpoint                          ' trip_typ chars=282 plan×1 itin=1
+  ✓ # 85   8926ms   ttft=8228  'broklyn briddge to flushng                    ' trip_typ chars=269 plan×1 itin=1
+  ✓ # 87   6957ms   ttft=6520  'from tims to gran central                     ' trip_typ chars=130 plan×1 itin=3
+  ✓ # 72  54032ms  ttft=53259  'rock center to wsq                            ' trip_abb chars=187 plan×1 itin=0
+  ✓ # 88   2992ms   ttft=2451  'how do i go to lguardia                       ' trip_typ chars=455
+  ✓ # 86   8621ms   ttft=6668  'rockefelller center to wall st                ' trip_typ chars=535 plan×1 itin=3
+  ✓ # 91    922ms    ttft=520  'broklyn to qweens                             ' trip_typ chars=127
+  ✓ # 89   8659ms   ttft=6852  'trip frm union sq 2 brooklyn                  ' trip_typ chars=482 plan×1 itin=3
+  ✓ # 90   8859ms   ttft=6570  'times sq to mannhattan bridge                 ' trip_typ chars=471 plan×1 itin=3
+  ✓ # 92   9070ms   ttft=7053  'ts to atlatntic terminal                      ' trip_typ chars=563 plan×1 itin=3
+  ✓ # 93   9673ms   ttft=7852  'best route 2 brnx zoo                         ' trip_typ chars=465 plan×1 itin=3
+  ✓ # 94   3199ms   ttft=2330  'times sqr to columba uni                      ' trip_typ chars=289 plan×1 itin=1
+  ✓ # 96   5603ms   ttft=3496  'i need to git to penn                         ' trip_typ chars=389 plan×1 itin=3
+  ✓ # 99   1773ms    ttft=965  'ts to laguardiia airport                      ' trip_typ chars=228
+  ✓ # 97   9588ms   ttft=5947  'from west village to easst village            ' trip_typ chars=551 plan×1 itin=3
+  ✓ # 98   8739ms   ttft=6518  'times sq to coney iland                       ' trip_typ chars=403 plan×1 itin=3
+  ✓ # 95  11344ms   ttft=8459  'trip frm hells kitchen to soho                ' trip_typ chars=532 plan×1 itin=3
+  ✓ #101   1637ms   ttft=1325  'is the L running                              ' alerts   chars=80
+  ✓ #103   2199ms   ttft=1021  'what's wrong with the F                       ' alerts   chars=298
+  ✓ #100   5473ms   ttft=3362  'how do i get to braclays center               ' trip_typ chars=521 plan×1 itin=3
+  ✓ #102   3154ms   ttft=2059  'any delays on the 7                           ' alerts   chars=315
+  ✓ #104   1707ms   ttft=1217  'is the g working                              ' alerts   chars=80
+  ✓ #106   1498ms   ttft=1400  'any issues on the n train                     ' alerts   chars=77
+  ✓ #105   1954ms   ttft=1464  'alerts for the A line                         ' alerts   chars=208
+  ✓ #109   1600ms   ttft=1218  'any service changes on the L                  ' alerts   chars=90
+  ✓ #107   2249ms   ttft=1431  'is the q delayed                              ' alerts   chars=313
+  ✓ #110   2181ms   ttft=1179  'is the J running tonight                      ' alerts   chars=304
+  ✓ #111   1713ms   ttft=1489  'what's going on with the c train              ' alerts   chars=84
+  ✓ #108   4855ms   ttft=2847  'how's the 4 5 6 today                         ' alerts   chars=484
+  ✓ #114   1847ms   ttft=1282  'how's the b line                              ' alerts   chars=171
+  ✓ #113   3440ms   ttft=1819  'is there a planned shutdown this weekend      ' alerts   chars=446
+  ✓ #115   2722ms   ttft=1235  'delays on the 1 train                         ' alerts   chars=172
+  ✓ #116   1987ms   ttft=1297  'any problems with the d                       ' alerts   chars=77
+  ✓ #112   5739ms   ttft=1693  'are there any reroutes today                  ' alerts   chars=757
+  ✓ #117   1754ms   ttft=1512  'is the m train running normal                 ' alerts   chars=85
+  ✓ #118   1573ms   ttft=1355  'alerts for r train                            ' alerts   chars=86
+  ✓ #120   1842ms   ttft=1654  'is the w running                              ' alerts   chars=80
+  ✓ #119   2379ms   ttft=1907  'is the e suspended                            ' alerts   chars=227
+  ✓ #123   2358ms   ttft=1227  'metro north status                            ' alerts   chars=410
+  ✓ #121   4648ms   ttft=1565  'any subway alerts right now                   ' alerts   chars=778
+  ✓ #124   3559ms   ttft=1232  'any bus reroutes on the m15                   ' alerts   chars=668
+  ✓ #122   5077ms   ttft=1253  'is the lirr on time                           ' alerts   chars=703
+  ✓ #125   2524ms   ttft=1224  'are buses delayed today                       ' alerts   chars=493
+  ✓ #126   2041ms   ttft=1193  'when's the next 6 train                       ' arrivals chars=255
+  ✓ #128   2454ms   ttft=1564  'how long til the next 7                       ' arrivals chars=125
+  ✓ #130   2206ms   ttft=1246  'when's the next downtown 1                    ' arrivals chars=259
+  ✓ #127   3678ms   ttft=2202  'next L to manhattan                           ' arrivals chars=330
+  ✓ #129   3759ms   ttft=1549  'next northbound 4                             ' arrivals chars=365
+  ✓ #131   1690ms    ttft=492  'next a train to brooklyn                      ' arrivals chars=185
+  ✓ #134   2070ms   ttft=1502  'when's the next f at jay st                   ' arrivals chars=209
+  ✓ #132   3362ms   ttft=1895  'when does the q come                          ' arrivals chars=428
+  ✓ #133   3999ms   ttft=3112  'next train at union square                    ' arrivals chars=217
+  ✓ #135   3497ms   ttft=1968  'next g train                                  ' arrivals chars=300
+  ✓ #137   2617ms   ttft=1468  'next r train uptown                           ' arrivals chars=266
+  ✓ #136   2881ms   ttft=1364  'how soon is the next n                        ' arrivals chars=295
+  ✓ #138   2590ms   ttft=1548  'when's the m at delancey                      ' arrivals chars=263
+  ✓ #140   1955ms   ttft=1266  'next train heading downtown from 14 st        ' arrivals chars=139
+  ✓ #139   3280ms   ttft=1557  'next train at grand central                   ' arrivals chars=377
+  ✓ #141   2064ms   ttft=1360  'when does the next d arrive                   ' arrivals chars=271
+  ✓ #142   1973ms   ttft=1514  'next b train at 7 av                          ' arrivals chars=169
+  ✓ #144   1519ms   ttft=1089  'next bx12 select bus                          ' arrivals chars=178
+  ✓ #145   2753ms   ttft=2276  'when's the next train at bedford ave          ' arrivals chars=169
+  ✓ #143   3303ms   ttft=2913  'when's the next bus on m15                    ' arrivals chars=163
+  ✓ #147   3349ms   ttft=1242  'any major delays right now                    ' status   chars=638
+  ✓ #146   4932ms   ttft=2670  'how's the subway tonight                      ' status   chars=551
+  ✓ #148   2996ms   ttft=1031  'what lines are down                           ' status   chars=603
+  ✓ #149   3317ms   ttft=1295  'is everything running normal                  ' status   chars=575
+  ✓ #150   4128ms   ttft=1176  'subway status check                           ' status   chars=728
+  ✓ #151   3738ms   ttft=1401  'what's running tonight                        ' status   chars=735
+  ✓ #152   3408ms   ttft=1176  'any planned work this weekend                 ' status   chars=807
+  ✓ #153   3276ms   ttft=1165  'how bad is the subway right now               ' status   chars=618
+  ✓ #155   1505ms    ttft=560  'give me a system overview                     ' status   chars=384
+  ✓ #157   2060ms   ttft=1576  'should i bike home                            ' weather  chars=153
+  ✓ #156   3038ms   ttft=2766  'is it raining                                 ' weather  chars=127
+  ✓ #154   3565ms   ttft=1144  'is the system messed up tonight               ' status   chars=649
+  ✓ #160   1817ms   ttft=1421  'will it rain in the next hour                 ' weather  chars=110
+  ✓ #159   2691ms   ttft=1956  'weather check                                 ' weather  chars=147
+  ✓ #158   4213ms   ttft=3602  'how cold is it outside                        ' weather  chars=115
+  ✓ #161   2568ms   ttft=1891  'is it bad outside                             ' weather  chars=137
+  ✓ #164   1133ms    ttft=736  'should i wait inside                          ' weather  chars=148
+  ✓ #163   2131ms   ttft=1711  'do i need a jacket                            ' weather  chars=171
+  ✓ #162   2923ms   ttft=2788  'what's the temp right now                     ' weather  chars=79
+  ✓ #167    965ms    ttft=638  'humidity right now                            ' weather  chars=127
+  ✓ #165   3069ms   ttft=2857  'is it nice out                                ' weather  chars=114
+  ✓ #166   2996ms   ttft=2365  'is it snowing                                 ' weather  chars=101
+  ✓ #168   2609ms   ttft=2287  'is it windy                                   ' weather  chars=116
+  ✓ #169   3063ms   ttft=2617  'weather for the next few hours                ' weather  chars=137
+  ✓ #170   2528ms   ttft=2022  'should i walk or take the train weather wise  ' weather  chars=174
+  ✓ #172   2722ms   ttft=1379  'where's the closest citi bike                 ' citibike chars=324
+  ✓ #171   3483ms   ttft=1496  'any citi bikes near me                        ' citibike chars=452
+  ✓ #174   2819ms   ttft=1559  'are there docks near me                       ' citibike chars=366
+  ✓ #173   3120ms   ttft=1386  'ebikes nearby                                 ' citibike chars=320
+  ✓ #176   2426ms   ttft=1252  'find me a citi bike                           ' citibike chars=298
+  ✓ #177   2654ms   ttft=1406  'is there a bike near times square             ' citibike chars=388
+  ✓ #178   2395ms   ttft=1402  'how many ebikes nearby                        ' citibike chars=248
+  ✓ #175   4180ms   ttft=1560  'open docks at union square                    ' citibike chars=687
+  ✓ #179   2846ms   ttft=1639  'closest dock with bikes                       ' citibike chars=358
+  ✓ #181   2577ms   ttft=1365  'can i grab a bike right now                   ' citibike chars=304
+  ✓ #180   3348ms   ttft=1150  'citi bike availability                        ' citibike chars=467
+  ✓ #183   3254ms   ttft=1598  'is there a citi bike i can rent               ' citibike chars=422
+  ✓ #182   5032ms   ttft=3192  'show me citi bikes within a few blocks        ' citibike chars=454
+  ✓ #184   3259ms   ttft=1800  'ebike near me                                 ' citibike chars=322
+  ✓ #186   1473ms   ttft=1150  'what's the closest subway station             ' stations chars=73
+  ✓ #185   3162ms   ttft=1659  'where can i return a bike                     ' citibike chars=421
+  ✓ #187   1913ms   ttft=1180  'stations near me                              ' stations chars=169
+  ✓ #188   1602ms   ttft=1022  'is bedford ave wheelchair accessible          ' stations chars=176
+  ✓ #189   2293ms   ttft=2125  'is times square ada accessible                ' stations chars=218
+  ✓ #190   2718ms   ttft=2443  'elevator status at union square               ' stations chars=87
+  ✓ #192   2058ms   ttft=1665  'what trains stop at jay st                    ' stations chars=175
+  ✓ #191   2144ms   ttft=1253  'are the elevators working at 14 st            ' stations chars=335
+  ✓ #196   2033ms   ttft=1810  'is the f stop at york st accessible           ' stations chars=111
+  ✓ #193   3062ms   ttft=2047  'what's at canal street                        ' stations chars=301
+  ✓ #195   2325ms   ttft=2165  'elevator outages today                        ' stations chars=77
+  ✓ #199   2093ms   ttft=1692  'is there an escalator at 34 st penn           ' stations chars=146
+  ✓ #194   5031ms   ttft=4307  'how do i find an accessible station nearby    ' stations chars=245
+  ✓ #201    867ms    ttft=536  'write me a python linked list                 ' offtopic chars=128
+  ✓ #202   1072ms    ttft=667  'what's the recipe for lasagna                 ' offtopic chars=128
+  ✓ #200   2566ms   ttft=1636  'what station is closest to me                 ' stations chars=196
+  ✓ #198   4884ms   ttft=1492  'info on grand central                         ' stations chars=1134
+  ✓ #203    975ms    ttft=555  'tell me a joke about cats                     ' offtopic chars=128
+  ✓ #204    980ms    ttft=541  'explain quantum entanglement                  ' offtopic chars=128
+  ✓ #205   1014ms    ttft=661  'how do i invest in stocks                     ' offtopic chars=128
+  ✓ #206    708ms    ttft=386  'write me a haiku                              ' offtopic chars=128
+  ✓ #207    827ms    ttft=501  'what's the meaning of life                    ' offtopic chars=128
+  ✓ #208    793ms    ttft=366  'help me with my math homework                 ' offtopic chars=128
+  ✓ #210    744ms    ttft=532  'translate this to french: hello               ' offtopic chars=128
+  ✓ #209   1244ms    ttft=943  'give me dating advice                         ' offtopic chars=128
+  ✓ #211   1077ms    ttft=529  'what's the best pizza in chicago              ' offtopic chars=144
+  ✓ #197   8133ms   ttft=7388  'what trains run through atlantic ave          ' stations chars=282
+  ✓ #212    879ms    ttft=509  'tell me about the london tube                 ' offtopic chars=145
+  ✓ #213    997ms    ttft=674  'what's the bart schedule                      ' offtopic chars=122
+  ✓ #214    951ms    ttft=491  'write me a sql query                          ' offtopic chars=128
+  ✓ #216   1380ms    ttft=503  'should i break up with my girlfriend          ' offtopic chars=128
+  ✓ #217   1188ms    ttft=480  'what's a good workout routine                 ' offtopic chars=128
+  ✓ #215   1646ms    ttft=906  'summarize war and peace                       ' offtopic chars=140
+  ✓ #218    945ms    ttft=650  'compose an email to my boss                   ' offtopic chars=137
+  ✓ #220    847ms    ttft=585  'what stocks should i buy                      ' offtopic chars=128
+  ✓ #219    882ms    ttft=601  'draw me a picture                             ' offtopic chars=128
+  ✓ #221    954ms    ttft=585  'fuck this app                                 ' hostile  chars=167
+  ✓ #225   2223ms   ttft=1307  'shit when's the next train                    ' hostile  chars=121
+  ✓ #222   3105ms   ttft=2212  'you suck                                      ' hostile  chars=142
+  ✓ #224   2560ms   ttft=2200  'wtf is wrong with the L                       ' hostile  chars=134
+  ✓ #226    949ms    ttft=494  'fucking mta is always late                    ' hostile  chars=135
+  ✓ #227   1250ms    ttft=586  'damn it i need to get to jfk                  ' hostile  chars=267
+  ✓ #223   3992ms   ttft=3714  'this is bullshit help me get home             ' hostile  chars=107 plan×1 itin=0 ← plan_route: Missing coordinates or stop_id for 'ho
+  ✓ #228   2510ms   ttft=1283  'this is so annoying just tell me when the 6 co' hostile  chars=331
+  ✓ #232   3121ms    ttft=622  'my flight is at 8 should i leave now or in 30 ' complex  chars=471
+  ✓ #233   2088ms    ttft=640  'compare driving vs subway from times square to' complex  chars=739
+  ✓ #229   7992ms   ttft=6182  'stop being useless and plan my trip to harlem ' hostile  chars=475 plan×1 itin=3
+  ✓ #230   8844ms   ttft=6875  'ugh just get me to brooklyn already           ' hostile  chars=543 plan×1 itin=3
+  ✓ #231   9126ms   ttft=7285  'i need to get to jfk by 6pm what should i take' complex  chars=589 plan×1 itin=1
+  ✓ #234   8967ms   ttft=7974  'i'm at union square and need to be at columbia' complex  chars=359 plan×1 itin=3
+  ✓ #235   8365ms   ttft=7568  'plan a trip from soho to laguardia and tell me' complex  chars=301 plan×1 itin=1
+  ✓ #236   8035ms   ttft=6413  'what's the fastest way to dumbo and any alerts' complex  chars=401 plan×1 itin=3
+  ✓ #237   8336ms   ttft=7785  'if i bike from times square to brooklyn how lo' complex  chars=210 plan×1 itin=3
+  ✓ #238   6224ms   ttft=5662  'i need to be at yankee stadium in 45 min from ' complex  chars=284 plan×1 itin=1
+  ✓ #239   8856ms   ttft=6791  'i'm in chelsea trying to get to laguardia in a' complex  chars=610 plan×1 itin=3
+  ✓ #240   9369ms   ttft=7693  'plan from times square to coney island and wha' complex  chars=525 plan×1 itin=3
+  ✓ #244   1603ms    ttft=515  'what time should i leave times square to make ' complex  chars=227
+  ✓ #242   8668ms   ttft=6622  'i'm running late to a meeting at wall street f' complex  chars=535 plan×1 itin=3
+  ✓ #245   2770ms   ttft=2124  'i need to pick up something in soho then get t' complex  chars=254 plan×1 itin=1
+  ✓ #243   6466ms   ttft=5438  'best route from astoria to dumbo and is there ' complex  chars=220 plan×1 itin=3
+  ✓ #246   1856ms    ttft=397  'tell me about the R211                        ' trivia   chars=669
+  ✓ #247   2478ms    ttft=443  'history of the second avenue subway           ' trivia   chars=952
+  ✓ #248   2308ms    ttft=587  'why is the G train so short                   ' trivia   chars=790
+  ✓ #249   3173ms   ttft=1772  'what's CBTC                                   ' trivia   chars=568
+  ✓ #250   2504ms    ttft=541  'tell me about the redbird trains              ' trivia   chars=773
+  ✓ #251   2107ms    ttft=687  'what happened to the R32s                     ' trivia   chars=560
+  ✓ #241  18101ms  ttft=16635  'from williamsburg to jfk and tell me if i shou' complex  chars=403 plan×1 itin=1
+  ✓ #253   1555ms    ttft=511  'what's the oldest subway line                 ' trivia   chars=329
+  ✓ #254   4018ms    ttft=582  'tell me about omny                            ' trivia   chars=855
+  ✓ #255   4145ms   ttft=1289  'what's the deal with the J train              ' trivia   chars=680
+  ✓ #252   4543ms    ttft=562  'history of the IRT                            ' trivia   chars=1073
+  ✓ #256   2984ms    ttft=716  'what's congestion pricing                     ' nycmisc  chars=657
+  ✓ #258    896ms    ttft=455  'is the staten island ferry free               ' nycmisc  chars=189
+  ✓ #259   1195ms    ttft=649  'how much is a subway ride                     ' nycmisc  chars=170
+  ✓ #260   2028ms    ttft=695  'how do i pay for the bus                      ' nycmisc  chars=516
+  ✓ #261   1823ms   ttft=1277  'do unlimited metrocards still exist           ' nycmisc  chars=239
+  ✓ #262   1803ms    ttft=532  'what's the airtrain                           ' nycmisc  chars=547
+  ✓ #257   3357ms    ttft=763  'how does omny work                            ' nycmisc  chars=954
+  ✓ #264   1285ms    ttft=490  'is the path the same as the subway            ' nycmisc  chars=375
+  ✓ #265   1209ms    ttft=586  'what's the cheapest way to get to jfk         ' nycmisc  chars=356
+  ✓ #266   1520ms    ttft=843  'how late does the subway run                  ' nycmisc  chars=284
+  ✓ #263   2773ms   ttft=1006  'can i bring my bike on the subway             ' nycmisc  chars=560
+  ✓ #268    918ms    ttft=464  'do i tap or swipe                             ' nycmisc  chars=145
+  ✓ #267   1428ms    ttft=553  'is there 24 hour service                      ' nycmisc  chars=327
+  ✓ #269   1023ms    ttft=495  'can i use apple pay on the subway             ' nycmisc  chars=207
+  ✓ #270    985ms    ttft=559  'kids ride free right                          ' nycmisc  chars=157
+
+==============================================================================
+  Chatbot stress test — 270 prompts across multiple categories
+==============================================================================
+  HTTP OK            : 270/270
+  Overall success    : 270/270  (100.0%)
+
+  Total turn latency (full reply)
+    p50   3280ms  p90   9316ms  p95   9960ms  p99  28283ms  max  54032ms  min  708ms
+
+  Time-to-first-token  (user sees text)
+    p50   1819ms  p90   7068ms  p95   7785ms  p99  27195ms  max  53259ms  min  366ms
+
+  Time-to-first-tool-result (engine card)
+    p50   1839ms  p90   6391ms  p95   7114ms  p99  51866ms  max  52519ms  min  554ms
+
+  Per-category breakdown
+    category         n    pass    rate     p50     p90  avg_chars  plan_ok
+    alerts          25   25/25  100.0%   2199ms  4855ms        299        0
+    arrivals        20   20/20  100.0%   2617ms  3678ms        248        0
+    citibike        15   15/15  100.0%   3120ms  4180ms        389        0
+    complex         15   15/15  100.0%   8336ms  9369ms        409       12
+    hostile         10   10/10  100.0%   2510ms  7992ms        242        2
+    nycmisc         15   15/15  100.0%   1428ms  2984ms        379        0
+    offtopic        20   20/20  100.0%    975ms  1244ms        130        0
+    stations        15   15/15  100.0%   2293ms  5031ms        248        0
+    status          10   10/10  100.0%   3349ms  4128ms        629        0
+    trip            50   50/50  100.0%   8656ms 10381ms        463       49
+    trip_abbrev     25   25/25  100.0%   6460ms 15811ms        402       22
+    trip_typo       25   25/25  100.0%   8589ms  9673ms        412       22
+    trivia          10   10/10  100.0%   2478ms  4145ms        725        0
+    weather         15   15/15  100.0%   2609ms  3069ms        130        0
+
+  Latency buckets (successful turns)
+      0.0-  2.0s   64  █████████
+      2.0-  4.0s   89  █████████████
+      4.0-  6.0s   31  ████
+      6.0-  8.0s   18  ██
+      8.0- 12.0s   60  ████████
+     12.0+ s        8  █
+
+  Slowest 5 successful turns
+     54032ms  [trip_abbrev] 'rock center to wsq'
+     53439ms  [trip_abbrev] 'from astoria 2 the village'
+     52965ms  [trip      ] 'fastest way from penn station to jfk'
+     28283ms  [trip_typo ] 'how do i get to jffk'
+     18101ms  [complex   ] 'from williamsburg to jfk and tell me if i should leave '
+
+==============================================================================
+  Total wall: 353.6s  (0.76 prompts/s)

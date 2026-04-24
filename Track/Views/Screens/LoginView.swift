@@ -1,6 +1,8 @@
-// Authentication screen shown before onboarding.
-// Uses Sign in with Apple as the primary login method.
-// Integrates with Supabase for cloud sync and user management.
+// Authentication entry point shown before onboarding.
+//
+// Hosts a `NavigationStack` so Sign-In and Create-Account are real
+// pushed destinations rather than modal sheets. Sign-in-with-Apple
+// remains the primary CTA; the email path is two distinct routes.
 
 import SwiftUI
 import AuthenticationServices
@@ -10,306 +12,293 @@ struct LoginView: View {
     @State private var errorMessage: String?
     @State private var appleSignInDelegate: AppleSignInDelegate?
 
-    // Staggered entrance animation
-    @State private var showIcon = false
-    @State private var showTitle = false
-    @State private var showFeatures = false
-    @State private var showActions = false
+    // Staggered entrance.
+    @State private var heroAppeared = false
+    @State private var actionsAppeared = false
 
     var body: some View {
-        ZStack {
-            // Background
+        NavigationStack {
             ZStack {
-                AppTheme.Gradients.screen
-                AppTheme.Gradients.screenGlow
-            }
-            .ignoresSafeArea()
+                AuthBackground()
 
-            // Content
-            VStack(spacing: 0) {
-                Spacer()
-                    .frame(minHeight: 20)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 20) {
+                        Spacer(minLength: 28)
 
-                // App Identity
-                appHeader
-                    .padding(.bottom, 36)
+                        hero
+                            .opacity(heroAppeared ? 1 : 0)
+                            .offset(y: heroAppeared ? 0 : 18)
 
-                Spacer()
+                        Spacer(minLength: 16)
 
-                // Feature highlights
-                featureHighlights
-                    .padding(.bottom, 40)
+                        actions
+                            .opacity(actionsAppeared ? 1 : 0)
+                            .offset(y: actionsAppeared ? 0 : 18)
 
-                // Login Actions
-                loginActions
+                        if let errorMessage {
+                            AuthErrorBanner(message: errorMessage)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                                .padding(.horizontal, 24)
+                        }
 
-                // Error message
-                if let error = errorMessage {
-                    errorBanner(error)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        trustRow
+                            .padding(.top, 2)
+                            .opacity(actionsAppeared ? 1 : 0)
+                    }
+                    .padding(.bottom, 28)
+                    .frame(minHeight: UIScreen.main.bounds.height - 80)
                 }
-
-                // Footer
-                footerText
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .padding(.horizontal, 28)
+            .animation(AppTheme.Animation.gentle, value: errorMessage)
+            .onAppear { animateEntrance() }
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .onAppear { animateEntrance() }
+        .tint(AppTheme.Colors.accent)
     }
 
-    // MARK: - Entrance Animation
+    // MARK: - Entrance
 
     private func animateEntrance() {
-        withAnimation(AppTheme.Animation.smooth.delay(0.1)) { showIcon = true }
-        withAnimation(AppTheme.Animation.smooth.delay(0.25)) { showTitle = true }
-        withAnimation(AppTheme.Animation.smooth.delay(0.4)) { showFeatures = true }
-        withAnimation(AppTheme.Animation.smooth.delay(0.55)) { showActions = true }
+        withAnimation(AppTheme.Animation.smooth.delay(0.10)) { heroAppeared = true }
+        withAnimation(AppTheme.Animation.smooth.delay(0.35)) { actionsAppeared = true }
     }
 
-    // MARK: - App Header
+    // MARK: - Hero
 
-    private var appHeader: some View {
-        VStack(spacing: 24) {
-            // Icon with glow
+    private var hero: some View {
+        VStack(spacing: 14) {
             ZStack {
-                // Outer soft glow
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                AppTheme.Colors.accent.opacity(0.25),
-                                AppTheme.Colors.accentSecondary.opacity(0.08),
-                                Color.clear,
-                            ],
-                            center: .center,
-                            startRadius: 40,
-                            endRadius: 100
-                        )
-                    )
-                    .frame(width: 180, height: 180)
+                    .fill(AppTheme.Colors.accent.opacity(0.20))
+                    .frame(width: 140, height: 140)
+                    .blur(radius: 26)
 
                 Image("AppIconImage")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 120, height: 120)
-                    .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
-                    .shadow(color: AppTheme.Colors.shadow.opacity(0.35), radius: 20, y: 10)
-                    .shadow(color: AppTheme.Colors.accent.opacity(0.15), radius: 30, y: 4)
+                    .frame(width: 84, height: 84)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.40), .white.opacity(0.05)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.85
+                            )
+                    )
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.45), radius: 18, y: 10)
                     .accessibilityHidden(true)
             }
-            .opacity(showIcon ? 1 : 0)
-            .scaleEffect(showIcon ? 1 : 0.8)
 
-            // Title & tagline
-            VStack(spacing: 10) {
+            VStack(spacing: 4) {
                 Text("Track")
-                    .font(.system(size: 44, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .font(.system(size: 36, weight: .black, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                    .kerning(-0.5)
 
-                Text("NYC Transit, Live")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [AppTheme.Colors.accent, AppTheme.Colors.accentSecondary],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                Text("NYC transit, alive in your pocket.")
+                    .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
             }
-            .opacity(showTitle ? 1 : 0)
-            .offset(y: showTitle ? 0 : 12)
         }
-    }
-
-    // MARK: - Feature Highlights
-
-    private var featureHighlights: some View {
-        VStack(spacing: 16) {
-            featureRow(
-                icon: "tram.fill",
-                color: AppTheme.Colors.accent,
-                title: "Live Arrivals",
-                subtitle: "Subway, bus & rail — updated every second"
-            )
-            featureRow(
-                icon: "bell.badge.fill",
-                color: AppTheme.Colors.warningYellow,
-                title: "Service Alerts",
-                subtitle: "Delays, reroutes & planned work"
-            )
-            featureRow(
-                icon: "map.fill",
-                color: AppTheme.Colors.successGreen,
-                title: "Live Map",
-                subtitle: "Vehicle positions & station coverage"
-            )
-        }
-        .padding(.vertical, 20)
-        .padding(.horizontal, 18)
-        .trackCardBackground(cornerRadius: 20)
-        .opacity(showFeatures ? 1 : 0)
-        .offset(y: showFeatures ? 0 : 16)
-    }
-
-    private func featureRow(icon: String, color: Color, title: String, subtitle: String) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(width: 34, height: 34)
-                .background(color.gradient)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .shadow(color: color.opacity(0.3), radius: 4, y: 2)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-
-                Text(subtitle)
-                    .font(.system(size: 12.5, weight: .regular))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-        }
-    }
-
-    // MARK: - Login Actions
-
-    private var loginActions: some View {
-        VStack(spacing: 16) {
-            // Sign in with Apple button
-            Button(action: startAppleSignIn) {
-                HStack(spacing: 10) {
-                    if isLoading {
-                        ProgressView()
-                            .tint(.white)
-                            .scaleEffect(0.9)
-                    } else {
-                        Image(systemName: "apple.logo")
-                            .font(.system(size: 19, weight: .semibold))
-                    }
-                    Text("Sign in with Apple")
-                        .font(.system(size: 18, weight: .semibold, design: .rounded))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color.black)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [.white.opacity(0.15), .white.opacity(0.05)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 0.5
-                                )
-                        )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-            .shadow(color: AppTheme.Colors.shadow.opacity(0.2), radius: 12, y: 6)
-            .shadow(color: Color.black.opacity(0.1), radius: 4, y: 2)
-            .disabled(isLoading)
-            .opacity(isLoading ? 0.85 : 1)
-            .animation(AppTheme.Animation.gentle, value: isLoading)
-        }
-        .padding(.bottom, 20)
-        .opacity(showActions ? 1 : 0)
-        .offset(y: showActions ? 0 : 16)
-    }
-
-    // MARK: - Error Banner
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(AppTheme.Colors.alertRed)
-
-            Text(message)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-                .multilineTextAlignment(.leading)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AppTheme.Colors.alertRed.opacity(0.1))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.alertRed.opacity(0.2), lineWidth: 0.5)
-                )
-        )
-        .padding(.bottom, 16)
-    }
-
-    // MARK: - Footer
-
-    private var footerText: some View {
-        VStack(spacing: 5) {
-            HStack(spacing: 4) {
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textTertiary)
-                Text("Your data stays on your device")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppTheme.Colors.textTertiary)
-            }
-            Text("Sign in to sync across devices")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.7))
-        }
-        .multilineTextAlignment(.center)
-        .padding(.bottom, 36)
-        .opacity(showActions ? 1 : 0)
     }
 
     // MARK: - Actions
-    
+
+    private var actions: some View {
+        VStack(spacing: 10) {
+            // Apple Sign-In primary CTA — stays black per Apple HIG.
+            Button(action: startAppleSignIn) {
+                HStack(spacing: 8) {
+                    if isLoading {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 16, weight: .heavy))
+                    }
+                    Text(isLoading ? "Signing in…" : "Sign in with Apple")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(white: 0.18), Color.black],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.18), .white.opacity(0.04)],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 0.75
+                                )
+                        )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .shadow(color: Color.black.opacity(0.22), radius: 12, y: 6)
+            .disabled(isLoading)
+
+            // Divider with "or"
+            HStack(spacing: 10) {
+                Rectangle()
+                    .fill(AppTheme.Colors.textPrimary.opacity(0.10))
+                    .frame(height: 0.75)
+                Text("or")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textTertiary)
+                    .textCase(.uppercase)
+                    .tracking(1.2)
+                Rectangle()
+                    .fill(AppTheme.Colors.textPrimary.opacity(0.10))
+                    .frame(height: 0.75)
+            }
+            .padding(.vertical, 2)
+
+            // Email sign-in route — pushed, not presented.
+            NavigationLink {
+                SignInView()
+            } label: {
+                authRow(
+                    icon: "envelope.fill",
+                    iconColor: AppTheme.Colors.textPrimary,
+                    label: "Sign in with email"
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Create-account route — quieter visual weight, but still
+            // a real, full-bleed row rather than buried link text.
+            NavigationLink {
+                CreateAccountView()
+            } label: {
+                authRow(
+                    icon: "person.badge.plus.fill",
+                    iconColor: AppTheme.Colors.accent,
+                    label: "Create a new account"
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: 340)
+        .padding(.horizontal, 22)
+    }
+
+    private func authRow(icon: String, iconColor: Color, label: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(iconColor)
+            Text(label)
+                .font(.system(size: 14.5, weight: .heavy, design: .rounded))
+                .foregroundColor(AppTheme.Colors.textPrimary)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(AppTheme.Colors.textTertiary)
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity)
+        .frame(height: 44)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.Colors.cardElevated.opacity(0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            AppTheme.Colors.borderSubtle.opacity(0.6),
+                            lineWidth: 0.75
+                        )
+                )
+        )
+    }
+
+    // MARK: - Trust row
+
+    private var trustRow: some View {
+        HStack(spacing: 8) {
+            trustChip(icon: "lock.shield.fill", label: "Private")
+            trustChip(icon: "icloud.fill", label: "Synced")
+            trustChip(icon: "bolt.fill", label: "Live")
+        }
+    }
+
+    private func trustChip(icon: String, label: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .heavy))
+            Text(label)
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+        }
+        .foregroundColor(AppTheme.Colors.textSecondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            Capsule()
+                .fill(AppTheme.Colors.textPrimary.opacity(0.06))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(
+                            AppTheme.Colors.textPrimary.opacity(0.08),
+                            lineWidth: 0.5
+                        )
+                )
+        )
+    }
+
+    // MARK: - Apple Sign-In
+
     private func startAppleSignIn() {
         isLoading = true
         errorMessage = nil
-        
+
         let provider = ASAuthorizationAppleIDProvider()
         let request = provider.createRequest()
         request.requestedScopes = [.fullName, .email]
-        
+
         let delegate = AppleSignInDelegate { result in
             handleAppleSignIn(result: result)
         }
         self.appleSignInDelegate = delegate
-        
+
         let controller = ASAuthorizationController(authorizationRequests: [request])
         controller.delegate = delegate
-        
-        // Set presentation context to the key window
+
         if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let window = windowScene.windows.first(where: { $0.isKeyWindow }) {
             delegate.presentationAnchor = window
             controller.presentationContextProvider = delegate
         }
-        
+
         controller.performRequests()
     }
-    
+
     private func handleAppleSignIn(result: Result<ASAuthorization, Error>) {
         isLoading = true
         errorMessage = nil
-        
+
         switch result {
         case .success(let authorization):
             if let appleIDCredential = authorization.credential
                 as? ASAuthorizationAppleIDCredential {
-                // Extract credentials
                 let credentials = AppleSignInCredentials(
                     userId: appleIDCredential.user,
                     email: appleIDCredential.email,
@@ -317,12 +306,10 @@ struct LoginView: View {
                     identityToken: appleIDCredential.identityToken,
                     authorizationCode: appleIDCredential.authorizationCode
                 )
-                
-                // Sign in with Supabase
+
                 Task { @MainActor in
                     do {
                         try await SupabaseManager.shared.signInWithApple(credentials: credentials)
-                        // Cloud sync is best effort after a successful auth session.
                         await SyncManager.shared.performFullSync()
                         isLoading = false
                     } catch {
@@ -334,17 +321,15 @@ struct LoginView: View {
                     }
                 }
             }
-            
+
         case .failure(let error):
             isLoading = false
             let nsError = error as NSError
 
-            // User tapped Cancel — no error to show
             if nsError.code == ASAuthorizationError.canceled.rawValue {
                 return
             }
 
-            // Dump everything Apple gives us so we can diagnose in Xcode console
             #if DEBUG
             print("╔══════════════════════════════════════════════")
             print("║ [LoginView] APPLE SIGN-IN FAILED")
@@ -393,11 +378,11 @@ class AppleSignInDelegate: NSObject,
     ASAuthorizationControllerPresentationContextProviding {
     var presentationAnchor: UIWindow?
     private let completion: (Result<ASAuthorization, Error>) -> Void
-    
+
     init(completion: @escaping (Result<ASAuthorization, Error>) -> Void) {
         self.completion = completion
     }
-    
+
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         let scene = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
@@ -408,17 +393,16 @@ class AppleSignInDelegate: NSObject,
         if let anchor = presentationAnchor {
             return anchor
         }
-        // scene is guaranteed non-nil on iOS — always at least one UIWindowScene
         return UIWindow(windowScene: scene!)
     }
-    
+
     func authorizationController(
         controller: ASAuthorizationController,
         didCompleteWithAuthorization authorization: ASAuthorization
     ) {
         completion(.success(authorization))
     }
-    
+
     func authorizationController(
         controller: ASAuthorizationController,
         didCompleteWithError error: Error

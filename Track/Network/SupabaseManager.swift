@@ -354,7 +354,172 @@ class SupabaseManager: ObservableObject {
             throw authError(from: data, statusCode: httpResponse.statusCode)
         }
     }
-    
+
+    // MARK: - Email / Password
+
+    /// Sign in with email + password against Supabase Auth.
+    func signInWithEmail(email: String, password: String) async throws {
+        try await performEmailAuth(
+            path: "auth/v1/token",
+            queryItems: [URLQueryItem(name: "grant_type", value: "password")],
+            body: ["email": email.lowercased(), "password": password],
+            failurePrefix: "Sign-in failed"
+        )
+    }
+
+    /// Create a new account with email + password and sign in immediately.
+    /// Supabase returns a session if email confirmation is disabled; if it
+    /// requires confirmation we surface a friendly message instead.
+    func signUpWithEmail(
+        email: String,
+        password: String,
+        fullName: String?
+    ) async throws {
+        var body: [String: Any] = [
+            "email": email.lowercased(),
+            "password": password,
+        ]
+        if let fullName = fullName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !fullName.isEmpty {
+            body["data"] = ["full_name": fullName]
+        }
+
+        try await performEmailAuth(
+            path: "auth/v1/signup",
+            queryItems: [],
+            body: body,
+            failurePrefix: "Sign-up failed",
+            displayName: fullName
+        )
+    }
+
+    /// Shared transport + session-finalisation logic for the email
+    /// sign-in and sign-up endpoints. Both return the same
+    /// `AuthResponse` shape on success.
+    private func performEmailAuth(
+        path: String,
+        queryItems: [URLQueryItem],
+        body: [String: Any],
+        failurePrefix: String,
+        displayName: String? = nil
+    ) async throws {
+        isLoading = true
+        isAuthResolved = false
+        errorMessage = nil
+
+        defer {
+            isLoading = false
+            isAuthResolved = true
+        }
+
+        let url = try components(for: path, queryItems: queryItems)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(apiKey, forHTTPHeaderField: "apikey")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SupabaseError.networkError
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            // Surface the Supabase-provided message when present.
+            if let decoded = try? JSONDecoder()
+                .decode(SupabaseAuthErrorResponse.self, from: data) {
+                let message = decoded.errorDescription ?? decoded.msg ?? decoded.error
+                if let message, !message.isEmpty {
+                    throw SupabaseError.authFailed("\(failurePrefix): \(message)")
+                }
+            }
+            throw SupabaseError.authFailed(
+                "\(failurePrefix) (status \(httpResponse.statusCode))"
+            )
+        }
+
+        // Sign-up with email-confirmation enabled returns a 200 with no
+        // session and a `user` payload only. Detect that shape and
+        // bubble it back so the UI can show a "check your inbox" state.
+        let decoded: AuthResponse
+        do {
+            decoded = try supabaseDecoder.decode(AuthResponse.self, from: data)
+        } catch {
+            // Likely the no-session sign-up confirmation flow.
+            throw SupabaseError.authFailed(
+                "Check your inbox to confirm your email, then sign in."
+            )
+        }
+
+        guard let userId = UUID(uuidString: decoded.user.id) else {
+            throw SupabaseError.invalidCredentials
+        }
+
+        accessToken = decoded.accessToken
+        KeychainHelper.set(decoded.accessToken, forKey: accessTokenKey)
+        KeychainHelper.set(decoded.refreshToken, forKey: refreshTokenKey)
+        defaults.set(decoded.user.id, forKey: userIdKey)
+
+        do {
+            // Best-effort profile bootstrap — for sign-in we usually have
+            // a row already; for sign-up we seed name + email.
+            try await ensureEmailProfile(
+                userId: userId,
+                authUser: decoded.user,
+                displayName: displayName
+            )
+            let profile = try await fetchProfile(userId: userId)
+            currentUser = profile
+            isAuthenticated = true
+        } catch {
+            AppLogger.shared.logError("Post-auth profile setup", error: error)
+            signOut()
+            throw SupabaseError.authFailed(
+                "Unable to complete account setup: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    /// Best-effort profile upsert for the email auth path. Mirrors what
+    /// `updateProfileWithAppleData` does, but with only the email + an
+    /// optional display name available.
+    private func ensureEmailProfile(
+        userId: UUID,
+        authUser: AuthUser,
+        displayName: String?
+    ) async throws {
+        let existing = await resolveExistingProfile(userId: userId)
+
+        let cleanedName: String? = {
+            let trimmed = displayName?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let trimmed, !trimmed.isEmpty else { return nil }
+            return trimmed
+        }()
+        let parts = cleanedName?.split(separator: " ", maxSplits: 1).map(String.init) ?? []
+        let given = parts.first ?? existing?.givenName
+        let family = parts.count > 1 ? parts.last : existing?.familyName
+
+        let profile = UserProfile(
+            id: userId,
+            appleUserId: existing?.appleUserId,
+            email: (authUser.email ?? existing?.email)?.lowercased(),
+            fullName: cleanedName ?? existing?.fullName,
+            givenName: given,
+            familyName: family,
+            username: existing?.username,
+            avatarUrl: existing?.avatarUrl,
+            preferredTheme: existing?.preferredTheme,
+            notificationsEnabled: existing?.notificationsEnabled,
+            createdAt: existing?.createdAt,
+            updatedAt: existing?.updatedAt,
+            lastLoginAt: Date()
+        )
+
+        try await upsertProfile(profile)
+    }
+
     /// Sign out current user
     func signOut() {
         accessToken = nil
