@@ -101,8 +101,18 @@ final class ChatViewModel {
     let suggestedPrompts: [String] = [
         "Next train at Union Sq",
         "Fastest to JFK",
-        "Any L delays?",
     ]
+
+    /// Strip the GTFS agency prefix off a route id ("MTA NYCT_L" → "L")
+    /// so chip text reads naturally to riders.
+    private static func shortRouteLabel(_ id: String) -> String {
+        for prefix in ["MTA NYCT_", "MTA BUS_", "MTABC_"] {
+            if id.uppercased().hasPrefix(prefix) {
+                return String(id.dropFirst(prefix.count))
+            }
+        }
+        return id
+    }
 
     /// Optional device coordinate forwarded to MetroMind so it can
     /// resolve "current location" planning queries.
@@ -209,6 +219,15 @@ final class ChatViewModel {
         messages.append(placeholder)
         let assistantId = placeholder.id
 
+        // Snapshot the user's most-interacted routes from local analytics
+        // so the backend can personalise default chips ("Any 7 delays?"
+        // instead of always defaulting to L). RouteAnalyticsManager
+        // returns full GTFS ids ("MTA NYCT_L") — the backend strips the
+        // agency prefix before rendering, so we forward as-is.
+        let topRoutes: [String] = RouteAnalyticsManager.shared
+            .getTopRoutes(limit: 5)
+            .map { $0.routeId }
+
         // Cancel any in-flight stream before starting a new one.
         streamTask?.cancel()
         streamTask = Task { [weak self,
@@ -220,6 +239,7 @@ final class ChatViewModel {
                              userName = userName,
                              savedPlaces = savedPlaces,
                              recentTrips = recentTrips,
+                             topRoutes = topRoutes,
                              threadId = threadId,
                              imageDataURL = attachedImage] in
             guard let self else { return }
@@ -236,6 +256,7 @@ final class ChatViewModel {
                     userName: userName,
                     savedPlaces: savedPlaces,
                     recentTrips: recentTrips,
+                    topRoutes: topRoutes,
                     threadId: threadId,
                     imageDataURL: imageDataURL
                 )
@@ -398,6 +419,11 @@ final class ChatViewModel {
         case "open_alerts":
             NotificationCenter.default.post(name: .switchToTab, object: AppTab.home)
             if let text = chip.promptText, !text.isEmpty { send(text) }
+        case "open_plan":
+            // Empty-itinerary recovery chip — switch the user to the
+            // Trips tab so they can edit origin/destination directly.
+            NotificationCenter.default.post(name: .switchToTab, object: AppTab.trips)
+            appendInlineNotice("Opened the Trips tab — tweak the trip there.")
         case "send_prompt", "generate_alternatives", "open_place", "start_tracking":
             if let text = chip.promptText, !text.isEmpty {
                 send(text)
@@ -920,6 +946,18 @@ struct ChatView: View {
         }
         if let last = viewModel.recentTrips.first {
             out.append("Replan: \(last.destinationLabel)")
+        }
+        // Surface the user's most-tracked line as a quick "delays?" chip.
+        // This replaces the old hardcoded "Any L delays?" with whichever
+        // route the user actually rides most.
+        if let topRoute = RouteAnalyticsManager.shared
+            .getTopRoutes(limit: 1)
+            .first?.routeId
+        {
+            let short = ChatViewModel.shortRouteLabel(topRoute)
+            out.append("Any \(short) delays?")
+        } else {
+            out.append("Any delays nearby?")
         }
         out.append(contentsOf: viewModel.suggestedPrompts)
         return Array(out.prefix(6))

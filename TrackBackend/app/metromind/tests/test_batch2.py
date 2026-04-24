@@ -66,6 +66,89 @@ def test_suggestions_capped_at_three() -> None:
     assert len(chips) <= 3
 
 
+def test_suggestions_use_personal_top_route_in_fallback() -> None:
+    """Default chip should advertise the user's #1 line, not always L."""
+    ctx = UserContext(top_routes=["7", "F", "L"])
+    chips = build_suggestions(used_tools=[], tool_payloads={}, context=ctx)
+    labels = [c.label for c in chips]
+    assert any("7" in lbl for lbl in labels)
+    # And we must not accidentally hardcode L when the user rides 7.
+    assert not any(lbl == "Any L delays?" for lbl in labels)
+
+
+def test_suggestions_strip_gtfs_prefix_from_route_id() -> None:
+    """Route IDs from RouteAnalyticsManager arrive prefixed."""
+    ctx = UserContext(top_routes=["MTA NYCT_B63"])
+    chips = build_suggestions(used_tools=[], tool_payloads={}, context=ctx)
+    assert any("B63" in c.label and "MTA" not in c.label for c in chips)
+
+
+def test_suggestions_empty_itinerary_offers_recovery_chips() -> None:
+    """Out-of-MTA destinations should still get actionable chips."""
+    chips = build_suggestions(
+        used_tools=["plan_route"],
+        tool_payloads={
+            "plan_route": {
+                "origin": "Times Square",
+                "destination": "Newark Penn Station",
+                "itineraries": [],
+            }
+        },
+        context=None,
+    )
+    assert len(chips) >= 1
+    kinds = [c.kind for c in chips]
+    # Either nudge to the Plan tab or ask for a different destination —
+    # never strand the user with zero options.
+    assert any(k in {"open_plan", "send_prompt"} for k in kinds)
+
+
+def test_suggestions_walk_only_trip_skips_track_chip() -> None:
+    """No Track chip when there's no transit leg to follow."""
+    chips = build_suggestions(
+        used_tools=["plan_route"],
+        tool_payloads={
+            "plan_route": {
+                "origin": "Times Sq",
+                "destination": "Bryant Park",
+                "itineraries": [{
+                    "summary": "Walk · 6 min",
+                    "legs": [{"mode": "walk", "route_id": None}],
+                }],
+            }
+        },
+        context=None,
+    )
+    assert not any(c.kind == "start_tracking" for c in chips)
+    # Save is still primary even for walk-only.
+    assert any(c.kind == "save_trip" for c in chips)
+
+
+def test_suggestions_arrivals_offers_track_and_alerts() -> None:
+    chips = build_suggestions(
+        used_tools=["get_arrivals"],
+        tool_payloads={
+            "get_arrivals": {
+                "arrivals": [{"route_id": "6", "minutes_away": 3}],
+            }
+        },
+        context=None,
+    )
+    kinds = {c.kind for c in chips}
+    assert "start_tracking" in kinds
+    assert any("6" in c.label for c in chips)
+
+
+def test_suggestions_no_personal_route_rotates_popular_lines() -> None:
+    """Without top_routes we must still surface *some* delay chip."""
+    chips = build_suggestions(used_tools=[], tool_payloads={}, context=None)
+    delay_chips = [c for c in chips if " delays?" in c.label]
+    assert len(delay_chips) == 1
+    # Whatever route shows up must be a real, popular NYC line.
+    route = delay_chips[0].label.replace("Any ", "").replace(" delays?", "")
+    assert route in {"6", "F", "L", "7", "A", "N", "E", "G"}
+
+
 # ── E — Model router ─────────────────────────────────────────────────
 
 

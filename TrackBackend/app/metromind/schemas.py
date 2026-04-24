@@ -73,6 +73,15 @@ class UserContext(BaseModel):
         default_factory=list,
         description="Recently planned trips, newest first. Capped to ~10 by the client.",
     )
+    top_routes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "User's most-interacted route IDs ranked by usage (newest first). "
+            "Computed client-side from the local route-engagement log. "
+            "Used by the suggestion-chip builder to personalise default chips "
+            "(e.g. \"Any 7 delays?\" instead of always defaulting to L)."
+        ),
+    )
     # ── Location bias ("near me" / "around this pin") ─────────────────
     bias_lat: float | None = Field(
         None,

@@ -1,32 +1,84 @@
-"""Build follow-up action chips for the iOS chat UI (Batch 2 — D).
+"""Build follow-up action chips for the iOS chat UI.
 
 Pure heuristics, no LLM call. Runs after the orchestrator finishes and
 inspects (a) which tools fired, (b) the last tool payload, and
-(c) user context to propose 2–3 chips of the form::
+(c) user context to propose up to ``_MAX_CHIPS`` follow-up chips.
 
-    SuggestedAction(label="Save this trip", kind="save_trip", payload={...})
+Design goals
+------------
+* **Personalised first.** When ``context.top_routes`` is populated the
+  default fallback chip surfaces the user's most-used line — never a
+  hardcoded "L". When no personal data is available, we rotate through
+  the busiest NYC subway lines based on the current hour so two
+  consecutive empty replies don't show identical chips.
+* **Actionable before exploratory.** Chips are emitted in priority
+  order (Save → Track → Open Plan → Alternatives → "ask again") and the
+  caller's ``_MAX_CHIPS`` cap drops the lowest-priority entries first.
+* **Always have an exit.** Empty itineraries (NJ Transit / out of MTA
+  area), error tools, and off-topic turns all still produce at least one
+  chip that nudges the user back into the planner or toward their
+  saved data.
 
-The client decides what to do with each ``kind``:
+Chip ``kind`` taxonomy (the iOS layer dispatches on this):
 
-* ``send_prompt`` → put ``payload["text"]`` in the composer and send.
-* ``save_trip``   → add the itinerary to the user's saved trips.
-* ``start_tracking`` → kick off a Live Activity for the itinerary.
-* ``open_alerts`` → open the Alerts tab filtered to ``payload["route_id"]``.
-* ``open_place``  → open Plan tab focused on ``payload["place_label"]``.
+* ``send_prompt``        → put ``payload["text"]`` in the composer and send.
+* ``save_trip``          → add the itinerary to the user's saved trips.
+* ``start_tracking``     → kick off a Live Activity for the itinerary/route.
+* ``open_alerts``        → open the Alerts tab filtered to ``payload["route_id"]``.
+* ``open_place``         → open Plan tab focused on ``payload["place_label"]``.
+* ``open_plan``          → open the Plan tab seeded with origin/destination.
 * ``generate_alternatives`` → re-prompt the LLM for different itineraries.
-
-Keep payloads small; the iOS layer can hydrate further from local state.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.metromind.schemas import SuggestedAction, UserContext
 
 
 _MAX_CHIPS = 3
+
+# Rotated when the user has no personal route history. Ordered roughly
+# by 2024 weekday ridership so the rotation always lands on a line the
+# user has at least heard of, regardless of which slot we pick.
+_POPULAR_ROUTES: tuple[str, ...] = ("6", "F", "L", "7", "A", "N", "E", "G")
+
+# Drop these label prefixes so "MTA NYCT_B63" → "B63".
+_ROUTE_PREFIXES: tuple[str, ...] = ("MTA NYCT_", "MTA BUS_", "MTABC_")
+
+
+def _short_route(route: str | None) -> str | None:
+    """Strip GTFS agency prefixes so the chip text reads naturally."""
+    if not route:
+        return None
+    out = route.strip()
+    for prefix in _ROUTE_PREFIXES:
+        if out.upper().startswith(prefix):
+            out = out[len(prefix) :]
+            break
+    return out or None
+
+
+def _default_route_for_hour(now: datetime | None = None) -> str:
+    """Pick a popular route deterministically from the current hour.
+
+    Used only when the user has no ``top_routes`` history, so the empty
+    chat state doesn't always advertise the same line.
+    """
+    if now is None:
+        now = datetime.now(ZoneInfo("America/New_York"))
+    return _POPULAR_ROUTES[now.hour % len(_POPULAR_ROUTES)]
+
+
+def _pick_personal_route(context: UserContext | None) -> str | None:
+    """Return the user's #1 most-used route, short form, if known."""
+    if context is None or not context.top_routes:
+        return None
+    return _short_route(context.top_routes[0])
 
 
 def build_suggestions(
@@ -35,7 +87,7 @@ def build_suggestions(
     tool_payloads: dict[str, dict[str, Any] | None],
     context: UserContext | None,
 ) -> list[SuggestedAction]:
-    """Return up to 3 chips ranked by usefulness.
+    """Return up to ``_MAX_CHIPS`` chips ranked by usefulness.
 
     ``tool_payloads`` maps tool name → parsed JSON content (last call
     wins if a tool fires twice). Pass ``None`` for tools whose content
@@ -50,51 +102,92 @@ def build_suggestions(
         seen_labels.add(chip.label)
         chips.append(chip)
 
-    # ── Post plan_route ──
+    personal_route = _pick_personal_route(context)
+    home_label = next(
+        (
+            p.label
+            for p in (context.saved_places if context is not None else [])
+            if (p.kind or "").lower() == "home"
+        ),
+        None,
+    )
+
+    # ── Post plan_route ──────────────────────────────────────────────
     if "plan_route" in used_tools:
         payload = tool_payloads.get("plan_route") or {}
         itineraries = payload.get("itineraries") or []
-        first = itineraries[0] if itineraries else {}
-        legs = first.get("legs") or []
-        primary_route = next(
-            (
-                leg.get("route_id") or leg.get("route_label")
-                for leg in legs
-                if (leg.get("mode") or "").lower() != "walk"
-            ),
-            None,
-        )
-        _add(SuggestedAction(
-            label="Save this trip",
-            kind="save_trip",
-            payload={
-                "origin": payload.get("origin"),
-                "destination": payload.get("destination"),
-                "summary": first.get("summary"),
-            },
-        ))
-        # Always offer a way to ask for different itineraries — keeps the
-        # conversation moving when the first option isn't ideal.
-        _add(SuggestedAction(
-            label="Show me other options",
-            kind="generate_alternatives",
-            payload={
-                "text": "Show me alternative routes — different transfers or modes please.",
-            },
-        ))
-        if primary_route:
-            _add(SuggestedAction(
-                label=f"Track the {primary_route}",
-                kind="start_tracking",
-                payload={"route_id": primary_route},
-            ))
-            _add(SuggestedAction(
-                label=f"Alerts on the {primary_route}",
-                kind="open_alerts",
-                payload={"route_id": primary_route},
-            ))
+        origin = payload.get("origin")
+        destination = payload.get("destination")
 
-    # ── Post get_service_alerts ──
+        if itineraries:
+            first = itineraries[0] or {}
+            legs = first.get("legs") or []
+            primary_route = _short_route(
+                next(
+                    (
+                        leg.get("route_id") or leg.get("route_label")
+                        for leg in legs
+                        if (leg.get("mode") or "").lower() != "walk"
+                    ),
+                    None,
+                )
+            )
+            # 1) Save — primary action while the trip is on screen.
+            _add(SuggestedAction(
+                label="Save this trip",
+                kind="save_trip",
+                payload={
+                    "origin": origin,
+                    "destination": destination,
+                    "summary": first.get("summary"),
+                },
+            ))
+            # 2) Track the line — kick off Live Activity. Only if the
+            #    trip actually rides a transit line (skip walk-only).
+            if primary_route:
+                _add(SuggestedAction(
+                    label=f"Track the {primary_route}",
+                    kind="start_tracking",
+                    payload={"route_id": primary_route},
+                ))
+            # 3) Alternatives — keep the conversation moving.
+            _add(SuggestedAction(
+                label="Show other options",
+                kind="generate_alternatives",
+                payload={
+                    "text": (
+                        "Show me alternative routes — different transfers "
+                        "or modes please."
+                    ),
+                },
+            ))
+        else:
+            # Empty itineraries — usually means destination is outside
+            # the MTA service area (Newark, Hoboken, Jersey City, …).
+            # The model has already been prompted to give NJ Transit /
+            # PATH guidance in text; chips should let the user keep
+            # exploring rather than stranding them.
+            _add(SuggestedAction(
+                label="Try a different destination",
+                kind="send_prompt",
+                payload={
+                    "text": (
+                        "Suggest a few destinations near there I could "
+                        "actually reach by subway."
+                    ),
+                },
+            ))
+            if destination:
+                _add(SuggestedAction(
+                    label="Open in Plan tab",
+                    kind="open_plan",
+                    payload={
+                        "origin": origin,
+                        "destination": destination,
+                    },
+                ))
+
+    # ── Post get_service_alerts ──────────────────────────────────────
     if "get_service_alerts" in used_tools:
         _add(SuggestedAction(
             label="Plan around it",
@@ -107,7 +200,25 @@ def build_suggestions(
             payload={"text": "Are there alerts on any other lines right now?"},
         ))
 
-    # ── Post search_stations ──
+    # ── Post get_arrivals ────────────────────────────────────────────
+    if "get_arrivals" in used_tools:
+        payload = tool_payloads.get("get_arrivals") or {}
+        arrivals = payload.get("arrivals") or []
+        first_arrival = arrivals[0] if arrivals else {}
+        route_id = _short_route(first_arrival.get("route_id"))
+        if route_id:
+            _add(SuggestedAction(
+                label=f"Track the {route_id}",
+                kind="start_tracking",
+                payload={"route_id": route_id},
+            ))
+            _add(SuggestedAction(
+                label=f"Alerts on the {route_id}",
+                kind="open_alerts",
+                payload={"route_id": route_id},
+            ))
+
+    # ── Post search_stations ─────────────────────────────────────────
     if "search_stations" in used_tools:
         payload = tool_payloads.get("search_stations") or {}
         stops = payload.get("stops") or []
@@ -119,36 +230,50 @@ def build_suggestions(
                 payload={"text": f"How do I get home from {first_name}?"},
             ))
 
-    # ── Post get_user_places ──
+    # ── Post get_user_places ─────────────────────────────────────────
     if "get_user_places" in used_tools and context is not None:
         for place in context.saved_places[:2]:
-            label = place.label
             _add(SuggestedAction(
-                label=f"Plan trip to {label}",
+                label=f"Plan trip to {place.label}",
                 kind="send_prompt",
-                payload={"text": f"How do I get to {label}?"},
+                payload={"text": f"How do I get to {place.label}?"},
             ))
 
-    # ── Default fallbacks (only if we still have room) ──
-    if not chips:
-        if context is not None and any(
-            (p.kind or "").lower() == "home" for p in context.saved_places
-        ):
+    # ── Default fallbacks ────────────────────────────────────────────
+    # Only fire if we still have headroom and nothing tool-specific
+    # filled the slot. We always personalise on top_routes if available
+    # so the chip never advertises a line the user doesn't ride.
+    if len(chips) < _MAX_CHIPS:
+        if home_label:
             _add(SuggestedAction(
-                label="How do I get home?",
+                label=f"How do I get {home_label.lower()}?"
+                if home_label.lower() != "home"
+                else "How do I get home?",
                 kind="send_prompt",
                 payload={"text": "How do I get home?"},
             ))
+
+        route_for_chip = personal_route or _default_route_for_hour()
         _add(SuggestedAction(
-            label="Any L delays?",
+            label=f"Any {route_for_chip} delays?",
             kind="send_prompt",
-            payload={"text": "Any delays on the L?"},
+            payload={"text": f"Any delays on the {route_for_chip}?"},
         ))
-        _add(SuggestedAction(
-            label="Show me R211 trains",
-            kind="send_prompt",
-            payload={"text": "Tell me about the new R211 trains."},
-        ))
+
+        # Personalised "track my usual line" only when we actually know
+        # the user has a usual line — never as a generic suggestion.
+        if personal_route:
+            _add(SuggestedAction(
+                label=f"Track the {personal_route}",
+                kind="start_tracking",
+                payload={"route_id": personal_route},
+            ))
+        else:
+            _add(SuggestedAction(
+                label="What's nearby?",
+                kind="send_prompt",
+                payload={"text": "What stations are near me?"},
+            ))
 
     return chips[:_MAX_CHIPS]
 

@@ -429,6 +429,7 @@ enum MetroMindAPI {
         userName: String? = nil,
         savedPlaces: [SavedPlaceContext] = [],
         recentTrips: [RecentTripContext] = [],
+        topRoutes: [String] = [],
         threadId: String? = nil,
         imageDataURL: String? = nil
     ) -> AsyncThrowingStream<MetroMindEvent, Error> {
@@ -501,6 +502,12 @@ enum MetroMindAPI {
                             if let r = t.requestedAt { d["requested_at"] = r }
                             return d
                         }
+                    }
+                    if !topRoutes.isEmpty {
+                        // Backend uses these to personalise default chip
+                        // text (e.g. "Any 7 delays?" instead of always L)
+                        // and to surface a "Track the {topRoute}" shortcut.
+                        ctx["top_routes"] = Array(topRoutes.prefix(5))
                     }
                     if ctx.count > 1 || location != nil {
                         body["context"] = ctx
