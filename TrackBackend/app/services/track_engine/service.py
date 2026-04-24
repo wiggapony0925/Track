@@ -675,7 +675,14 @@ class TrackEngineService:
         self.state_store_description = self.store.description
         self._last_remote_engine_version: str | None = None
         self.remote_engine_url = self._resolve_remote_engine_url()
-        _timeout_s = float(os.environ.get("TRACK_ENGINE_TIMEOUT_S", "12"))
+        # The C++ engine consistently takes ~20s for cross-borough plans on the
+        # current production node.  A short read timeout here causes the backend
+        # to abandon a perfectly-good in-flight request, retry, and ultimately
+        # surface a spurious 503 to the iOS client ("Something went wrong").
+        # Default to 35s so we comfortably cover the steady-state engine
+        # latency.  Override via TRACK_ENGINE_TIMEOUT_S if the engine is faster
+        # in another environment.
+        _timeout_s = float(os.environ.get("TRACK_ENGINE_TIMEOUT_S", "35"))
         self.remote_engine_timeout = httpx.Timeout(
             connect=5.0,    # fail fast if engine is down/restarting
             read=_timeout_s, # allow long reads for complex routes
@@ -684,10 +691,13 @@ class TrackEngineService:
         )
         self.remote_engine_timeout_s = _timeout_s  # kept for _try_future_days_plan
         # ── Circuit breaker ──
+        # Only trip on *connection* failures (engine truly unreachable).  A
+        # slow response is not a failure — retrying just multiplies load on a
+        # working engine and burns the client's request budget.
         self._engine_fail_ts: float = 0.0
         self._ENGINE_CIRCUIT_COOLDOWN_S: float = 10.0
-        self._ENGINE_MAX_RETRIES: int = 3        # 1 initial + 2 retries
-        self._ENGINE_BACKOFF_BASE_S: float = 1.0 # exponential: 1s, 2s
+        self._ENGINE_MAX_RETRIES: int = 2        # 1 initial + 1 retry (was 3)
+        self._ENGINE_BACKOFF_BASE_S: float = 0.5 # quick second attempt
         self.enable_realtime_enrichment = (
             os.environ.get("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "1")
             .strip()
@@ -748,11 +758,19 @@ class TrackEngineService:
             return False
 
     async def _engine_post(self, endpoint: str, payload: dict, *, label: str = "") -> dict:
-        """POST to the C++ engine with automatic retries and circuit-breaker logic.
+        """POST to the C++ engine with bounded retries and circuit-breaker logic.
 
-        Uses tenacity for exponential backoff.  The circuit breaker (half-open
-        health probe) is checked *before* the retry loop starts; individual
-        503 responses trip the breaker immediately and are not retried.
+        Failure semantics — what trips the breaker vs. what is retried:
+
+        • httpx.ConnectError       → engine unreachable.  Retry once, trip
+                                     breaker on second failure.
+        • httpx.TimeoutException   → engine is slow but probably working.
+                                     Retry once.  Do **not** trip the breaker
+                                     (a slow plan is not a dead engine).
+        • 503 from engine          → engine signaled overload.  Trip breaker,
+                                     do not retry.
+        • Other 5xx                → propagate as-is, no retry, no breaker.
+        • 2xx                      → success, reset breaker.
         """
         tag = label or endpoint.lstrip("/")
         # ── Circuit breaker: fail instantly if engine went down recently ──
@@ -762,7 +780,12 @@ class TrackEngineService:
                 raise RuntimeError(
                     f"TrackEngine circuit open – engine failed {since_fail:.0f}s ago, health probe failed"
                 )
+            # Health probe succeeded — engine is back, clear the breaker.
+            self._engine_fail_ts = 0.0
 
+        # Retry only on connect/timeout (transient transport issues).  HTTP
+        # status errors (4xx/5xx) propagate immediately so we don't replay
+        # expensive plan calls on the engine.
         @retry(
             stop=stop_after_attempt(self._ENGINE_MAX_RETRIES),
             wait=wait_exponential(
@@ -771,7 +794,7 @@ class TrackEngineService:
                 max=self._ENGINE_BACKOFF_BASE_S * 4,
             ),
             retry=retry_if_exception_type(
-                (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError)
+                (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout)
             ),
             reraise=True,
         )
@@ -782,6 +805,8 @@ class TrackEngineService:
                 timeout=self.remote_engine_timeout,
             )
             if response.status_code == 503:
+                # Engine explicitly said "I am overloaded".  Trip breaker so
+                # we don't pile on, and surface to the caller.
                 self._engine_fail_ts = time.time()
                 raise RuntimeError(
                     f"TrackEngine {tag} returned 503: {response.text[:200]}"
@@ -790,13 +815,34 @@ class TrackEngineService:
             return response.json()
 
         try:
+            t0 = time.perf_counter()
             data = await _do_post()
+            elapsed_ms = (time.perf_counter() - t0) * 1000.0
+            logger.info(
+                "engine_post ok endpoint=%s elapsed_ms=%.1f bytes=%d",
+                endpoint,
+                elapsed_ms,
+                len(str(data)) if data else 0,
+            )
         except RuntimeError:
             raise
-        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPError) as exc:
+        except httpx.ConnectError as exc:
+            # Engine unreachable across all attempts → trip breaker.
             self._engine_fail_ts = time.time()
             raise RuntimeError(
-                f"TrackEngine {tag} failed after {self._ENGINE_MAX_RETRIES} attempts: {exc}"
+                f"TrackEngine {tag} unreachable after {self._ENGINE_MAX_RETRIES} attempts: {exc}"
+            ) from exc
+        except (httpx.ReadTimeout, httpx.WriteTimeout) as exc:
+            # Engine was slow on every attempt.  Do *not* trip the breaker —
+            # /health is fine, the engine is just under load.  The caller
+            # gets a clean error and the next request will try fresh.
+            raise RuntimeError(
+                f"TrackEngine {tag} timed out after {self._ENGINE_MAX_RETRIES} attempts: {exc}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            # Other transport-level error.  Propagate without tripping breaker.
+            raise RuntimeError(
+                f"TrackEngine {tag} request failed: {exc}"
             ) from exc
 
         self._engine_fail_ts = 0.0  # success — reset circuit
@@ -2893,12 +2939,18 @@ class TrackEngineService:
         return response
 
     async def go(self, request: PlanRequest, *, now_ts: int | None = None) -> GoResponse:
+        t_total = time.perf_counter()
         session_now_ts = now_ts or int(time.time())
+        t0 = time.perf_counter()
         response = await self._remote_go(request, now_ts=session_now_ts)
+        remote_ms = (time.perf_counter() - t0) * 1000.0
         user_priority = getattr(request, "priority", None)
+        enrich_ms = 0.0
         if self.enable_realtime_enrichment:
+            t0 = time.perf_counter()
             with suppress(Exception):
                 response = await self._enrich_go_response(response, priority=user_priority)
+            enrich_ms = (time.perf_counter() - t0) * 1000.0
         # Tag ADA accessibility on go trips
         go_itineraries = []
         if response.primary_trip is not None:
@@ -2911,10 +2963,12 @@ class TrackEngineService:
         # Disruption-aware re-routing: when the primary trip has a cancelled
         # leg or a missed transfer, automatically fetch clean alternatives
         # from the engine using a shifted departure time.
+        t0 = time.perf_counter()
         with suppress(Exception):
             response = await self._disruption_reroute(
                 response, request, now_ts=session_now_ts,
             )
+        reroute_ms = (time.perf_counter() - t0) * 1000.0
 
         # When accessibility is prioritised, swap primary if a better option exists
         if getattr(request, "accessibility_priority", False) and response.alternatives:
@@ -2937,6 +2991,16 @@ class TrackEngineService:
                 destination_lon=request.destination.lon or 0.0,
                 itinerary=response.primary_trip.itinerary,
             )
+        total_ms = (time.perf_counter() - t_total) * 1000.0
+        logger.info(
+            "go timing total=%.0fms remote=%.0fms enrich=%.0fms reroute=%.0fms origin=%s dest=%s",
+            total_ms,
+            remote_ms,
+            enrich_ms,
+            reroute_ms,
+            request.origin.label[:32],
+            request.destination.label[:32],
+        )
         return response
 
     async def search(
@@ -3367,4 +3431,15 @@ class TrackEngineService:
                 destination_lon=request.destination.lon or 0.0,
                 itinerary=itineraries[0],
             )
+        total_ms = (time.perf_counter() - t_total) * 1000.0
+        logger.info(
+            "plan timing total=%.0fms remote=%.0fms ada=%.0fms enrich=%.0fms n=%d origin=%s dest=%s",
+            total_ms,
+            plan_ms,
+            ada_ms,
+            enrich_ms,
+            len(itineraries),
+            request.origin.label[:32],
+            request.destination.label[:32],
+        )
         return itineraries, schedule_note

@@ -6,7 +6,7 @@
   "max_origin_walk_m": 1200,
   "max_destination_walk_m": 1200,
   "max_transfer_walk_m": 250,
-  "search_window_minutes": 180,
+  "search_window_minutes": 90,
   "num_itineraries": 3,
   "default_modes": ["subway", "bus", "lirr", "mnr"],
 

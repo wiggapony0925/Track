@@ -8,6 +8,7 @@ struct TripDetailSheet: View {
     let trip: TripPlan
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(GoTripSession.self) private var goSession
     @State private var heroVisible = false
     @State private var statsVisible = false
     @State private var bodyVisible = false
@@ -386,28 +387,39 @@ struct TripDetailSheet: View {
 
     private var actionButtons: some View {
         VStack(spacing: 10) {
-            // Save trip — primary
+            // GO — primary, immersive navigation takeover
             Button {
-                // TODO: Save this trip
+                // Dismiss this sheet first so the full-screen cover can present
+                // cleanly from MainTabView, then activate the Go session.
+                let trip = self.trip
+                dismiss()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    goSession.start(trip)
+                }
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "bookmark.fill")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Save Trip")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                HStack(spacing: 10) {
+                    Image(systemName: "arrowshape.turn.up.right.fill")
+                        .font(.system(size: 16, weight: .heavy))
+                    Text("GO")
+                        .font(.system(size: 18, weight: .heavy, design: .rounded))
+                        .tracking(1.0)
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+                .padding(.vertical, 18)
                 .background(
                     Capsule()
                         .fill(
                             LinearGradient(
-                                colors: [AppTheme.Colors.accent, AppTheme.Colors.accentDeep],
+                                colors: [
+                                    AppTheme.Colors.goGreen,
+                                    AppTheme.Colors.goGreen.opacity(0.85),
+                                ],
                                 startPoint: .leading, endPoint: .trailing
                             )
                         )
-                        .shadow(color: AppTheme.Colors.accent.opacity(0.3), radius: 10, y: 4)
+                        .shadow(
+                            color: AppTheme.Colors.goGreen.opacity(0.45), radius: 14, y: 6)
                 )
             }
             .buttonStyle(.plain)
@@ -415,12 +427,12 @@ struct TripDetailSheet: View {
             // Secondary actions
             HStack(spacing: 10) {
                 Button {
-                    // TODO: Set departure alarm
+                    // TODO: Save this trip
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "alarm.fill")
+                        Image(systemName: "bookmark.fill")
                             .font(.system(size: 13, weight: .bold))
-                        Text("Set Alarm")
+                        Text("Save")
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                     }
                     .foregroundStyle(AppTheme.Colors.accent)
@@ -431,7 +443,8 @@ struct TripDetailSheet: View {
                             .fill(AppTheme.Colors.accent.opacity(0.08))
                             .overlay(
                                 Capsule()
-                                    .strokeBorder(AppTheme.Colors.accent.opacity(0.2), lineWidth: 1)
+                                    .strokeBorder(
+                                        AppTheme.Colors.accent.opacity(0.2), lineWidth: 1)
                             )
                     )
                 }
@@ -636,5 +649,6 @@ struct TripDetailSheet: View {
             numTransfers: 1
         )
     )
+    .environment(GoTripSession())
     .preferredColorScheme(.dark)
 }

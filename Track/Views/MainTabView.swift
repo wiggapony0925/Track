@@ -54,7 +54,10 @@ struct MainTabView: View {
     /// Chat tab so MetroMind can bias "near me" answers to the pin
     /// instead of the device GPS.
     @State private var chatBiasPin: CLLocationCoordinate2D?
-
+    /// Active "Go" navigation session.  When `activeTrip` becomes non-nil
+    /// the immersive `GoTripView` is presented as a full-screen cover,
+    /// effectively locking the user into the trip until they exit.
+    @State private var goSession = GoTripSession()
     var body: some View {
         TabView(selection: $selectedTab) {
             HomeView(
@@ -110,6 +113,16 @@ struct MainTabView: View {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     selectedTab = tab
                 }
+            }
+        }
+        .environment(goSession)
+        .fullScreenCover(isPresented: Binding(
+            get: { goSession.isActive },
+            set: { if !$0 { goSession.stop() } }
+        )) {
+            if let trip = goSession.activeTrip {
+                GoTripView(trip: trip)
+                    .environment(goSession)
             }
         }
     }
