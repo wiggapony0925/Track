@@ -167,14 +167,16 @@ async def fire(client: httpx.AsyncClient, base: str, idx: int, prompt: str) -> T
                         payload_obj = evt.get("payload") or {}
                         if ok and isinstance(payload_obj, dict):
                             n_itin = len(payload_obj.get("itineraries") or [])
-                            if n_itin > 0:
-                                res.plan_ok = True
-                                res.itineraries = max(res.itineraries, n_itin)
+                            # Engine succeeded — itineraries empty is a valid
+                            # answer for out-of-service-area destinations
+                            # (Newark, Hoboken, etc.). The model is expected
+                            # to give NJ Transit / PATH guidance.
+                            res.plan_ok = True
+                            res.itineraries = max(res.itineraries, n_itin)
                         elif not ok and isinstance(payload_obj, dict):
                             err = (payload_obj.get("error") or "").strip()
                             if err and not res.error:
-                                res.error = f"plan_route: {err[:120]}"
-                elif t == "error":
+                                res.error = f"plan_route: {err[:120]}"                elif t == "error":
                     res.error = str(evt.get("message") or evt.get("error") or "stream error")
     except httpx.TimeoutException as e:
         res.error = f"TIMEOUT: {type(e).__name__}"
@@ -221,7 +223,7 @@ def pct(vals: list[float], p: float) -> float:
 def report(results: list[TripResult]) -> None:
     n = len(results)
     http_ok = [r for r in results if r.status == 200]
-    engine_ok = [r for r in results if r.plan_ok and r.itineraries > 0]
+    engine_ok = [r for r in results if r.plan_ok]
     engine_bad = [r for r in results if r not in engine_ok]
     totals = [r.total_ms for r in engine_ok]
     ttfts = [r.ttft_ms for r in engine_ok if r.ttft_ms]
