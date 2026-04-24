@@ -68,6 +68,14 @@ struct ChatMessage: Identifiable {
     /// Optional image attached by the user (data URL). Renders a small
     /// thumbnail under user bubbles.
     var imageDataURL: String? = nil
+    /// The user prompt that produced this assistant reply — used for
+    /// regenerate + feedback context.
+    var promptedBy: String? = nil
+    /// Model id reported by the backend on `.done` (e.g. `gpt-4o-mini`).
+    var modelUsed: String? = nil
+    /// Local user feedback state: `1` = thumbs up, `-1` = thumbs down,
+    /// `nil` = not rated.
+    var rating: Int? = nil
 
     static let mockConversation: [ChatMessage] = [
         .init(role: .assistant, content: .text(
@@ -184,11 +192,12 @@ final class ChatViewModel {
 
         // Append a placeholder assistant bubble we'll mutate as tokens
         // stream in.
-        let placeholder = ChatMessage(
+        var placeholder = ChatMessage(
             role: .assistant,
             content: .text(""),
             showActions: false
         )
+        placeholder.promptedBy = trimmed
         messages.append(placeholder)
         let assistantId = placeholder.id
 
@@ -252,11 +261,15 @@ final class ChatViewModel {
                         _ = name
                     case .suggestions(let chips):
                         self.setChips(chips, on: assistantId)
-                    case .done(_, _, let tid):
+                    case .done(_, let model, let tid):
                         self.setToolStatus(nil, on: assistantId)
+                        if let m = model, !m.isEmpty {
+                            self.setModelUsed(m, on: assistantId)
+                        }
                         if let tid = tid, !tid.isEmpty {
                             self.persistThreadId(tid)
                         }
+                        self.markActionable(assistantId)
                         self.speakIfNeeded(messageId: assistantId)
                     case .error(let msg):
                         self.replaceText(
@@ -336,6 +349,21 @@ final class ChatViewModel {
         messages[idx].suggestedChips = chips
     }
 
+    private func setModelUsed(_ model: String, on id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        messages[idx].modelUsed = model
+    }
+
+    /// Reveal the action row (thumbs / share / copy / regenerate / speaker)
+    /// once the reply is fully streamed in.
+    private func markActionable(_ id: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
+        if case .text(let body) = messages[idx].content,
+           !body.isEmpty, !body.hasPrefix("_\u{26A0}\u{FE0F}") {
+            messages[idx].showActions = true
+        }
+    }
+
     private func persistThreadId(_ tid: String) {
         threadId = tid
         UserDefaults.standard.set(tid, forKey: "metromind.thread_id")
@@ -395,6 +423,103 @@ final class ChatViewModel {
             out = out.replacingOccurrences(of: token, with: "")
         }
         return out
+    }
+
+    /// Currently-speaking message id (if any), so the per-message
+    /// speaker button can render a "stop" state.
+    var speakingMessageId: UUID?
+
+    /// Speak (or stop speaking) a specific assistant message on demand.
+    /// Independent of the global ``speakReplies`` toggle so the user
+    /// can hear any single reply by tapping its speaker icon.
+    func speakMessage(id: UUID) {
+        if speakingMessageId == id {
+            tts.stopSpeaking(at: .immediate)
+            speakingMessageId = nil
+            return
+        }
+        guard let msg = messages.first(where: { $0.id == id }),
+              case .text(let body) = msg.content,
+              !body.isEmpty else { return }
+        tts.stopSpeaking(at: .immediate)
+        let utterance = AVSpeechUtterance(string: stripMarkdown(body))
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        speakingMessageId = id
+        tts.speak(utterance)
+        // Auto-clear the highlight when playback finishes — poll briefly
+        // since AVSpeechSynthesizer's delegate plumbing isn't worth the
+        // weight for a single boolean.
+        Task { @MainActor [weak self] in
+            while let self, self.tts.isSpeaking, self.speakingMessageId == id {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+            if self?.speakingMessageId == id {
+                self?.speakingMessageId = nil
+            }
+        }
+    }
+
+    /// Re-run the prompt that produced this assistant reply. Removes
+    /// the existing reply (and any payload cards) so the new stream
+    /// starts from a clean slate.
+    func regenerate(messageId: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        let prompt = messages[idx].promptedBy ?? {
+            // Fallback: nearest user turn before this assistant message.
+            for j in stride(from: idx - 1, through: 0, by: -1) where messages[j].role == .user {
+                if case .text(let t) = messages[j].content { return t }
+            }
+            return nil
+        }()
+        guard let prompt, !prompt.isEmpty else { return }
+
+        // Drop the assistant turn AND the user turn that produced it
+        // (send() will re-append the user turn).
+        var removalIdx = idx
+        if idx > 0, messages[idx - 1].role == .user {
+            removalIdx = idx - 1
+        }
+        messages.removeSubrange(removalIdx..<messages.count)
+        send(prompt)
+    }
+
+    /// Submit a thumbs rating to the backend and reflect it locally.
+    func setRating(_ rating: Int, on messageId: UUID) {
+        guard let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        // Toggle off when re-tapping the same rating.
+        let newRating: Int? = (messages[idx].rating == rating) ? nil : rating
+        messages[idx].rating = newRating
+        guard let r = newRating else { return }
+
+        let assistantText: String? = {
+            if case .text(let body) = messages[idx].content { return body }
+            return nil
+        }()
+        let prompt = messages[idx].promptedBy
+        let model = messages[idx].modelUsed
+        let tid = threadId
+        let mid = messages[idx].id.uuidString
+
+        Task.detached(priority: .utility) {
+            _ = await MetroMindAPI.submitFeedback(
+                rating: r,
+                threadId: tid,
+                clientMessageId: mid,
+                userPrompt: prompt,
+                assistantText: assistantText,
+                modelUsed: model
+            )
+        }
+    }
+
+    /// Plain-text payload suitable for share sheets / clipboard.
+    func shareText(for messageId: UUID) -> String {
+        guard let msg = messages.first(where: { $0.id == messageId }),
+              case .text(let body) = msg.content else { return "" }
+        return stripMarkdown(body)
     }
 
     /// Wipe the conversation back to the opening greeting.
@@ -466,6 +591,10 @@ struct ChatView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
+            // Make sure we always have the freshest possible fix when the
+            // user opens the chat tab — chat answers "near me" questions
+            // and a stale GPS would route them to the wrong neighborhood.
+            locationManager?.requestImmediateFix()
             syncLocation()
             syncUserData()
             syncBias()
@@ -475,7 +604,23 @@ struct ChatView: View {
     }
 
     private func syncLocation() {
-        viewModel.currentLocation = locationManager?.currentLocation?.coordinate
+        // Prefer the live CoreLocation fix; fall back to the App Group
+        // cached coordinate so the chat is never "location-blind" right
+        // after launch (before the first GPS fix lands).
+        if let coord = locationManager?.currentLocation?.coordinate {
+            viewModel.currentLocation = coord
+        } else {
+            let defaults = UserDefaults(suiteName: appGroupIdentifier) ?? .standard
+            if defaults.bool(forKey: "hasLastLocation") {
+                let lat = defaults.double(forKey: "lastLatitude")
+                let lon = defaults.double(forKey: "lastLongitude")
+                if lat != 0 || lon != 0 {
+                    viewModel.currentLocation = CLLocationCoordinate2D(
+                        latitude: lat, longitude: lon
+                    )
+                }
+            }
+        }
         syncBias()
     }
 
@@ -485,9 +630,9 @@ struct ChatView: View {
             viewModel.biasLon = pin.longitude
             viewModel.biasSource = "map_pin"
             viewModel.biasLabel = "dropped pin"
-        } else if let loc = locationManager?.currentLocation?.coordinate {
-            viewModel.biasLat = loc.latitude
-            viewModel.biasLon = loc.longitude
+        } else if let coord = viewModel.currentLocation {
+            viewModel.biasLat = coord.latitude
+            viewModel.biasLon = coord.longitude
             viewModel.biasSource = "gps"
             viewModel.biasLabel = "current location"
         } else {
@@ -578,7 +723,16 @@ struct ChatView: View {
                                 message: message,
                                 isFirstInGroup: isFirstInGroup(at: index),
                                 isLastInGroup: isLastInGroup(at: index),
-                                onChipTap: { chip in viewModel.tapChip(chip) }
+                                isSpeaking: viewModel.speakingMessageId == message.id,
+                                onChipTap: { chip in viewModel.tapChip(chip) },
+                                onLike: { viewModel.setRating(1, on: message.id) },
+                                onDislike: { viewModel.setRating(-1, on: message.id) },
+                                onSpeak: { viewModel.speakMessage(id: message.id) },
+                                onRegenerate: { viewModel.regenerate(messageId: message.id) },
+                                onCopy: {
+                                    UIPasteboard.general.string = viewModel.shareText(for: message.id)
+                                },
+                                shareText: viewModel.shareText(for: message.id)
                             )
                             .id(message.id)
                             .transition(.asymmetric(
@@ -818,7 +972,14 @@ private struct ChatMessageRow: View {
     let message: ChatMessage
     let isFirstInGroup: Bool
     let isLastInGroup: Bool
+    var isSpeaking: Bool = false
     var onChipTap: (SuggestedActionChip) -> Void = { _ in }
+    var onLike: () -> Void = { }
+    var onDislike: () -> Void = { }
+    var onSpeak: () -> Void = { }
+    var onRegenerate: () -> Void = { }
+    var onCopy: () -> Void = { }
+    var shareText: String = ""
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
@@ -900,8 +1061,17 @@ private struct ChatMessageRow: View {
                 }
 
                 if message.role == .assistant && message.showActions && isLastInGroup {
-                    AssistantActionRow()
-                        .padding(.top, 2)
+                    AssistantActionRow(
+                        rating: message.rating,
+                        isSpeaking: isSpeaking,
+                        shareText: shareText,
+                        onLike: onLike,
+                        onDislike: onDislike,
+                        onSpeak: onSpeak,
+                        onCopy: onCopy,
+                        onRegenerate: onRegenerate
+                    )
+                    .padding(.top, 2)
                 }
             }
 
@@ -2194,28 +2364,73 @@ private struct FileBubble: View {
 // MARK: - Action Row
 
 private struct AssistantActionRow: View {
-    @State private var liked: Bool? = nil
+    var rating: Int? = nil
+    var isSpeaking: Bool = false
+    var shareText: String = ""
+    var onLike: () -> Void = { }
+    var onDislike: () -> Void = { }
+    var onSpeak: () -> Void = { }
+    var onCopy: () -> Void = { }
+    var onRegenerate: () -> Void = { }
+
+    @State private var copiedFlash: Bool = false
 
     var body: some View {
         HStack(spacing: 2) {
             actionButton(
-                systemName: liked == true ? "hand.thumbsup.fill" : "hand.thumbsup",
-                tinted: liked == true
+                systemName: rating == 1 ? "hand.thumbsup.fill" : "hand.thumbsup",
+                tinted: rating == 1,
+                accessibilityLabel: "Good response"
             ) {
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                    liked = liked == true ? nil : true
+                    onLike()
                 }
             }
             actionButton(
-                systemName: liked == false ? "hand.thumbsdown.fill" : "hand.thumbsdown",
-                tinted: liked == false
+                systemName: rating == -1 ? "hand.thumbsdown.fill" : "hand.thumbsdown",
+                tinted: rating == -1,
+                accessibilityLabel: "Bad response"
             ) {
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                    liked = liked == false ? nil : false
+                    onDislike()
                 }
             }
-            actionButton(systemName: "square.and.arrow.up") { }
-            actionButton(systemName: "arrow.clockwise") { }
+            actionButton(
+                systemName: isSpeaking ? "stop.circle.fill" : "speaker.wave.2.fill",
+                tinted: isSpeaking,
+                accessibilityLabel: isSpeaking ? "Stop speaking" : "Read aloud"
+            ) {
+                onSpeak()
+            }
+            actionButton(
+                systemName: copiedFlash ? "checkmark" : "doc.on.doc",
+                tinted: copiedFlash,
+                accessibilityLabel: "Copy reply"
+            ) {
+                onCopy()
+                withAnimation(.easeOut(duration: 0.2)) { copiedFlash = true }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                    withAnimation(.easeIn(duration: 0.2)) { copiedFlash = false }
+                }
+            }
+            if !shareText.isEmpty {
+                ShareLink(item: shareText) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Share reply")
+            }
+            actionButton(
+                systemName: "arrow.clockwise",
+                accessibilityLabel: "Regenerate response"
+            ) {
+                onRegenerate()
+            }
         }
         .padding(.leading, 2)
     }
@@ -2223,6 +2438,7 @@ private struct AssistantActionRow: View {
     private func actionButton(
         systemName: String,
         tinted: Bool = false,
+        accessibilityLabel: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -2235,6 +2451,7 @@ private struct AssistantActionRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 

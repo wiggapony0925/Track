@@ -354,6 +354,54 @@ enum MetroMindAPI {
         let requestedAt: Int?
     }
 
+    /// Submit a thumbs-up / thumbs-down rating for an assistant reply.
+    /// Fire-and-forget; surfaces transport errors but never throws on
+    /// HTTP-level failures so the UI can stay snappy.
+    @discardableResult
+    static func submitFeedback(
+        rating: Int,
+        threadId: String? = nil,
+        clientMessageId: String? = nil,
+        userPrompt: String? = nil,
+        assistantText: String? = nil,
+        reason: String? = nil,
+        modelUsed: String? = nil
+    ) async -> Bool {
+        let base = await MainActor.run { TrackAPI.baseURL }
+        guard let url = URL(string: base + "/metromind/feedback") else { return false }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 8
+
+        var body: [String: Any] = ["rating": rating]
+        if let v = threadId, !v.isEmpty { body["thread_id"] = v }
+        if let v = clientMessageId, !v.isEmpty { body["client_msg_id"] = v }
+        if let v = userPrompt, !v.isEmpty { body["user_prompt"] = v }
+        if let v = assistantText, !v.isEmpty { body["assistant_text"] = v }
+        if let v = reason, !v.isEmpty { body["reason"] = v }
+        if let v = modelUsed, !v.isEmpty { body["model_used"] = v }
+        let appVersion = await MainActor.run {
+            let info = Bundle.main.infoDictionary
+            let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+            let build = info?["CFBundleVersion"] as? String ?? "?"
+            return "\(short) (\(build))"
+        }
+        body["app_version"] = appVersion
+
+        do {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (_, response) = try await URLSession.shared.data(for: req)
+            if let http = response as? HTTPURLResponse,
+               (200..<300).contains(http.statusCode) {
+                return true
+            }
+            return false
+        } catch {
+            return false
+        }
+    }
+
     /// Streams a chat turn. Yields events in order until the server
     /// closes the connection. Throws on transport / HTTP errors; soft
     /// errors from the model are surfaced as `.error(msg)` events.

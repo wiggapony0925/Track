@@ -10,6 +10,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.metromind import thread_store
+from app.metromind import feedback_store
 from app.metromind.config import get_metromind_settings
 from app.metromind.llm import LLMError, LLMNotConfigured, get_llm_client
 from app.metromind.logger import get_logger
@@ -211,6 +212,71 @@ async def transcribe(
         "duration_bytes": len(data),
     }
 
+# ── Feedback (thumbs up / down) ────────────────────────────────────────────
+
+@router.post(
+    "/feedback",
+    summary="Record a thumbs-up / thumbs-down on an assistant reply",
+    description=(
+        "Lightweight analytics endpoint the iOS chat calls when the user "
+        "taps the thumbs button on a MetroMind reply. Stores rating, the "
+        "prompt + reply text (truncated), the optional reason, and the "
+        "app version + model so we can later filter regressions."
+    ),
+)
+async def submit_feedback(body: dict) -> dict:
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body must be JSON object.")
+    raw_rating = body.get("rating")
+    try:
+        rating = int(raw_rating)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400, detail="`rating` must be 1 or -1."
+        ) from exc
+    if rating not in (1, -1):
+        raise HTTPException(status_code=400, detail="`rating` must be 1 or -1.")
+
+    def _str(field: str) -> str | None:
+        v = body.get(field)
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return str(v)
+        return v.strip() or None
+
+    try:
+        row_id = await asyncio.to_thread(
+            feedback_store.record_feedback,
+            rating=rating,
+            thread_id=_str("thread_id"),
+            client_msg_id=_str("client_msg_id"),
+            user_prompt=_str("user_prompt"),
+            assistant_text=_str("assistant_text"),
+            reason=_str("reason"),
+            app_version=_str("app_version"),
+            model_used=_str("model_used"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("feedback insert failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return {"ok": True, "id": row_id}
+
+
+@router.get(
+    "/feedback/summary",
+    summary="Aggregate feedback counts + recent rows",
+    description="Returns thumbs-up / thumbs-down totals and the latest entries.",
+)
+async def feedback_summary(limit: int = 100) -> dict:
+    try:
+        return await asyncio.to_thread(feedback_store.feedback_summary, limit)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("feedback summary failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
