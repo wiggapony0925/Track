@@ -105,7 +105,7 @@ final class ChatViewModel {
 
     /// Strip the GTFS agency prefix off a route id ("MTA NYCT_L" → "L")
     /// so chip text reads naturally to riders.
-    private static func shortRouteLabel(_ id: String) -> String {
+    static func shortRouteLabel(_ id: String) -> String {
         for prefix in ["MTA NYCT_", "MTA BUS_", "MTABC_"] {
             if id.uppercased().hasPrefix(prefix) {
                 return String(id.dropFirst(prefix.count))

@@ -138,14 +138,20 @@ struct MainTabView: View {
         }
         .environment(locationContext)
         .environment(goSession)
-        .fullScreenCover(isPresented: Binding(
-            get: { goSession.isActive },
-            set: { if !$0 { goSession.stop() } }
-        )) {
-            if let trip = goSession.activeTrip {
-                GoTripView(trip: trip)
-                    .environment(goSession)
+        // NOTE: read `goSession.activeTrip` directly here so that
+        // SwiftUI's @Observable tracking registers the dependency on
+        // this view's body. Reading it only inside the `Binding(get:)`
+        // closure below is *not* enough — the closure isn't evaluated
+        // during body, so the cover would never re-present when the
+        // user taps GO from TripDetailSheet.
+        .fullScreenCover(item: Binding<TripPlan?>(
+            get: { goSession.activeTrip },
+            set: { newValue in
+                if newValue == nil { goSession.stop() }
             }
+        )) { trip in
+            GoTripView(trip: trip)
+                .environment(goSession)
         }
     }
 }

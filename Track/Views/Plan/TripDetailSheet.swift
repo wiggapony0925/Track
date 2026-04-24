@@ -389,13 +389,15 @@ struct TripDetailSheet: View {
         VStack(spacing: 10) {
             // GO — primary, immersive navigation takeover
             Button {
-                // Dismiss this sheet first so the full-screen cover can present
-                // cleanly from MainTabView, then activate the Go session.
-                let trip = self.trip
+                // Activate the Go session first so the parent's
+                // fullScreenCover (driven by `goSession.activeTrip`)
+                // schedules a presentation, then dismiss this sheet.
+                // SwiftUI handles the swap cleanly without a manual
+                // delay — the previous asyncAfter approach would
+                // sometimes drop the GO tap if the sheet's dismissal
+                // animation interrupted the start call.
+                goSession.start(trip)
                 dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    goSession.start(trip)
-                }
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "arrowshape.turn.up.right.fill")
