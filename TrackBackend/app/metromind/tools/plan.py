@@ -118,7 +118,7 @@ async def _resolve_label_via_search(
 
     Returns ``(None, None, None)`` when no match is found.
     """
-    gazetteer_hit = _GAZETTEER.get(label.strip().lower())
+    gazetteer_hit = _gazetteer_lookup(label)
     if gazetteer_hit is not None:
         lat, lon = gazetteer_hit
         logger.info("Resolved '%s' via gazetteer \u2192 (%.5f, %.5f)", label, lat, lon)
@@ -142,6 +142,37 @@ async def _resolve_label_via_search(
             )
             return stop.lat, stop.lon, stop.stop_id
     return None, None, None
+
+
+def _gazetteer_lookup(label: str) -> tuple[float, float] | None:
+    """Look up a label in ``_GAZETTEER`` with progressively looser keys.
+
+    Tries (in order) the raw lowercase label, the part before the first
+    comma (``"Ridgewood, Queens"`` -> ``"ridgewood"``), and the same with
+    common borough/state suffixes stripped (``"newark, nj"`` ->
+    ``"newark"``). Returns ``None`` when nothing matches.
+    """
+    base = (label or "").strip().lower()
+    if not base:
+        return None
+    if base in _GAZETTEER:
+        return _GAZETTEER[base]
+    # Drop everything after the first comma (handles "Ridgewood, Queens",
+    # "Newark, NJ", "Hoboken, New Jersey", etc.).
+    head = base.split(",", 1)[0].strip()
+    if head and head in _GAZETTEER:
+        return _GAZETTEER[head]
+    # Strip a trailing borough/state qualifier joined by a space when the
+    # model writes "Ridgewood Queens" without a comma.
+    for suffix in (
+        " queens", " brooklyn", " manhattan", " bronx", " staten island",
+        " nj", " new jersey", " ny", " new york",
+    ):
+        if base.endswith(suffix):
+            trimmed = base[: -len(suffix)].strip()
+            if trimmed in _GAZETTEER:
+                return _GAZETTEER[trimmed]
+    return None
 
 
 # NYC neighborhood + landmark gazetteer for trip-planning fallback.
