@@ -13,6 +13,7 @@ message or ``settings.max_tool_iterations`` is hit (defensive cap).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from typing import Any, AsyncIterator
 
@@ -102,6 +103,30 @@ async def _run_tool_calls(
     return list(zip(tool_calls, results, strict=True))
 
 
+def _call_signature(name: str, arguments_json: str | None) -> str:
+    """Stable hash of (tool_name, normalised_args) for per-turn dedupe.
+
+    Two tool calls with the same name and same argument values — even
+    if key order differs — collapse to the same signature so the
+    orchestrator can short-circuit a duplicate call instead of letting
+    the model spin in a replan loop.
+    """
+    try:
+        args = json.loads(arguments_json or "{}") if arguments_json else {}
+    except json.JSONDecodeError:
+        args = {"_raw": arguments_json or ""}
+    canon = json.dumps(args, sort_keys=True, separators=(",", ":"))
+    h = hashlib.sha1(f"{name}|{canon}".encode("utf-8")).hexdigest()[:16]
+    return h
+
+
+DUPLICATE_CALL_NOTE = (
+    "You already called this tool with these exact arguments earlier in "
+    "this turn — the previous result is still in your context. Do not "
+    "call it again; use what you have to answer the user now."
+)
+
+
 # ── Non-streaming entry point ─────────────────────────────────────────
 
 async def run_turn(
@@ -129,6 +154,7 @@ async def run_turn(
     tools = tool_schemas()
     used_tools: list[str] = []
     tool_payloads: dict[str, dict[str, Any] | None] = {}
+    seen_signatures: set[str] = set()
     model, reason = pick_model(
         user_message=user_message,
         history=history,
@@ -170,29 +196,65 @@ async def run_turn(
             }
         )
 
-        pairs = await _run_tool_calls(tool_calls, context)
-        for call, result in pairs:
-            used_tools.append(call.function.name)
-            tool_payloads[call.function.name] = parse_tool_payload(
-                call.function.name, result.content
-            )
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call.id,
-                    "content": result.content,
-                }
-            )
+        # Split into fresh calls vs. duplicates we've already executed
+        # this turn. Duplicates get a synthetic "stop repeating yourself"
+        # tool result so the model can move on instead of re-planning.
+        fresh_calls: list[Any] = []
+        for call in tool_calls:
+            sig = _call_signature(call.function.name, call.function.arguments)
+            if sig in seen_signatures:
+                logger.info("Dedupe: %s called twice with same args", call.function.name)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": json.dumps(
+                            {"error": "duplicate_call", "note": DUPLICATE_CALL_NOTE}
+                        ),
+                    }
+                )
+                continue
+            seen_signatures.add(sig)
+            fresh_calls.append(call)
 
+        if fresh_calls:
+            pairs = await _run_tool_calls(fresh_calls, context)
+            for call, result in pairs:
+                used_tools.append(call.function.name)
+                tool_payloads[call.function.name] = parse_tool_payload(
+                    call.function.name, result.content
+                )
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "content": result.content,
+                    }
+                )
+
+    # Iteration cap hit. Instead of erroring out, force ONE final answer
+    # with tool_choice="none" so the model commits to the best reply it
+    # can give from the tool results already in context.
     logger.warning(
-        "MetroMind hit max_tool_iterations (%d) — returning best-effort",
+        "MetroMind hit max_tool_iterations (%d) \u2014 forcing final answer",
         settings.max_tool_iterations,
     )
     chips = build_suggestions(
         used_tools=used_tools, tool_payloads=tool_payloads, context=context
     )
+    try:
+        final = await client.complete(
+            messages=messages, tools=tools, model=model, tool_choice="none"
+        )
+        reply = (final.choices[0].message.content or "").strip()
+        if reply:
+            return reply, used_tools, chips, model
+    except LLMError as exc:
+        logger.warning("Force-final completion failed: %s", exc)
+
     return (
-        "Sorry — I had trouble finishing that request. Try rephrasing?",
+        "I had trouble pulling everything together \u2014 try rephrasing or asking "
+        "for one piece at a time?",
         used_tools,
         chips,
         model,
@@ -228,6 +290,7 @@ async def stream_turn(
     tools = tool_schemas()
     used_tools: list[str] = []
     tool_payloads: dict[str, dict[str, Any] | None] = {}
+    seen_signatures: set[str] = set()
     model, reason = pick_model(
         user_message=user_message,
         history=history,
@@ -305,13 +368,36 @@ async def stream_turn(
             )
 
             # Emit tool-call UI events + run them.
+            # Split into fresh vs duplicate calls so we don't replay the
+            # exact same tool with the exact same args inside one turn.
+            fresh_indices: list[int] = []
             for idx in sorted(tool_calls_buf):
                 slot = tool_calls_buf[idx]
                 name = slot["name"] or "unknown"
+                sig = _call_signature(name, slot.get("arguments"))
+                if sig in seen_signatures:
+                    logger.info("Stream dedupe: %s called twice with same args", name)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": slot["id"],
+                            "content": json.dumps(
+                                {"error": "duplicate_call", "note": DUPLICATE_CALL_NOTE}
+                            ),
+                        }
+                    )
+                    continue
+                seen_signatures.add(sig)
+                fresh_indices.append(idx)
                 yield SSEToolCallEvent(
                     name=name,
                     label=_pretty_label(name, slot.get("arguments")),
                 ).model_dump()
+
+            if not fresh_indices:
+                # Every call this round was a duplicate — let the next
+                # iteration produce a final answer from existing context.
+                continue
 
             # Run in parallel.
             async def _run(slot: dict[str, Any]) -> Any:
@@ -322,10 +408,10 @@ async def stream_turn(
                 )
 
             results = await asyncio.gather(
-                *[_run(tool_calls_buf[i]) for i in sorted(tool_calls_buf)]
+                *[_run(tool_calls_buf[i]) for i in fresh_indices]
             )
 
-            for idx, result in zip(sorted(tool_calls_buf), results, strict=True):
+            for idx, result in zip(fresh_indices, results, strict=True):
                 slot = tool_calls_buf[idx]
                 used_tools.append(result.name)
                 parsed = parse_tool_payload(result.name, result.content)
@@ -343,9 +429,38 @@ async def stream_turn(
                     }
                 )
 
-        logger.warning("Stream hit max iterations")
+        # Iteration cap hit. Try ONE non-streaming completion with
+        # tool_choice="none" so the model commits to a final answer
+        # from whatever tool results are already in context, instead
+        # of erroring.
+        logger.warning("Stream hit max iterations \u2014 forcing final answer")
+        try:
+            final = await client.complete(
+                messages=messages, tools=tools, model=model, tool_choice="none"
+            )
+            forced_text = (final.choices[0].message.content or "").strip()
+        except LLMError as exc:
+            logger.warning("Force-final failed: %s", exc)
+            forced_text = ""
+
+        if forced_text:
+            yield SSETokenEvent(text=forced_text).model_dump()
+            chips = build_suggestions(
+                used_tools=used_tools,
+                tool_payloads=tool_payloads,
+                context=context,
+            )
+            if chips:
+                yield SSESuggestionsEvent(actions=chips).model_dump()
+            yield SSEDoneEvent(
+                tool_calls=used_tools,
+                model_used=model,
+                thread_id=thread_id,
+            ).model_dump()
+            return
+
         yield SSEErrorEvent(
-            message="I couldn't finish that request — try rephrasing."
+            message="I had trouble pulling everything together \u2014 try rephrasing or asking for one piece at a time?"
         ).model_dump()
     except LLMError as exc:
         logger.warning("Stream aborted: %s", exc)

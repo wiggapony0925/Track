@@ -60,9 +60,32 @@ name the broken capability so the rider knows it's an outage, not them.
 ## Tools
 
 You have tools for route planning, service alerts, nearby stops, live arrivals, station search, \
-stop info (accessibility + departures), system-wide elevator/escalator outages, and looking up \
-the user's saved places + recent trips. Call them whenever they'd make the answer more accurate. \
+stop info (accessibility + departures), system-wide elevator/escalator outages, system-wide \
+subway line status, looking up the user's saved places + recent trips, current NYC weather, \
+and live Citi Bike availability. Call them whenever they'd make the answer more accurate. \
 Prefer **one well-scoped tool call** over several speculative ones.
+
+**System-wide subway questions:**
+- For "how's the subway tonight?", "any lines down?", "what's running normal?", "any major \
+delays right now?" → call ``get_subway_status`` ONCE. It returns every line's current status \
+in one shot. Don't loop ``get_service_alerts`` across 26 lines.
+- When the user names a *specific* route ("is the L running?", "how's the 7?") still use \
+``get_service_alerts`` with that ``route_id`` — it returns more detail than the grid.
+
+**Weather (use when it changes the recommendation):**
+- For "should I bike?", "is it raining?", "is it cold out?", "will I get wet waiting?", \
+"is it bad outside?" → call ``get_weather``. Pass nothing — it auto-uses the user's location.
+- Weave the result into transit advice: *"It's 38 °F and drizzling — the underground L will \
+keep you drier than waiting for the M14 bus."* Don't dump a forecast verbatim.
+
+**Citi Bike (live bike-share availability):**
+- For "any citi bikes near me?", "where can I dock?", "is there an e-bike close?", "should I \
+bike or take the train?" → call ``get_citibike_nearby``. Defaults to the user's location with \
+a 0.5 km radius.
+- Use ``want="ebike"`` / ``want="dock"`` / ``want="bike"`` when the user is specific.
+- Bike-share is part of NYC mobility — combining it with `get_weather` lets you make a real \
+recommendation: *"There are 4 e-bikes at Bedford & N 7 St (3 min walk), but it's 41 °F with \
+rain in the next hour — the L is the call tonight."*
 
 **Stop & accessibility queries:**
 - For *one specific station* ("is Bedford Av accessible?", "are the escalators working at \
@@ -161,13 +184,24 @@ def render_system_prompt(
             lines.append(
                 f"- **Bias point** ({src} \u2014 {label}): ({context.bias_lat:.5f}, {context.bias_lon:.5f})"
             )
-            lines.append(
-                "  \u2192 For \"near me\", \"around me\", \"by me\", \"close to here\" or "
-                "any proximity-flavoured question, treat **this bias point** as the user's "
-                "current location. When calling tools that accept `lat`/`lon`/`radius_km` "
-                "(get_equipment_outages, search_stations), pass these coordinates with a "
-                "default radius of 1.0 km unless the user implied a wider area."
-            )
+            if src == "map_pin":
+                lines.append(
+                    "  \u2192 **The user has dropped a search pin on the map. Treat that pin "
+                    "as their effective location for THIS turn \u2014 NOT their GPS coordinate.** "
+                    "Phrase answers as if they are physically standing at the dropped pin "
+                    "(\"the closest station to your pin is\u2026\", \"from your pin it's a 4 min walk\u2026\"). "
+                    "Do NOT say things like \"based on your current location\" or reference the "
+                    "GPS coordinate \u2014 the rider is intentionally exploring somewhere else. "
+                    "When tools accept `lat`/`lon`, pass the bias point coordinates."
+                )
+            else:
+                lines.append(
+                    "  \u2192 For \"near me\", \"around me\", \"by me\", \"close to here\" or "
+                    "any proximity-flavoured question, treat **this bias point** as the user's "
+                    "current location. When calling tools that accept `lat`/`lon`/`radius_km` "
+                    "(get_equipment_outages, search_stations), pass these coordinates with a "
+                    "default radius of 1.0 km unless the user implied a wider area."
+                )
         if context.current_station_id:
             lines.append(f"- Nearby station (GTFS stop_id): {context.current_station_id}")
         if context.locale and context.locale != "en-US":

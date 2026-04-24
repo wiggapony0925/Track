@@ -73,6 +73,7 @@ class LLMClient:
         *,
         tools: list[dict[str, Any]] | None = None,
         model: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> Any:
         """Single-shot chat completion, returning the raw SDK response.
 
@@ -82,14 +83,18 @@ class LLMClient:
         Pass ``model`` to override the configured default for one call
         (used by the complexity router to escalate to ``gpt-4o``).
         """
+        kwargs: dict[str, Any] = {
+            "model": model or self._settings.model,
+            "temperature": self._settings.temperature,
+            "max_tokens": self._settings.max_output_tokens,
+            "messages": messages,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
         try:
-            return await self._client.chat.completions.create(
-                model=model or self._settings.model,
-                temperature=self._settings.temperature,
-                max_tokens=self._settings.max_output_tokens,
-                messages=messages,
-                tools=tools or None,
-            )
+            return await self._client.chat.completions.create(**kwargs)
         except Exception as exc:  # noqa: BLE001 — normalise via LLMError
             logger.warning("LLM call failed: %s", exc)
             raise LLMError(str(exc)) from exc
@@ -101,6 +106,7 @@ class LLMClient:
         *,
         tools: list[dict[str, Any]] | None = None,
         model: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ) -> AsyncIterator[Any]:
         """Async iterator over streaming chunks.
 
@@ -110,15 +116,19 @@ class LLMClient:
 
         Pass ``model`` to override the configured default for one call.
         """
+        kwargs: dict[str, Any] = {
+            "model": model or self._settings.model,
+            "temperature": self._settings.temperature,
+            "max_tokens": self._settings.max_output_tokens,
+            "messages": messages,
+            "stream": True,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        if tool_choice is not None:
+            kwargs["tool_choice"] = tool_choice
         try:
-            stream = await self._client.chat.completions.create(
-                model=model or self._settings.model,
-                temperature=self._settings.temperature,
-                max_tokens=self._settings.max_output_tokens,
-                messages=messages,
-                tools=tools or None,
-                stream=True,
-            )
+            stream = await self._client.chat.completions.create(**kwargs)
         except Exception as exc:  # noqa: BLE001
             logger.warning("LLM stream open failed: %s", exc)
             raise LLMError(str(exc)) from exc

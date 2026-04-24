@@ -9,6 +9,7 @@ import MapLibre
 
 struct PlanView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(LocationContext.self) private var locationContext
     let locationManager: LocationManager
     var homeViewModel: HomeViewModel
     @Binding var selectedTab: AppTab
@@ -97,6 +98,7 @@ struct PlanView: View {
                     modelContext: modelContext,
                     locationManager: locationManager
                 )
+                viewModel.attach(locationContext: locationContext)
                 withAnimation(.easeOut(duration: 0.6).delay(0.2)) {
                     appeared = true
                 }
@@ -1450,5 +1452,6 @@ private struct DashedConnector: Shape {
         currentMapCenter: .constant(nil),
         currentMapDistance: .constant(nil)
     )
+        .environment(LocationContext())
         .preferredColorScheme(.dark)
 }

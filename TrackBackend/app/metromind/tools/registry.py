@@ -8,7 +8,18 @@ from typing import Any, Awaitable, Callable
 from app.metromind.logger import get_logger
 from app.metromind.schemas import UserContext
 
-from . import alerts, equipment_outages, live_arrivals, plan, stations, stop_info, user_data
+from . import (
+    alerts,
+    citibike,
+    equipment_outages,
+    live_arrivals,
+    plan,
+    stations,
+    stop_info,
+    subway_status,
+    user_data,
+    weather,
+)
 from .base import ToolError, ToolResult
 
 logger = get_logger("tools")
@@ -27,6 +38,9 @@ _REGISTRY: dict[str, tuple[dict[str, Any], _ToolFn]] = {
     "get_stop_info": (stop_info.SCHEMA, stop_info.run),
     "get_equipment_outages": (equipment_outages.SCHEMA, equipment_outages.run),
     "get_live_arrivals": (live_arrivals.SCHEMA, live_arrivals.run),
+    "get_subway_status": (subway_status.SCHEMA, subway_status.run),
+    "get_weather": (weather.SCHEMA, weather.run),
+    "get_citibike_nearby": (citibike.SCHEMA, citibike.run),
 }
 
 

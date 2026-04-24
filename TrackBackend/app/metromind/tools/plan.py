@@ -106,11 +106,24 @@ async def _resolve_label_via_search(
 ) -> tuple[float | None, float | None, str | None]:
     """Best-effort: turn a free-text label into (lat, lon, stop_id).
 
-    Uses the same fuzzy GTFS stop search that powers `search_stations`,
-    but tries a few common variants of the label so colloquial names
-    like ``"Times Square"`` still resolve to ``"Times Sq-42 St"``.
+    Tries (in order):
+
+    1. The hardcoded NYC neighborhood / landmark gazetteer
+       (``_GAZETTEER``) — handles names like "DUMBO", "Williamsburg",
+       "JFK", "Newark Airport", "Upper East Side" that don't appear
+       verbatim in the GTFS stops table.
+    2. The same fuzzy GTFS stop search that powers
+       ``search_stations``, with progressively looser variants so
+       "Times Square" still resolves to "Times Sq-42 St".
+
     Returns ``(None, None, None)`` when no match is found.
     """
+    gazetteer_hit = _GAZETTEER.get(label.strip().lower())
+    if gazetteer_hit is not None:
+        lat, lon = gazetteer_hit
+        logger.info("Resolved '%s' via gazetteer \u2192 (%.5f, %.5f)", label, lat, lon)
+        return lat, lon, None
+
     candidates = _label_search_variants(label)
     for variant in candidates:
         try:
@@ -129,6 +142,118 @@ async def _resolve_label_via_search(
             )
             return stop.lat, stop.lon, stop.stop_id
     return None, None, None
+
+
+# NYC neighborhood + landmark gazetteer for trip-planning fallback.
+# Coordinates are rough centroids \u2014 the engine snaps to the nearest
+# transit stop, so "close enough" is fine. Keys are lowercase.
+_GAZETTEER: dict[str, tuple[float, float]] = {
+    # Neighborhoods \u2014 Manhattan
+    "harlem": (40.8116, -73.9465),
+    "east harlem": (40.7957, -73.9389),
+    "spanish harlem": (40.7957, -73.9389),
+    "washington heights": (40.8417, -73.9393),
+    "inwood": (40.8677, -73.9212),
+    "hell's kitchen": (40.7638, -73.9918),
+    "hells kitchen": (40.7638, -73.9918),
+    "midtown": (40.7549, -73.9840),
+    "midtown east": (40.7547, -73.9716),
+    "midtown west": (40.7616, -73.9889),
+    "upper east side": (40.7736, -73.9566),
+    "upper west side": (40.7870, -73.9754),
+    "chelsea": (40.7465, -74.0014),
+    "chelsea market": (40.7424, -74.0061),
+    "high line": (40.7480, -74.0048),
+    "soho": (40.7233, -74.0030),
+    "tribeca": (40.7163, -74.0086),
+    "lower east side": (40.7155, -73.9844),
+    "east village": (40.7264, -73.9818),
+    "west village": (40.7358, -74.0036),
+    "greenwich village": (40.7336, -74.0027),
+    "nyu": (40.7295, -73.9965),
+    "nyu washington square": (40.7308, -73.9973),
+    "washington square": (40.7308, -73.9973),
+    "lincoln center": (40.7725, -73.9835),
+    "columbia university": (40.8075, -73.9626),
+    "met museum": (40.7794, -73.9632),
+    "metropolitan museum": (40.7794, -73.9632),
+    "rockefeller center": (40.7587, -73.9787),
+    "central park": (40.7829, -73.9654),
+    "wall street": (40.7074, -74.0113),
+    "world trade center": (40.7127, -74.0134),
+    "south street seaport": (40.7065, -74.0036),
+    "battery park": (40.7033, -74.0170),
+    "roosevelt island": (40.7614, -73.9505),
+    # Brooklyn
+    "dumbo": (40.7033, -73.9881),
+    "williamsburg": (40.7081, -73.9571),
+    "south williamsburg": (40.7066, -73.9569),
+    "greenpoint": (40.7295, -73.9509),
+    "bushwick": (40.6943, -73.9213),
+    "ridgewood": (40.7027, -73.9087),
+    "park slope": (40.6710, -73.9814),
+    "prospect park": (40.6602, -73.9690),
+    "prospect heights": (40.6776, -73.9696),
+    "crown heights": (40.6710, -73.9442),
+    "bed-stuy": (40.6872, -73.9418),
+    "bedford-stuyvesant": (40.6872, -73.9418),
+    "fort greene": (40.6889, -73.9745),
+    "downtown brooklyn": (40.6928, -73.9897),
+    "atlantic terminal": (40.6843, -73.9774),
+    "barclays center": (40.6826, -73.9754),
+    "coney island": (40.5755, -73.9707),
+    "brighton beach": (40.5776, -73.9613),
+    "brooklyn bridge": (40.7061, -73.9969),
+    "brooklyn": (40.6782, -73.9442),
+    # Queens
+    "long island city": (40.7447, -73.9485),
+    "lic": (40.7447, -73.9485),
+    "astoria": (40.7644, -73.9235),
+    "sunnyside": (40.7430, -73.9196),
+    "woodside": (40.7458, -73.9059),
+    "jackson heights": (40.7556, -73.8830),
+    "elmhurst": (40.7370, -73.8779),
+    "corona": (40.7497, -73.8642),
+    "flushing": (40.7654, -73.8330),
+    "forest hills": (40.7195, -73.8448),
+    "rego park": (40.7269, -73.8612),
+    "kew gardens": (40.7058, -73.8290),
+    "jamaica center": (40.7022, -73.7889),
+    "jamaica": (40.7022, -73.7889),
+    "ridgewood queens": (40.7027, -73.9087),
+    # Bronx
+    "yankee stadium": (40.8296, -73.9262),
+    "the bronx": (40.8448, -73.8648),
+    "bronx zoo": (40.8506, -73.8770),
+    "bronx": (40.8448, -73.8648),
+    "fordham": (40.8618, -73.8909),
+    # Staten Island
+    "staten island": (40.5795, -74.1502),
+    "st george": (40.6437, -74.0731),
+    # Airports + transit hubs
+    "jfk": (40.6413, -73.7781),
+    "jfk airport": (40.6413, -73.7781),
+    "john f kennedy airport": (40.6413, -73.7781),
+    "laguardia": (40.7769, -73.8740),
+    "laguardia airport": (40.7769, -73.8740),
+    "lga": (40.7769, -73.8740),
+    "newark airport": (40.6895, -74.1745),
+    "newark liberty": (40.6895, -74.1745),
+    "ewr": (40.6895, -74.1745),
+    "penn station": (40.7505, -73.9934),
+    "penn": (40.7505, -73.9934),
+    "moynihan train hall": (40.7515, -73.9954),
+    "grand central": (40.7527, -73.9772),
+    "grand central terminal": (40.7527, -73.9772),
+    "port authority": (40.7572, -73.9904),
+    "times square": (40.7580, -73.9855),
+    "times sq": (40.7580, -73.9855),
+    "union square": (40.7359, -73.9911),
+    "union sq": (40.7359, -73.9911),
+    "herald square": (40.7505, -73.9879),
+    "columbus circle": (40.7682, -73.9819),
+    "bryant park": (40.7536, -73.9832),
+}
 
 
 def _label_search_variants(label: str) -> list[str]:

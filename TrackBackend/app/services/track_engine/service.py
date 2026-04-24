@@ -3407,16 +3407,23 @@ class TrackEngineService:
         return accessible + rest
 
     async def plan(self, request: PlanRequest) -> tuple[list, str | None]:
+        t_total = time.perf_counter()
         itineraries, schedule_note = await self._remote_plan(request)
+        plan_ms = (time.perf_counter() - t_total) * 1000.0
         # Tag ADA accessibility on all results so iOS always has the data
+        t_ada = time.perf_counter()
         self._tag_ada_accessibility(itineraries)
+        ada_ms = (time.perf_counter() - t_ada) * 1000.0
         # ── Real-time enrichment (same feeds as Go) ──────────────────
         # Overlay GTFS-RT live_status + alerts on every transit leg so
         # the Plan tab shows live/delayed/cancelled badges identical to
         # what riders already see in the Go experience.
+        enrich_ms = 0.0
         if self.enable_realtime_enrichment and itineraries:
+            t_enrich = time.perf_counter()
             with suppress(Exception):
                 await self._enrich_itineraries_realtime(itineraries)
+            enrich_ms = (time.perf_counter() - t_enrich) * 1000.0
         # When the user prioritises accessibility, push accessible trips first
         if getattr(request, "accessibility_priority", False):
             itineraries = self._rerank_for_accessibility(itineraries)

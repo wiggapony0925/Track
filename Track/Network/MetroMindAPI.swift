@@ -459,7 +459,14 @@ enum MetroMindAPI {
                     }
 
                     var ctx: [String: Any] = ["timezone": "America/New_York"]
-                    if let loc = location {
+                    // When the user has dropped a search pin we treat that as
+                    // their *effective* location for this turn — overriding
+                    // GPS so MetroMind doesn't see two coordinates and
+                    // accidentally answer "near me" relative to the wrong one.
+                    if let bLat = biasLat, let bLon = biasLon, biasSource == "map_pin" {
+                        ctx["lat"] = bLat
+                        ctx["lon"] = bLon
+                    } else if let loc = location {
                         ctx["lat"] = loc.latitude
                         ctx["lon"] = loc.longitude
                     }

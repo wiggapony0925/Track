@@ -76,6 +76,11 @@ final class PlanViewModel {
 
     private var modelContext: ModelContext?
     private var locationManager: LocationManager?
+    /// Optional shared location-source resolver.  When the user has dropped
+    /// a search pin we want "Current Location" in the planner to mean the
+    /// pin, not the device GPS — the planner's origin should follow the
+    /// same effective location every other tab uses.
+    private var locationContext: LocationContext?
     private var searchTask: Task<Void, Never>?
     private var bootstrapTask: Task<Void, Never>?
     private var configSaveTask: Task<Void, Never>?
@@ -146,7 +151,6 @@ final class PlanViewModel {
     func configure(modelContext: ModelContext, locationManager: LocationManager) {
         self.modelContext = modelContext
         self.locationManager = locationManager
-
         guard !didConfigure else { return }
         didConfigure = true
 
@@ -980,6 +984,13 @@ final class PlanViewModel {
     }
 
     private var currentLocationCoordinate: CLLocationCoordinate2D? {
+        // Honor the shared LocationContext first — if the user dropped a
+        // search pin in the Home tab, that pin is their *effective*
+        // location across the whole app, including "Current Location" in
+        // the planner.
+        if let pinned = locationContext?.droppedPin {
+            return pinned
+        }
         if let coordinate = locationManager?.currentLocation?.coordinate {
             return coordinate
         }
@@ -995,14 +1006,26 @@ final class PlanViewModel {
         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
     }
 
+    /// Bind the shared `LocationContext` so "Current Location" in the
+    /// planner follows the user's active source (GPS or dropped pin).
+    func attach(locationContext: LocationContext) {
+        self.locationContext = locationContext
+    }
+
     private func payload(for location: PlanLocation) -> EngineLocationPayloadRequest? {
         switch location {
         case .currentLocation:
             guard let coordinate = currentLocationCoordinate else {
                 return nil
             }
+            // Reflect the active source in the label so engine logs and
+            // any UI surfacing the origin tag tell the truth ("Dropped pin"
+            // vs "Current location").
+            let label = (locationContext?.isUsingDroppedPin ?? false)
+                ? "Dropped pin"
+                : "Current location"
             return EngineLocationPayloadRequest(
-                label: "Current location",
+                label: label,
                 lat: coordinate.latitude,
                 lon: coordinate.longitude,
                 stopID: nil,

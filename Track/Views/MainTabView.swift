@@ -58,6 +58,10 @@ struct MainTabView: View {
     /// the immersive `GoTripView` is presented as a full-screen cover,
     /// effectively locking the user into the trip until they exit.
     @State private var goSession = GoTripSession()
+    /// Single source of truth for "where the user is right now" — either
+    /// real GPS or the dropped search pin.  Injected into the environment
+    /// so Home / Plan / Chat all agree on the active source.
+    @State private var locationContext = LocationContext()
     var body: some View {
         TabView(selection: $selectedTab) {
             HomeView(
@@ -115,6 +119,24 @@ struct MainTabView: View {
                 }
             }
         }
+        // ── Drive LocationContext from the existing inputs ──────────────────────────────────────────────────────────────────────────────────────
+        // The drag pin lives in `chatBiasPin` for backward compatibility
+        // with HomeView; mirror it into the context so PlanView, ChatView,
+        // and any future feature can react via the shared @Observable.
+        .onAppear {
+            locationContext.setGPSCoordinate(locationManager.currentLocation?.coordinate)
+            locationContext.setDroppedPin(chatBiasPin)
+        }
+        .onChange(of: chatBiasPin?.latitude) { _, _ in
+            locationContext.setDroppedPin(chatBiasPin)
+        }
+        .onChange(of: chatBiasPin?.longitude) { _, _ in
+            locationContext.setDroppedPin(chatBiasPin)
+        }
+        .onChange(of: locationManager.currentLocation) { _, new in
+            locationContext.setGPSCoordinate(new?.coordinate)
+        }
+        .environment(locationContext)
         .environment(goSession)
         .fullScreenCover(isPresented: Binding(
             get: { goSession.isActive },

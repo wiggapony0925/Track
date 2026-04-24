@@ -29,7 +29,12 @@ class MetroMindSettings(BaseModel):
     temperature: float = 0.3
     max_output_tokens: int = 800
     # Hard ceiling for tool-call hops per user turn. Prevents runaway loops.
-    max_tool_iterations: int = 4
+    # Set to 6 (was 4) to absorb the rare double-replan on ambiguous trip
+    # prompts ("fastest from soho to upper east side") that previously hit
+    # the cap and erred out in production. The orchestrator also has a
+    # per-turn dedupe (won't re-run an identical tool call) so a higher
+    # cap doesn't translate to wasted spend.
+    max_tool_iterations: int = 6
     # OpenAI request timeout (seconds).
     request_timeout_s: float = 30.0
 
