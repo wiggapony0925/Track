@@ -1,313 +1,171 @@
-Command line invocation:
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -project Track.xcodeproj -scheme Track -destination "platform=iOS Simulator,name=iPhone 17" "-only-testing:TrackTests/CorridorDriftTests"
+  → Hitting https://track-vkrr.onrender.com/metromind/chat
+  → 100 messages, concurrency=4
 
-2026-03-10 09:31:02.417 xcodebuild[24479:9284694] not able to deal with ivar '_locationScenarioReference' of type '@"_TtC13IDEFoundation28IDELocationScenarioReference"' at offset 488
-Resolve Package Graph
+  ✓ #  2    3553ms  gps      plan                    plan a trip from grand central to dumbo                       [plan_route,search_stations]
+  ✗ #  3    6100ms  gps      plan                    fastest way from williamsburg to harlem right now             ← I couldn't finish that request — try rephrasing.
+  ✓ #  4    7361ms  gps      plan                    how do i get to laguardia from astoria                        [plan_route,search_stations,plan_route]
+  ✓ #  1    8171ms  gps      plan                    how do i get from times square to jfk                         [plan_route]
+  ✓ #  5    6979ms  gps      plan                    trip from prospect park to times square                       [plan_route]
+  ✓ #  6    7275ms  gps      plan                    get me from bushwick to grand central                         [plan_route]
+  ✓ #  7    7398ms  gps      plan                    how do i get to jfk from manhattan                            [plan_route]
+  ✓ #  8    7358ms  gps      plan                    plan from union square to coney island                        [plan_route]
+  ✗ # 10    4812ms  gps      plan                    fastest from soho to upper east side                          ← I couldn't finish that request — try rephrasing.
+  ✓ # 11    5570ms  gps      plan                    get me to brooklyn from midtown                               [plan_route]
+  ✓ # 13    3027ms  gps      plan_vague              how do i get home                                             [plan_route,get_user_places]
+  ✓ # 14    1732ms  gps      plan_vague              plan my commute                                             
+  ✓ #  9   11922ms  gps      plan                    how do i get from penn station to flushing                    [plan_route,plan_route,get_service_alerts]
+  ✓ # 15    3219ms  gps      plan_vague              get me to work                                                [plan_route,get_user_places]
+  ✓ # 12    9373ms  gps      plan                    how do i get from world trade center to yankee stadium        [plan_route,plan_route,get_service_alerts,plan_route]
+  ✓ # 17    3096ms  gps      arrivals                when's the next L train                                       [get_live_arrivals]
+  ✓ # 19    3135ms  gps      arrivals                when's the next 6 train northbound                            [get_live_arrivals]
+  ✓ # 18    4348ms  gps      arrivals                any 7 trains coming                                           [get_live_arrivals]
+  ✓ # 20    3343ms  gps      arrivals                how long til the next A train                                 [get_live_arrivals]
+  ✓ # 16    7375ms  gps      plan_vague              what's the fastest way out of here                            [plan_route,search_stations,plan_route,plan_route]
+  ✓ # 21    2120ms  gps      arrivals                is the F running                                              [get_service_alerts]
+  ✓ # 22    2396ms  gps      arrivals                when's the next G train brooklyn-bound                        [get_live_arrivals]
+  ✓ # 23    2973ms  gps      arrivals                next R train downtown                                         [get_live_arrivals]
+  ✓ # 26    2098ms  gps      alerts                  is the L suspended                                            [get_service_alerts]
+  ✓ # 25    3142ms  gps      alerts                  any delays on the 4 train                                     [get_service_alerts]
+  ✓ # 24    3948ms  gps      arrivals                when does the next M train come                               [get_live_arrivals]
+  ✓ # 27    2290ms  gps      alerts                  what's going on with the A train                              [get_service_alerts]
+  ✓ # 28    3567ms  gps      alerts                  any service alerts right now                                  [get_service_alerts]
+  ✓ # 29    5004ms  gps      alerts                  are there any suspensions tonight                             [get_service_alerts]
+  ✓ # 31    4886ms  gps      alerts                  weekend service changes                                       [get_service_alerts]
+  ✓ # 32    2215ms  gps      stop_info               is bedford avenue accessible                                  [get_stop_info]
+  ✓ # 33    2318ms  gps      stop_info               what trains stop at union square                              [get_stop_info]
+  ✓ # 30    7522ms  gps      alerts                  anything going on with the 1 2 3                              [get_service_alerts,get_service_alerts,get_service_alerts]
+  ✓ # 35    3386ms  gps      stop_info               escalators at times square                                    [get_stop_info,get_equipment_outages]
+  ✓ # 36    1856ms  gps      stop_info               what's leaving from atlantic avenue right now                 [get_stop_info]
+  ✓ # 37    1877ms  gps      stop_info               is grand central wheelchair accessible                        [get_stop_info]
+  ✓ # 39    1811ms  gps      outages                 what elevators are out of service                             [get_equipment_outages]
+  ✓ # 40    1805ms  gps      outages                 equipment outages on the L line                               [get_equipment_outages]
+  ✓ # 38    2264ms  gps      outages                 any escalators broken in manhattan                            [get_equipment_outages]
+  ✓ # 34    6857ms  gps      stop_info               is the elevator working at 14th street                        [get_stop_info,get_equipment_outages]
+  ✓ # 43    2239ms  gps      near_me_gps             nearest subway entrance                                       [search_stations]
+  ✓ # 42    2418ms  gps      near_me_gps             what stations are around me                                   [search_stations]
+  ✓ # 41    4007ms  gps      near_me_gps             what's the closest train to me                                [search_stations,get_stop_info]
+  ✓ # 45    3243ms  map_pin  near_me_pin_brooklyn    what's the closest train to me                                [search_stations]
+  ✓ # 46    3702ms  map_pin  near_me_pin_williamsburg  what stations are around me                                   [search_stations]
+  ✓ # 47    2989ms  map_pin  near_me_pin_astoria     nearest subway entrance                                       [search_stations]
+  ✓ # 44    6128ms  gps      near_me_gps             what trains can i catch nearby                                [search_stations,get_stop_info,get_stop_info]
+  ✓ # 49    1964ms  map_pin  near_me_pin_jfk         any escalators broken near me                                 [get_equipment_outages]
+  ✓ # 50    3197ms  map_pin  near_me_pin_dumbo       what's leaving from the closest stop                          [search_stations,get_stop_info]
+  ✓ # 51    2481ms  map_pin  near_me_pin_prospect    which subway lines are closest                                [search_stations]
+  ✓ # 52    3411ms  map_pin  near_me_pin_lga         nearest accessible station                                    [search_stations]
+  ✓ # 48    6571ms  map_pin  near_me_pin_harlem      what trains can i catch nearby                                [search_stations,get_live_arrivals,get_live_arrivals,get_live_arrivals,get_live_arrivals]
+  ✓ # 56    2782ms  map_pin  plan_pin                how do i get home from here                                   [plan_route,get_user_places]
+  ✓ # 55    5542ms  map_pin  plan_pin                get me to grand central from here                             [plan_route]
+  ✓ # 53    7638ms  map_pin  plan_pin                how do i get to times square from here                        [plan_route]
+  ✓ # 57    3261ms  map_pin  plan_pin                fastest way out of here to manhattan                          [plan_route,search_stations]
+  ✓ # 59    1131ms  gps      advice                  is uber faster than the subway tonight                      
+  ✓ # 60    2297ms  gps      advice                  which is better for brooklyn the L or the J                 
+  ✓ # 58    3630ms  gps      advice                  what's the best way to get to laguardia                       [plan_route,search_stations]
+  ✓ # 61    2847ms  gps      advice                  should i take the express or local 4                          [get_service_alerts]
+  ✓ # 62    1543ms  gps      advice                  how late do trains run                                      
+  ✓ # 64    1010ms  gps      advice                  what's the cheapest way to the airport                      
+  ✓ # 63    1974ms  gps      advice                  when does service stop tonight                              
+  ✓ # 65    1918ms  gps      trivia                  what are the new MTA trains                                 
+  ✓ # 66    2247ms  gps      trivia                  when did the second avenue subway open                      
+  ✓ # 67    3153ms  gps      trivia                  why is the G train so short                                 
+  ✓ # 69    2754ms  gps      trivia                  tell me about the R211                                      
+  ✓ # 70    1939ms  gps      trivia                  what's CBTC                                                 
+  ✓ # 54   17998ms  map_pin  plan_pin                trip from here to jfk                                         [plan_route]
+  ✓ # 72    1330ms  gps      trivia                  when did OMNY launch                                        
+  ✓ # 73    1901ms  gps      fares                   how much is the subway                                      
+  ✓ # 74     914ms  gps      fares                   how much is the airtrain to jfk                             
+  ✓ # 68    6501ms  gps      trivia                  what happened to the redbird trains                         
+  ✓ # 76    1338ms  gps      fares                   is OMNY cheaper than metrocard                              
+  ✓ # 71    3820ms  gps      trivia                  history of the IRT                                          
+  ✓ # 77     972ms  gps      mobility                can i bike to work                                          
+  ✓ # 79    1965ms  gps      mobility                is the staten island ferry running                            [get_service_alerts]
+  ✓ # 75    5113ms  gps      fares                   can i transfer for free                                     
+  ✓ # 78    4215ms  gps      mobility                how do i get to staten island                                 [plan_route,search_stations]
+  ✓ # 80    5158ms  gps      mobility                citi bike or subway to soho                                   [search_stations,get_service_alerts]
+  ✓ # 82    2180ms  gps      app                     how do i save a place                                       
+  ✓ # 83    2497ms  gps      app                     what does the go button do                                  
+  ✓ # 85     990ms  gps      refuse                  write me a python linked list class                         
+  ✓ # 84    2196ms  gps      app                     what are my saved places                                      [get_user_places]
+  ✓ # 87    1327ms  gps      refuse                  can you help me with my homework                            
+  ✓ # 88     882ms  gps      refuse                  tell me a joke                                              
+  ✓ # 86    2362ms  gps      refuse                  what's the best pizza in nyc                                
+  ✓ # 89    1161ms  gps      refuse                  how do i get to chicago                                     
+  ✓ # 90    1432ms  gps      edge                    what's the weather like                                     
+  ✓ # 91    1293ms  gps      conv                    hi                                                          
+  ✓ # 92    1237ms  gps      conv                    thanks                                                      
+  ✓ # 81    8524ms  gps      mobility                how do i get to newark airport                                [plan_route,search_stations]
+  ✓ # 93    1834ms  gps      conv                    ok cool                                                     
+  ✓ # 95    1735ms  gps      conv                    nevermind                                                   
+  ✓ # 94    3694ms  gps      conv                    what about now                                                [plan_route,get_user_places]
+  ✓ # 98    3611ms  map_pin  complex                 compare the J the M and the L for getting from williamsburg   [get_service_alerts,get_service_alerts,get_service_alerts]
+  ✓ # 99    3076ms  gps      alerts                  any G train alerts                                            [get_service_alerts]
+  ✗ # 97    7481ms  map_pin  complex                 if the L is messed up tonight what are my best options for g  ← I couldn't finish that request — try rephrasing.
+  ✓ #100    3493ms  gps      arrivals                when's the next 1 train uptown                                [get_live_arrivals]
+  ✗ # 96   11543ms  map_pin  complex                 i'm trying to get from williamsburg to flushing on a saturda  ← I couldn't finish that request — try rephrasing.
 
+==============================================================================
+  MetroMind stress test — 100 messages
+==============================================================================
+  Successful :  96/100  (96.0%)
+  Failures   :   4/100
 
-Resolved source packages:
-  xctest-dynamic-overlay: https://github.com/pointfreeco/xctest-dynamic-overlay @ 1.8.1
-  swift-http-types: https://github.com/apple/swift-http-types.git @ 1.5.1
-  Supabase: https://github.com/supabase-community/supabase-swift @ 2.41.1
-  swift-crypto: https://github.com/apple/swift-crypto.git @ 4.2.0
-  swift-concurrency-extras: https://github.com/pointfreeco/swift-concurrency-extras @ 1.3.2
-  swift-clocks: https://github.com/pointfreeco/swift-clocks @ 1.0.6
-  swift-asn1: https://github.com/apple/swift-asn1.git @ 1.5.1
+  Latency (successful turns)
+    mean   :    3660 ms
+    median :    3008 ms
+    p50    :    3027 ms
+    p90    :    7361 ms
+    p95    :    7638 ms
+    p99    :   11922 ms
+    max    :   17998 ms
+    min    :     882 ms
 
-ComputePackagePrebuildTargetDependencyGraph
+  Tool calls
+    plan_route                 28
+    search_stations            19
+    get_service_alerts         19
+    get_live_arrivals          12
+    get_stop_info              10
+    get_equipment_outages       6
+    get_user_places             5
 
-Prepare packages
+  Latency by category (n / mean / p95)
+    advice                     7  mean=  2062ms  p95=  3630ms
+    alerts                     8  mean=  3948ms  p95=  7522ms
+    app                        3  mean=  2291ms  p95=  2497ms
+    arrivals                   9  mean=  3206ms  p95=  4348ms
+    complex                    1  mean=  3611ms  p95=  3611ms
+    conv                       5  mean=  1959ms  p95=  3694ms
+    edge                       1  mean=  1432ms  p95=  1432ms
+    fares                      4  mean=  2316ms  p95=  5113ms
+    mobility                   5  mean=  4167ms  p95=  8524ms
+    near_me_gps                4  mean=  3698ms  p95=  6128ms
+    near_me_pin_astoria        1  mean=  2989ms  p95=  2989ms
+    near_me_pin_brooklyn       1  mean=  3243ms  p95=  3243ms
+    near_me_pin_dumbo          1  mean=  3197ms  p95=  3197ms
+    near_me_pin_harlem         1  mean=  6571ms  p95=  6571ms
+    near_me_pin_jfk            1  mean=  1964ms  p95=  1964ms
+    near_me_pin_lga            1  mean=  3411ms  p95=  3411ms
+    near_me_pin_prospect       1  mean=  2481ms  p95=  2481ms
+    near_me_pin_williamsburg   1  mean=  3702ms  p95=  3702ms
+    outages                    3  mean=  1960ms  p95=  2264ms
+    plan                      10  mean=  7496ms  p95= 11922ms
+    plan_pin                   5  mean=  7444ms  p95= 17998ms
+    plan_vague                 4  mean=  3838ms  p95=  7375ms
+    refuse                     5  mean=  1344ms  p95=  2362ms
+    stop_info                  6  mean=  3085ms  p95=  6857ms
+    trivia                     8  mean=  2958ms  p95=  6501ms
 
-CreateBuildRequest
+  Failures
+    I couldn't finish that request — try rep   4
 
-SendProjectDescription
+  Sample failed prompts
+    #  3 [plan] 'fastest way from williamsburg to harlem right now' → I couldn't finish that request — try rephrasing.
+    # 10 [plan] 'fastest from soho to upper east side' → I couldn't finish that request — try rephrasing.
+    # 96 [complex] 'i'm trying to get from williamsburg to flushing on' → I couldn't finish that request — try rephrasing.
+    # 97 [complex] 'if the L is messed up tonight what are my best opt' → I couldn't finish that request — try rephrasing.
 
-CreateBuildOperation
+  GPS vs dropped-pin
+    GPS       n= 82  mean=  3451ms
+    map_pin   n= 14  mean=  4885ms
 
-ComputeTargetDependencyGraph
-note: Building targets in dependency order
-note: Target dependency graph (4 targets)
-    Target 'TrackUITests' in project 'Track'
-        ➜ Explicit dependency on target 'Track' in project 'Track'
-    Target 'TrackTests' in project 'Track'
-        ➜ Explicit dependency on target 'Track' in project 'Track'
-    Target 'Track' in project 'Track'
-        ➜ Explicit dependency on target 'TrackWidgetsExtension' in project 'Track'
-    Target 'TrackWidgetsExtension' in project 'Track' (no dependencies)
-
-GatherProvisioningInputs
-
-CreateBuildDescription
-
-ExecuteExternalTool /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -x c -c /dev/null
-
-ExecuteExternalTool /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
-
-ExecuteExternalTool /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
-
-ExecuteExternalTool /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/jeffreyfernandez/code/Track/Track/Assets.xcassets
-
-ExecuteExternalTool /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
-
-Build description signature: dda328710cb692ab0b5ed06aa6fb379e
-Build description path: /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/XCBuildData/dda328710cb692ab0b5ed06aa6fb379e.xcbuilddata
-ClangStatCache /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.2-23C57-8edbefc441a4c41f1ef7dacb6c7a07cb.sdkstatcache
-    cd /Users/jeffreyfernandez/code/Track/Track.xcodeproj
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphonesimulator26.2-23C57-8edbefc441a4c41f1ef7dacb6c7a07cb.sdkstatcache
-
-ProcessProductPackaging /Users/jeffreyfernandez/code/Track/TrackWidgetsExtension.entitlements /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex.xcent (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Entitlements:
-    
-    {
-}
-    
-    builtin-productPackagingUtility /Users/jeffreyfernandez/code/Track/TrackWidgetsExtension.entitlements -entitlements -format xml -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex.xcent
-
-ProcessProductPackaging /Users/jeffreyfernandez/code/Track/TrackWidgetsExtension.entitlements /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex-Simulated.xcent (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Entitlements:
-    
-    {
-    "application-identifier" = "DCU7GHRVUQ.JFMCAPITALGROUP.Track.TrackWidgets";
-    "com.apple.security.application-groups" =     (
-        "group.JFMCAPITALGROUP.Track"
-    );
-}
-    
-    builtin-productPackagingUtility /Users/jeffreyfernandez/code/Track/TrackWidgetsExtension.entitlements -entitlements -format xml -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex-Simulated.xcent
-
-ProcessProductPackagingDER /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex.xcent /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex.xcent.der (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /usr/bin/derq query -f xml -i /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex.xcent -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex.xcent.der --raw
-
-ProcessProductPackagingDER /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex-Simulated.xcent /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex-Simulated.xcent.der (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /usr/bin/derq query -f xml -i /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex-Simulated.xcent -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex-Simulated.xcent.der --raw
-
-Ld /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/TrackWidgetsExtension.debug.dylib normal (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios26.2-simulator -dynamiclib -isysroot /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -O0 -L/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -F/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -filelist /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/Objects-normal/arm64/TrackWidgetsExtension.LinkFileList -install_name @rpath/TrackWidgetsExtension.debug.dylib -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -rpath -Xlinker @executable_path/../../Frameworks -dead_strip -Xlinker -object_path_lto -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/Objects-normal/arm64/TrackWidgetsExtension_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/Objects-normal/arm64/TrackWidgetsExtension_dependency_info.dat -fapplication-extension -fobjc-link-runtime -fprofile-instr-generate -L/Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/Objects-normal/arm64/TrackWidgetsExtension.swiftmodule @/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/Objects-normal/arm64/TrackWidgetsExtension-linker-args.resp -Xlinker -alias -Xlinker _NSExtensionMain -Xlinker ___debug_main_executable_dylib_entry_point -framework SwiftUI -framework WidgetKit -Xlinker -no_adhoc_codesign -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/TrackWidgetsExtension.debug.dylib
-
-ProcessProductPackaging /Users/jeffreyfernandez/code/Track/Track/Track.entitlements /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app.xcent (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Entitlements:
-    
-    {
-}
-    
-    builtin-productPackagingUtility /Users/jeffreyfernandez/code/Track/Track/Track.entitlements -entitlements -format xml -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app.xcent
-
-ProcessProductPackaging /Users/jeffreyfernandez/code/Track/Track/Track.entitlements /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app-Simulated.xcent (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Entitlements:
-    
-    {
-    "application-identifier" = "DCU7GHRVUQ.JFMCAPITALGROUP.Track";
-    "com.apple.developer.applesignin" =     (
-        Default
-    );
-    "com.apple.security.application-groups" =     (
-        "group.JFMCAPITALGROUP.Track"
-    );
-}
-    
-    builtin-productPackagingUtility /Users/jeffreyfernandez/code/Track/Track/Track.entitlements -entitlements -format xml -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app-Simulated.xcent
-
-ProcessInfoPlistFile /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/Info.plist /Users/jeffreyfernandez/code/Track/TrackWidgets/Info.plist (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    builtin-infoPlistUtility /Users/jeffreyfernandez/code/Track/TrackWidgets/Info.plist -producttype com.apple.product-type.app-extension -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/assetcatalog_generated_info.plist -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/Info.plist
-
-ProcessProductPackagingDER /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app-Simulated.xcent /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app-Simulated.xcent.der (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /usr/bin/derq query -f xml -i /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app-Simulated.xcent -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app-Simulated.xcent.der --raw
-
-ProcessProductPackagingDER /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app.xcent /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app.xcent.der (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /usr/bin/derq query -f xml -i /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app.xcent -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app.xcent.der --raw
-
-ProcessProductPackaging "" /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/TrackUITests.xctest-Simulated.xcent (in target 'TrackUITests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Entitlements:
-    
-    {
-    "application-identifier" = "DCU7GHRVUQ.JFMCAPITALGROUP.TrackUITests.xctrunner";
-    "keychain-access-groups" =     (
-        "DCU7GHRVUQ.JFMCAPITALGROUP.TrackUITests.xctrunner"
-    );
-}
-    
-    builtin-productPackagingUtility -entitlements -format xml -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/TrackUITests.xctest-Simulated.xcent
-
-ProcessProductPackagingDER /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/TrackUITests.xctest-Simulated.xcent /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/TrackUITests.xctest-Simulated.xcent.der (in target 'TrackUITests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /usr/bin/derq query -f xml -i /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/TrackUITests.xctest-Simulated.xcent -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/TrackUITests.xctest-Simulated.xcent.der --raw
-
-ConstructStubExecutorLinkFileList /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension-ExecutorLinkFileList-normal-arm64.txt (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    construct-stub-executor-link-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/TrackWidgetsExtension.debug.dylib /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libPreviewsJITStubExecutor.a --output /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension-ExecutorLinkFileList-normal-arm64.txt
-note: Using stub executor library with Swift entry point. (in target 'TrackWidgetsExtension' from project 'Track')
-
-Ld /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/TrackWidgetsExtension normal (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios26.2-simulator -isysroot /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -O0 -L/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -F/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker @executable_path/Frameworks -Xlinker -rpath -Xlinker @executable_path/../../Frameworks -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -debug_variant -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_entry -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension-DebugEntryPoint-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension-ExecutorLinkFileList-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex-Simulated.xcent -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __ents_der -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex-Simulated.xcent.der /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/TrackWidgetsExtension.debug.dylib -Xlinker -no_adhoc_codesign -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/TrackWidgetsExtension
-
-ExtractAppIntentsMetadata (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name TrackWidgetsExtension --sdk-root /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk --xcode-version 17C519 --platform-family iOS --deployment-target 26.2 --bundle-identifier JFMCAPITALGROUP.Track.TrackWidgets --output /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex --target-triple arm64-apple-ios26.2-simulator --binary-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/TrackWidgetsExtension --dependency-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/Objects-normal/arm64/TrackWidgetsExtension_dependency_info.dat --stringsdata-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/Objects-normal/arm64/TrackWidgetsExtension.SwiftFileList --metadata-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.DependencyMetadataFileList --static-metadata-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.DependencyStaticMetadataFileList --swift-const-vals-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/Objects-normal/arm64/TrackWidgetsExtension.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
-2026-03-10 09:31:05.635 appintentsmetadataprocessor[24534:9285055] Starting appintentsmetadataprocessor export
-2026-03-10 09:31:05.708 appintentsmetadataprocessor[24534:9285055] Writing Metadata.appintents
-2026-03-10 09:31:05.708 appintentsmetadataprocessor[24534:9285055] Metadata root: /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/Metadata.appintents
-
-CodeSign /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/TrackWidgetsExtension.debug.dylib (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Signing Identity:     "Sign to Run Locally"
-    
-    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex/TrackWidgetsExtension.debug.dylib
-
-CodeSign /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex (in target 'TrackWidgetsExtension' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Signing Identity:     "Sign to Run Locally"
-    
-    /usr/bin/codesign --force --sign - --entitlements /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackWidgetsExtension.build/TrackWidgetsExtension.appex.xcent --timestamp\=none --generate-entitlement-der /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex
-
-Ld /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track.debug.dylib normal (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios26.2-simulator -dynamiclib -isysroot /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -O0 -L/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -F/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -filelist /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Objects-normal/arm64/Track.LinkFileList -install_name @rpath/Track.debug.dylib -Xlinker -rpath -Xlinker @executable_path/Frameworks -dead_strip -Xlinker -object_path_lto -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Objects-normal/arm64/Track_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Objects-normal/arm64/Track_dependency_info.dat -fobjc-link-runtime -fprofile-instr-generate -L/Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Objects-normal/arm64/Track.swiftmodule @/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Objects-normal/arm64/Track-linker-args.resp -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -Xlinker -no_adhoc_codesign -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track.debug.dylib
-
-ConstructStubExecutorLinkFileList /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track-ExecutorLinkFileList-normal-arm64.txt (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    construct-stub-executor-link-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track.debug.dylib /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libPreviewsJITStubExecutor.a --output /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track-ExecutorLinkFileList-normal-arm64.txt
-note: Using stub executor library with Swift entry point. (in target 'Track' from project 'Track')
-
-Ld /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track normal (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios26.2-simulator -isysroot /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -O0 -L/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -F/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker @executable_path/Frameworks -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -debug_variant -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track-ExecutorLinkFileList-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app-Simulated.xcent -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __ents_der -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app-Simulated.xcent.der /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track.debug.dylib -Xlinker -no_adhoc_codesign -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track
-
-Copy /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackWidgetsExtension.appex /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -exclude Headers -exclude PrivateHeaders -exclude Modules -exclude \*.tbd -resolve-src-symlinks -remove-static-executable /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackWidgetsExtension.appex /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns
-
-ProcessInfoPlistFile /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Info.plist /Users/jeffreyfernandez/code/Track/Info.plist (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    builtin-infoPlistUtility /Users/jeffreyfernandez/code/Track/Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PkgInfo -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/assetcatalog_generated_info.plist -scanforprivacyfile /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackWidgetsExtension.appex -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Info.plist
-
-ExtractAppIntentsMetadata (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name Track --sdk-root /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk --xcode-version 17C519 --platform-family iOS --deployment-target 26.2 --bundle-identifier JFMCAPITALGROUP.Track --output /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app --target-triple arm64-apple-ios26.2-simulator --binary-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track --dependency-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Objects-normal/arm64/Track_dependency_info.dat --stringsdata-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Objects-normal/arm64/Track.SwiftFileList --metadata-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.DependencyMetadataFileList --static-metadata-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.DependencyStaticMetadataFileList --swift-const-vals-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Objects-normal/arm64/Track.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
-2026-03-10 09:31:06.131 appintentsmetadataprocessor[24541:9285117] Starting appintentsmetadataprocessor export
-2026-03-10 09:31:06.223 appintentsmetadataprocessor[24541:9285117] Writing Metadata.appintents
-2026-03-10 09:31:06.223 appintentsmetadataprocessor[24541:9285117] Metadata root: /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Metadata.appintents
-
-CopySwiftLibs /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track.debug.dylib --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Frameworks --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/SystemExtensions --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Extensions --platform iphonesimulator --toolchain /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Frameworks --strip-bitcode --strip-bitcode-tool /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
-
-ProcessInfoPlistFile /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/Info.plist /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/empty-TrackTests.plist (in target 'TrackTests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    builtin-infoPlistUtility /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/empty-TrackTests.plist -producttype com.apple.product-type.bundle.unit-test -expandbuildsettings -format binary -platform iphonesimulator -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/Info.plist
-
-Ld /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/TrackTests normal (in target 'TrackTests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios26.2-simulator -bundle -isysroot /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -O0 -L/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -L/Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -iframework /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -iframework /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk/Developer/Library/Frameworks -filelist /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/Objects-normal/arm64/TrackTests.LinkFileList -Xlinker -rpath -Xlinker @loader_path/Frameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -dead_strip -bundle_loader /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track -Xlinker -object_path_lto -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/Objects-normal/arm64/TrackTests_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/Objects-normal/arm64/TrackTests_dependency_info.dat -fobjc-link-runtime -fprofile-instr-generate -L/Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/Objects-normal/arm64/TrackTests.swiftmodule @/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/Objects-normal/arm64/TrackTests-linker-args.resp -Xlinker -needed_framework -Xlinker XCTest -framework XCTest -Xlinker -needed-lXCTestSwiftSupport -lXCTestSwiftSupport /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track.debug.dylib -Xlinker -no_adhoc_codesign -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/TrackTests
-
-CopySwiftLibs /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest (in target 'TrackTests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/TrackTests --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/Frameworks --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/PlugIns --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/SystemExtensions --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/Extensions --platform iphonesimulator --toolchain /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/Frameworks --strip-bitcode --scan-executable /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
-
-ExtractAppIntentsMetadata (in target 'TrackTests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name TrackTests --sdk-root /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk --xcode-version 17C519 --platform-family iOS --deployment-target 26.2 --bundle-identifier JFMCAPITALGROUP.TrackTests --output /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest --target-triple arm64-apple-ios26.2-simulator --binary-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest/TrackTests --dependency-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/Objects-normal/arm64/TrackTests_dependency_info.dat --stringsdata-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/Objects-normal/arm64/TrackTests.SwiftFileList --metadata-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/TrackTests.DependencyMetadataFileList --static-metadata-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/TrackTests.DependencyStaticMetadataFileList --swift-const-vals-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackTests.build/Objects-normal/arm64/TrackTests.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
-2026-03-10 09:31:06.437 appintentsmetadataprocessor[24544:9285139] Starting appintentsmetadataprocessor export
-2026-03-10 09:31:06.503 appintentsmetadataprocessor[24544:9285139] Extracted no relevant App Intents symbols, skipping writing output
-
-CodeSign /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest (in target 'TrackTests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Signing Identity:     "Sign to Run Locally"
-    
-    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackTests.xctest
-
-CodeSign /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track.debug.dylib (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Signing Identity:     "Sign to Run Locally"
-    
-    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Track.debug.dylib
-
-CodeSign /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/__preview.dylib (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Signing Identity:     "Sign to Run Locally"
-    
-    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/__preview.dylib
-/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/__preview.dylib: replacing existing signature
-
-CodeSign /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Signing Identity:     "Sign to Run Locally"
-    
-    /usr/bin/codesign --force --sign - --entitlements /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/Track.build/Track.app.xcent --timestamp\=none --generate-entitlement-der /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app
-
-Validate /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    builtin-validationUtility /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app -shallow-bundle -infoplist-subpath Info.plist
-
-ValidateEmbeddedBinary /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackWidgetsExtension.appex (in target 'Track' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/usr/bin/embeddedBinaryValidationUtility /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/PlugIns/TrackWidgetsExtension.appex -signing-cert - -info-plist-path /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/Track.app/Info.plist
-
-ProcessInfoPlistFile /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/Info.plist /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/empty-TrackUITests.plist (in target 'TrackUITests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    builtin-infoPlistUtility /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/empty-TrackUITests.plist -producttype com.apple.product-type.bundle.ui-testing -expandbuildsettings -format binary -platform iphonesimulator -additionalcontentfile /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/ProductTypeInfoPlistAdditions.plist -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/Info.plist
-
-Ld /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/TrackUITests normal (in target 'TrackUITests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios26.2-simulator -bundle -isysroot /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk -O0 -L/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -L/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -L/Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib -F/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphonesimulator -F/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator -iframework /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks -iframework /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk/Developer/Library/Frameworks -filelist /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/Objects-normal/arm64/TrackUITests.LinkFileList -Xlinker -rpath -Xlinker @loader_path/Frameworks -dead_strip -Xlinker -object_path_lto -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/Objects-normal/arm64/TrackUITests_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -objc_abi_version -Xlinker 2 -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/Objects-normal/arm64/TrackUITests_dependency_info.dat -fobjc-link-runtime -fprofile-instr-generate -L/Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphonesimulator -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/Objects-normal/arm64/TrackUITests.swiftmodule @/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/Objects-normal/arm64/TrackUITests-linker-args.resp -Xlinker -needed_framework -Xlinker XCTest -framework XCTest -Xlinker -needed-lXCTestSwiftSupport -lXCTestSwiftSupport -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __entitlements -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/TrackUITests.xctest-Simulated.xcent -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __ents_der -Xlinker /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/TrackUITests.xctest-Simulated.xcent.der -Xlinker -no_adhoc_codesign -o /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/TrackUITests
-
-CopySwiftLibs /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest (in target 'TrackUITests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    builtin-swiftStdLibTool --copy --verbose --sign - --scan-executable /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/TrackUITests --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/Frameworks --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/PlugIns --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/SystemExtensions --scan-folder /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/Extensions --platform iphonesimulator --toolchain /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/Frameworks --strip-bitcode --scan-executable /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
-
-ExtractAppIntentsMetadata (in target 'TrackUITests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name TrackUITests --sdk-root /Users/jeffreyfernandez/Downloads/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk --xcode-version 17C519 --platform-family iOS --deployment-target 26.2 --bundle-identifier JFMCAPITALGROUP.TrackUITests --output /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest --target-triple arm64-apple-ios26.2-simulator --binary-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest/TrackUITests --dependency-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/Objects-normal/arm64/TrackUITests_dependency_info.dat --stringsdata-file /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/Objects-normal/arm64/TrackUITests.SwiftFileList --metadata-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/TrackUITests.DependencyMetadataFileList --static-metadata-file-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/TrackUITests.DependencyStaticMetadataFileList --swift-const-vals-list /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Intermediates.noindex/Track.build/Debug-iphonesimulator/TrackUITests.build/Objects-normal/arm64/TrackUITests.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
-2026-03-10 09:31:07.127 appintentsmetadataprocessor[24553:9285196] Starting appintentsmetadataprocessor export
-2026-03-10 09:31:07.128 appintentsmetadataprocessor[24553:9285196] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
-
-CodeSign /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest (in target 'TrackUITests' from project 'Track')
-    cd /Users/jeffreyfernandez/code/Track
-    
-    Signing Identity:     "Sign to Run Locally"
-    
-    /usr/bin/codesign --force --sign - --timestamp\=none --generate-entitlement-der /Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Build/Products/Debug-iphonesimulator/TrackUITests-Runner.app/PlugIns/TrackUITests.xctest
-
-2026-03-10 09:41:38.721 xcodebuild[24479:9284759]  IDETestOperationsObserverDebug: Failure collecting diagnostics from simulator: Timed out after 600.0 seconds while waiting for a response from the invoked process
-2026-03-10 09:41:38.741 xcodebuild[24479:9284694] [MT] IDETestOperationsObserverDebug: 631.597 elapsed -- Testing started completed.
-2026-03-10 09:41:38.741 xcodebuild[24479:9284694] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
-2026-03-10 09:41:38.741 xcodebuild[24479:9284694] [MT] IDETestOperationsObserverDebug: 631.597 sec, +631.597 sec -- end
-
-Test session results, code coverage, and logs:
-	/Users/jeffreyfernandez/Library/Developer/Xcode/DerivedData/Track-hdxvzrbptlhvungkdoyvcwpyouzf/Logs/Test/Test-Track-2026.03.10_09-31-03--0400.xcresult
-
-** TEST FAILED **
-
-Testing started
-Test suite 'CorridorDriftTests' started on 'Clone 1 of iPhone 17 - Track (24803)'
-Test case 'CorridorDriftTests/everyStopIsNearAPolyline()' passed on 'Clone 1 of iPhone 17 - Track (24803)' (1.000 seconds)
-Test case 'CorridorDriftTests/corridorOffsetDoesNotExceedMaxDisplacement()' passed on 'Clone 1 of iPhone 17 - Track (24803)' (0.000 seconds)
-Test case 'CorridorDriftTests/noDuplicatePolylinesBetweenGroups()' failed on 'Clone 1 of iPhone 17 - Track (24803)' (1.000 seconds)
-Test case 'CorridorDriftTests/noDuplicateBranchesWithinGroup()' passed on 'Clone 1 of iPhone 17 - Track (24803)' (0.000 seconds)
-Test suite 'CorridorDriftTests' started on 'Clone 1 of iPhone 17 - Track (24803)'
-Test case 'CorridorDriftTests/everyStopIsNearAPolyline()' passed on 'Clone 1 of iPhone 17 - Track (24803)' (0.000 seconds)
-Test case 'CorridorDriftTests/corridorOffsetDoesNotExceedMaxDisplacement()' passed on 'Clone 1 of iPhone 17 - Track (24803)' (1.000 seconds)
-Test case 'CorridorDriftTests/noDuplicatePolylinesBetweenGroups()' failed on 'Clone 1 of iPhone 17 - Track (24803)' (0.000 seconds)
-Test case 'CorridorDriftTests/noDuplicateBranchesWithinGroup()' passed on 'Clone 1 of iPhone 17 - Track (24803)' (0.000 seconds)
+==============================================================================
+  Total wall time: 98.0s (1.02 msg/s)

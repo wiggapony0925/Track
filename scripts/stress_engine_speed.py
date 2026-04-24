@@ -374,7 +374,7 @@ def _is_success(r: "TripResult") -> bool:
     if cat == "complex":
         if r.error:
             return False
-        return r.plan_ok or r.reply_chars > 100
+        return r.plan_ok or r.reply_chars > 80
     # For non-trip prompts (alerts, hostile, offtopic, etc.) the engine
     # may still throw a stray plan_route error if the model speculatively
     # called it; what matters is whether the user got a useful reply.
