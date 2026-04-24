@@ -180,6 +180,14 @@ final class ChatViewModel {
         draft = ""
         isAssistantTyping = true
 
+        Analytics.shared.event("chat_message_sent",
+                               properties: [
+                                "char_count": trimmed.count,
+                                "has_image": attachedImage != nil,
+                                "history_turns": messages.count - 1,
+                               ],
+                               screen: "ChatView")
+
         // Snapshot history (excluding the just-added user turn — the
         // backend appends `message` itself).
         let history: [(role: String, content: String)] = messages
@@ -591,6 +599,7 @@ struct ChatView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
+            Analytics.shared.screenView("ChatView", reachedVia: "tab")
             // Make sure we always have the freshest possible fix when the
             // user opens the chat tab — chat answers "near me" questions
             // and a stale GPS would route them to the wrong neighborhood.
@@ -1000,7 +1009,9 @@ private struct ChatMessageRow: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
 
-                bubble
+                if !isEmptyAssistantTextBubble {
+                    bubble
+                }
 
                 if let dataURL = message.imageDataURL,
                    message.role == .user,
@@ -1105,6 +1116,15 @@ private struct ChatMessageRow: View {
                 isLastInGroup: isLastInGroup
             )
         }
+    }
+
+    /// True when this is an assistant message whose only content is an empty
+    /// placeholder text body — the tool status pill / typing indicator already
+    /// conveys progress, so the blank white bubble is just visual noise.
+    private var isEmptyAssistantTextBubble: Bool {
+        guard message.role == .assistant else { return false }
+        guard case .text(let body) = message.content else { return false }
+        return body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 

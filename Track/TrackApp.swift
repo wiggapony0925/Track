@@ -3,6 +3,7 @@ import SwiftData
 
 @main
 struct TrackApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     init() {
         // Initialize the file logger — clears log.app on every launch
         _ = AppLogger.shared
@@ -49,6 +50,20 @@ struct TrackApp: App {
                     // The actual navigation happens in HomeView.handleDeepLink.
                     guard url.scheme == "track", url.host == "route" else { return }
                     UserDefaults.standard.set(true, forKey: "pending_deep_link")
+                    Analytics.shared.event("deep_link_opened",
+                                           properties: ["host": url.host ?? "?"])
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    switch newPhase {
+                    case .active:
+                        Analytics.shared.appDidBecomeActive(entrySource: "warm")
+                    case .background:
+                        Analytics.shared.appDidEnterBackground()
+                    case .inactive:
+                        break
+                    @unknown default:
+                        break
+                    }
                 }
         }
         .modelContainer(DataController.shared.container)

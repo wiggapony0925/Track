@@ -15,6 +15,7 @@ from documentation.docs_auth import register_docs_routes
 from documentation.render_openapi import build_api_description
 from documentation.tag_docs import OPENAPI_TAGS
 from app.routers import (
+    analytics,
     bus,
     departures,
     lirr,
@@ -66,6 +67,7 @@ app.include_router(weather.router)
 app.include_router(track_engine_router.router)
 app.include_router(user.router)
 app.include_router(system.router)
+app.include_router(analytics.router)
 app.include_router(metromind_router)
 
 # ── Static files (docs assets, favicon) ──────────────────────────────────

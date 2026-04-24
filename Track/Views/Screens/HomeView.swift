@@ -173,7 +173,10 @@ struct HomeView: View {
     /// First modifier group: lifecycle + navigation state observers.
     private var lifecycleObservedContent: some View {
         mapAndSheetContent
-            .onAppear { onAppearSetup() }
+            .onAppear {
+                onAppearSetup()
+                Analytics.shared.screenView("HomeView", reachedVia: "tab")
+            }
             .onDisappear { cleanupTimers() }
             .onOpenURL { handleDeepLink($0) }
             .onChange(of: scenePhase) { _, newPhase in handleScenePhaseChange(newPhase) }
