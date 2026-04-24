@@ -188,6 +188,68 @@ def test_suggestions_pin_plus_home_offers_get_home_from_pin() -> None:
     )
 
 
+def test_suggestions_after_stop_info_offers_departures_and_plan() -> None:
+    chips = build_suggestions(
+        used_tools=["get_stop_info"],
+        tool_payloads={
+            "get_stop_info": {
+                "stop_id": "L08",
+                "station_name": "Bedford Av",
+            }
+        },
+        context=None,
+    )
+    labels = [c.label for c in chips]
+    assert any("Bedford Av" in lbl and "Next" in lbl for lbl in labels)
+    assert any("Plan from Bedford Av" == lbl for lbl in labels)
+
+
+def test_suggestions_after_subway_status_clean_skips_issues_chip() -> None:
+    """All-good system status should not advertise 'which lines have issues'."""
+    chips = build_suggestions(
+        used_tools=["get_subway_status"],
+        tool_payloads={
+            "get_subway_status": {
+                "summary": {
+                    "good": 26, "planned_work": 0, "delays": 0,
+                    "suspended": 0, "total_lines": 26,
+                },
+                "lines": [],
+            }
+        },
+        context=None,
+    )
+    labels = [c.label for c in chips]
+    assert not any("issues" in lbl.lower() for lbl in labels)
+    assert any("Plan around it" == lbl for lbl in labels)
+
+
+def test_suggestions_after_subway_status_degraded_shows_issues_chip() -> None:
+    chips = build_suggestions(
+        used_tools=["get_subway_status"],
+        tool_payloads={
+            "get_subway_status": {
+                "summary": {
+                    "good": 23, "planned_work": 1, "delays": 2,
+                    "suspended": 0, "total_lines": 26,
+                },
+                "lines": [],
+            }
+        },
+        context=None,
+    )
+    assert any("issues" in c.label.lower() for c in chips)
+
+
+def test_suggestions_after_equipment_outages_offers_accessible_alts() -> None:
+    chips = build_suggestions(
+        used_tools=["get_equipment_outages"],
+        tool_payloads={"get_equipment_outages": {"outages": []}},
+        context=None,
+    )
+    assert any("accessible" in c.label.lower() for c in chips)
+
+
 # ── E — Model router ─────────────────────────────────────────────────
 
 

@@ -424,7 +424,36 @@ final class ChatViewModel {
             // Trips tab so they can edit origin/destination directly.
             NotificationCenter.default.post(name: .switchToTab, object: AppTab.trips)
             appendInlineNotice("Opened the Trips tab — tweak the trip there.")
-        case "send_prompt", "generate_alternatives", "open_place", "start_tracking":
+        case "start_tracking":
+            // If the chip carried concrete arrival data (came from a
+            // get_live_arrivals call), launch a Live Activity directly
+            // so the user immediately gets a trackable widget on their
+            // Lock Screen / Dynamic Island. Without arrival data the
+            // best we can do is re-prompt the LLM.
+            if let route = chip.routeId,
+               let minutes = chip.arrivalMinutesAway,
+               let ts = chip.arrivalTimestamp, ts > 0
+            {
+                let arrival = Date(timeIntervalSince1970: ts)
+                let dest = chip.arrivalDestination ?? "—"
+                let upcoming = chip.upcomingMinutes ?? []
+                let stationId = chip.arrivalStationName ?? ""
+                Task {
+                    await LiveActivityManager.shared.startActivity(
+                        lineId: route,
+                        destination: dest,
+                        arrivalTime: arrival,
+                        isBus: false,
+                        stationId: stationId,
+                        minutesAway: minutes,
+                        nextArrivals: upcoming
+                    )
+                }
+                appendInlineNotice("Tracking the \(route) — check your Lock Screen.")
+            } else if let text = chip.promptText, !text.isEmpty {
+                send(text)
+            }
+        case "send_prompt", "generate_alternatives", "open_place":
             if let text = chip.promptText, !text.isEmpty {
                 send(text)
             }

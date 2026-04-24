@@ -35,6 +35,14 @@ struct SuggestedActionChip: Sendable, Identifiable, Decodable {
     let destinationLabel: String?
     let tripSummary: String?
     let placeLabel: String?
+    /// Concrete arrival data attached to `start_tracking` chips that
+    /// follow a `get_live_arrivals` call. Lets iOS launch a Live
+    /// Activity directly without a follow-up prompt.
+    let arrivalDestination: String?
+    let arrivalMinutesAway: Int?
+    let arrivalTimestamp: Double?
+    let arrivalStationName: String?
+    let upcomingMinutes: [Int]?
 
     private enum CodingKeys: String, CodingKey {
         case label, kind, payload
@@ -46,6 +54,10 @@ struct SuggestedActionChip: Sendable, Identifiable, Decodable {
         let destination: String?
         let summary: String?
         let place_label: String?
+        let minutes_away: Int?
+        let arrival_ts: Double?
+        let station_name: String?
+        let upcoming_minutes: [Int]?
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -58,6 +70,16 @@ struct SuggestedActionChip: Sendable, Identifiable, Decodable {
         self.destinationLabel = payload?.destination
         self.tripSummary = payload?.summary
         self.placeLabel = payload?.place_label
+        // For start_tracking chips the `destination` field carries the
+        // *train's* destination (e.g. "Coney Island") rather than a
+        // user-facing trip endpoint. Same key, different meaning by
+        // chip kind — surface it through a dedicated property to keep
+        // call sites unambiguous.
+        self.arrivalDestination = payload?.destination
+        self.arrivalMinutesAway = payload?.minutes_away
+        self.arrivalTimestamp = payload?.arrival_ts
+        self.arrivalStationName = payload?.station_name
+        self.upcomingMinutes = payload?.upcoming_minutes
     }
 }
 

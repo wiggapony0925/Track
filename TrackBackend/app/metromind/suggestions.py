@@ -233,10 +233,34 @@ def build_suggestions(
             or (arrivals[0].get("route_id") if arrivals else None)
         )
         if route_id:
+            # Pack enough data into the Track chip for iOS to start a
+            # Live Activity *directly* (no follow-up prompt needed) when
+            # we have a concrete next train. Without arrivals iOS will
+            # fall back to a send-prompt.
+            track_payload: dict[str, Any] = {"route_id": route_id}
+            first = arrivals[0] if arrivals else None
+            if isinstance(first, dict):
+                if first.get("destination"):
+                    track_payload["destination"] = first["destination"]
+                if first.get("minutes_away") is not None:
+                    track_payload["minutes_away"] = first["minutes_away"]
+                if first.get("arrival_ts") is not None:
+                    track_payload["arrival_ts"] = first["arrival_ts"]
+                if first.get("station_name"):
+                    track_payload["station_name"] = first["station_name"]
+                # Extra context lets iOS show "next 3 trains" in the
+                # Live Activity widget without re-fetching.
+                upcoming = [
+                    a.get("minutes_away")
+                    for a in arrivals[1:4]
+                    if isinstance(a, dict) and a.get("minutes_away") is not None
+                ]
+                if upcoming:
+                    track_payload["upcoming_minutes"] = upcoming
             _add(SuggestedAction(
                 label=f"Track the {route_id}",
                 kind="start_tracking",
-                payload={"route_id": route_id},
+                payload=track_payload,
             ))
             _add(SuggestedAction(
                 label=f"Alerts on the {route_id}",
@@ -255,6 +279,68 @@ def build_suggestions(
                 kind="send_prompt",
                 payload={"text": f"How do I get home from {first_name}?"},
             ))
+
+    # ── Post get_stop_info ───────────────────────────────────────────
+    # Stop info answers things like "is Bedford Av accessible". Useful
+    # follow-ups: see what's leaving from there, or plan from it.
+    if "get_stop_info" in used_tools:
+        payload = tool_payloads.get("get_stop_info") or {}
+        station = payload.get("station_name")
+        if station:
+            _add(SuggestedAction(
+                label=f"Next trains at {station}",
+                kind="send_prompt",
+                payload={"text": f"What are the next departures from {station}?"},
+            ))
+            _add(SuggestedAction(
+                label=f"Plan from {station}",
+                kind="send_prompt",
+                payload={"text": f"How do I get home from {station}?"},
+            ))
+
+    # ── Post get_subway_status ───────────────────────────────────────
+    # System-wide health check. If any line is degraded, surface a
+    # quick "show me the bad ones" follow-up; otherwise nudge toward
+    # planning.
+    if "get_subway_status" in used_tools:
+        payload = tool_payloads.get("get_subway_status") or {}
+        summary = payload.get("summary") or {}
+        degraded = (
+            (summary.get("delays") or 0)
+            + (summary.get("suspended") or 0)
+            + (summary.get("planned_work") or 0)
+        )
+        if degraded > 0:
+            _add(SuggestedAction(
+                label="Which lines have issues?",
+                kind="send_prompt",
+                payload={
+                    "text": (
+                        "Which lines have delays or planned work right now? "
+                        "Just the affected ones."
+                    ),
+                },
+            ))
+        _add(SuggestedAction(
+            label="Plan around it",
+            kind="send_prompt",
+            payload={"text": "Plan a route that avoids any affected lines."},
+        ))
+
+    # ── Post get_equipment_outages ───────────────────────────────────
+    # Accessibility-focused. Always offer alternatives + a way to plan
+    # an accessible trip.
+    if "get_equipment_outages" in used_tools:
+        _add(SuggestedAction(
+            label="Show accessible alternatives",
+            kind="send_prompt",
+            payload={
+                "text": (
+                    "What's the nearest fully-accessible station I can "
+                    "use instead?"
+                ),
+            },
+        ))
 
     # ── Post get_user_places ─────────────────────────────────────────
     if "get_user_places" in used_tools and context is not None:
