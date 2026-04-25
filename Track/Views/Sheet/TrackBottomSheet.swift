@@ -130,6 +130,13 @@ struct TrackBottomSheet<Content: View>: View {
                 // driven by the SAME `live` value, so the two views are
                 // laid out together every frame — zero chasing lag.
                 if let topEdgeOverlay {
+                    // Hand-off opacity: as the sheet collapses toward the
+                    // tab-bar grabber, the search pill needs to be GONE
+                    // before it can collide with the train glyph that
+                    // sits ~56pt above the bar.  Without this, the pill
+                    // stays mostly opaque (vacuumOpacity only fades the
+                    // last 25%) and lands directly on top of the train.
+                    let handoff = searchBarHandoffOpacity(live: live)
                     topEdgeOverlay()
                         .frame(maxWidth: .infinity)
                         .position(x: geo.size.width / 2,
@@ -139,8 +146,8 @@ struct TrackBottomSheet<Content: View>: View {
                             y: vacuumScaleY(live: live),
                             anchor: .center
                         )
-                        .opacity(vacuumOpacity(live: live))
-                        .allowsHitTesting(vacuumOpacity(live: live) > 0.5)
+                        .opacity(vacuumOpacity(live: live) * handoff)
+                        .allowsHitTesting(handoff > 0.5)
                 }
             }
             .onAppear {
@@ -211,6 +218,24 @@ struct TrackBottomSheet<Content: View>: View {
         // then fade out the last 25% to mask the final disappearance.
         let p = Double(vacuumProgress(live: live))
         return p < 0.75 ? 1.0 : max(0, 1.0 - (p - 0.75) / 0.25)
+    }
+
+    /// Linear fade for the top-edge overlay (search pill) as the sheet
+    /// approaches the floating tab bar.  This is much more aggressive
+    /// than `vacuumOpacity` because the pill collides with the train
+    /// grabber that pops out of the bar at `live < 80`.  By the time
+    /// the bar is collapsed enough to show the train, the pill must be
+    /// fully invisible — otherwise the two glyphs stack on top of one
+    /// another (see screenshots in the redesign PR).
+    private func searchBarHandoffOpacity(live: CGFloat) -> Double {
+        // Start fading at 220pt of sheet height, fully gone by 110pt
+        // (well above the 80pt collapse trigger so there's no overlap
+        // window during a fast drag).
+        let upper: CGFloat = 220
+        let lower: CGFloat = 110
+        if live >= upper { return 1.0 }
+        if live <= lower { return 0.0 }
+        return Double((live - lower) / (upper - lower))
     }
 
     /// iOS 26 no longer permits `UIScreen.main`.  Pull the screen size
