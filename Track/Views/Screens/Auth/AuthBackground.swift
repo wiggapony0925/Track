@@ -345,6 +345,55 @@ private struct AuthBanner: View {
     }
 }
 
+// MARK: - Password strength meter
+
+/// Slim 3-segment bar shown beneath the new-password field on
+/// Create Account. Driven by `AuthValidator.strength(of:)` so the
+/// rules stay in one place.
+struct PasswordStrengthMeter: View {
+    let strength: AuthValidator.PasswordStrength
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<3, id: \.self) { index in
+                Capsule()
+                    .fill(fillColor(for: index))
+                    .frame(height: 4)
+            }
+            Text(strength.label)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(tint)
+                .frame(minWidth: 56, alignment: .trailing)
+        }
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Password strength: \(strength.label)")
+    }
+
+    private var tint: Color {
+        switch strength {
+        case .tooShort: return AppTheme.Colors.alertRed
+        case .weak:     return AppTheme.Colors.alertRed.opacity(0.85)
+        case .fair:     return .orange
+        case .strong:   return AppTheme.Colors.successGreen
+        }
+    }
+
+    private func fillColor(for index: Int) -> Color {
+        let filled: Int = {
+            switch strength {
+            case .tooShort: return 0
+            case .weak:     return 1
+            case .fair:     return 2
+            case .strong:   return 3
+            }
+        }()
+        return index < filled
+            ? tint
+            : AppTheme.Colors.textPrimary.opacity(0.10)
+    }
+}
+
 // MARK: - Friendly error mapping (shared)
 
 enum AuthErrorMapper {

@@ -290,7 +290,12 @@ struct AppleSignInCredentials {
     let fullName: PersonNameComponents?
     let identityToken: Data?
     let authorizationCode: Data?
-    
+    /// The plaintext nonce that was hashed (SHA-256) and sent to Apple
+    /// in the original `ASAuthorizationAppleIDRequest`. Supabase will
+    /// verify the hash against the `nonce` claim inside `identityToken`
+    /// to defeat token-replay attacks. `nil` only for legacy callers.
+    let rawNonce: String?
+
     var identityTokenString: String? {
         guard let token = identityToken else { return nil }
         return String(data: token, encoding: .utf8)

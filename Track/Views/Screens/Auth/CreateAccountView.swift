@@ -52,7 +52,7 @@ struct CreateAccountView: View {
 
                         AuthFieldRow(
                             icon: "lock.fill",
-                            placeholder: "Password (6+ characters)",
+                            placeholder: "Password (8+ characters)",
                             text: $password,
                             contentType: .newPassword,
                             autocap: .never,
@@ -63,6 +63,13 @@ struct CreateAccountView: View {
                             field: .password,
                             focusBinding: $focused
                         )
+
+                        if !password.isEmpty {
+                            PasswordStrengthMeter(
+                                strength: AuthValidator.strength(of: password)
+                            )
+                            .transition(.opacity)
+                        }
                     }
 
                     if let errorMessage {
@@ -111,6 +118,7 @@ struct CreateAccountView: View {
         }
         .animation(AppTheme.Animation.gentle, value: errorMessage)
         .animation(AppTheme.Animation.gentle, value: infoMessage)
+        .animation(AppTheme.Animation.gentle, value: password.isEmpty)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -161,8 +169,8 @@ struct CreateAccountView: View {
     }
 
     private var canSubmit: Bool {
-        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.contains("@") && password.count >= 6
+        AuthValidator.isValidEmail(email)
+            && AuthValidator.isAcceptableForSignUp(password)
     }
 
     @MainActor
@@ -171,7 +179,7 @@ struct CreateAccountView: View {
         errorMessage = nil
         infoMessage = nil
         guard canSubmit else {
-            errorMessage = "Enter a valid email and a password (6+ characters)."
+            errorMessage = "Enter a valid email and a password (8+ characters)."
             return
         }
 

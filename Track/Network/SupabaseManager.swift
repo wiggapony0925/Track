@@ -297,10 +297,16 @@ class SupabaseManager: ObservableObject {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue(apiKey, forHTTPHeaderField: "apikey")
         
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "provider": "apple",
             "id_token": idToken
         ]
+        // Forward the plaintext nonce so Supabase can verify the
+        // `nonce` claim inside the Apple id_token. This closes the
+        // replay-attack window that Apple's docs warn about.
+        if let rawNonce = credentials.rawNonce, !rawNonce.isEmpty {
+            body["nonce"] = rawNonce
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
         let (data, response) = try await session.data(for: request)

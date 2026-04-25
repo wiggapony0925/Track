@@ -131,8 +131,7 @@ struct SignInView: View {
     }
 
     private var canSubmit: Bool {
-        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.contains("@") && password.count >= 6
+        AuthValidator.isValidEmail(email) && password.count >= 6
     }
 
     @MainActor

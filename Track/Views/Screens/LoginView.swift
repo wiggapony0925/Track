@@ -11,6 +11,11 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var appleSignInDelegate: AppleSignInDelegate?
+    /// Plaintext nonce for the in-flight Apple Sign-In request.
+    /// We hash this with SHA-256 and hand the hash to Apple, then
+    /// forward the plaintext to Supabase so it can verify the
+    /// `nonce` claim baked into the returned id_token.
+    @State private var currentNonceRaw: String?
 
     // Staggered entrance.
     @State private var heroAppeared = false
@@ -113,49 +118,37 @@ struct LoginView: View {
 
     private var actions: some View {
         VStack(spacing: 10) {
-            // Apple Sign-In primary CTA — stays black per Apple HIG.
-            Button(action: startAppleSignIn) {
-                HStack(spacing: 8) {
-                    if isLoading {
-                        ProgressView()
-                            .tint(.white)
-                            .scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "apple.logo")
-                            .font(.system(size: 16, weight: .heavy))
-                    }
-                    Text(isLoading ? "Signing in…" : "Sign in with Apple")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(white: 0.18), Color.black],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [.white.opacity(0.18), .white.opacity(0.04)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 0.75
-                                )
-                        )
+            // Apple's official SwiftUI button — handles HIG sizing,
+            // localization, light/dark, accessibility, and the locked
+            // visual treatment Apple requires for the SIWA flow.
+            SignInWithAppleButton(.signIn) { request in
+                let nonce = AuthNonce.make()
+                currentNonceRaw = nonce.raw
+                request.requestedScopes = [.fullName, .email]
+                request.nonce = nonce.sha256
+            } onCompletion: { result in
+                handleAppleSignIn(
+                    result: result.mapError { $0 as Error }
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .signInWithAppleButtonStyle(.black)
+            .frame(height: 48)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .shadow(color: Color.black.opacity(0.22), radius: 12, y: 6)
+            .overlay(alignment: .center) {
+                if isLoading {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.black.opacity(0.35))
+                        .overlay(
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.85)
+                        )
+                        .allowsHitTesting(true)
+                }
+            }
             .disabled(isLoading)
+            .accessibilityLabel(isLoading ? "Signing in" : "Sign in with Apple")
 
             // Divider with "or"
             HStack(spacing: 10) {
@@ -266,31 +259,6 @@ struct LoginView: View {
 
     // MARK: - Apple Sign-In
 
-    private func startAppleSignIn() {
-        isLoading = true
-        errorMessage = nil
-
-        let provider = ASAuthorizationAppleIDProvider()
-        let request = provider.createRequest()
-        request.requestedScopes = [.fullName, .email]
-
-        let delegate = AppleSignInDelegate { result in
-            handleAppleSignIn(result: result)
-        }
-        self.appleSignInDelegate = delegate
-
-        let controller = ASAuthorizationController(authorizationRequests: [request])
-        controller.delegate = delegate
-
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first(where: { $0.isKeyWindow }) {
-            delegate.presentationAnchor = window
-            controller.presentationContextProvider = delegate
-        }
-
-        controller.performRequests()
-    }
-
     private func handleAppleSignIn(result: Result<ASAuthorization, Error>) {
         isLoading = true
         errorMessage = nil
@@ -304,8 +272,11 @@ struct LoginView: View {
                     email: appleIDCredential.email,
                     fullName: appleIDCredential.fullName,
                     identityToken: appleIDCredential.identityToken,
-                    authorizationCode: appleIDCredential.authorizationCode
+                    authorizationCode: appleIDCredential.authorizationCode,
+                    rawNonce: currentNonceRaw
                 )
+                // Burn the nonce after a single use.
+                currentNonceRaw = nil
 
                 Task { @MainActor in
                     do {
@@ -317,13 +288,18 @@ struct LoginView: View {
                         #if DEBUG
                         print("[LoginView] Supabase sign-in error: \(error)")
                         #endif
-                        errorMessage = "Sign-in error: \(error.localizedDescription)"
+                        errorMessage = AuthErrorMapper.friendly(error)
                     }
                 }
+            } else {
+                isLoading = false
+                currentNonceRaw = nil
+                errorMessage = "Apple returned an unsupported credential type."
             }
 
         case .failure(let error):
             isLoading = false
+            currentNonceRaw = nil
             let nsError = error as NSError
 
             if nsError.code == ASAuthorizationError.canceled.rawValue {
