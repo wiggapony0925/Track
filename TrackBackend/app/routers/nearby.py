@@ -651,11 +651,20 @@ _STICKY_TTL_SECONDS: float = 300.0
 _STICKY_GRID_DECIMALS: int = 3      # ~111 m, matches quick-mode grid
 _STICKY_MAX_CELLS: int = 4096
 
+# Two-tier sticky storage:
+#   L1 — in-process dict (this worker, microsecond reads)
+#   L2 — Redis cluster bucket (shared across workers + survives restarts)
+# Reads merge both tiers (Redis 9-neighbor view + L1).  Writes go to both.
+# Falls back gracefully to L1-only when Redis is down.
+
 # cell_key -> { (mode, route_id_casefold) -> (last_ts, snapshot) }
 _sticky_route_memory: dict[
     tuple[float, float, int, str | None],
     dict[tuple[str, str], tuple[float, GroupedNearbyTransit]],
 ] = {}
+
+_STICKY_REDIS_PREFIX = "track:nearby"
+_STICKY_REDIS_KIND = "sticky"
 
 
 def _sticky_cell_key(
@@ -670,8 +679,155 @@ def _sticky_cell_key(
     )
 
 
+def _sticky_redis_id(cell: tuple[float, float, int, str | None]) -> str:
+    """Stable Redis identifier for a sticky cell key."""
+    lat_q, lon_q, radius, mode = cell
+    mode_part = mode if mode is not None else "all"
+    return f"{lat_q}_{lon_q}_{radius}_{mode_part}"
+
+
 def _sticky_route_key(group: GroupedNearbyTransit) -> tuple[str, str]:
     return (group.mode, group.route_id.casefold())
+
+
+def _encode_sticky_bucket(
+    bucket: dict[tuple[str, str], tuple[float, GroupedNearbyTransit]],
+) -> dict:
+    """Encode a sticky bucket for JSON transport (Redis envelope)."""
+    return {
+        "entries": [
+            {
+                "mode": k[0],
+                "rid": k[1],
+                "ts": ts,
+                "snap": snap.model_dump(mode="json"),
+            }
+            for k, (ts, snap) in bucket.items()
+        ]
+    }
+
+
+def _decode_sticky_bucket(
+    payload: object,
+) -> dict[tuple[str, str], tuple[float, GroupedNearbyTransit]]:
+    """Inverse of :func:`_encode_sticky_bucket`.  Tolerant of malformed
+    entries — bad rows are dropped, never raise."""
+    out: dict[tuple[str, str], tuple[float, GroupedNearbyTransit]] = {}
+    if not isinstance(payload, dict):
+        return out
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        return out
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        mode = entry.get("mode")
+        rid = entry.get("rid")
+        ts = entry.get("ts")
+        snap_raw = entry.get("snap")
+        if not isinstance(mode, str) or not isinstance(rid, str):
+            continue
+        if not isinstance(ts, (int, float)):
+            continue
+        if not isinstance(snap_raw, dict):
+            continue
+        try:
+            snap = GroupedNearbyTransit.model_validate(snap_raw)
+        except Exception:
+            continue
+        out[(mode, rid)] = (float(ts), snap)
+    return out
+
+
+async def _load_sticky_neighbor_view(
+    cell: tuple[float, float, int, str | None],
+    now: float,
+) -> dict[tuple[str, str], tuple[float, GroupedNearbyTransit]]:
+    """Merge sticky entries from the home cell + 8 neighbors using both
+    L1 (in-process) and L2 (Redis).  Newer ``ts`` always wins."""
+    factor = 10**_STICKY_GRID_DECIMALS
+    span = 1 / factor
+
+    cells: list[tuple[float, float, int, str | None]] = []
+    for dlat in (-span, 0.0, span):
+        for dlon in (-span, 0.0, span):
+            cells.append(
+                (
+                    round((cell[0] + dlat) * factor) / factor,
+                    round((cell[1] + dlon) * factor) / factor,
+                    cell[2],
+                    cell[3],
+                )
+            )
+
+    # L2 — fan out to Redis in parallel.
+    from app.clients import redis_client as _redis
+
+    async def _fetch(c: tuple) -> dict:
+        value, _state = await _redis.cache_get(
+            _STICKY_REDIS_PREFIX,
+            _STICKY_REDIS_KIND,
+            _sticky_redis_id(c),
+            fresh_ttl=_STICKY_TTL_SECONDS,
+            stale_ttl=_STICKY_TTL_SECONDS,
+            parser=_decode_sticky_bucket,
+        )
+        return value or {}
+
+    redis_results = await asyncio.gather(
+        *(_fetch(c) for c in cells), return_exceptions=True
+    )
+
+    merged: dict[tuple[str, str], tuple[float, GroupedNearbyTransit]] = {}
+
+    # L2 first so L1 (which may be more recent for this worker) wins ties.
+    for result in redis_results:
+        if isinstance(result, BaseException) or not result:
+            continue
+        for sk, (ts, snap) in result.items():
+            if now - ts > _STICKY_TTL_SECONDS:
+                continue
+            prev = merged.get(sk)
+            if prev is None or ts > prev[0]:
+                merged[sk] = (ts, snap)
+
+    # L1 overlay
+    for c in cells:
+        bucket = _sticky_route_memory.get(c)
+        if not bucket:
+            continue
+        for sk, (ts, snap) in bucket.items():
+            if now - ts > _STICKY_TTL_SECONDS:
+                continue
+            prev = merged.get(sk)
+            if prev is None or ts > prev[0]:
+                merged[sk] = (ts, snap)
+
+    return merged
+
+
+async def _persist_sticky_bucket(
+    cell: tuple[float, float, int, str | None],
+    bucket: dict[tuple[str, str], tuple[float, GroupedNearbyTransit]],
+) -> None:
+    """Write home cell to Redis (best effort)."""
+    if not bucket:
+        return
+    from app.clients import redis_client as _redis
+
+    try:
+        await _redis.cache_set(
+            _STICKY_REDIS_PREFIX,
+            _STICKY_REDIS_KIND,
+            _sticky_redis_id(cell),
+            stale_ttl=_STICKY_TTL_SECONDS,
+            data=_encode_sticky_bucket(bucket),
+        )
+    except Exception as exc:
+        TrackLogger.info(
+            f"sticky persist failed cell={cell}: {_describe_exception(exc)}",
+            tag="NEARBY",
+        )
 
 
 def _to_sticky_placeholder(
@@ -703,51 +859,30 @@ def _to_sticky_placeholder(
     return copy
 
 
-def _apply_sticky_route_memory(
+async def _apply_sticky_route_memory(
     grouped: list[GroupedNearbyTransit],
     lat: float,
     lon: float,
     radius: int,
     mode: str | None,
 ) -> list[GroupedNearbyTransit]:
-    """Merge sticky memory with the live ``grouped`` list and refresh the
-    cache.  Routes seen in the last ``_STICKY_TTL_SECONDS`` that are
-    missing from ``grouped`` are re-emitted as placeholders.  Mutates
-    ``grouped`` in place and returns it for convenience."""
+    """Merge sticky memory (L1 in-process + L2 Redis) with the live
+    ``grouped`` list and refresh both tiers.  Routes seen in the last
+    ``_STICKY_TTL_SECONDS`` that are missing from ``grouped`` are
+    re-emitted as placeholders.  Mutates ``grouped`` in place and
+    returns it for convenience."""
     import time as _time
 
     now = _time.time()
     cell = _sticky_cell_key(lat, lon, radius, mode)
-    bucket = _sticky_route_memory.setdefault(cell, {})
 
-    # Build a unified view of routes seen recently in this cell *or any of
-    # the 8 neighboring cells*.  GPS jitter (±~30 m) can flip the request
-    # across a cell boundary and lose the per-cell sticky state otherwise.
-    factor = 10**_STICKY_GRID_DECIMALS
-    span = 1 / factor
-    neighbor_view: dict[tuple[str, str], tuple[float, GroupedNearbyTransit]] = {}
-    for dlat in (-span, 0.0, span):
-        for dlon in (-span, 0.0, span):
-            ncell = (
-                round((cell[0] + dlat) * factor) / factor,
-                round((cell[1] + dlon) * factor) / factor,
-                radius,
-                mode,
-            )
-            nbucket = _sticky_route_memory.get(ncell)
-            if not nbucket:
-                continue
-            for sk, (ts, snap) in nbucket.items():
-                if now - ts > _STICKY_TTL_SECONDS:
-                    continue
-                prev = neighbor_view.get(sk)
-                if prev is None or ts > prev[0]:
-                    neighbor_view[sk] = (ts, snap)
+    neighbor_view = await _load_sticky_neighbor_view(cell, now)
 
-    # Drop expired entries from the home cell only (lazy expiry).
-    for sk, (ts, _) in list(bucket.items()):
+    # Drop expired entries from the home L1 bucket only (lazy expiry).
+    home_bucket = _sticky_route_memory.setdefault(cell, {})
+    for sk, (ts, _) in list(home_bucket.items()):
         if now - ts > _STICKY_TTL_SECONDS:
-            bucket.pop(sk, None)
+            home_bucket.pop(sk, None)
 
     current_keys = {_sticky_route_key(g) for g in grouped}
     appended = 0
@@ -766,14 +901,18 @@ def _apply_sticky_route_memory(
         current_keys.add(sk)
         appended += 1
 
-    # Refresh sticky bucket with everything currently in `grouped`
-    # (including the resurrected ghosts so they don't expire mid-flake).
+    # Refresh both tiers with everything currently in `grouped`
+    # (including resurrected ghosts so they don't expire mid-flake).
     if grouped:
         for g in grouped:
-            bucket[_sticky_route_key(g)] = (now, g)
-        _sticky_route_memory[cell] = bucket
+            home_bucket[_sticky_route_key(g)] = (now, g)
+        _sticky_route_memory[cell] = home_bucket
+        # Fire-and-forget Redis persist so the request path stays fast.
+        # We still await within the same task to surface failures in tests
+        # but the call itself is millisecond-scale and parallel-safe.
+        await _persist_sticky_bucket(cell, home_bucket)
 
-    # Cap total cells.  Drop the cells whose newest entry is oldest.
+    # Cap total L1 cells.  Drop the cells whose newest entry is oldest.
     if len(_sticky_route_memory) > _STICKY_MAX_CELLS:
         def _cell_freshness(c: tuple) -> float:
             b = _sticky_route_memory[c]
@@ -906,7 +1045,9 @@ async def _compute_and_cache_grouped(
     # Re-emit any route that was visible in this grid cell within the
     # last STICKY_TTL but is missing from the live response.  Covers
     # bus/subway/LIRR/MNR uniformly and absorbs SIRI / GTFS-RT flakes.
-    grouped = _apply_sticky_route_memory(grouped, lat, lon, radius, mode)
+    # L1 (in-process) + L2 (Redis) so state survives worker restarts
+    # and is shared across Render instances.
+    grouped = await _apply_sticky_route_memory(grouped, lat, lon, radius, mode)
 
     # Pre-serialise so cache hits return raw bytes (zero Pydantic overhead)
     json_bytes = _grouped_ta.dump_json(grouped)
