@@ -51,7 +51,13 @@ struct LoginView: View {
                             .opacity(actionsAppeared ? 1 : 0)
                     }
                     .padding(.bottom, 28)
-                    .frame(minHeight: UIScreen.main.bounds.height - 80)
+                    // Use the available container height instead of
+                    // `UIScreen.main`, which is deprecated in iOS 26.
+                    // `containerRelativeFrame` resolves against the
+                    // ScrollView's clip bounds.
+                    .containerRelativeFrame(.vertical) { height, _ in
+                        max(0, height - 80)
+                    }
                 }
                 .scrollBounceBehavior(.basedOnSize)
             }

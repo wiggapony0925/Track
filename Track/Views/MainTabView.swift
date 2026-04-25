@@ -63,6 +63,13 @@ struct MainTabView: View {
     /// so Home / Plan / Chat all agree on the active source.
     @State private var locationContext = LocationContext()
     var body: some View {
+        // Bind the floating tab bar once, then use it as a `.safeAreaInset`
+        // on each tab's content. Mounting the inset on `TabView` itself
+        // doesn't always propagate space to lazily-built tab children
+        // (composer / chat input ended up hidden behind the bar). Per-tab
+        // insets reliably reserve the room.
+        let bar = FloatingTabBar(selection: $selectedTab)
+
         TabView(selection: $selectedTab) {
             HomeView(
                 viewModel: homeViewModel,
@@ -75,9 +82,8 @@ struct MainTabView: View {
                 currentMapDistance: $currentMapDistance,
                 chatBiasPin: $chatBiasPin
             )
-            .tabItem {
-                Label(AppTab.home.rawValue, systemImage: AppTab.home.icon)
-            }
+            .toolbar(.hidden, for: .tabBar)
+            .safeAreaInset(edge: .bottom, spacing: 0) { bar }
             .tag(AppTab.home)
 
             PlanView(
@@ -89,28 +95,24 @@ struct MainTabView: View {
                 currentMapCenter: $currentMapCenter,
                 currentMapDistance: $currentMapDistance
             )
-            .tabItem {
-                Label(AppTab.trips.rawValue, systemImage: AppTab.trips.icon)
-            }
+            .toolbar(.hidden, for: .tabBar)
+            .safeAreaInset(edge: .bottom, spacing: 0) { bar }
             .tag(AppTab.trips)
-            
+
             ChatView(locationManager: locationManager, biasPin: $chatBiasPin)
-            .tabItem {
-                Label(AppTab.chat.rawValue, systemImage: AppTab.chat.icon)
-            }
-            .tag(AppTab.chat)
-            
+                .toolbar(.hidden, for: .tabBar)
+                .safeAreaInset(edge: .bottom, spacing: 0) { bar }
+                .tag(AppTab.chat)
+
             AlarmsView()
-            .tabItem {
-                Label(AppTab.alarms.rawValue, systemImage: AppTab.alarms.icon)
-            }
-            .tag(AppTab.alarms)
-            
+                .toolbar(.hidden, for: .tabBar)
+                .safeAreaInset(edge: .bottom, spacing: 0) { bar }
+                .tag(AppTab.alarms)
+
             SettingsView()
-            .tabItem {
-                Label(AppTab.settings.rawValue, systemImage: AppTab.settings.icon)
-            }
-            .tag(AppTab.settings)
+                .toolbar(.hidden, for: .tabBar)
+                .safeAreaInset(edge: .bottom, spacing: 0) { bar }
+                .tag(AppTab.settings)
         }
         .onReceive(NotificationCenter.default.publisher(for: .switchToTab)) { notification in
             if let tab = notification.object as? AppTab {
