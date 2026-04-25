@@ -666,6 +666,18 @@ _sticky_route_memory: dict[
 _STICKY_REDIS_PREFIX = "track:nearby"
 _STICKY_REDIS_KIND = "sticky"
 
+# Throttle Redis writes per cell — each write serialises the entire bucket
+# (can be 50–200 KB at busy hubs).  At 10 req/s/cell that's 1–2 MB/s of
+# wasted egress.  Only persist when the bucket has actually changed since
+# the last write or after this cooldown window has elapsed.
+_STICKY_REDIS_WRITE_COOLDOWN_S: float = 5.0
+
+# cell_key -> (last_persist_ts, last_persist_signature)
+_sticky_persist_meta: dict[
+    tuple[float, float, int, str | None],
+    tuple[float, frozenset[tuple[str, str]]],
+] = {}
+
 
 def _sticky_cell_key(
     lat: float, lon: float, radius: int, mode: str | None,
@@ -907,10 +919,20 @@ async def _apply_sticky_route_memory(
         for g in grouped:
             home_bucket[_sticky_route_key(g)] = (now, g)
         _sticky_route_memory[cell] = home_bucket
-        # Fire-and-forget Redis persist so the request path stays fast.
-        # We still await within the same task to surface failures in tests
-        # but the call itself is millisecond-scale and parallel-safe.
-        await _persist_sticky_bucket(cell, home_bucket)
+
+        # Throttle Redis writes — only persist when the route set changed
+        # since last write or the cooldown window has expired.  Keeps hot
+        # cells (Times Sq, Grand Central) from pegging Redis bandwidth.
+        signature = frozenset(home_bucket.keys())
+        last_meta = _sticky_persist_meta.get(cell)
+        should_persist = (
+            last_meta is None
+            or signature != last_meta[1]
+            or (now - last_meta[0]) >= _STICKY_REDIS_WRITE_COOLDOWN_S
+        )
+        if should_persist:
+            _sticky_persist_meta[cell] = (now, signature)
+            await _persist_sticky_bucket(cell, home_bucket)
 
     # Cap total L1 cells.  Drop the cells whose newest entry is oldest.
     if len(_sticky_route_memory) > _STICKY_MAX_CELLS:
@@ -921,6 +943,7 @@ async def _apply_sticky_route_memory(
         excess = len(_sticky_route_memory) - _STICKY_MAX_CELLS
         for c in sorted(_sticky_route_memory.keys(), key=_cell_freshness)[:excess]:
             _sticky_route_memory.pop(c, None)
+            _sticky_persist_meta.pop(c, None)
 
     if appended:
         TrackLogger.info(
@@ -935,6 +958,7 @@ def clear_sticky_route_memory() -> int:
     """Test/admin helper: wipe sticky memory and return entry count cleared."""
     n = sum(len(b) for b in _sticky_route_memory.values())
     _sticky_route_memory.clear()
+    _sticky_persist_meta.clear()
     return n
 
 
