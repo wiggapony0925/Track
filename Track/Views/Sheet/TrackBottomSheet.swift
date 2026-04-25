@@ -60,6 +60,12 @@ struct TrackBottomSheet<Content: View>: View {
     var detents: [TrackSheetDetent]
     var cornerRadius: CGFloat = 28
     var topInset: CGFloat = 12
+    /// Reserved space at the BOTTOM of the sheet container — typically
+    /// the height of the floating tab bar that sits above the home
+    /// indicator.  When > 0, the sheet card's bottom edge is lifted by
+    /// this amount so the bar fully covers it instead of the sheet
+    /// poking out underneath.
+    var bottomInset: CGFloat = 0
     var topFade: Bool = false
     var background: AnyView? = nil
     var headerOverflow: CGFloat = 0
@@ -102,18 +108,39 @@ struct TrackBottomSheet<Content: View>: View {
                 sheetCard
                     .frame(height: live, alignment: .top)
                     .frame(maxWidth: .infinity, alignment: .bottom)
+                    // Lift the card off the bottom so the floating tab
+                    // bar fully overlays it and the sheet doesn't peek
+                    // out from beneath the bar.
+                    .padding(.bottom, bottomInset)
+                    // "Vacuum" effect: as the sheet collapses toward 0,
+                    // the card shrinks/squishes toward bottom-center so
+                    // it looks like the floating tab bar is eating it.
+                    // No `.animation(...)` here — these scales follow
+                    // `live` directly so the squeeze tracks the finger
+                    // at full frame-rate without a competing spring.
+                    .scaleEffect(
+                        x: vacuumScaleX(live: live),
+                        y: vacuumScaleY(live: live),
+                        anchor: .bottom
+                    )
+                    .opacity(vacuumOpacity(live: live))
 
                 // Top-edge overlay (e.g. floating search bar). Positioned
                 // inside the SAME GeometryReader as the sheet card and
                 // driven by the SAME `live` value, so the two views are
-                // laid out together every frame — no SwiftUI state hop,
-                // no chasing lag during fast drags.
+                // laid out together every frame — zero chasing lag.
                 if let topEdgeOverlay {
                     topEdgeOverlay()
                         .frame(maxWidth: .infinity)
                         .position(x: geo.size.width / 2,
-                                  y: max(0, available - live))
-                        .allowsHitTesting(true)
+                                  y: max(0, available - live - bottomInset))
+                        .scaleEffect(
+                            x: vacuumScaleX(live: live),
+                            y: vacuumScaleY(live: live),
+                            anchor: .center
+                        )
+                        .opacity(vacuumOpacity(live: live))
+                        .allowsHitTesting(vacuumOpacity(live: live) > 0.5)
                 }
             }
             .onAppear {
@@ -145,6 +172,45 @@ struct TrackBottomSheet<Content: View>: View {
                 .shadow(color: Color.black.opacity(0.05), radius: 1,  x: 0, y: -0.5)
                 .padding(.top, headerOverflow)
         )
+    }
+
+    // MARK: - Vacuum (sheet-eaten) helpers
+
+    /// Threshold (in pixels) above which the vacuum effect is identity.
+    /// Pulled from `SheetConstants.vacuumThreshold` so DashboardView's
+    /// release-commit logic and HomeView's collapse snap all use the
+    /// same boundary — the squish only begins the instant the sheet's
+    /// top edge meets the navigator, and once it does the collapse is
+    /// guaranteed to complete.
+    private var vacuumThreshold: CGFloat { SheetConstants.vacuumThreshold }
+
+    private func vacuumProgress(live: CGFloat) -> CGFloat {
+        // 0 = fully visible, 1 = fully consumed.
+        let t = (vacuumThreshold - max(0, live)) / vacuumThreshold
+        return min(1, max(0, t))
+    }
+
+    private func vacuumScaleY(live: CGFloat) -> CGFloat {
+        // Squish vertically nearly to a sliver — the card collapses
+        // down toward the bar's top edge as if it's being pulled into
+        // the navigator.
+        let p = vacuumProgress(live: live)
+        return 1 - p * 0.85
+    }
+
+    private func vacuumScaleX(live: CGFloat) -> CGFloat {
+        // Pinch horizontally hard too so the card converges to a
+        // single point at the navigator's center, instead of just
+        // shrinking in height.
+        let p = vacuumProgress(live: live)
+        return 1 - p * 0.7
+    }
+
+    private func vacuumOpacity(live: CGFloat) -> Double {
+        // Hold full opacity until the sheet is well into the squish,
+        // then fade out the last 25% to mask the final disappearance.
+        let p = Double(vacuumProgress(live: live))
+        return p < 0.75 ? 1.0 : max(0, 1.0 - (p - 0.75) / 0.25)
     }
 
     /// iOS 26 no longer permits `UIScreen.main`.  Pull the screen size

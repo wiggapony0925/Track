@@ -92,7 +92,12 @@ struct DashboardView: View {
                 }
                 let proposed = dragStartHeight - value.translation.height
                 let upperBound = max(maxSheetHeight, dragStartHeight)
-                let lowerBound = SheetConstants.minimumHeight
+                // Allow the sheet to be dragged all the way down so it
+                // visually meets the floating tab bar.  When the live
+                // height drops below ~80, `HomeView` flips
+                // `isSheetCollapsed`, which morphs the tab bar into a
+                // grabber the user can pull up to restore.
+                let lowerBound: CGFloat = 0
                 let clamped = min(max(proposed, lowerBound), upperBound)
                 sheetDetent = .height(clamped)
             }
@@ -106,6 +111,21 @@ struct DashboardView: View {
                 if goingUp && proposed > upperBound * 0.85 {
                     withAnimation(.spring(response: 0.36, dampingFraction: 0.88)) {
                         sheetDetent = .large
+                    }
+                    return
+                }
+                // If the release lands inside the vacuum zone (sheet's
+                // top has met the floating navigator), commit the
+                // collapse — the user must NOT be able to strand the
+                // sheet mid-squish.  Anywhere above the vacuum zone we
+                // honor freeform positioning.
+                let releaseHeight: CGFloat = {
+                    if case .height(let h) = sheetDetent { return h }
+                    return proposed
+                }()
+                if releaseHeight < SheetConstants.vacuumThreshold {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                        sheetDetent = .height(0)
                     }
                 }
                 // Otherwise leave the sheet at whatever .height(...) the

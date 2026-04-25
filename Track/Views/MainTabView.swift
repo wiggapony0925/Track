@@ -35,6 +35,23 @@ extension Notification.Name {
     /// Payload: a `PlanLocation` — tells PlanView to set this as the destination
     /// and begin planning immediately, then switches to the Trips tab.
     static let quickDestination = Notification.Name("quickDestination")
+    /// Posted by `HomeView` whenever its bottom sheet collapses fully or
+    /// re-expands. Object: `Bool` (true = collapsed). Picked up by
+    /// `FloatingTabBar` to morph into a "grabber" affordance.
+    static let homeSheetCollapsedChanged = Notification.Name("homeSheetCollapsedChanged")
+    /// Posted by `FloatingTabBar` when the user pulls up on the grabber.
+    /// `HomeView` listens and restores the sheet to its default detent.
+    static let requestRestoreHomeSheet = Notification.Name("requestRestoreHomeSheet")
+    /// Posted by `HomeView` when the active `TransportMode` changes.
+    /// Object: `TransportMode`. Picked up by `FloatingTabBar` so the
+    /// grabber renders the matching vehicle (subway/bus/lirr/mnr).
+    static let homeTransportModeChanged = Notification.Name("homeTransportModeChanged")
+    /// Posted by `FloatingTabBar` while the user is pulling up on the
+    /// grabber (sheet collapsed). Object: `CGFloat` (points pulled,
+    /// always >= 0).  `HomeView` mirrors this to a live sheet height
+    /// so the dashboard rises with the finger instead of waiting for
+    /// the release event.
+    static let homeSheetPullProgress = Notification.Name("homeSheetPullProgress")
 }
 
 // MARK: - MainTabView

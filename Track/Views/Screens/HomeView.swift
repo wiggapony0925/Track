@@ -346,21 +346,59 @@ struct HomeView: View {
             }
             .animation(.spring(response: 0.32, dampingFraction: 0.95), value: bottomSheetPresentation.wrappedValue)
 
-            // MARK: - Sheet Peek Button
-            // Floats above the tab bar when the sheet has been dragged fully down.
-            // Pulses with a glow, and restores the sheet on tap or swipe up.
-            .overlay(alignment: .bottom) {
-                if isSheetCollapsed {
-                    SheetPeekButton {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            isSheetCollapsed = false
-                            sheetDetent = SheetConstants.defaultDetent
-                        }
-                        HapticManager.impact(.medium)
-                    }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .padding(.bottom, 100) // sits above the tab bar
+            // MARK: - Sheet Collapse → Tab Bar Grabber
+            // When the sheet is dragged fully down it merges visually with
+            // the floating tab bar.  The bar morphs into a grabber that the
+            // user can pull up to restore — see `FloatingTabBar`. Wiring is
+            // notification-based so neither view needs a direct reference to
+            // the other.
+            .onChange(of: isSheetCollapsed) { _, newValue in
+                NotificationCenter.default.post(
+                    name: .homeSheetCollapsedChanged,
+                    object: newValue
+                )
+            }
+            .onChange(of: viewModel.selectedMode) { _, newMode in
+                NotificationCenter.default.post(
+                    name: .homeTransportModeChanged,
+                    object: newMode
+                )
+            }
+            .onAppear {
+                // Seed the floating tab bar with the current mode on
+                // first paint so the grabber matches even if the user
+                // never changes tabs before collapsing the sheet.
+                NotificationCenter.default.post(
+                    name: .homeTransportModeChanged,
+                    object: viewModel.selectedMode
+                )
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .requestRestoreHomeSheet)) { _ in
+                guard isSheetCollapsed else { return }
+                // Bouncy spring so the sheet visibly pops out of the
+                // floating navigator instead of just sliding up.
+                withAnimation(.interpolatingSpring(stiffness: 140, damping: 14)) {
+                    isSheetCollapsed = false
+                    sheetDetent = SheetConstants.defaultDetent
                 }
+                HapticManager.impact(.medium)
+            }
+            // Live preview while the user is pulling up on the floating
+            // tab bar's grabber. Translates pull distance into a real
+            // sheet height so the dashboard rises with the finger \u2014 the
+            // restore on release is then just the final spring.
+            .onReceive(NotificationCenter.default.publisher(for: .homeSheetPullProgress)) { note in
+                guard let pulled = note.object as? CGFloat else { return }
+                // Don't gate on `isSheetCollapsed` — the live-height
+                // callback flips it false partway through the pull and
+                // gating would stall the sheet mid-rise.  We do still
+                // ignore stray 0-resets fired after restoration.
+                guard isSheetCollapsed || pulled > 0 else { return }
+                let target = max(0, min(SheetConstants.defaultDetent.resolve(in: 800, topInset: 12),
+                                        pulled * 2.4))
+                // Direct write — no withAnimation so height tracks the
+                // finger at gesture frame-rate without queueing springs.
+                sheetDetent = .height(target)
             }
             // MARK: - Route Detail Floating Panel
             .overlay {

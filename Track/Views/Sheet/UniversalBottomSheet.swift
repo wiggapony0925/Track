@@ -26,6 +26,12 @@ enum SheetConstants {
     static let defaultHeight: CGFloat = 350
     /// Lowest collapsed height measured from live drag calibration.
     static let minimumHeight: CGFloat = 165
+    /// Height (in pixels) at which the sheet's top edge meets the
+    /// floating tab bar.  Below this, the vacuum animation runs and
+    /// the collapse must be committed — mid-vacuum release is not
+    /// allowed (HomeView snaps to 0, DashboardView's onEnded honors
+    /// the same boundary so the user can't strand the sheet).
+    static let vacuumThreshold: CGFloat = 80
     /// Convenience detent value for the default resting position.
     static let defaultDetent: TrackSheetDetent = .height(defaultHeight)
 
@@ -143,6 +149,14 @@ struct UniversalBottomSheet<Content: View>: View {
     /// the sheet's render pass and never lags behind during fast drags.
     var topEdgeOverlay: (() -> AnyView)? = nil
 
+    /// Reserved space at the bottom of the sheet container so the
+    /// floating tab bar can fully overlay the sheet card without the
+    /// card poking out underneath.  Defaults to 0 — the bar’s blur
+    /// material + the sheet’s vacuum-collapse animation hide the
+    /// bottom edge already; lifting the whole sheet just stops it from
+    /// being able to drag *into* the bar.
+    var bottomInset: CGFloat = 0
+
     /// Theme setting — must be read here so the sheet inherits the correct color scheme.
     @AppStorage("appTheme") private var appTheme = "system"
 
@@ -182,6 +196,7 @@ struct UniversalBottomSheet<Content: View>: View {
             detents: trackDetents,
             cornerRadius: 28,
             topInset: 12,
+            bottomInset: bottomInset,
             topFade: false,
             onHeightChange: { h in
                 sheetHeightObserver?.report(h)
