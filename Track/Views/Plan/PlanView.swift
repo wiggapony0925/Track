@@ -333,6 +333,10 @@ struct PlanView: View {
             .padding(.trailing, 4)
 
             // ── Swap button ──
+            // Borderless icon-only treatment. The previous tinted
+            // circle competed visually with the route input rows next
+            // to it; a flat icon reads as an action without adding a
+            // second container shape inside the card.
             Button {
                 let didSwap = withAnimation(AppTheme.Animation.snappy) {
                     viewModel.swapOriginDestination()
@@ -341,20 +345,15 @@ struct PlanView: View {
                     Task { await viewModel.planTrip() }
                 }
             } label: {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.Colors.accent.opacity(0.06))
-                        .frame(width: 44, height: 44)
-                    Circle()
-                        .strokeBorder(AppTheme.Colors.accent.opacity(0.15), lineWidth: 1)
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "arrow.up.arrow.down")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(AppTheme.Colors.accent)
-                }
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 16, weight: .heavy))
+                    .foregroundStyle(AppTheme.Colors.accent)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(PlanCardButtonStyle())
-            .padding(.trailing, 14)
+            .accessibilityLabel("Swap origin and destination")
+            .padding(.trailing, 10)
         }
         .padding(.vertical, 6)
         .background(
@@ -429,7 +428,10 @@ struct PlanView: View {
         .disabled(viewModel.isLoading)
         .buttonStyle(PlanCardButtonStyle())
         .padding(.horizontal, 32)
-        .padding(.bottom, 100)
+        // Sits just above the floating tab bar (~70pt tall) with a
+        // small gap. Previously 100pt, which lifted the button into
+        // the middle of the "Suggested for You" carousel.
+        .padding(.bottom, 24)
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
