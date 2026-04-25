@@ -627,6 +627,152 @@ _nearby_resp_cache: dict[
 _nearby_resp_inflight: dict[tuple, asyncio.Task] = {}
 
 
+# ---------------------------------------------------------------------------
+# Sticky route memory — mode-agnostic stability layer
+# ---------------------------------------------------------------------------
+# Architectural invariant: /nearby/grouped MUST never hide a route that
+# was just shown.  When a feed flakes (SIRI circuit-breaker, GTFS-RT
+# parse failure, MTABC timeout, OBA outage, LIRR/MNR partial data) a
+# route can vanish from the next response even though it physically
+# still serves the area.  Sticky memory keeps that promise:
+#
+#   1. Every successful grouped response writes a snapshot of every
+#      emitted route into a per-grid-cell bucket (~111m grid).
+#   2. On the next compute, any sticky entry within the TTL window
+#      that's missing from the live result is re-emitted as a
+#      placeholder card (status="No Data", minutes_away=99, ts=None)
+#      so the iOS client keeps showing the badge while the feed heals.
+#
+# Mode-agnostic — handles bus, subway, LIRR, and MNR uniformly.  The
+# route_id is case-folded so case-mismatches between feeds (BX92 vs
+# Bx92) are coalesced into one sticky entry instead of two.
+
+_STICKY_TTL_SECONDS: float = 300.0
+_STICKY_GRID_DECIMALS: int = 3      # ~111 m, matches quick-mode grid
+_STICKY_MAX_CELLS: int = 4096
+
+# cell_key -> { (mode, route_id_casefold) -> (last_ts, snapshot) }
+_sticky_route_memory: dict[
+    tuple[float, float, int, str | None],
+    dict[tuple[str, str], tuple[float, GroupedNearbyTransit]],
+] = {}
+
+
+def _sticky_cell_key(
+    lat: float, lon: float, radius: int, mode: str | None,
+) -> tuple[float, float, int, str | None]:
+    factor = 10**_STICKY_GRID_DECIMALS
+    return (
+        round(lat * factor) / factor,
+        round(lon * factor) / factor,
+        radius,
+        mode,
+    )
+
+
+def _sticky_route_key(group: GroupedNearbyTransit) -> tuple[str, str]:
+    return (group.mode, group.route_id.casefold())
+
+
+def _to_sticky_placeholder(
+    snapshot: GroupedNearbyTransit,
+) -> GroupedNearbyTransit:
+    """Return a deep copy of ``snapshot`` with arrivals reduced to one
+    placeholder per direction (status='No Data').  Used when re-emitting
+    a sticky route that's missing from the current live response."""
+    copy = snapshot.model_copy(deep=True)
+    new_dirs: list[DirectionArrivals] = []
+    for d in copy.directions:
+        if not d.arrivals:
+            continue
+        seed = d.arrivals[0].model_copy(deep=True)
+        seed.arrival_ts = None
+        seed.minutes_away = _PLACEHOLDER_MINUTES
+        seed.status = "No Data"
+        seed.is_real_time = False
+        seed.is_cancelled = False
+        seed.vehicle_id = None
+        seed.trip_id = None
+        seed.delay_seconds = None
+        seed.is_stalled = False
+        seed.arrival_proximity_text = None
+        d_copy = d.model_copy(update={"arrivals": [seed]})
+        new_dirs.append(d_copy)
+    if new_dirs:
+        copy.directions = new_dirs
+    return copy
+
+
+def _apply_sticky_route_memory(
+    grouped: list[GroupedNearbyTransit],
+    lat: float,
+    lon: float,
+    radius: int,
+    mode: str | None,
+) -> list[GroupedNearbyTransit]:
+    """Merge sticky memory with the live ``grouped`` list and refresh the
+    cache.  Routes seen in the last ``_STICKY_TTL_SECONDS`` that are
+    missing from ``grouped`` are re-emitted as placeholders.  Mutates
+    ``grouped`` in place and returns it for convenience."""
+    import time as _time
+
+    now = _time.time()
+    cell = _sticky_cell_key(lat, lon, radius, mode)
+    bucket = _sticky_route_memory.get(cell, {})
+
+    current_keys = {_sticky_route_key(g) for g in grouped}
+    appended = 0
+    for sk, (ts, snap) in list(bucket.items()):
+        if now - ts > _STICKY_TTL_SECONDS:
+            bucket.pop(sk, None)
+            continue
+        if sk in current_keys:
+            continue
+        try:
+            ghost = _to_sticky_placeholder(snap)
+        except Exception as exc:
+            TrackLogger.info(
+                f"sticky resurrect failed for {sk}: {_describe_exception(exc)}",
+                tag="NEARBY",
+            )
+            continue
+        grouped.append(ghost)
+        current_keys.add(sk)
+        appended += 1
+
+    # Refresh sticky bucket with everything currently in `grouped`
+    # (including the resurrected ghosts so they don't expire mid-flake).
+    if grouped:
+        for g in grouped:
+            bucket[_sticky_route_key(g)] = (now, g)
+        _sticky_route_memory[cell] = bucket
+
+    # Cap total cells.  Drop the cells whose newest entry is oldest.
+    if len(_sticky_route_memory) > _STICKY_MAX_CELLS:
+        def _cell_freshness(c: tuple) -> float:
+            b = _sticky_route_memory[c]
+            return max((t for t, _ in b.values()), default=0.0)
+
+        excess = len(_sticky_route_memory) - _STICKY_MAX_CELLS
+        for c in sorted(_sticky_route_memory.keys(), key=_cell_freshness)[:excess]:
+            _sticky_route_memory.pop(c, None)
+
+    if appended:
+        TrackLogger.info(
+            f"sticky-memory resurrected {appended} route(s) "
+            f"at cell={cell} mode_filter={mode}",
+            tag="NEARBY",
+        )
+    return grouped
+
+
+def clear_sticky_route_memory() -> int:
+    """Test/admin helper: wipe sticky memory and return entry count cleared."""
+    n = sum(len(b) for b in _sticky_route_memory.values())
+    _sticky_route_memory.clear()
+    return n
+
+
 def _describe_exception(exc: BaseException) -> str:
     """Return a log-friendly exception string even when str(exc) is empty."""
     detail = str(exc).strip()
@@ -729,6 +875,12 @@ async def _compute_and_cache_grouped(
             for a in d.arrivals:
                 if a.minutes_away >= _PLACEHOLDER_MINUTES and a.arrival_ts is None:
                     a.status = "No Data"
+
+    # ── Sticky route memory (mode-agnostic stability layer) ───────
+    # Re-emit any route that was visible in this grid cell within the
+    # last STICKY_TTL but is missing from the live response.  Covers
+    # bus/subway/LIRR/MNR uniformly and absorbs SIRI / GTFS-RT flakes.
+    grouped = _apply_sticky_route_memory(grouped, lat, lon, radius, mode)
 
     # Pre-serialise so cache hits return raw bytes (zero Pydantic overhead)
     json_bytes = _grouped_ta.dump_json(grouped)
@@ -3630,12 +3782,68 @@ async def _fetch_nearby_buses(
             f"for single-direction routes"
         )
 
+    # -----------------------------------------------------------------
+    # Phase C.5: GUARANTEED static-GTFS route visibility
+    # -----------------------------------------------------------------
+    # Hard contract: nearby must surface EVERY MTA route within the
+    # radius, even with no live or scheduled arrival data.  This block
+    # uses the local in-memory static-GTFS index (fast, no network) and
+    # injects a bare placeholder for any route not already in results.
+    #
+    # This runs UNCONDITIONALLY — before any quick-mode short-circuit
+    # or budget-deadline return — so a slow upstream cannot poison the
+    # response cache with a result that is missing routes (e.g. Q26).
+    # Phase E below will later upgrade these placeholders with real
+    # scheduled arrivals when time/budget permits.
+    # -----------------------------------------------------------------
+    try:
+        _ph_static_routes = await asyncio.to_thread(
+            _nearby_static_bus_routes, lat, lon, effective_radius
+        )
+    except Exception as exc:
+        TrackLogger.info(
+            f"Phase C.5 static index lookup failed: {_describe_exception(exc)}",
+            tag="NEARBY",
+        )
+        _ph_static_routes = {}
+
+    if _ph_static_routes:
+        _existing_route_ids = {r.route_id for r in results if r.mode == "bus"}
+        _phase_c5_count = 0
+        for _rid, (_sname, _slat, _slon, _sid) in _ph_static_routes.items():
+            if _rid in _existing_route_ids:
+                continue
+            results.append(
+                NearbyTransitArrival(
+                    route_id=_rid,
+                    stop_name=_sname,
+                    arrival_ts=None,
+                    direction=route_primary_direction.get(_rid) or "N/A",
+                    minutes_away=_PLACEHOLDER_MINUTES,
+                    status="Scheduled",
+                    mode="bus",
+                    stop_lat=_slat,
+                    stop_lon=_slon,
+                    stop_id=f"MTA_{_sid}",
+                    vehicle_id=None,
+                    destination=None,
+                    is_express=_is_express_service(_rid, "bus"),
+                )
+            )
+            _existing_route_ids.add(_rid)
+            _phase_c5_count += 1
+        if _phase_c5_count:
+            TrackLogger.bus(
+                f"Phase C.5: Injected {_phase_c5_count} guaranteed-visibility "
+                f"static-GTFS bus placeholders (radius={effective_radius}m)"
+            )
+
     # ── Quick mode: skip expensive Phases D/E/F ─────────────────────
     # During drag-search the user is panning the map — speed matters
-    # more than completeness.  Phases A-C already give live SIRI data
-    # plus missing-route / direction placeholders.  Phases D/E/F add
-    # deep OBA stops-for-route lookups and static GTFS which can take
-    # 5-12 s.  Return early so drag-search responses are <1 s.
+    # more than completeness.  Phases A-C.5 already cover route
+    # visibility (live SIRI + static-GTFS placeholders).  Phases D/E/F
+    # only enrich arrival data and can take 5-12 s.  Return early so
+    # drag-search responses are <1 s without dropping any routes.
     if quick:
         TrackLogger.bus(
             f"Quick mode — returning {len(results)} bus results "
