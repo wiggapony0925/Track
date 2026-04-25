@@ -59,14 +59,19 @@ struct FloatingTabBar: View {
                 // parent's frame don't always receive touches under
                 // the sheet overlay above; keeping the train inside
                 // the layout frame fixes tap-through.
+                // IMPORTANT: do NOT apply `.contentShape(Rectangle())`
+                // after the `.frame(maxHeight: .infinity)` below — that
+                // would make the entire ZStack (including the area over
+                // the tab pills) tappable, swallowing the first tap on
+                // a different tab while collapsed and forcing the user
+                // to tap twice.  The inner `trainGrabber` view already
+                // owns its own tight tap target on the sprite itself.
                 trainGrabber
                     .opacity(sheetCollapsed ? 1 : 0)
                     .scaleEffect(sheetCollapsed ? 1 : 0.6, anchor: .bottom)
                     .offset(y: -56)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .frame(maxHeight: .infinity, alignment: .bottom)
-                    .contentShape(Rectangle())
-                    .onTapGesture { requestRestore() }
                     .allowsHitTesting(sheetCollapsed)
                     .zIndex(2)
 
