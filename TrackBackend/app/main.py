@@ -18,6 +18,7 @@ from app.routers import (
     analytics,
     bus,
     departures,
+    gtfs_bundle,
     lirr,
     mnr,
     nearby,
@@ -68,6 +69,7 @@ app.include_router(track_engine_router.router)
 app.include_router(user.router)
 app.include_router(system.router)
 app.include_router(analytics.router)
+app.include_router(gtfs_bundle.router)
 app.include_router(metromind_router)
 
 # ── Static files (docs assets, favicon) ──────────────────────────────────

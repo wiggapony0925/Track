@@ -1,0 +1,18 @@
+{
+  "catalog_version": 1,
+  "regions": [
+    {
+      "region_id": "nyc",
+      "schema_version": 1,
+      "sha256": "1aec899a1886e4f7821717fe704f6eed37efb9cdf79ffd8042c039a028601c47",
+      "filename": "nyc-1aec899a.sqlite",
+      "url": "/static/gtfs/nyc-1aec899a.sqlite",
+      "size_bytes": 3645440,
+      "stops_count": 15092,
+      "routes_count": 421,
+      "route_stops_count": 25298,
+      "generated_at": 1777159531
+    }
+  ],
+  "updated_at": 1777159544
+}
