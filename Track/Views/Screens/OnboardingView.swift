@@ -40,7 +40,7 @@ private enum OnboardingStep: Int, CaseIterable {
 // MARK: - Root
 
 struct OnboardingView: View {
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @ObservedObject private var onboardingTracker = OnboardingTracker.shared
     @State private var step: OnboardingStep = .welcome
     @State private var locationManager = LocationManager()
 
@@ -171,7 +171,7 @@ struct OnboardingView: View {
         OnboardingReadyStep(
             placeCount: savedPlaces.count,
             onFinish: {
-                hasCompletedOnboarding = true
+                onboardingTracker.markComplete()
             }
         )
     }

@@ -7,7 +7,7 @@ import CoreLocation
 
 struct ContentView: View {
     @ObservedObject private var supabase = SupabaseManager.shared
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @ObservedObject private var onboarding = OnboardingTracker.shared
     @AppStorage("appTheme") private var appTheme = "system"
     @State private var locationManager = LocationManager()
 
@@ -45,7 +45,7 @@ struct ContentView: View {
                 authLoadingView
             } else if !isAuth {
                 LoginView()
-            } else if !hasCompletedOnboarding {
+            } else if !onboarding.hasCompletedOnboarding {
                 OnboardingView()
             } else if locationGranted {
                 MainTabView(locationManager: locationManager)
@@ -78,7 +78,7 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            if supabase.isAuthResolved && isAuth && hasCompletedOnboarding {
+            if supabase.isAuthResolved && isAuth && onboarding.hasCompletedOnboarding {
                 // Fire the full sync AFTER the first transit fetch completes.
                 // HomeViewModel posts .transitDataLoaded when hasLoadedOnce
                 // flips to true, so sync starts as soon as the critical-path
@@ -117,7 +117,7 @@ struct ContentView: View {
                 Task {
                     await supabase.refreshSessionIfNeeded()
 
-                    if supabase.isAuthenticated && hasCompletedOnboarding {
+                    if supabase.isAuthenticated && onboarding.hasCompletedOnboarding {
                         // Trigger a status refresh — CLLocationManager will publish
                         // the latest authorizationStatus via didChangeAuthorization.
                         locationManager.refreshAuthorizationStatus()
