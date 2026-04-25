@@ -301,11 +301,17 @@ struct MapControlsOverlay: View {
             targetCamera = MapCameraPresets.center(on: finalTarget, is3D: false)
         }
 
-        // Apply camera with a single decisive animation — no competing
-        // withAnimation blocks that could cause jitter.
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
-            cameraPosition = targetCamera
-        }
+        // Apply camera through the central engine — dedupe + bounds
+        // validation + renderer-echo mute live there. The sheet detent
+        // change runs in its own transaction so its reactive
+        // `handleSheetDetentChanged` write inside HomeView is dropped
+        // by the engine's coalesce window (same target).
+        CameraHoverEngine.commit(
+            targetCamera,
+            animation: HoverAnimations.routeFit,
+            to: $cameraPosition,
+            source: .user
+        )
 
         HapticManager.impact(.light)
     }

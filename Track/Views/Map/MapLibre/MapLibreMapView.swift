@@ -581,8 +581,38 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         var initialTilesRendered = false
         private var pendingLayerTimer: DispatchWorkItem?
 
+        /// Observes `CameraHoverEngine.cameraWriteWillCommit` so that
+        /// SwiftUI-driven camera writes (anything that goes through
+        /// `CameraHoverEngine.commit`) also flip `programmaticCameraInFlight`.
+        /// Without this, the gesture-throttled `syncCameraToBinding` work
+        /// item could echo a stale value back into the binding mid-fly,
+        /// causing the camera to "bounce" between the new target and the
+        /// previous frame — the exact glitch we're fighting here.
+        private var hoverCommitObserver: NSObjectProtocol?
+
         init(_ parent: MapLibreMapView) {
             self.parent = parent
+            super.init()
+            hoverCommitObserver = NotificationCenter.default.addObserver(
+                forName: CameraHoverEngine.cameraWriteWillCommit,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.programmaticCameraInFlight = true
+                // Cancel any pending throttled binding-write so the
+                // SwiftUI-side write isn't immediately overwritten by
+                // an echo from an in-flight gesture frame.
+                self.pendingCameraSync?.cancel()
+                self.pendingCameraSync = nil
+                self.lastWrittenCamera = nil
+            }
+        }
+
+        deinit {
+            if let token = hoverCommitObserver {
+                NotificationCenter.default.removeObserver(token)
+            }
         }
 
         // MARK: - Delegate: Style Loaded

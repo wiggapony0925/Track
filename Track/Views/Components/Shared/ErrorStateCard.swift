@@ -256,12 +256,12 @@ struct ErrorStateCard: View {
 
         case .explore(let cameraPosition):
             Button {
-                withAnimation(.easeInOut(duration: 1.0)) {
-                    cameraPosition.wrappedValue =
-                        MapCameraPresets.explorer(
-                            is3D: false
-                        )
-                }
+                CameraHoverEngine.commit(
+                    MapCameraPresets.explorer(is3D: false),
+                    animation: HoverAnimations.smooth,
+                    to: cameraPosition,
+                    source: .user
+                )
             } label: {
                 HStack(spacing: 6) {
                     Image(

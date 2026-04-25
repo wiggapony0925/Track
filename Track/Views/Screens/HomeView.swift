@@ -503,7 +503,12 @@ struct HomeView: View {
             if lat != 0 && lon != 0 {
                 hasLoadedInitialData = true
                 let cachedLoc = CLLocation(latitude: lat, longitude: lon)
-                cameraPosition = MapCameraPresets.center(on: cachedLoc.coordinate, is3D: false)
+                CameraHoverEngine.commit(
+                    MapCameraPresets.center(on: cachedLoc.coordinate, is3D: false),
+                    animation: HoverAnimations.snap,
+                    to: $cameraPosition,
+                    source: .system
+                )
 
                 // Phase 1: Load cached route cards with location awareness.
                 // If the user moved significantly since last session, the
@@ -660,14 +665,24 @@ struct HomeView: View {
             userLocation: locationManager.currentLocation,
             is3D: false
         ) {
-            // Fly to fit camera. Only collapse the sheet if the user
-            // hasn't already manually expanded it to .large.
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
-                if sheetDetent != .large {
+            // Adjust the sheet detent FIRST in its own animation
+            // transaction. Doing the detent change inside the same
+            // withAnimation as the camera write triggers
+            // handleSheetDetentChanged synchronously, which then
+            // attempted a second camera write — the dedupe in
+            // CameraHoverEngine.commit catches it, but separating
+            // the transactions is cleaner and avoids spring overlap.
+            if sheetDetent != .large {
+                withAnimation(HoverAnimations.snap) {
                     sheetDetent = SheetConstants.defaultDetent
                 }
-                cameraPosition = fitCamera
             }
+            CameraHoverEngine.commit(
+                fitCamera,
+                animation: HoverAnimations.routeFit,
+                to: $cameraPosition,
+                source: .system
+            )
         } else if let coordinate = viewModel.nearestStopCoordinate {
             centerMap(on: coordinate)
         }
@@ -699,9 +714,12 @@ struct HomeView: View {
             userLocation: locationManager.currentLocation,
             is3D: false
         ) {
-            withAnimation(HoverAnimations.fly) {
-                cameraPosition = fitCamera
-            }
+            CameraHoverEngine.commit(
+                fitCamera,
+                animation: HoverAnimations.fly,
+                to: $cameraPosition,
+                source: .system
+            )
         }
     }
     
@@ -723,9 +741,12 @@ struct HomeView: View {
         }
         
         if let coord = viewModel.coordinateForTappedVehicle(tappedId) {
-            withAnimation(HoverAnimations.fly) {
-                cameraPosition = MapCameraPresets.focusVehicle(at: coord, is3D: false)
-            }
+            CameraHoverEngine.commit(
+                MapCameraPresets.focusVehicle(at: coord, is3D: false),
+                animation: HoverAnimations.fly,
+                to: $cameraPosition,
+                source: .user
+            )
         }
     }
     
@@ -895,10 +916,12 @@ struct HomeView: View {
                 // spot with no bus marker — confusing the user.
                 if viewModel.isVehicleLiveOnMap(arrival),
                    let coord = viewModel.trackedVehicleCoordinate {
-                    withAnimation(HoverAnimations.fly) {
-                        cameraPosition = MapCameraPresets
-                            .focusVehicle(at: coord, is3D: false)
-                    }
+                    CameraHoverEngine.commit(
+                        MapCameraPresets.focusVehicle(at: coord, is3D: false),
+                        animation: HoverAnimations.fly,
+                        to: $cameraPosition,
+                        source: .user
+                    )
                 }
             },
             isTracking: { viewModel.isTracking($0) },
@@ -935,10 +958,12 @@ struct HomeView: View {
                     // the perspective shift makes "this is the bus you're
                     // tracking" instantly readable.  Transit-style flat pan
                     // is preserved when the user later deselects.
-                    withAnimation(HoverAnimations.fly) {
-                        cameraPosition = MapCameraPresets
-                            .focusVehicle(at: coord, is3D: true)
-                    }
+                    CameraHoverEngine.commit(
+                        MapCameraPresets.focusVehicle(at: coord, is3D: true),
+                        animation: HoverAnimations.fly,
+                        to: $cameraPosition,
+                        source: .user
+                    )
                 } else if let key {
                     #if DEBUG
                     print("[CHIP_FOCUS] ⚠️ no coordinate for vehicle key \(key) — camera unchanged")
@@ -960,9 +985,12 @@ struct HomeView: View {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         isDragSearchActive = true
                     }
-                    withAnimation(HoverAnimations.fly) {
-                        cameraPosition = MapCameraPresets.center(on: settled, is3D: false)
-                    }
+                    CameraHoverEngine.commit(
+                        MapCameraPresets.center(on: settled, is3D: false),
+                        animation: HoverAnimations.fly,
+                        to: $cameraPosition,
+                        source: .system
+                    )
                 } else {
                     recenterOnUser()
                 }
@@ -1012,14 +1040,20 @@ struct HomeView: View {
                             sheetDetent = SheetConstants.defaultDetent
                         }
                     }
-                    withAnimation(HoverAnimations.fly) {
-                        cameraPosition = fitCamera
-                    }
+                    CameraHoverEngine.commit(
+                        fitCamera,
+                        animation: HoverAnimations.fly,
+                        to: $cameraPosition,
+                        source: .user
+                    )
                 } else {
                     let target = effectiveCoordinate ?? AppTheme.MapConfig.nycCenter
-                    withAnimation(HoverAnimations.fly) {
-                        cameraPosition = MapCameraPresets.center(on: target, is3D: false)
-                    }
+                    CameraHoverEngine.commit(
+                        MapCameraPresets.center(on: target, is3D: false),
+                        animation: HoverAnimations.fly,
+                        to: $cameraPosition,
+                        source: .user
+                    )
                 }
                 HapticManager.impact(.light)
             },
@@ -1228,9 +1262,12 @@ struct HomeView: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 isDragSearchActive = true
             }
-            withAnimation(HoverAnimations.fly) {
-                cameraPosition = MapCameraPresets.center(on: settled, is3D: false)
-            }
+            CameraHoverEngine.commit(
+                MapCameraPresets.center(on: settled, is3D: false),
+                animation: HoverAnimations.fly,
+                to: $cameraPosition,
+                source: .system
+            )
         } else {
             recenterOnUser()
         }
@@ -1256,8 +1293,11 @@ struct HomeView: View {
             // results. The speculative data kept the user entertained
             // and warmed the server — this fetch should be fast.
             usedSpeculativeLocation = false
+            // recenterOnUser() already commits a centered camera through
+            // the engine; the previous unanimated `cameraPosition = ...`
+            // write here was a redundant second commit that produced a
+            // visible double-pan on first GPS arrival.
             recenterOnUser()
-            cameraPosition = MapCameraPresets.center(on: loc.coordinate, is3D: false)
             AppLogger.shared.log(
                 "SPECULATIVE",
                 message: "Real GPS fix arrived"
@@ -1515,20 +1555,29 @@ struct HomeView: View {
         guard sheetDetent != .large else { return }
 
         if viewModel.selectedRouteId != nil {
-            // Route is open — re-fit using the existing algorithm
+            // Route is open — re-fit using the existing algorithm.
+            // The dedupe inside CameraHoverEngine.commit suppresses the
+            // second commit when handleNearestStopChanged already wrote
+            // the same fit camera moments earlier.
             if let fitCamera = viewModel.cameraPositionFittingRoute(
                 userLocation: locationManager.currentLocation,
                 is3D: false
             ) {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
-                    cameraPosition = fitCamera
-                }
+                CameraHoverEngine.commit(
+                    fitCamera,
+                    animation: HoverAnimations.routeFit,
+                    to: $cameraPosition,
+                    source: .system
+                )
             }
         } else if let coordinate = locationManager.currentLocation?.coordinate {
             // Dashboard — keep user dot visible above sheet
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
-                cameraPosition = MapCameraPresets.center(on: coordinate, is3D: false)
-            }
+            CameraHoverEngine.commit(
+                MapCameraPresets.center(on: coordinate, is3D: false),
+                animation: HoverAnimations.routeFit,
+                to: $cameraPosition,
+                source: .system
+            )
         }
     }
 
@@ -1540,7 +1589,12 @@ struct HomeView: View {
             // No location yet — reset to the .userLocation position so the map
             // will auto-center once CoreLocation delivers a fix.
             if viewModel.selectedRouteId == nil {
-                cameraPosition = .userLocation
+                CameraHoverEngine.commit(
+                    .userLocation,
+                    animation: HoverAnimations.snap,
+                    to: $cameraPosition,
+                    source: .system
+                )
             }
             return
         }
@@ -1550,21 +1604,29 @@ struct HomeView: View {
             // camera so the user sees the train moving along the map.
             // At walking speed, don't override — the route framing is more useful.
             if locationManager.isAtTransitSpeed {
-                withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
-                    cameraPosition = MapCameraPresets.center(on: coordinate, is3D: false)
-                }
+                CameraHoverEngine.commit(
+                    MapCameraPresets.center(on: coordinate, is3D: false),
+                    animation: HoverAnimations.gentle,
+                    to: $cameraPosition,
+                    source: .system
+                )
             }
             return
         }
 
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
-            cameraPosition = MapCameraPresets.center(on: coordinate, is3D: false)
-        }
+        CameraHoverEngine.commit(
+            MapCameraPresets.center(on: coordinate, is3D: false),
+            animation: HoverAnimations.routeFit,
+            to: $cameraPosition,
+            source: .system
+        )
     }
     
     private func centerMap(on target: CLLocationCoordinate2D? = nil) {
-        // Collapse sheet and animate camera in one transaction.
-        // Don't collapse if the user has manually expanded the sheet to full-screen.
+        // Collapse sheet and animate camera. Sheet detent change runs in
+        // its own transaction so handleSheetDetentChanged's reactive
+        // camera write is dropped by the engine's dedupe (same target
+        // within the coalesce window).
         let refCoord = effectiveCoordinate
         let finalTarget = target ?? refCoord ?? AppTheme.MapConfig.nycCenter
 
@@ -1577,12 +1639,17 @@ struct HomeView: View {
                 on: finalTarget, is3D: false)
         }
 
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
-            if sheetDetent != .large {
+        if sheetDetent != .large {
+            withAnimation(HoverAnimations.snap) {
                 sheetDetent = SheetConstants.defaultDetent
             }
-            cameraPosition = targetCamera
         }
+        CameraHoverEngine.commit(
+            targetCamera,
+            animation: HoverAnimations.routeFit,
+            to: $cameraPosition,
+            source: .user
+        )
     }
 
     // MARK: - Deep Link

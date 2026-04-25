@@ -189,10 +189,12 @@ struct NearbyDashboard: View {
                         arrival: nearest,
                         distanceMeters: viewModel.nearestTransitDistance,
                         onCenter: { coordinate in
-                            withAnimation(.easeInOut(duration: 0.6)) {
-                                cameraPosition = MapCameraPresets.center(
-                                    on: coordinate, is3D: false)
-                            }
+                            CameraHoverEngine.commit(
+                                MapCameraPresets.center(on: coordinate, is3D: false),
+                                animation: HoverAnimations.smooth,
+                                to: $cameraPosition,
+                                source: .user
+                            )
                         }
                     )
                 } else if viewModel.isNetworkError {

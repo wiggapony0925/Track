@@ -62,8 +62,94 @@ enum CameraHoverEngine {
         updating binding: Binding<TrackCameraPosition>
     ) {
         let position = resolve(target, is3D: is3D)
+        commit(position, animation: animation, to: binding)
+    }
+
+    // MARK: - Coalesced commit (THE single write point)
+
+    /// Priority of an incoming commit.  User-initiated taps always win,
+    /// system writes (sheet/onChange handlers) coalesce.
+    enum CommitSource {
+        /// Explicit user action — always applied (recenter button, chip tap).
+        case user
+        /// Background reaction (sheet detent change, onChange handler).
+        case system
+    }
+
+    /// Time of the most recent successful commit (CFAbsoluteTime).
+    /// Read/written from the main thread only — SwiftUI bindings are
+    /// inherently main-actor isolated.
+    private static var lastCommitAt: CFAbsoluteTime = 0
+    /// Last camera position the engine wrote.  Used for dedupe + the
+    /// `cameraWriteWillCommit` notification payload below.
+    private static var lastCommittedPosition: TrackCameraPosition?
+    /// Coalesce window: a `.system` commit landing within this many
+    /// seconds of another commit that targets approximately the same
+    /// camera is dropped — this is the bounce-killer.  Tuned to be
+    /// shorter than `HoverAnimations.fly` (0.6s) so a genuine new
+    /// destination during an in-flight animation still re-targets,
+    /// but two onChange handlers firing in the same run loop don't
+    /// both write.
+    private static let coalesceWindow: CFAbsoluteTime = 0.18
+
+    /// Posted on `NotificationCenter.default` immediately before the
+    /// engine writes a new camera into the binding.  The MapLibre
+    /// renderer observes this so its `programmaticCameraInFlight`
+    /// flag also covers SwiftUI-driven writes (not just renderer
+    /// `setCenter` calls), preventing the gesture-throttled
+    /// `syncCameraToBinding` work item from echoing a stale value
+    /// back during the SwiftUI animation window.
+    static let cameraWriteWillCommit = Notification.Name("TrackCameraHoverEngine.willCommit")
+
+    /// Single coalesced write into a `cameraPosition` binding.
+    ///
+    /// All call sites that previously did
+    /// ```swift
+    /// withAnimation(...) { cameraPosition = MapCameraPresets... }
+    /// ```
+    /// should call this instead.  The engine:
+    ///   1. Bounds-validates the position via `HoverBounds`.
+    ///   2. Skips the write if the binding already holds an equivalent value.
+    ///   3. Drops `.system` writes that land inside `coalesceWindow` of
+    ///      the previous commit when both target the same camera —
+    ///      this prevents the "two onChange handlers fight each other
+    ///      with overlapping springs" bounce.
+    ///   4. Posts `cameraWriteWillCommit` so the renderer can mute
+    ///      its echo path.
+    ///   5. Wraps the assignment in the requested SwiftUI animation.
+    static func commit(
+        _ position: TrackCameraPosition,
+        animation: Animation = HoverAnimations.fly,
+        to binding: Binding<TrackCameraPosition>,
+        source: CommitSource = .system
+    ) {
+        let validated = validated(position)
+
+        // (2) No-op write — binding already at target.
+        if validated == binding.wrappedValue {
+            return
+        }
+
+        let now = CFAbsoluteTimeGetCurrent()
+
+        // (3) Coalesce: drop a `.system` write that mirrors what we
+        // just committed (within window).  `.user` writes always go through.
+        if source == .system,
+           let last = lastCommittedPosition,
+           now - lastCommitAt < coalesceWindow,
+           validated == last {
+            return
+        }
+
+        lastCommitAt = now
+        lastCommittedPosition = validated
+
+        // (4) Tell the renderer a SwiftUI-side write is starting.
+        NotificationCenter.default.post(name: cameraWriteWillCommit, object: nil)
+
+        // (5) Apply.
         withAnimation(animation) {
-            binding.wrappedValue = position
+            binding.wrappedValue = validated
         }
     }
 
