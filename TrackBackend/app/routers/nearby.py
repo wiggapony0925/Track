@@ -718,14 +718,40 @@ def _apply_sticky_route_memory(
 
     now = _time.time()
     cell = _sticky_cell_key(lat, lon, radius, mode)
-    bucket = _sticky_route_memory.get(cell, {})
+    bucket = _sticky_route_memory.setdefault(cell, {})
+
+    # Build a unified view of routes seen recently in this cell *or any of
+    # the 8 neighboring cells*.  GPS jitter (±~30 m) can flip the request
+    # across a cell boundary and lose the per-cell sticky state otherwise.
+    factor = 10**_STICKY_GRID_DECIMALS
+    span = 1 / factor
+    neighbor_view: dict[tuple[str, str], tuple[float, GroupedNearbyTransit]] = {}
+    for dlat in (-span, 0.0, span):
+        for dlon in (-span, 0.0, span):
+            ncell = (
+                round((cell[0] + dlat) * factor) / factor,
+                round((cell[1] + dlon) * factor) / factor,
+                radius,
+                mode,
+            )
+            nbucket = _sticky_route_memory.get(ncell)
+            if not nbucket:
+                continue
+            for sk, (ts, snap) in nbucket.items():
+                if now - ts > _STICKY_TTL_SECONDS:
+                    continue
+                prev = neighbor_view.get(sk)
+                if prev is None or ts > prev[0]:
+                    neighbor_view[sk] = (ts, snap)
+
+    # Drop expired entries from the home cell only (lazy expiry).
+    for sk, (ts, _) in list(bucket.items()):
+        if now - ts > _STICKY_TTL_SECONDS:
+            bucket.pop(sk, None)
 
     current_keys = {_sticky_route_key(g) for g in grouped}
     appended = 0
-    for sk, (ts, snap) in list(bucket.items()):
-        if now - ts > _STICKY_TTL_SECONDS:
-            bucket.pop(sk, None)
-            continue
+    for sk, (_ts, snap) in neighbor_view.items():
         if sk in current_keys:
             continue
         try:
