@@ -21,42 +21,14 @@ struct PlanView: View {
     @State private var animatePulse = false
     @State private var appeared = false
     @State private var headerParallax: CGFloat = 0
-    @State private var randomHeadline: String = "Where to?"
     @State private var cardShakeOffset: CGFloat = 0
     @State private var showSameLocationToast = false
 
-    private static let headlines: [String] = [
-        "Where to?",
-        "Let's roll 🚇",
-        "Next stop?",
-        "Let's bounce 🏀",
-        "On the move",
-        "Going places?",
-        "What's the move?",
-        "Choo choo 🚂",
-        "Take me there",
-        "Ready to go?",
-        "Touch grass 🌱",
-        "Time to dip",
-        "Run it back",
-        "Tap in 🚏",
-        "Slide through",
-        "Catch a wave 🌊",
-        "Your chariot awaits",
-        "Where we droppin'?",
-        "Fast travel IRL",
-        "Subway surfer 🏄",
-        "Mission accepted",
-        "Let's get lost",
-        "Plot the route",
-        "Pick a vibe",
-        "Main character era ✨",
-        "Adventure awaits",
-        "No traffic today 😌",
-        "Ride or walk?",
-        "You up? (for a trip)",
-        "Swipe right 💜"
-    ]
+    /// Static, professional hero headline. Replaces the previous
+    /// rotating list of casual prompts ("Where we droppin'?",
+    /// "Touch grass", etc.) so the planner reads consistently every
+    /// time the user opens it.
+    private static let heroHeadline = "Where to?"
 
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -64,7 +36,7 @@ struct PlanView: View {
         case 5..<12:  return "Good morning"
         case 12..<17: return "Good afternoon"
         case 17..<22: return "Good evening"
-        default:      return "Late night ride?"
+        default:      return "Good evening"
         }
     }
 
@@ -125,9 +97,15 @@ struct PlanView: View {
             }
             .sheet(isPresented: $viewModel.showDestinationSearch) {
                 DestinationSearchView(viewModel: viewModel, isOrigin: false)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationCornerRadius(28)
             }
             .sheet(isPresented: $viewModel.showOriginSearch) {
                 DestinationSearchView(viewModel: viewModel, isOrigin: true)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationCornerRadius(28)
             }
             .sheet(isPresented: $viewModel.showTimePicker) {
                 DepartureTimePickerSheet(viewModel: viewModel)
@@ -193,13 +171,14 @@ struct PlanView: View {
                             Text(greeting)
                                 .font(.system(size: 15, weight: .bold, design: .rounded))
                                 .foregroundStyle(.white.opacity(0.80))
-                            Text(randomHeadline)
-                                .font(.system(size: 32, weight: .black, design: .rounded))
+                            // Match the "Go now" typography used across
+                            // TripResultCard / TripTimelineGridView so the
+                            // planner reads with one voice end-to-end.
+                            Text(Self.heroHeadline)
+                                .font(.system(size: 32, weight: .heavy, design: .rounded))
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.75)
-                                .id(randomHeadline)
-                                .transition(.opacity)
                                 .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
                         }
                         Spacer()
@@ -251,9 +230,6 @@ struct PlanView: View {
             )
             .padding(.horizontal, 20)
             .padding(.top, 12)
-        }
-        .onAppear {
-            randomHeadline = Self.headlines.randomElement() ?? "Where to?"
         }
     }
 

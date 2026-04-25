@@ -197,51 +197,56 @@ private struct OnboardingWelcomeStep: View {
         VStack(spacing: 0) {
             Spacer(minLength: 12)
 
-            // Animated app icon — subtle pulse + scale-in on appear.
+            // Hero icon — mirrors `LoginView.hero` so the hand-off
+            // from Login → Onboarding feels like one continuous screen.
+            // Same real app icon (no generated tram glyph), same purple
+            // halo, same rounded gradient stroke.
             ZStack {
                 Circle()
-                    .fill(AppTheme.Colors.accent.opacity(0.18))
+                    .fill(AppTheme.Colors.accent.opacity(0.20))
                     .frame(width: 160, height: 160)
                     .blur(radius: 26)
                     .scaleEffect(iconAppeared ? 1.0 : 0.6)
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                AppTheme.Colors.accent,
-                                AppTheme.Colors.accentDeep,
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 92, height: 92)
+
+                Image("AppIconImage")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 84, height: 84)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .overlay(
-                        Image(systemName: "tram.fill")
-                            .font(.system(size: 44, weight: .heavy))
-                            .foregroundStyle(.white)
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.40), .white.opacity(0.05)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.85
+                            )
                     )
-                    .shadow(
-                        color: AppTheme.Colors.accent.opacity(0.50),
-                        radius: 22, x: 0, y: 10
-                    )
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.45), radius: 18, y: 10)
                     .scaleEffect(iconAppeared ? 1.0 : 0.4)
                     .rotationEffect(.degrees(iconAppeared ? 0 : -18))
                     .opacity(iconAppeared ? 1 : 0)
+                    .accessibilityHidden(true)
             }
             .padding(.bottom, 24)
 
-            Text("Welcome to Track")
-                .font(.system(size: 26, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textPrimary)
-                .multilineTextAlignment(.center)
-                .opacity(iconAppeared ? 1 : 0)
+            // Wordmark + tagline — same typography stack as LoginView.
+            VStack(spacing: 4) {
+                Text("Track")
+                    .font(.system(size: 36, weight: .black, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                    .kerning(-0.5)
+                    .opacity(iconAppeared ? 1 : 0)
 
-            Text("NYC transit, alive in your pocket.")
-                .font(.system(size: 13.5, weight: .medium, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.accent)
-                .padding(.top, 4)
-                .opacity(iconAppeared ? 1 : 0)
+                Text("NYC transit, alive in your pocket.")
+                    .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                    .opacity(iconAppeared ? 1 : 0)
+            }
 
             VStack(spacing: 10) {
                 FeatureRow(
@@ -263,9 +268,9 @@ private struct OnboardingWelcomeStep: View {
                     tint: .pink
                 )
             }
-            .frame(maxWidth: 360)
+            .frame(maxWidth: 340)
             .padding(.horizontal, 22)
-            .padding(.top, 24)
+            .padding(.top, 26)
             .opacity(rowsAppeared ? 1 : 0)
             .offset(y: rowsAppeared ? 0 : 20)
 
@@ -855,7 +860,7 @@ private struct FeatureRow: View {
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 13.5, weight: .bold, design: .rounded))
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textPrimary)
                 Text(subtitle)
                     .font(.system(size: 11.5, weight: .medium, design: .rounded))
@@ -864,9 +869,21 @@ private struct FeatureRow: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .trackGlassCard(cornerRadius: 12, hasHighlight: false)
+        // Match LoginView.authRow exactly — same fill, same border, same
+        // corner radius — so the welcome rows feel like the login rows.
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.Colors.cardElevated.opacity(0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            AppTheme.Colors.borderSubtle.opacity(0.6),
+                            lineWidth: 0.75
+                        )
+                )
+        )
     }
 }
 

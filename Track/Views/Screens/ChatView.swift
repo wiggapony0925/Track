@@ -1114,26 +1114,17 @@ private struct ChatHeader: View {
     @State private var avatarPulse: Bool = false
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(alignment: .center, spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.Colors.accent.opacity(0.18))
-                        .frame(width: 56, height: 56)
-                        .blur(radius: 6)
-                        .scaleEffect(avatarPulse ? 1.08 : 0.96)
-                        .animation(.easeInOut(duration: 1.6).repeatForever(), value: avatarPulse)
-                    AIAvatar(size: 44)
-                }
-                .onAppear { avatarPulse = true }
+        VStack(spacing: 6) {
+            HStack(alignment: .center, spacing: 10) {
+                AIAvatar(size: 30)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 5) {
                         Text("MetroMind")
-                            .font(.system(size: 19, weight: .heavy, design: .rounded))
+                            .font(.system(size: 15, weight: .heavy, design: .rounded))
                             .foregroundStyle(AppTheme.Gradients.accentVibrant)
                         Image(systemName: "sparkles")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(AppTheme.Gradients.accentVibrant)
                     }
                     statusLine
@@ -1145,30 +1136,14 @@ private struct ChatHeader: View {
             }
             biasChip
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 14)
-        .padding(.bottom, 14)
-        .background(
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        AppTheme.Colors.accent.opacity(0.10),
-                        AppTheme.Colors.accentSecondary.opacity(0.04),
-                        Color.clear,
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .blendMode(.plusLighter)
-                .opacity(0.85)
-                .ignoresSafeArea(edges: .top)
-
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .opacity(0.78)
-                    .ignoresSafeArea(edges: .top)
-            }
-        )
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
+        // Transparent — blend with `AppTheme.Gradients.screen` from
+        // ChatView. Removed the ultraThinMaterial + double gradient
+        // so the header reads as one continuous surface with the
+        // messages list and composer.
+        .background(Color.clear)
         .overlay(alignment: .bottom) {
             LinearGradient(
                 colors: [
@@ -3210,7 +3185,10 @@ private struct ChatComposer: View {
             .padding(.top, 10)
             .padding(.bottom, 10)
         }
-        .background(.ultraThinMaterial.opacity(0.85))
+        // Transparent so the screen's `AppTheme.Gradients.screen` shows
+        // through. Previously used `.ultraThinMaterial` which rendered
+        // as a frosted gray bar that didn't match the chat background.
+        .background(Color.clear)
         .onChange(of: photoSelection) { _, newItem in
             guard let item = newItem else { return }
             Task {
@@ -3282,32 +3260,94 @@ private struct ChatComposer: View {
                             : "Speak replies aloud")
     }
 
-    private var inputField: some View {
-        HStack(spacing: 8) {
-            TextField("Type a message…", text: $text, axis: .vertical)
-                .font(.system(size: 15))
-                .foregroundColor(AppTheme.Colors.textPrimary)
-                .tint(AppTheme.Colors.accent)
-                .focused(isFocused)
-                .lineLimit(1...4)
-                .submitLabel(.send)
-                .onSubmit { onSend() }
+    /// Soft character cap. Mirrors Claude.ai / ChatGPT behaviour:
+    /// no hard block, but a quiet counter appears when the user crosses
+    /// the warning threshold so they know the message is getting long.
+    private static let softCharLimit = 4000
+    private static let counterThreshold = 3000
+
+    /// Twitter / X-style highlighting: characters past the limit stay
+    /// visible but render in a dimmed red so the user can see exactly
+    /// what won't be sent and edit it down.
+    private var attributedDraft: AttributedString {
+        var attr = AttributedString(text)
+        attr.font = .system(size: 15)
+        attr.foregroundColor = AppTheme.Colors.textPrimary
+
+        if text.count > Self.softCharLimit {
+            let cutoff = text.index(text.startIndex, offsetBy: Self.softCharLimit)
+            if let overflowRange = attr.range(of: String(text[cutoff...])) {
+                attr[overflowRange].foregroundColor =
+                    AppTheme.Colors.alertRed.opacity(0.55)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(
-            Capsule(style: .continuous).fill(AppTheme.Colors.cardBackground)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(
-                    hasText
-                        ? AppTheme.Colors.accent.opacity(0.5)
-                        : AppTheme.Colors.borderSubtle,
-                    lineWidth: hasText ? 1 : 0.6
+        return attr
+    }
+
+    private var isOverLimit: Bool { text.count > Self.softCharLimit }
+
+    private var inputField: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            // Switch to a Capsule when the field is short, but morph to a
+            // rounded rectangle once it grows multi-line so corners don't
+            // fight the now-rectangular text block.
+            let multiline = text.count > 60 || text.contains("\n")
+            let shape = RoundedRectangle(
+                cornerRadius: multiline ? 18 : 22,
+                style: .continuous
+            )
+
+            ZStack(alignment: .topLeading) {
+                // Styled overlay — first `softCharLimit` chars in normal
+                // text colour, anything past the cap dimmed in red so the
+                // user sees exactly what won't be sent (Twitter / X pattern).
+                // Sits *behind* the real TextField, which renders its own
+                // glyphs as `.clear` so they don't double up.
+                Text(attributedDraft)
+                    .font(.system(size: 15))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .allowsHitTesting(false)
+
+                TextField("Type a message…", text: $text, axis: .vertical)
+                    .font(.system(size: 15))
+                    // Hide the field's own glyphs so only the styled
+                    // overlay shows. Cursor (`tint`) stays visible.
+                    .foregroundColor(.clear)
+                    .tint(AppTheme.Colors.accent)
+                    .focused(isFocused)
+                    .lineLimit(1...10)
+                    .submitLabel(.return)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(shape.fill(AppTheme.Colors.cardBackground))
+            .overlay(
+                shape.strokeBorder(
+                    isOverLimit
+                        ? AppTheme.Colors.alertRed.opacity(0.7)
+                        : (hasText
+                           ? AppTheme.Colors.accent.opacity(0.5)
+                           : AppTheme.Colors.borderSubtle),
+                    lineWidth: (isOverLimit || hasText) ? 1 : 0.6
                 )
-        )
+            )
+
+            if text.count >= Self.counterThreshold {
+                Text("\(text.count) / \(Self.softCharLimit)")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(
+                        isOverLimit
+                            ? AppTheme.Colors.alertRed
+                            : AppTheme.Colors.textTertiary
+                    )
+                    .padding(.trailing, 6)
+                    .transition(.opacity)
+            }
+        }
         .animation(.easeInOut(duration: 0.18), value: hasText)
+        .animation(.easeInOut(duration: 0.18), value: isOverLimit)
+        .animation(.easeInOut(duration: 0.18), value: text.count >= Self.counterThreshold)
     }
 
     @ViewBuilder
@@ -3318,11 +3358,22 @@ private struct ChatComposer: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.white)
                     .frame(width: 38, height: 38)
-                    .background(Circle().fill(AppTheme.Gradients.accentVibrant))
-                    .shadow(color: AppTheme.Colors.accent.opacity(0.5),
-                            radius: 10, x: 0, y: 4)
+                    .background(
+                        Circle().fill(
+                            isOverLimit
+                                ? AnyShapeStyle(AppTheme.Colors.textTertiary)
+                                : AnyShapeStyle(AppTheme.Gradients.accentVibrant)
+                        )
+                    )
+                    .shadow(
+                        color: isOverLimit
+                            ? .clear
+                            : AppTheme.Colors.accent.opacity(0.5),
+                        radius: 10, x: 0, y: 4
+                    )
             }
             .buttonStyle(.plain)
+            .disabled(isOverLimit)
             .transition(.scale.combined(with: .opacity))
         } else {
             Button {
