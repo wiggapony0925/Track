@@ -46,7 +46,19 @@ def _get_jwks_client() -> PyJWKClient:
         # Fallback to the known project URL if not set in environment
         supabase_url = get_supabase_url() or "https://octpebjxadbufiplgjqg.supabase.co"
         jwks_url = f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
-        _jwks_client = PyJWKClient(jwks_url)
+        # Aggressively cap the JWKS fetch. Without a timeout, a hung
+        # Supabase endpoint blocks the request worker for the full
+        # urllib default (~60s), which starves Render's health check
+        # and trips "instance failed: connection refused".
+        # `cache_keys=True` + `lifespan` reuses the response so we
+        # don't re-fetch on every token verification.
+        _jwks_client = PyJWKClient(
+            jwks_url,
+            cache_keys=True,
+            max_cached_keys=16,
+            lifespan=600,  # seconds — re-fetch JWKS at most every 10 min
+            timeout=5,     # seconds — fail fast if Supabase is slow
+        )
     return _jwks_client
 
 
