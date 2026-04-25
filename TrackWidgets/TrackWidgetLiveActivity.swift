@@ -106,27 +106,59 @@ struct TrackWidgetLiveActivity: Widget {
 
     // MARK: - Lock Screen Banner
 
-    // MARK: - Lock Screen Banner
-
     @ViewBuilder
     private func lockScreenView(context: ActivityViewContext<TrackActivityAttributes>) -> some View
     {
-        TrackLiveBannerView(
-            data: TrackLiveBannerData(
-                lineId: context.attributes.lineId,
-                destination: context.attributes.destination,
-                isBus: context.attributes.isBus,
-                isLIRR: false,
-                arrivalTime: context.state.arrivalTime,
-                proximityText: context.state.proximityText,
-                minutesAway: context.state.minutesAway,
-                walkMinutes: context.state.walkMinutes,
-                isHurryUp: context.state.isHurryUp,
-                progress: context.state.progress,
-                nextArrivals: context.state.nextArrivals
-            ),
-            showActionButton: true // Always show the dismiss button in the Lock Screen banner
+        let accent = WK.brandColor(
+            lineId: context.attributes.lineId,
+            isBus: context.attributes.isBus
         )
+
+        VStack(spacing: 12) {
+            // The exact pill the user sees during onboarding.
+            WK.LiveActivityPill(
+                lineId: context.attributes.lineId,
+                stopName: context.attributes.destination,
+                arrivalTime: context.state.arrivalTime,
+                isBus: context.attributes.isBus
+            )
+
+            // Progress to the stop.
+            WK.ProgressTrack(
+                progress: context.state.progress,
+                color: accent,
+                height: 5
+            )
+            .padding(.horizontal, 6)
+
+            // Proximity text + "I made it" CTA.
+            HStack(spacing: 10) {
+                Text(context.state.proximityText)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Button(intent: EndTrackingIntent()) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "hand.thumbsup.fill")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("I made it")
+                            .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule().fill(AppTheme.Colors.successGreen)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 4)
+        }
+        .padding(14)
         .activityBackgroundTint(Color.black)
     }
 
@@ -136,17 +168,9 @@ struct TrackWidgetLiveActivity: Widget {
     private func heroCountdown(context: ActivityViewContext<TrackActivityAttributes>, size: CGFloat)
         -> some View
     {
-        HStack(alignment: .firstTextBaseline, spacing: 2) {
-            Text(context.state.arrivalTime, style: .timer)
-                .font(.system(size: size, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(.white)
-                .contentTransition(.numericText(countsDown: true))
-
-            Text("min")
-                .font(.system(size: size * 0.4, weight: .bold, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-        }
+        WK.CountdownLabel(arrivalTime: context.state.arrivalTime,
+                          size: size, style: .timer,
+                          tint: AppTheme.Colors.successGreen)
     }
 
     // MARK: - Compact Countdown
@@ -155,11 +179,9 @@ struct TrackWidgetLiveActivity: Widget {
     private func compactCountdown(context: ActivityViewContext<TrackActivityAttributes>)
         -> some View
     {
-        Text(context.state.arrivalTime, style: .timer)
-            .font(.system(size: 15, weight: .bold, design: .rounded))
-            .monospacedDigit()
-            .foregroundStyle(.white)
-            .contentTransition(.numericText(countsDown: true))
+        WK.CountdownLabel(arrivalTime: context.state.arrivalTime,
+                          size: 13, style: .timer,
+                          tint: AppTheme.Colors.successGreen)
             .frame(minWidth: 40)
     }
 
@@ -197,47 +219,11 @@ struct TrackWidgetLiveActivity: Widget {
     private func progressSlider(
         progress: Double, context: ActivityViewContext<TrackActivityAttributes>
     ) -> some View {
-        let accentColor =
-            context.attributes.isBus
-            ? AppTheme.Colors.mtaBlue
-            : AppTheme.SubwayColors.color(for: context.attributes.lineId)
-
-        GeometryReader { geo in
-            let clampedProgress = min(1.0, max(0.0, progress))
-            let dotX = geo.size.width * clampedProgress
-
-            ZStack(alignment: .leading) {
-                // Background Track
-                Capsule()
-                    .fill(Color.white.opacity(0.12))
-                    .frame(height: 8)
-
-                // Active Track Gradient
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [accentColor.opacity(0.4), accentColor],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: dotX, height: 8)
-
-                // The Vehicle Indicator
-                ZStack {
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 16, height: 16)
-                        .shadow(color: accentColor.opacity(0.6), radius: 8, x: 0, y: 0)
-
-                    Circle()
-                        .fill(accentColor)
-                        .frame(width: 9, height: 9)
-                }
-                .offset(x: dotX - 8)
-            }
-        }
-        .frame(height: 16)
+        let accentColor = WK.brandColor(
+            lineId: context.attributes.lineId,
+            isBus: context.attributes.isBus
+        )
+        WK.ProgressTrack(progress: progress, color: accentColor, height: 8)
     }
 
     // MARK: - Badge Helpers
@@ -246,100 +232,21 @@ struct TrackWidgetLiveActivity: Widget {
     private func lineBadge(
         context: ActivityViewContext<TrackActivityAttributes>, size: CGFloat = 36
     ) -> some View {
-        let color =
-            context.attributes.isBus
-            ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: context.attributes.lineId)
-        let textColor =
-            context.attributes.isBus
-            ? .white : AppTheme.SubwayColors.textColor(for: context.attributes.lineId)
-
-        ZStack {
-            if context.attributes.isBus {
-                // Bus: Rounded rectangle with route name (e.g. "B44")
-                RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [color.opacity(1.0), color.opacity(0.85)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.25), lineWidth: 1.5)
-                    )
-
-                // Show bus route name, with bus icon only as fallback
-                VStack(spacing: 0) {
-                    Image(systemName: "bus.fill")
-                        .font(.system(size: size * 0.22, weight: .bold))
-                        .foregroundColor(.white.opacity(0.7))
-                    Text(context.attributes.lineId)
-                        .font(.system(size: size * 0.32, weight: .heavy, design: .rounded))
-                        .foregroundColor(textColor)
-                        .minimumScaleFactor(0.4)
-                        .lineLimit(1)
-                }
-            } else {
-                // Subway/Rail: Circle with line letter/number
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [color.opacity(1.0), color.opacity(0.85)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay(
-                        Circle()
-                            .strokeBorder(Color.white.opacity(0.25), lineWidth: 1.5)
-                    )
-
-                Text(context.attributes.lineId)
-                    .font(.system(size: size * 0.45, weight: .heavy, design: .rounded))
-                    .foregroundColor(textColor)
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
-            }
-        }
-        .frame(width: context.attributes.isBus ? size * 1.3 : size, height: size)
+        WK.LineBadge(
+            lineId: context.attributes.lineId,
+            isBus: context.attributes.isBus,
+            size: size
+        )
     }
 
     @ViewBuilder
     private func compactLineBadge(context: ActivityViewContext<TrackActivityAttributes>)
         -> some View
     {
-        let color =
-            context.attributes.isBus
-            ? AppTheme.Colors.mtaBlue : AppTheme.SubwayColors.color(for: context.attributes.lineId)
-        let textColor =
-            context.attributes.isBus
-            ? .white : AppTheme.SubwayColors.textColor(for: context.attributes.lineId)
-
-        if context.attributes.isBus {
-            // Bus: Show route name in rounded rect (e.g. "B44")
-            ZStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(color)
-                    .frame(width: 34, height: 24)
-                Text(context.attributes.lineId)
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .foregroundColor(textColor)
-                    .minimumScaleFactor(0.4)
-                    .lineLimit(1)
-            }
-        } else {
-            // Subway/Rail: Circle with line letter/number
-            ZStack {
-                Circle()
-                    .fill(color)
-                    .frame(width: 24, height: 24)
-                Text(context.attributes.lineId)
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .foregroundColor(textColor)
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-            }
-        }
+        WK.LineBadge(
+            lineId: context.attributes.lineId,
+            isBus: context.attributes.isBus,
+            size: 22
+        )
     }
 }

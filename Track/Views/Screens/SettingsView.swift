@@ -50,7 +50,6 @@ struct SettingsView: View {
                     VStack(spacing: 24) {
                         profileSection
                         appearanceSection
-                        widgetSection
                         accountSection
 #if DEBUG
                         developerSection
@@ -165,33 +164,6 @@ struct SettingsView: View {
                     .frame(width: 160)
                 }
             }
-        }
-    }
-
-    private var widgetSection: some View {
-        settingsSection(title: "Widgets", icon: "rectangle.3.group.fill", iconColor: .cyan) {
-            NavigationLink {
-                WidgetSchedulesView()
-            } label: {
-                HStack {
-                    settingsIcon("calendar.badge.clock", color: AppTheme.Colors.mtaBlue)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Widget Schedules")
-                            .font(.custom("Helvetica", size: 15))
-                            .foregroundColor(AppTheme.Colors.textPrimary)
-                        Text("Configure home screen widgets")
-                            .font(.system(size: 11))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
-                }
-                .padding(.horizontal, AppTheme.Layout.cardPadding)
-                .padding(.vertical, 14)
-            }
-            .buttonStyle(.plain)
         }
     }
 

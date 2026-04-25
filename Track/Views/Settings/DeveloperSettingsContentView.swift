@@ -37,9 +37,9 @@ struct DeveloperSettingsContentView: View {
     private var localBackendSection: some View {
         section(title: "Local Backend", icon: "server.rack", iconColor: .blue) {
             VStack(spacing: 0) {
-                row(icon: "desktopcomputer", iconColor: .mint, title: "Use Local Server") {
+                row(icon: "desktopcomputer", iconColor: AppTheme.Colors.accent, title: "Use Local Server") {
                     Toggle("", isOn: $useLocalhost)
-                        .tint(AppTheme.Colors.mtaBlue)
+                        .tint(AppTheme.Colors.accent)
                         .onChange(of: useLocalhost) { _, _ in
                             TrackAPI.invalidateBaseURL()
                         }
@@ -175,7 +175,7 @@ struct DeveloperSettingsContentView: View {
                         Text("Settings")
                             .font(.custom("Helvetica", size: 16))
                     }
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .foregroundColor(AppTheme.Colors.accent)
                 }
 
                 Spacer()

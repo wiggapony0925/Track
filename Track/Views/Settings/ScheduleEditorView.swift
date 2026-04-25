@@ -76,13 +76,13 @@ struct ScheduleEditorView: View {
                 Button("Cancel") {
                     dismiss()
                 }
-                .foregroundColor(AppTheme.Colors.mtaBlue)
+                .foregroundColor(AppTheme.Colors.accent)
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
                     saveSchedule()
                 }
-                .foregroundColor(AppTheme.Colors.mtaBlue)
+                .foregroundColor(AppTheme.Colors.accent)
                 .disabled(selectedDays.isEmpty)
             }
         }
@@ -145,7 +145,7 @@ struct ScheduleEditorView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: "calendar")
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                        .foregroundColor(AppTheme.Colors.accent)
                     Text(previewText)
                         .font(.custom("Helvetica", size: 14))
                         .foregroundColor(AppTheme.Colors.textPrimary)
@@ -154,7 +154,7 @@ struct ScheduleEditorView: View {
                 if let nextActivation = calculateNextActivation() {
                     HStack {
                         Image(systemName: "clock")
-                            .foregroundColor(AppTheme.Colors.mtaBlue)
+                            .foregroundColor(AppTheme.Colors.accent)
                         Text("Next activation: \(nextActivation, style: .relative)")
                             .font(.custom("Helvetica", size: 13))
                             .foregroundColor(AppTheme.Colors.textSecondary)
@@ -189,7 +189,7 @@ struct ScheduleEditorView: View {
             .padding(.vertical, 12)
             .background(
                 isSelected
-                    ? AppTheme.Colors.mtaBlue
+                    ? AppTheme.Colors.accent
                     : AppTheme.Colors.textSecondary.opacity(0.1)
             )
             .cornerRadius(10)

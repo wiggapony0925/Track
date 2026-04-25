@@ -77,7 +77,7 @@ struct WidgetSchedulesContentView: View {
                     Text("Settings")
                         .font(AppTheme.Typography.navButton)
                 }
-                .foregroundColor(AppTheme.Colors.mtaBlue)
+                .foregroundColor(AppTheme.Colors.accent)
             }
             
             Spacer()
@@ -95,7 +95,7 @@ struct WidgetSchedulesContentView: View {
             } label: {
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: 24))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .foregroundColor(AppTheme.Colors.accent)
             }
         }
         .padding(.horizontal, AppTheme.Layout.margin)
@@ -169,14 +169,14 @@ struct WidgetSchedulesContentView: View {
         HStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.22))
+                    .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.accent, intensity: 0.22))
                     .frame(
                         width: AppTheme.Layout.iconCircleSize,
                         height: AppTheme.Layout.iconCircleSize
                     )
                 Image(systemName: "clock.badge.checkmark.fill")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .foregroundColor(AppTheme.Colors.accent)
             }
             
             VStack(alignment: .leading, spacing: 4) {
@@ -200,11 +200,11 @@ struct WidgetSchedulesContentView: View {
         VStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.mtaBlue, intensity: 0.16))
+                    .fill(AppTheme.Gradients.tintWash(AppTheme.Colors.accent, intensity: 0.16))
                     .frame(width: 80, height: 80)
                 Image(systemName: "calendar.badge.plus")
                     .font(.system(size: 36, weight: .light))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .foregroundColor(AppTheme.Colors.accent)
             }
             
             VStack(spacing: 6) {
@@ -250,7 +250,7 @@ struct WidgetSchedulesContentView: View {
                     .fill(
                         schedule.enabled
                         ? AppTheme.Gradients.tintWash(
-                            AppTheme.Colors.mtaBlue,
+                            AppTheme.Colors.accent,
                             intensity: 0.22
                         )
                         : AppTheme.Gradients.tintWash(
@@ -266,7 +266,7 @@ struct WidgetSchedulesContentView: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(
                         schedule.enabled
-                        ? AppTheme.Colors.mtaBlue
+                        ? AppTheme.Colors.accent
                         : AppTheme.Colors.textSecondary
                     )
             }
@@ -323,7 +323,7 @@ struct WidgetSchedulesContentView: View {
                     toggleSchedule(schedule, enabled: newValue)
                 }
             ))
-            .tint(AppTheme.Colors.mtaBlue)
+            .tint(AppTheme.Colors.accent)
             .labelsHidden()
         }
         .padding(.horizontal, AppTheme.Layout.cardPadding)
@@ -360,7 +360,7 @@ struct WidgetSchedulesContentView: View {
         if !isActive {
             return AppTheme.Colors.textSecondary.opacity(0.3)
         }
-        return enabled ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textSecondary
+        return enabled ? AppTheme.Colors.accent : AppTheme.Colors.textSecondary
     }
     
     /// Returns the background color for a day badge based on active/enabled state
@@ -369,7 +369,7 @@ struct WidgetSchedulesContentView: View {
             return Color.clear
         }
         return enabled
-            ? AppTheme.Colors.mtaBlue.opacity(0.15)
+            ? AppTheme.Colors.accent.opacity(0.15)
             : AppTheme.Colors.textSecondary.opacity(0.1)
     }
 }

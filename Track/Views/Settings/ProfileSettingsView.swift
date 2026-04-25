@@ -38,7 +38,7 @@ struct ProfileSettingsView: View {
     // MARK: - Extracted Sub-Views
 
     private var profileFieldsSection: some View {
-        settingsSection(title: "Profile", icon: "person.fill", iconColor: AppTheme.Colors.mtaBlue) {
+        settingsSection(title: "Profile", icon: "person.fill", iconColor: AppTheme.Colors.accent) {
             VStack(spacing: 0) {
                 rowLabel(
                     icon: "envelope.fill",
@@ -93,9 +93,9 @@ struct ProfileSettingsView: View {
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(AppTheme.Colors.mtaBlue)
+            .background(AppTheme.Gradients.accent)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.35), radius: 8, y: 4)
+            .shadow(color: AppTheme.Colors.accent.opacity(0.35), radius: 8, y: 4)
         }
         .disabled(isSaving || currentProfile == nil)
         .padding(.horizontal, AppTheme.Layout.margin)

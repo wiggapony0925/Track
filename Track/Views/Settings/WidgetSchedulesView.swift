@@ -54,7 +54,7 @@ struct WidgetSchedulesView: View {
             Section {
                 HStack {
                     Image(systemName: "lightbulb.fill")
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                        .foregroundColor(AppTheme.Colors.accent)
                     Text(
                         "Tip: Add schedules for your commute"
                         + " times to see nearby transit"
@@ -75,11 +75,11 @@ struct WidgetSchedulesView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .foregroundColor(AppTheme.Colors.mtaBlue)
+                .foregroundColor(AppTheme.Colors.accent)
             }
             ToolbarItem(placement: .topBarLeading) {
                 EditButton()
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .foregroundColor(AppTheme.Colors.accent)
             }
         }
         .sheet(isPresented: $showingEditor) {
@@ -113,7 +113,7 @@ struct WidgetSchedulesView: View {
                         .frame(width: 24, height: 24)
                         .background(
                             isActive
-                                ? AppTheme.Colors.mtaBlue
+                                ? AppTheme.Colors.accent
                                 : AppTheme.Colors.textSecondary
                                     .opacity(0.1)
                         )
@@ -139,7 +139,7 @@ struct WidgetSchedulesView: View {
                     toggleSchedule(schedule, enabled: newValue)
                 }
             ))
-            .tint(AppTheme.Colors.mtaBlue)
+            .tint(AppTheme.Colors.accent)
             .labelsHidden()
         }
         .padding(.vertical, 4)

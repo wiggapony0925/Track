@@ -262,325 +262,42 @@ struct LiveNearMeWidgetView: View {
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-        switch family {
-        case .systemMedium:
-            mediumView
-        case .systemLarge:
-            largeView
-        default:
-            mediumView
-        }
-    }
-
-    // MARK: - Medium Widget
-
-    private var mediumView: some View {
         Group {
             switch entry.state {
             case .active(let arrivals):
-                activeView(arrivals: arrivals, isLarge: false)
-            case .inactive(let nextActivation, let schedules):
-                inactiveStateView(nextActivation: nextActivation, schedules: schedules)
+                NearbyListWidgetView(
+                    arrivals: arrivals,
+                    maxVisible: family == .systemLarge ? 6 : 3,
+                    date: entry.date,
+                    isActive: true
+                )
+            case .inactive(let nextActivation, _):
+                inactiveStateView(nextActivation: nextActivation)
             }
         }
-        .containerBackground(for: .widget) {
-            WidgetBackground()
-        }
+        .containerBackground(for: .widget) { WK.Surface() }
     }
 
-    // MARK: - Large Widget
-
-    private var largeView: some View {
-        Group {
-            switch entry.state {
-            case .active(let arrivals):
-                activeView(arrivals: arrivals, isLarge: true)
-            case .inactive(let nextActivation, let schedules):
-                inactiveStateView(nextActivation: nextActivation, schedules: schedules)
-            }
-        }
-        .containerBackground(for: .widget) {
-            WidgetBackground()
-        }
-    }
-
-    // MARK: - Active State
-
-    private func activeView(arrivals: [NearbyArrival], isLarge: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header with pulsing indicator
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.Colors.successGreen.opacity(0.15))
-                        .frame(width: isLarge ? 32 : 28, height: isLarge ? 32 : 28)
-                    Circle()
-                        .fill(AppTheme.Colors.successGreen)
-                        .frame(width: isLarge ? 8 : 6, height: isLarge ? 8 : 6)
-                }
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Live Near Me")
-                        .font(.system(size: isLarge ? 16 : 14, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                    Text("Showing nearby transit")
-                        .font(.system(size: isLarge ? 10 : 9, weight: .medium, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textSecondary)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text(entry.date, style: .time)
-                        .font(.system(size: isLarge ? 12 : 11, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                    if let activeUntil = calculateActiveUntil() {
-                        Text("Until \(activeUntil, style: .time)")
-                            .font(.system(
-                                size: isLarge ? 9 : 8,
-                                weight: .semibold,
-                                design: .rounded
-                            ))
-                            .foregroundColor(AppTheme.Colors.successGreen)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                }
-            }
-            .padding(.bottom, isLarge ? 12 : 10)
-
-            if arrivals.isEmpty {
-                Spacer()
-                HStack {
-                    Spacer()
-                    VStack(spacing: 8) {
-                        Image(systemName: "tram.fill")
-                            .font(.system(size: 32, weight: .light))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                        Text("No nearby arrivals")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                    }
-                    Spacer()
-                }
-                Spacer()
-            } else {
-                // Route cards
-                if isLarge {
-                    VStack(spacing: 8) {
-                        ForEach(
-                            Array(arrivals.prefix(5).enumerated()),
-                            id: \.offset
-                        ) { index, arrival in
-                            largeArrivalRow(arrival, index: index)
-                        }
-                    }
-                } else {
-                    let columns = [
-                        GridItem(.flexible(), spacing: 8),
-                        GridItem(.flexible(), spacing: 8)
-                    ]
-
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(
-                            Array(arrivals.prefix(4).enumerated()),
-                            id: \.offset
-                        ) { index, arrival in
-                            mediumArrivalCard(arrival)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(isLarge ? 16 : 14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    // MARK: - Inactive State
-
-    private func inactiveStateView(
-        nextActivation: Date?,
-        schedules: [WidgetSchedule]
-    ) -> some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.Colors.mtaBlue.opacity(0.1))
-                    .frame(width: 60, height: 60)
-                Image(systemName: "moon.zzz.fill")
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-            }
-
-            Text("Widget Inactive")
+    private func inactiveStateView(nextActivation: Date?) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: "moon.zzz.fill")
+                .font(.system(size: 30, weight: .light))
+                .foregroundColor(AppTheme.Colors.accent)
+            Text("Widget Paused")
                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-
+                .foregroundColor(AppTheme.Colors.textPrimary)
             if let next = nextActivation {
-                VStack(spacing: 4) {
-                    Text("Next activation:")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                    Text(next, style: .relative)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
-                }
-            } else if schedules.isEmpty {
-                VStack(spacing: 4) {
-                    Text("No schedules configured")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.7))
-                    Text("Configure in Settings")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
-                }
+                Text("Active again \(next, style: .relative)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
+            } else {
+                Text("Configure schedules in Alarms")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppTheme.Colors.textSecondary)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Arrival Views
-
-    private func mediumArrivalCard(_ arrival: NearbyArrival) -> some View {
-        VStack(spacing: 4) {
-            transitBadge(arrival, size: 28)
-                .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text(arrival.arrivalTime, style: .timer)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.countdown(minutesRemaining(for: arrival)))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-
-            Text(arrival.stopName)
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .foregroundColor(AppTheme.Colors.textSecondary)
-                .lineLimit(1)
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 6)
-        .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.04))
-        .cornerRadius(12)
-    }
-
-    private func largeArrivalRow(_ arrival: NearbyArrival, index: Int) -> some View {
-        HStack(spacing: 12) {
-            transitBadge(arrival, size: 34)
-                .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(arrival.displayName)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textPrimary)
-                Text(arrival.stopName)
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.textSecondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(arrival.arrivalTime, style: .timer)
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.countdown(minutesRemaining(for: arrival)))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                
-                if !arrival.status.isEmpty {
-                    Text(arrival.status)
-                        .font(.system(size: 8, weight: .black, design: .rounded))
-                        .foregroundColor(statusTextColor(arrival.status))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(statusTextColor(arrival.status).opacity(0.1))
-                        .cornerRadius(4)
-                }
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(index < 3 ? Color.white.opacity(0.05) : Color.clear)
-        .cornerRadius(10)
-    }
-
-    // MARK: - Helpers
-
-    @ViewBuilder
-    private func transitBadge(_ arrival: NearbyArrival, size: CGFloat) -> some View {
-        if arrival.isCommuterRail {
-            // Commuter Rail: Rounded rect with train icon
-            HStack(spacing: 2) {
-                Image(systemName: "train.side.front.car")
-                    .font(.system(size: size * 0.35, weight: .bold))
-                    .foregroundColor(.white)
-                Text(arrival.displayName)
-                    .font(.system(size: size * 0.3, weight: .heavy, design: .rounded))
-                    .foregroundColor(.white)
-                    .minimumScaleFactor(0.3)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 4)
-            .frame(minWidth: size, minHeight: size)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(
-                        arrival.isLIRR
-                            ? AppTheme.CommuterRailColors.lirrBlue
-                            : AppTheme.CommuterRailColors.mnrBlue
-                    )
-            )
-        } else {
-            ZStack {
-                Circle()
-                    .fill(
-                        arrival.isBus
-                            ? AppTheme.Colors.mtaBlue
-                            : AppTheme.SubwayColors.color(
-                                for: arrival.displayName
-                            )
-                    )
-                    .frame(width: size, height: size)
-
-                if arrival.isBus {
-                    Image(systemName: "bus.fill")
-                        .font(.system(size: size * 0.4, weight: .bold))
-                        .foregroundColor(.white)
-                } else {
-                    Text(arrival.displayName)
-                        .font(.system(size: size * 0.45, weight: .heavy, design: .rounded))
-                        .foregroundColor(AppTheme.SubwayColors.textColor(for: arrival.displayName))
-                        .minimumScaleFactor(0.4)
-                        .lineLimit(1)
-                }
-            }
-        }
-    }
-
-    private func statusTextColor(_ status: String) -> Color {
-        let lower = status.lowercased()
-        if lower.contains("on time") {
-            return AppTheme.Colors.successGreen
-        } else if lower.contains("delayed") || lower.contains("late") {
-            return AppTheme.Colors.alertRed
-        }
-        return AppTheme.Colors.textSecondary
-    }
-
-    private func minutesRemaining(for arrival: NearbyArrival) -> Int {
-        TrackingTimeSync.remainingMinutes(until: arrival.arrivalTime)
-    }
-
-    private func calculateActiveUntil() -> Date? {
-        let schedules = WidgetSchedule.loadAll()
-        return schedules.activeUntil(from: entry.date)
+        .padding(WK.Tokens.surfacePadding)
     }
 }
 

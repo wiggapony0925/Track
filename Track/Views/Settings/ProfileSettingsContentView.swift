@@ -61,34 +61,31 @@ struct ProfileSettingsContentView: View {
     // MARK: - Avatar Hero
 
     private var avatarHero: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 14) {
             ZStack {
                 Circle()
                     .stroke(
                         AngularGradient(
                             colors: [
-                                AppTheme.Colors.mtaBlue,
-                                AppTheme.Colors.mtaBlue.opacity(0.4),
+                                AppTheme.Colors.accent,
                                 AppTheme.Colors.accentSecondary,
-                                AppTheme.Colors.mtaBlue,
+                                AppTheme.Colors.accentDeep,
+                                AppTheme.Colors.accent,
                             ],
                             center: .center
                         ),
-                        lineWidth: 2.5
+                        lineWidth: 3
                     )
-                    .frame(width: 64, height: 64)
+                    .frame(width: 84, height: 84)
+                    .shadow(color: AppTheme.Colors.accent.opacity(0.35), radius: 16, y: 4)
 
                 Circle()
-                    .fill(
-                        AppTheme.Gradients.tintWash(
-                            AppTheme.Colors.mtaBlue, intensity: 0.15
-                        )
-                    )
-                    .frame(width: 56, height: 56)
+                    .fill(AppTheme.Gradients.accentVibrant)
+                    .frame(width: 76, height: 76)
 
                 Text(String(fallbackDisplayName.prefix(1)).uppercased())
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundColor(AppTheme.Colors.mtaBlue)
+                    .font(.system(size: 32, weight: .heavy, design: .rounded))
+                    .foregroundColor(.white)
             }
 
             VStack(spacing: 3) {
@@ -110,11 +107,11 @@ struct ProfileSettingsContentView: View {
     // MARK: - Profile Fields
 
     private var profileSection: some View {
-        section(title: "Edit Details", icon: "pencil.line", iconColor: .purple) {
+        section(title: "Edit Details", icon: "pencil.line", iconColor: AppTheme.Colors.accent) {
             VStack(spacing: 0) {
                 editableField(
                     icon: "textformat",
-                    iconColor: .purple,
+                    iconColor: AppTheme.Colors.accent,
                     title: "Full Name",
                     text: $fullNameDraft,
                     placeholder: "Add your full name"
@@ -124,7 +121,7 @@ struct ProfileSettingsContentView: View {
 
                 editableField(
                     icon: "at",
-                    iconColor: .indigo,
+                    iconColor: AppTheme.Colors.accentSecondary,
                     title: "Username",
                     text: $usernameDraft,
                     placeholder: "Optional display username"
@@ -132,7 +129,7 @@ struct ProfileSettingsContentView: View {
 
                 divider
 
-                row(icon: "envelope.fill", iconColor: .mint, title: "Email") {
+                row(icon: "envelope.fill", iconColor: AppTheme.Colors.accentDeep, title: "Email") {
                     Text(currentProfile?.email ?? "Not available")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(AppTheme.Colors.textSecondary)
@@ -235,12 +232,12 @@ struct ProfileSettingsContentView: View {
                             Text("Settings")
                                 .font(.system(size: 14, weight: .semibold))
                         }
-                        .foregroundColor(AppTheme.Colors.mtaBlue)
+                        .foregroundColor(AppTheme.Colors.accent)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
                             Capsule()
-                                .fill(AppTheme.Colors.mtaBlue.opacity(0.1))
+                                .fill(AppTheme.Colors.accent.opacity(0.12))
                         )
                     }
 
