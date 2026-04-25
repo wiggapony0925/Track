@@ -535,7 +535,31 @@ struct TrackAPI {
             throw TrackAPIError.invalidURL
         }
         AppLogger.shared.logRequest(method: "GET", url: url.absoluteString)
-        let data = try await getWithExtendedTimeout(url: url)
+        let data: Data
+        do {
+            data = try await getWithExtendedTimeout(url: url)
+        } catch {
+            // Offline fallback — synthesize from local GTFS bundle so the
+            // UI still shows which routes serve this area, just without
+            // live arrivals.  This is the user mandate "the only thing
+            // that needs network is live tracking".
+            let synthesized = await MainActor.run {
+                OfflineNearbyFallback.synthesize(
+                    lat: lat, lon: lon,
+                    radiusMeters: Double(effectiveRadius),
+                    mode: mode
+                )
+            }
+            if let synthesized {
+                AppLogger.shared.log(
+                    "OFFLINE",
+                    message: "fetchNearbyGrouped fell back to local bundle " +
+                             "(\(synthesized.count) routes) — \(error.localizedDescription)"
+                )
+                return synthesized
+            }
+            throw error
+        }
         do {
             return try decoder.decode([GroupedNearbyTransitResponse].self, from: data)
         } catch let decodingError as DecodingError {

@@ -30,6 +30,16 @@ struct TrackApp: App {
         }
         // Request notification permissions for service alerts
         AlertNotificationManager.shared.requestPermissionIfNeeded()
+
+        // Open the on-device GTFS bundle (offline drag-search + /nearby
+        // fallback).  Bootstrap is synchronous and cheap when a bundle
+        // already exists on disk; first launch on a fresh install kicks
+        // off a background download (~3.5 MB) and the UI degrades to
+        // network-only until it finishes.
+        Task { @MainActor in
+            _ = GTFSBundleManager.shared.bootstrap()
+            await GTFSBundleManager.shared.refreshIfNeeded()
+        }
         
         // Migrate stale device IP to the current default from settings.json.
         // If the user's stored IP matches an old hardcoded value, replace it
