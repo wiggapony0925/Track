@@ -294,6 +294,14 @@ struct HomeView: View {
 
 
             }
+            // MARK: - Offline Banner (top safe area)
+            // Slides down whenever NWPathMonitor reports no connectivity.
+            // Drag-search and the local GTFS bundle keep working — this
+            // just tells the user that live arrivals won't update until
+            // they're back online.
+            .overlay(alignment: .top) {
+                OfflineBanner()
+            }
             // MARK: - Universal Bottom Sheet
             // Custom drag-controlled overlay (no `.sheet`) — see TrackBottomSheet.
             // Visibility gates on the same `bottomSheetPresentation` predicate the
