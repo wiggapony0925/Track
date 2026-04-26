@@ -80,6 +80,12 @@ enum CameraHoverEngine {
     /// Read/written from the main thread only — SwiftUI bindings are
     /// inherently main-actor isolated.
     private static var lastCommitAt: CFAbsoluteTime = 0
+    /// Time of the most recent `.user`-sourced commit.  System writes
+    /// are suppressed for `userCommitProtectionWindow` after this so that
+    /// GPS-jitter ticks from `handleLocationUpdate` cannot fight an
+    /// in-flight recenter animation (bounce) and the first-tap recenter
+    /// always produces a visible camera change.
+    private static var lastUserCommitAt: CFAbsoluteTime = 0
     /// Last camera position the engine wrote.  Used for dedupe + the
     /// `cameraWriteWillCommit` notification payload below.
     private static var lastCommittedPosition: TrackCameraPosition?
@@ -91,6 +97,11 @@ enum CameraHoverEngine {
     /// but two onChange handlers firing in the same run loop don't
     /// both write.
     private static let coalesceWindow: CFAbsoluteTime = 0.18
+    /// System writes are silenced for this many seconds after any
+    /// `.user` commit.  1.5 s covers the longest camera spring animation
+    /// (~0.9 s) plus GPS polling jitter so no background location tick
+    /// can interrupt or undo a user-initiated recenter.
+    private static let userCommitProtectionWindow: CFAbsoluteTime = 1.5
 
     /// Posted on `NotificationCenter.default` immediately before the
     /// engine writes a new camera into the binding.  The MapLibre
@@ -114,6 +125,9 @@ enum CameraHoverEngine {
     ///      the previous commit when both target the same camera —
     ///      this prevents the "two onChange handlers fight each other
     ///      with overlapping springs" bounce.
+    ///   3b. Additionally drops ANY `.system` write within
+    ///       `userCommitProtectionWindow` of the last `.user` commit —
+    ///       prevents GPS jitter from fighting an in-flight recenter.
     ///   4. Posts `cameraWriteWillCommit` so the renderer can mute
     ///      its echo path.
     ///   5. Wraps the assignment in the requested SwiftUI animation.
@@ -132,16 +146,24 @@ enum CameraHoverEngine {
 
         let now = CFAbsoluteTimeGetCurrent()
 
-        // (3) Coalesce: drop a `.system` write that mirrors what we
-        // just committed (within window).  `.user` writes always go through.
-        if source == .system,
-           let last = lastCommittedPosition,
-           now - lastCommitAt < coalesceWindow,
-           validated == last {
-            return
+        if source == .system {
+            // (3b) Hard silence after any user tap — covers the full animation
+            //      window so GPS jitter ticks can't fight an in-flight recenter.
+            if now - lastUserCommitAt < userCommitProtectionWindow {
+                return
+            }
+            // (3) Same-target coalesce for rapid-fire system writes.
+            if let last = lastCommittedPosition,
+               now - lastCommitAt < coalesceWindow,
+               validated == last {
+                return
+            }
         }
 
         lastCommitAt = now
+        if source == .user {
+            lastUserCommitAt = now
+        }
         lastCommittedPosition = validated
 
         // (4) Tell the renderer a SwiftUI-side write is starting.

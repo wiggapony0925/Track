@@ -66,6 +66,12 @@ struct HomeView: View {
     /// The settled center after a drag-search debounce fires. `nil` while
     /// the user is still panning — the radius circles hide until this is set.
     @State private var dragSearchSettledCenter: CLLocationCoordinate2D?
+    /// Stamped when drag-search is dismissed so that the programmatic
+    /// recenter animation (which fires many `handleMapCameraIdle` calls
+    /// while the camera is still mid-flight) cannot re-activate drag search.
+    /// 1 s covers any camera spring animation; drag-search can only re-engage
+    /// after this cooldown has elapsed.
+    @State private var dragSearchDismissedAt: Date?
 
     /// External tab-selection trigger for the route detail sheet.
     /// Set to `.alerts` when the user taps the alert pill on the map's
@@ -1357,9 +1363,24 @@ struct HomeView: View {
         } else {
             // Don't recenter if user is exploring via drag-to-search —
             // the next GPS fix would yank the camera back to their real
-            // location, undoing the drag.
-            if !isDragSearchActive {
-                recenterOnUser()
+            // location, undoing the drag. Also guard against panning even if 
+            // the threshold hasn't been crossed yet.
+            if !isDragSearchActive && !isDragSearchPanning {
+                // Skip the system recenter when the map is already close to
+                // the GPS dot — avoids a redundant write that can make the
+                // recenter button's first tap appear to do nothing (the engine
+                // sees binding.wrappedValue == targetCamera and no-ops the
+                // user commit because the system already wrote it).
+                let alreadyCentered: Bool = {
+                    guard let center = currentMapCenter else { return false }
+                    let cam = CLLocation(latitude: center.latitude, longitude: center.longitude)
+                    let gps = CLLocation(latitude: loc.coordinate.latitude,
+                                        longitude: loc.coordinate.longitude)
+                    return cam.distance(from: gps) < 80
+                }()
+                if !alreadyCentered {
+                    recenterOnUser()
+                }
             }
             
             // Live walking update: when a route detail is open, recalculate
@@ -1449,6 +1470,14 @@ struct HomeView: View {
     ///  3. Sets the settled center so radius circles snap into place
     ///  4. The sheet shows a live loading spinner via viewModel.isLoading
     private func handleMapCameraIdle(center: CLLocationCoordinate2D) {
+        // After a dismiss, the programmatic recenter animation fires dozens
+        // of camera-idle events while the camera is still flying back to GPS.
+        // Those intermediate positions (still far from GPS) would immediately
+        // re-activate drag-search, causing the visible bounce / spam-tap issue.
+        // Ignore all camera events for 1 s after a dismiss.
+        if let dismissedAt = dragSearchDismissedAt,
+           Date().timeIntervalSince(dismissedAt) < 1.0 { return }
+
         guard dragToSearchEnabled,
               viewModel.selectedRouteId == nil else { return }
         
@@ -1566,7 +1595,11 @@ struct HomeView: View {
     /// positioning separately (e.g. MapControlsOverlay.centerMap).
     private func dismissDragSearchState() {
         dragSearchDebounce?.cancel()
-        
+
+        // Stamp dismissal time so handleMapCameraIdle ignores intermediate
+        // camera positions produced by the recenter animation flying back.
+        dragSearchDismissedAt = Date()
+
         // Staggered exit: circle shrinks first, then state clears
         withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
             isDragSearchPanning = false

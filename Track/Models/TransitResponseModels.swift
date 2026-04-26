@@ -131,7 +131,7 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
 
     /// Memberwise initializer (restores the auto-generated one that the
     /// custom `init(from:)` below suppresses).
-    init(
+    nonisolated init(
         routeId: String,
         stopName: String,
         direction: String,
@@ -323,7 +323,7 @@ struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
         return vehicleKeys.count
     }
 
-    init(
+    nonisolated init(
         direction: String,
         directionLabel: String? = nil,
         directionId: String? = nil,
@@ -461,7 +461,7 @@ struct GroupedNearbyTransitResponse: Codable, Identifiable, Equatable {
     }
 
     /// Memberwise initializer.
-    init(
+    nonisolated init(
         routeId: String,
         displayName: String,
         mode: String,

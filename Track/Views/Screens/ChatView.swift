@@ -833,6 +833,10 @@ struct ChatView: View {
 
     @State private var viewModel = ChatViewModel()
     @FocusState private var inputFocused: Bool
+    /// Single source of truth for which coordinate/source is active.
+    /// Drives `syncBias()` so the chip always reflects the same state
+    /// that PlanView and HomeView see — no more transient-nil races.
+    @Environment(LocationContext.self) private var locationContext
 
     var body: some View {
         ZStack {
@@ -878,16 +882,18 @@ struct ChatView: View {
         .navigationBarHidden(true)
         .onAppear {
             Analytics.shared.screenView("ChatView", reachedVia: "tab")
-            // Make sure we always have the freshest possible fix when the
-            // user opens the chat tab — chat answers "near me" questions
-            // and a stale GPS would route them to the wrong neighborhood.
             locationManager?.requestImmediateFix()
             syncLocation()
             syncUserData()
             syncBias()
         }
         .onChange(of: locationManager?.currentLocation) { _, _ in syncLocation() }
-        .onChange(of: biasPin?.latitude) { _, _ in syncBias() }
+        // Re-sync bias whenever the shared LocationContext changes source
+        // (pin dropped, pin cleared, or GPS coordinate updates).
+        .onChange(of: locationContext.isUsingDroppedPin) { _, _ in syncBias() }
+        .onChange(of: locationContext.gpsCoordinate?.latitude) { _, _ in
+            if !locationContext.isUsingDroppedPin { syncBias() }
+        }
     }
 
     private func syncLocation() {
@@ -912,12 +918,18 @@ struct ChatView: View {
     }
 
     private func syncBias() {
-        if let pin = biasPin {
+        // Read from LocationContext — the single source of truth that
+        // HomeView, PlanView, and Chat all share. This prevents the
+        // transient-nil race where biasPin clears a frame before
+        // LocationContext.droppedPin does (or vice versa), which caused
+        // the chip to flash the wrong label.
+        if locationContext.isUsingDroppedPin,
+           let pin = locationContext.droppedPin {
             viewModel.biasLat = pin.latitude
             viewModel.biasLon = pin.longitude
             viewModel.biasSource = "map_pin"
             viewModel.biasLabel = "dropped pin"
-        } else if let coord = viewModel.currentLocation {
+        } else if let coord = locationContext.effectiveCoordinate {
             viewModel.biasLat = coord.latitude
             viewModel.biasLon = coord.longitude
             viewModel.biasSource = "gps"

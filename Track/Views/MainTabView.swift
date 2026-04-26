@@ -79,6 +79,10 @@ struct MainTabView: View {
     /// real GPS or the dropped search pin.  Injected into the environment
     /// so Home / Plan / Chat all agree on the active source.
     @State private var locationContext = LocationContext()
+    /// True while the software keyboard is on-screen.  Used to hide the
+    /// floating tab bar in the Chat tab — the bar overlaps the composer
+    /// and looks bad sitting above the keyboard.
+    @State private var isKeyboardVisible = false
     var body: some View {
         // Bind the floating tab bar once, then use it as a `.safeAreaInset`
         // on each tab's content. Mounting the inset on `TabView` itself
@@ -118,7 +122,11 @@ struct MainTabView: View {
 
             ChatView(locationManager: locationManager, biasPin: $chatBiasPin)
                 .toolbar(.hidden, for: .tabBar)
-                .safeAreaInset(edge: .bottom, spacing: 0) { bar }
+                // Hide the tab bar while the keyboard is up — it overlaps the
+                // composer and floats awkwardly above the keyboard.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if !isKeyboardVisible { bar }
+                }
                 .tag(AppTab.chat)
 
             AlarmsView()
@@ -157,6 +165,14 @@ struct MainTabView: View {
         }
         .environment(locationContext)
         .environment(goSession)
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(.easeInOut(duration: 0.2)) { isKeyboardVisible = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeInOut(duration: 0.18)) { isKeyboardVisible = false }
+        }
         // NOTE: read `goSession.activeTrip` directly here so that
         // SwiftUI's @Observable tracking registers the dependency on
         // this view's body. Reading it only inside the `Binding(get:)`

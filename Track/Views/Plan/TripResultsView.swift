@@ -110,7 +110,7 @@ struct TripResultsView: View {
                 VStack(spacing: 8) {
                     // Origin pill
                     HStack(spacing: 8) {
-                        Text(viewModel.origin.displayName)
+                        Text(viewModel.originDisplayName)
                             .font(.system(size: 17, weight: .heavy, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(1)
@@ -245,7 +245,7 @@ struct TripResultsView: View {
 
             // Save route
             Button {
-                saveRouteName = "\(viewModel.origin.displayName) → \(viewModel.destination?.displayName ?? "")"
+                saveRouteName = "\(viewModel.originDisplayName) → \(viewModel.destination?.displayName ?? "")"
                 showSaveRouteAlert = true
             } label: {
                 Image(systemName: "star")

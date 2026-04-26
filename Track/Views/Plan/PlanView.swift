@@ -280,8 +280,18 @@ struct PlanView: View {
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            SectionHeader(title: "From", size: 10, tracking: 1.0, color: AppTheme.Colors.accent.opacity(0.65))
-                            Text(viewModel.origin.displayName)
+                            // "From" label — shows a pin badge when drag-search
+                            // is active so the origin source is unambiguous.
+                            HStack(spacing: 4) {
+                                SectionHeader(title: "From", size: 10, tracking: 1.0, color: AppTheme.Colors.accent.opacity(0.65))
+                                if locationContext.isUsingDroppedPin,
+                                   case .currentLocation = viewModel.origin {
+                                    Image(systemName: "mappin.circle.fill")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(AppTheme.Colors.warningYellow)
+                                }
+                            }
+                            Text(viewModel.originDisplayName)
                                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                                 .foregroundStyle(AppTheme.Colors.textPrimary)
                                 .lineLimit(1)

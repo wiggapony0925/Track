@@ -27,7 +27,10 @@ import SQLite3
 // SQLITE_TRANSIENT is a special pointer the SQLite C API uses to mean
 // "copy this value into your own memory".  Importing it into Swift
 // requires a small bridging cast.
-private let SQLITE_TRANSIENT = unsafeBitCast(
+// `nonisolated(unsafe)` opts this compile-time constant out of the
+// project-wide MainActor default so it can be used inside the
+// `nonisolated` class without actor-crossing warnings.
+nonisolated(unsafe) private let SQLITE_TRANSIENT = unsafeBitCast(
     OpaquePointer(bitPattern: -1), to: sqlite3_destructor_type.self
 )
 

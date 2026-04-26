@@ -8,7 +8,7 @@
 // SHORTCUT BUTTON (right of |):
 //   Not near Home → house.fill   → one-tap trip to Home
 //   Near Home     → briefcase.fill → one-tap trip to Work
-//   Nothing saved → house.badge.plus (disabled placeholder)
+//   Nothing saved → house.fill (disabled placeholder)
 
 import SwiftUI
 import CoreLocation
@@ -176,7 +176,7 @@ struct FloatingSearchBar: View {
     private var shortcutButton: some View {
         let iconName: String = {
             if let shortcut = shortcutPlace { return shortcut.icon }
-            return "house.badge.plus"   // nudge: no saved places yet
+            return "house.fill"   // nudge: no saved places yet
         }()
 
         return Button {

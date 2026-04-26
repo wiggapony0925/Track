@@ -1012,6 +1012,27 @@ final class PlanViewModel {
         self.locationContext = locationContext
     }
 
+    /// Context-aware display name for the trip origin.
+    ///
+    /// When `origin == .currentLocation` and the user has an active drag-search
+    /// pin, we show "Dropped pin" (with the geocoded address if `HomeViewModel`
+    /// has already resolved it via `LocationContext.displayLabel`) so the
+    /// "From" row always tells the truth about where the route starts.
+    var originDisplayName: String {
+        // Only matters for the "current location" case.
+        guard case .currentLocation = origin else {
+            return origin.displayName
+        }
+        // If the LocationContext says a pin is driving the coordinate, surface
+        // that in the label.  `source.displayLabel` returns "dropped pin" for
+        // the pin case and "current location" for GPS — capitalize it.
+        if let ctx = locationContext, ctx.isUsingDroppedPin {
+            let label = ctx.source.displayLabel   // "dropped pin"
+            return label.prefix(1).uppercased() + label.dropFirst()
+        }
+        return origin.displayName  // "My location"
+    }
+
     private func payload(for location: PlanLocation) -> EngineLocationPayloadRequest? {
         switch location {
         case .currentLocation:
