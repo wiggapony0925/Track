@@ -67,6 +67,13 @@ struct TrackApp: App {
                     switch newPhase {
                     case .active:
                         Analytics.shared.appDidBecomeActive(entrySource: "warm")
+                        // Pick up any new GTFS bundle the backend has built
+                        // since the last foreground.  Throttled to once per
+                        // hour by GTFSBundleManager so this is essentially
+                        // free on rapid app-switches.
+                        Task { @MainActor in
+                            await GTFSBundleManager.shared.refreshIfNeeded()
+                        }
                     case .background:
                         Analytics.shared.appDidEnterBackground()
                     case .inactive:

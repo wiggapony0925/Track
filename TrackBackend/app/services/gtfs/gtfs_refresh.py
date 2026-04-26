@@ -883,6 +883,23 @@ def _sync_check_and_refresh(full_check: bool) -> dict[str, str]:
     # Phase 3: Rebuild schedule DB if any feed that affects it was updated
     if needs_db_rebuild:
         _rebuild_schedule_db()
+        # Also rebuild the slim mobile bundle iOS clients download via
+        # /gtfs/manifest.  Lives in the same module so we never duplicate
+        # the underlying transit_schedule.db reads.
+        try:
+            from app.services.gtfs.mobile_bundle import build_bundle
+
+            entry = build_bundle()
+            TrackLogger.info(
+                f"[GTFS] Mobile bundle rebuilt: {entry['filename']} "
+                f"({entry['size_bytes'] / (1024 * 1024):.1f} MB) — "
+                f"iOS clients will pick this up via /gtfs/manifest on next launch.",
+                tag="GTFS",
+            )
+        except Exception as exc:  # noqa: BLE001 — never fail refresh on bundle error
+            TrackLogger.error(
+                f"[GTFS] Mobile bundle rebuild failed: {exc}", tag="GTFS"
+            )
 
     # Phase 4: Upload changed archives to Supabase
     if supabase_archives:
@@ -923,6 +940,23 @@ async def rebuild_schedule_db_if_missing() -> None:
 
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _rebuild_schedule_db)
+    # Make sure the mobile bundle exists too — first boot on a clean disk
+    # would otherwise leave /gtfs/manifest empty until the next nightly
+    # refresh fires.
+    try:
+        from app.services.gtfs.mobile_bundle import build_bundle, read_manifest
+
+        manifest = read_manifest()
+        if not manifest.get("regions"):
+            await loop.run_in_executor(None, build_bundle)
+            TrackLogger.info(
+                "[GTFS] Initial mobile bundle built after first-boot DB rebuild.",
+                tag="GTFS",
+            )
+    except Exception as exc:  # noqa: BLE001
+        TrackLogger.error(
+            f"[GTFS] First-boot mobile bundle build failed: {exc}", tag="GTFS"
+        )
 
 
 def get_gtfs_freshness() -> dict[str, dict[str, str | None]]:
