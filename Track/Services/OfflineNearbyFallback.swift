@@ -35,18 +35,42 @@ enum OfflineNearbyFallback {
         let bbox = boundingBox(lat: lat, lon: lon, radiusMeters: radiusMeters)
         let modeFilter: Set<String>? = mode.map { Set([normalizeMode($0)]) }
 
-        let stops = bundle.stops(
+        // Pull a generous working set from the R*Tree.  An 8 km radius in
+        // NYC covers ~6 000 stops, so a small LIMIT here would silently
+        // truncate the nearest bus stops (R*Tree returns rows in
+        // insertion order, not by distance), leaving "near you" empty
+        // while a few far-away subway stations survive.  We pull up to
+        // 10 000 candidates then haversine-filter to the actual radius.
+        let bboxStops = bundle.stops(
             inBbox: bbox.minLat, maxLat: bbox.maxLat,
             minLon: bbox.minLon, maxLon: bbox.maxLon,
             modes: modeFilter,
-            limit: 400
+            limit: 10_000
         )
-        guard !stops.isEmpty else { return [] }
+        guard !bboxStops.isEmpty else { return [] }
 
-        let distances: [String: Double] = stops.reduce(into: [:]) { acc, stop in
-            acc[stop.stopID] = haversineMeters(
+        // Haversine-filter to the true circular radius and keep only the
+        // closest 1 500 stops (more than enough for any real radius —
+        // even Manhattan in 8 km has ~3 k bus + ~200 subway platforms,
+        // all of which fit, but we cap to keep the route-join cheap).
+        var measured: [(stop: LocalStop, dist: Double)] = []
+        measured.reserveCapacity(bboxStops.count)
+        for stop in bboxStops {
+            let d = haversineMeters(
                 lat1: lat, lon1: lon, lat2: stop.latitude, lon2: stop.longitude
             )
+            if d <= radiusMeters {
+                measured.append((stop, d))
+            }
+        }
+        guard !measured.isEmpty else { return [] }
+        measured.sort { $0.dist < $1.dist }
+        if measured.count > 1_500 {
+            measured = Array(measured.prefix(1_500))
+        }
+        let stops = measured.map(\.stop)
+        let distances: [String: Double] = measured.reduce(into: [:]) { acc, m in
+            acc[m.stop.stopID] = m.dist
         }
 
         let routesByStop = bundle.routes(forStops: stops.map(\.stopID))
