@@ -84,7 +84,7 @@ public enum LocalGTFSError: Error, CustomStringConvertible {
 // MARK: - Bundle handle
 
 public final class LocalGTFSBundle: @unchecked Sendable {
-    public static let supportedSchemaVersion = 1
+    public static let supportedSchemaVersion = 2
 
     private let db: OpaquePointer
     private let queue = DispatchQueue(label: "track.gtfs.local", qos: .userInitiated)
@@ -329,5 +329,53 @@ public final class LocalGTFSBundle: @unchecked Sendable {
         return stopList.map { stop in
             LocalStopWithRoutes(stop: stop, routes: routesByStop[stop.stopID] ?? [])
         }
+    }
+
+    // MARK: - Headway estimates (Phase D — offline scheduled fallback)
+
+    /// Estimated wait time, in minutes, for the next vehicle on `routeID`
+    /// at the given local date.  Uses the `route_headways` table baked
+    /// into the bundle (trips per (route, day_type, hour) bucket).  We
+    /// return ceil(headway / 2) under the standard assumption that a
+    /// rider who arrives at a random moment within the hour waits, on
+    /// average, half the headway.
+    ///
+    /// Returns `nil` when no schedule data exists for that bucket
+    /// (overnight gaps, suspended service, unknown route) so callers
+    /// can fall back to a generic placeholder.
+    public func expectedWaitMinutes(routeID: String, at date: Date = Date()) -> Int? {
+        let cal = Calendar(identifier: .gregorian)
+        let components = cal.dateComponents([.weekday, .hour], from: date)
+        // Calendar.weekday: 1 = Sunday, 7 = Saturday
+        let dayType: Int
+        switch components.weekday ?? 0 {
+        case 1: dayType = 2  // Sunday
+        case 7: dayType = 1  // Saturday
+        default: dayType = 0 // Weekday (Mon-Fri)
+        }
+        let hour = components.hour ?? 0
+
+        return queue.sync { [self] in
+            tripsLocked(routeID: routeID, dayType: dayType, hour: hour).flatMap { trips in
+                guard trips > 0 else { return nil }
+                let headway = max(1, 60 / trips)
+                // Average wait is half the headway, ceil to whole minutes.
+                return max(1, (headway + 1) / 2)
+            }
+        }
+    }
+
+    private func tripsLocked(routeID: String, dayType: Int, hour: Int) -> Int? {
+        let sql = "SELECT trips FROM route_headways WHERE route_id = ? AND day_type = ? AND hour = ?"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            return nil
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, routeID, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_int(stmt, 2, Int32(dayType))
+        sqlite3_bind_int(stmt, 3, Int32(hour))
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return Int(sqlite3_column_int(stmt, 0))
     }
 }

@@ -40,6 +40,13 @@ struct TrackApp: App {
             _ = GTFSBundleManager.shared.bootstrap()
             await GTFSBundleManager.shared.refreshIfNeeded()
         }
+
+        // Phase C: pre-download NYC base-map tiles into MapLibre's
+        // built-in offline storage so the map renders without network.
+        // Idempotent — no-op once the pack exists.
+        Task { @MainActor in
+            OfflineMapManager.shared.bootstrap()
+        }
         
         // Migrate stale device IP to the current default from settings.json.
         // If the user's stored IP matches an old hardcoded value, replace it

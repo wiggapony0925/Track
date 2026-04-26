@@ -50,7 +50,8 @@ _BUNDLE_DIR = _BACKEND_ROOT / "static" / "gtfs"
 _MANIFEST_PATH = _BUNDLE_DIR / "manifest.json"
 
 REGION_ID = "nyc"
-SCHEMA_VERSION = 1
+# v2 = adds route_headways table for offline scheduled-arrival fallback
+SCHEMA_VERSION = 2
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +152,21 @@ def _init_target(target: Path) -> sqlite3.Connection:
             PRIMARY KEY (route_id, stop_id, direction_id)
         );
         CREATE INDEX idx_route_stops_stop ON route_stops(stop_id);
+
+        -- Per-route trip counts bucketed by day-type and hour-of-day.
+        -- Powers Phase-D offline fallback: when the network or live
+        -- GTFS-RT feeds are unavailable, the iOS client estimates the
+        -- next arrival as headway/2 minutes from this table.
+        --   day_type: 0 = weekday, 1 = saturday, 2 = sunday
+        --   hour:     0..23 (departure hour, modulo 24 for 24h+ rollover)
+        --   trips:    distinct trip departures starting in that hour
+        CREATE TABLE route_headways (
+            route_id TEXT    NOT NULL,
+            day_type INTEGER NOT NULL,
+            hour     INTEGER NOT NULL,
+            trips    INTEGER NOT NULL,
+            PRIMARY KEY (route_id, day_type, hour)
+        );
 
         CREATE TABLE metadata (
             key   TEXT PRIMARY KEY,
@@ -268,6 +284,81 @@ def _build_route_stops(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
     return inserted
 
 
+def _build_route_headways(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
+    """Aggregate (route_id, day_type, hour) → trip count.
+
+    Day-type encoding mirrors the iOS-side ``LocalGTFSBundle.dayType``:
+    0 = weekday (any of Mon-Fri), 1 = Saturday, 2 = Sunday.  Some
+    services run multiple day-types; we emit one row per (service, dt)
+    pair.  Hour is the trip's *first* departure hour modulo 24, so a
+    trip starting "25:30" rolls into hour 1.
+
+    Performance: streams stop_times once (~7M rows in ~4s on a M-series
+    Mac), keeping a per-trip "earliest seen so far" dict.  Avoids the
+    correlated-subquery MIN() that takes >5 minutes to plan.
+    """
+    # 1. Service-id → list of day_types served.
+    svc_days: dict[str, list[int]] = {}
+    for row in src.execute("SELECT * FROM calendar"):
+        days: list[int] = []
+        if any(
+            row[d] for d in ("monday", "tuesday", "wednesday", "thursday", "friday")
+        ):
+            days.append(0)
+        if row["saturday"]:
+            days.append(1)
+        if row["sunday"]:
+            days.append(2)
+        if days:
+            svc_days[row["service_id"]] = days
+
+    # 2. Trip-id → (route_id, service_id).
+    trips: dict[str, tuple[str, str]] = {
+        row["trip_id"]: (row["route_id"], row["service_id"])
+        for row in src.execute("SELECT trip_id, route_id, service_id FROM trips")
+    }
+
+    # 3. Trip-id → earliest (departure_time, stop_sequence).  Streamed.
+    trip_first: dict[str, tuple[str, int]] = {}
+    for trip_id, dep, seq in src.execute(
+        "SELECT trip_id, departure_time, stop_sequence FROM stop_times"
+    ):
+        if not dep:
+            continue
+        cur = trip_first.get(trip_id)
+        if cur is None or seq < cur[1]:
+            trip_first[trip_id] = (dep, seq)
+
+    # 4. Aggregate buckets.
+    from collections import defaultdict
+
+    buckets: dict[tuple[str, int, int], int] = defaultdict(int)
+    for trip_id, (dep, _) in trip_first.items():
+        meta = trips.get(trip_id)
+        if not meta:
+            continue
+        route_id, service_id = meta
+        days = svc_days.get(service_id)
+        if not days:
+            continue
+        try:
+            hour = int(dep.split(":", 1)[0]) % 24
+        except (ValueError, IndexError):
+            continue
+        for dt in days:
+            buckets[(route_id, dt, hour)] += 1
+
+    cur = dst.cursor()
+    cur.execute("BEGIN")
+    cur.executemany(
+        "INSERT OR REPLACE INTO route_headways(route_id, day_type, hour, trips) "
+        "VALUES (?, ?, ?, ?)",
+        [(rid, dt, h, n) for (rid, dt, h), n in buckets.items()],
+    )
+    dst.commit()
+    return len(buckets)
+
+
 def _write_metadata(dst: sqlite3.Connection, **values: str) -> None:
     cur = dst.cursor()
     cur.execute("BEGIN")
@@ -323,6 +414,7 @@ def build_bundle(
         stops_n = _copy_stops(src, dst)
         routes_n = _copy_routes(src, dst)
         rs_n = _build_route_stops(src, dst)
+        hw_n = _build_route_headways(src, dst)
 
         _write_metadata(
             dst,
@@ -333,6 +425,7 @@ def build_bundle(
             stops_count=str(stops_n),
             routes_count=str(routes_n),
             route_stops_count=str(rs_n),
+            route_headways_count=str(hw_n),
         )
         _finalize(dst)
     finally:
@@ -355,6 +448,7 @@ def build_bundle(
         "stops_count": stops_n,
         "routes_count": routes_n,
         "route_stops_count": rs_n,
+        "route_headways_count": hw_n,
         "generated_at": int(started),
     }
 
@@ -363,7 +457,7 @@ def build_bundle(
     TrackLogger.info(
         f"[GTFS-BUNDLE] ✓ {final.name} | "
         f"{size / (1024 * 1024):.1f} MB | "
-        f"stops={stops_n} routes={routes_n} route_stops={rs_n} | "
+        f"stops={stops_n} routes={routes_n} route_stops={rs_n} headways={hw_n} | "
         f"build={time.time() - started:.1f}s",
         tag="GTFS",
     )

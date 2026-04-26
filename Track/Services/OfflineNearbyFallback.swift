@@ -118,13 +118,21 @@ enum OfflineNearbyFallback {
             (distances[a.stopID] ?? .infinity) < (distances[b.stopID] ?? .infinity)
         } ?? stops[0]
 
+        // Phase D: prefer a real headway-based estimate from the bundle's
+        // route_headways table.  Falls back to the 99-minute placeholder
+        // only when no schedule data exists for the current bucket
+        // (overnight gap, suspended service, unknown route).
+        let bundle = GTFSBundleManager.shared.current
+        let estimated = bundle?.expectedWaitMinutes(routeID: route.routeID) ?? 99
+        let status = estimated < 99 ? "Scheduled" : "No Data"
+
         let placeholder = NearbyTransitResponse(
             routeId: route.routeID,
             stopName: closest.name,
             direction: "Unknown",
             destination: nil,
-            minutesAway: 99,
-            status: "Scheduled",
+            minutesAway: estimated,
+            status: status,
             mode: route.mode,
             stopLat: closest.latitude,
             stopLon: closest.longitude,
