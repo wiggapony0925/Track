@@ -36,7 +36,7 @@ public final class OfflineMapManager: NSObject {
 
     /// NYC bounding box — Staten Island SW corner to north Bronx NE.
     /// Slightly padded so panning to the river edges still hits cache.
-    private static let nycBounds = MLNCoordinateBounds(
+    nonisolated private static let nycBounds = MLNCoordinateBounds(
         sw: CLLocationCoordinate2D(latitude: 40.45, longitude: -74.30),
         ne: CLLocationCoordinate2D(latitude: 40.95, longitude: -73.65)
     )
@@ -44,12 +44,12 @@ public final class OfflineMapManager: NSObject {
     /// Zoom range — 10 covers the whole metro, 15 is street-level detail.
     /// Going higher than 15 doubles the tile count per step and is
     /// rarely needed for transit search.
-    private static let minZoom: Double = 10
-    private static let maxZoom: Double = 15
+    nonisolated private static let minZoom: Double = 10
+    nonisolated private static let maxZoom: Double = 15
 
     /// User-defined region context (stored inside the pack so we can
     /// recognise "our" pack on subsequent launches).
-    private static let regionName = "nyc-basemap-v1"
+    nonisolated private static let regionName = "nyc-basemap-v1"
 
     private var didBootstrap = false
     private var observer: NSObjectProtocol?
@@ -136,12 +136,12 @@ public final class OfflineMapManager: NSObject {
     /// MapLibre stores arbitrary `Data` per pack so we can recognise
     /// our own pack and avoid duplicate downloads.  Stash a JSON
     /// `{ "name": "nyc-basemap-v1" }` blob.
-    private static func makeContext(name: String) -> Data {
+    nonisolated private static func makeContext(name: String) -> Data {
         let payload: [String: String] = ["name": name]
         return (try? JSONSerialization.data(withJSONObject: payload)) ?? Data()
     }
 
-    private static func contextName(from data: Data) -> String? {
+    nonisolated private static func contextName(from data: Data) -> String? {
         guard !data.isEmpty,
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: String]
         else { return nil }
