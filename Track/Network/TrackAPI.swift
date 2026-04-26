@@ -543,13 +543,25 @@ struct TrackAPI {
             // UI still shows which routes serve this area, just without
             // live arrivals.  This is the user mandate "the only thing
             // that needs network is live tracking".
-            let synthesized = await MainActor.run {
+            //
+            // CRITICAL: never call synthesize on the main actor — the
+            // R*Tree + route join can take 30-150 ms on an 8 km radius,
+            // and blocking the UI thread on every drag-search settle
+            // makes the map bounce and the search pin disappear.  Grab
+            // the bundle reference on MainActor (cheap pointer copy)
+            // then dispatch the heavy work off-main.
+            let bundleRef = await MainActor.run { GTFSBundleManager.shared.current }
+            guard let bundleRef else { throw error }
+            let snapshotRadius = effectiveRadius
+            let snapshotMode = mode
+            let synthesized = await Task.detached(priority: .userInitiated) {
                 OfflineNearbyFallback.synthesize(
                     lat: lat, lon: lon,
-                    radiusMeters: Double(effectiveRadius),
-                    mode: mode
+                    radiusMeters: Double(snapshotRadius),
+                    mode: snapshotMode,
+                    bundle: bundleRef
                 )
-            }
+            }.value
             if let synthesized {
                 AppLogger.shared.log(
                     "OFFLINE",

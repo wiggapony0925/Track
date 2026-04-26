@@ -21,16 +21,22 @@ import Foundation
 import CoreLocation
 
 enum OfflineNearbyFallback {
-    static func synthesize(
+    /// Synthesize nearby groups from the on-device bundle.
+    ///
+    /// **Threading**: this runs SQLite queries that can take 30-150 ms
+    /// on an 8 km radius in NYC.  Callers MUST hop off the main actor
+    /// before invoking this — otherwise drag-search bounces and stutters
+    /// because every settle event blocks the UI thread.  The required
+    /// `bundle` argument exists so callers grab the reference on
+    /// MainActor (cheap) then dispatch the heavy work to a background
+    /// task.
+    nonisolated static func synthesize(
         lat: Double,
         lon: Double,
         radiusMeters: Double = 800,
         mode: String? = nil,
-        bundle: LocalGTFSBundle? = nil
+        bundle: LocalGTFSBundle
     ) -> [GroupedNearbyTransitResponse]? {
-        guard let bundle = bundle ?? GTFSBundleManager.shared.current else {
-            return nil
-        }
 
         let bbox = boundingBox(lat: lat, lon: lon, radiusMeters: radiusMeters)
         let modeFilter: Set<String>? = mode.map { Set([normalizeMode($0)]) }
@@ -96,7 +102,12 @@ enum OfflineNearbyFallback {
         return byRoute.values
             .sorted { $0.minDist < $1.minDist }
             .map { acc in
-                buildGroup(route: acc.route, stops: acc.stops, distances: distances)
+                buildGroup(
+                    route: acc.route,
+                    stops: acc.stops,
+                    distances: distances,
+                    bundle: bundle
+                )
             }
     }
 
@@ -136,7 +147,8 @@ enum OfflineNearbyFallback {
     private static func buildGroup(
         route: LocalRoute,
         stops: [LocalStop],
-        distances: [String: Double]
+        distances: [String: Double],
+        bundle: LocalGTFSBundle
     ) -> GroupedNearbyTransitResponse {
         let closest = stops.min { (a: LocalStop, b: LocalStop) in
             (distances[a.stopID] ?? .infinity) < (distances[b.stopID] ?? .infinity)
@@ -146,8 +158,7 @@ enum OfflineNearbyFallback {
         // route_headways table.  Falls back to the 99-minute placeholder
         // only when no schedule data exists for the current bucket
         // (overnight gap, suspended service, unknown route).
-        let bundle = GTFSBundleManager.shared.current
-        let estimated = bundle?.expectedWaitMinutes(routeID: route.routeID) ?? 99
+        let estimated = bundle.expectedWaitMinutes(routeID: route.routeID) ?? 99
         let status = estimated < 99 ? "Scheduled" : "No Data"
 
         let placeholder = NearbyTransitResponse(
