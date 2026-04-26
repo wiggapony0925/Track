@@ -83,7 +83,12 @@ public enum LocalGTFSError: Error, CustomStringConvertible {
 
 // MARK: - Bundle handle
 
-public final class LocalGTFSBundle: @unchecked Sendable {
+// `nonisolated` overrides the project-wide SWIFT_DEFAULT_ACTOR_ISOLATION =
+// MainActor so this class (and all its members, unless they opt back in)
+// can be called from any thread.  Internally every public read goes
+// through `queue.sync`, and SQLite is opened with the default
+// serialized threading mode, so cross-thread access is safe.
+nonisolated public final class LocalGTFSBundle: @unchecked Sendable {
     public static let supportedSchemaVersion = 2
 
     private let db: OpaquePointer

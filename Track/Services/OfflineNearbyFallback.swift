@@ -113,7 +113,7 @@ enum OfflineNearbyFallback {
 
     // MARK: - Helpers
 
-    private static func boundingBox(
+    nonisolated private static func boundingBox(
         lat: Double, lon: Double, radiusMeters: Double
     ) -> (minLat: Double, maxLat: Double, minLon: Double, maxLon: Double) {
         let degLat = radiusMeters / 111_320.0
@@ -121,7 +121,7 @@ enum OfflineNearbyFallback {
         return (lat - degLat, lat + degLat, lon - degLon, lon + degLon)
     }
 
-    private static func haversineMeters(
+    nonisolated private static func haversineMeters(
         lat1: Double, lon1: Double, lat2: Double, lon2: Double
     ) -> Double {
         let r = 6_371_000.0
@@ -133,7 +133,7 @@ enum OfflineNearbyFallback {
         return 2 * r * atan2(sqrt(a), sqrt(1 - a))
     }
 
-    private static func normalizeMode(_ raw: String) -> String {
+    nonisolated private static func normalizeMode(_ raw: String) -> String {
         switch raw.lowercased() {
         case "subway", "bus", "lirr", "mnr", "ferry", "rail":
             return raw.lowercased()
@@ -144,7 +144,7 @@ enum OfflineNearbyFallback {
         }
     }
 
-    private static func buildGroup(
+    nonisolated private static func buildGroup(
         route: LocalRoute,
         stops: [LocalStop],
         distances: [String: Double],
