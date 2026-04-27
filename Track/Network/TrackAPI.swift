@@ -81,6 +81,19 @@ struct TrackAPI {
         return URLSession(configuration: config)
     }()
 
+    /// Standard-timeout session for supplementary calls that should fail
+    /// immediately when offline instead of waiting for connectivity.
+    private static let failFastSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = false
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
+        config.httpMaximumConnectionsPerHost = 6
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config)
+    }()
+
     // MARK: - Cold-Start State
 
     /// Thread-safe lock protecting `serverWarmedUp`.
@@ -516,6 +529,20 @@ struct TrackAPI {
         quick: Bool = false
     ) async throws -> [GroupedNearbyTransitResponse] {
         let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
+
+        let knownOffline = await MainActor.run { !OfflineCacheManager.shared.isOnline }
+        if knownOffline,
+           let synthesized = await synthesizeNearbyGroupedFallback(
+                lat: lat,
+                lon: lon,
+                radius: effectiveRadius,
+                mode: mode,
+                reason: "network unavailable"
+           )
+        {
+            return synthesized
+        }
+
         guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {
             throw TrackAPIError.invalidURL
         }
@@ -537,37 +564,15 @@ struct TrackAPI {
         AppLogger.shared.logRequest(method: "GET", url: url.absoluteString)
         let data: Data
         do {
-            data = try await getWithExtendedTimeout(url: url)
+            data = try await getWithExtendedTimeout(url: url, waitsForConnectivity: false)
         } catch {
-            // Offline fallback — synthesize from local GTFS bundle so the
-            // UI still shows which routes serve this area, just without
-            // live arrivals.  This is the user mandate "the only thing
-            // that needs network is live tracking".
-            //
-            // CRITICAL: never call synthesize on the main actor — the
-            // R*Tree + route join can take 30-150 ms on an 8 km radius,
-            // and blocking the UI thread on every drag-search settle
-            // makes the map bounce and the search pin disappear.  Grab
-            // the bundle reference on MainActor (cheap pointer copy)
-            // then dispatch the heavy work off-main.
-            let bundleRef = await MainActor.run { GTFSBundleManager.shared.current }
-            guard let bundleRef else { throw error }
-            let snapshotRadius = effectiveRadius
-            let snapshotMode = mode
-            let synthesized = await Task.detached(priority: .userInitiated) {
-                OfflineNearbyFallback.synthesize(
-                    lat: lat, lon: lon,
-                    radiusMeters: Double(snapshotRadius),
-                    mode: snapshotMode,
-                    bundle: bundleRef
-                )
-            }.value
-            if let synthesized {
-                AppLogger.shared.log(
-                    "OFFLINE",
-                    message: "fetchNearbyGrouped fell back to local bundle " +
-                             "(\(synthesized.count) routes) — \(error.localizedDescription)"
-                )
+            if let synthesized = await synthesizeNearbyGroupedFallback(
+                lat: lat,
+                lon: lon,
+                radius: effectiveRadius,
+                mode: mode,
+                reason: error.localizedDescription
+            ) {
                 return synthesized
             }
             throw error
@@ -611,6 +616,40 @@ struct TrackAPI {
             )
             throw decodingError
         }
+    }
+
+    private static func synthesizeNearbyGroupedFallback(
+        lat: Double,
+        lon: Double,
+        radius: Int,
+        mode: String?,
+        reason: String
+    ) async -> [GroupedNearbyTransitResponse]? {
+        let bundleRef = await MainActor.run {
+            GTFSBundleManager.shared.current ?? GTFSBundleManager.shared.bootstrap()
+        }
+        guard let bundleRef else { return nil }
+
+        let synthesized = await Task.detached(priority: .userInitiated) {
+            OfflineNearbyFallback.synthesize(
+                lat: lat,
+                lon: lon,
+                radiusMeters: Double(radius),
+                mode: mode,
+                bundle: bundleRef
+            )
+        }.value
+        guard let synthesized else { return nil }
+
+        await MainActor.run {
+            OfflineCacheManager.shared.isUsingCachedData = true
+        }
+        AppLogger.shared.log(
+            "OFFLINE",
+            message: "fetchNearbyGrouped fell back to local bundle "
+                + "(\(synthesized.count) routes) — \(reason)"
+        )
+        return synthesized
     }
 
     /// Fetches inactive transit routes — routes serving the area but with no active service.
@@ -807,7 +846,7 @@ struct TrackAPI {
         guard let url = components.url else {
             throw TrackAPIError.invalidURL
         }
-        let data = try await get(url: url)
+        let data = try await get(url: url, waitsForConnectivity: false)
         return try decoder.decode(AllSubwayStationsResponse.self, from: data)
     }
 
@@ -1238,6 +1277,21 @@ struct TrackAPI {
         return URLSession(configuration: config)
     }()
 
+    /// Same retry/timeout profile as `extendedSession`, but does not wait
+    /// indefinitely for connectivity. Offline-capable endpoints use this so
+    /// they can fall through to local GTFS instead of parking on URLSession's
+    /// connectivity queue.
+    private static let extendedFailFastSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = false
+        config.timeoutIntervalForRequest = 45
+        config.timeoutIntervalForResource = 60
+        config.httpMaximumConnectionsPerHost = 4
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config)
+    }()
+
     private static func getWithExtendedTimeout(path: String) async throws -> Data {
         guard let url = URL(string: baseURL + path) else {
             throw TrackAPIError.invalidURL
@@ -1246,7 +1300,10 @@ struct TrackAPI {
         return try await getWithExtendedTimeout(url: url)
     }
 
-    private static func getWithExtendedTimeout(url: URL) async throws -> Data {
+    private static func getWithExtendedTimeout(
+        url: URL,
+        waitsForConnectivity: Bool = true
+    ) async throws -> Data {
         let cacheKey = url.absoluteString
         let cacheablePath = cacheablePath(from: url)
 
@@ -1300,7 +1357,10 @@ struct TrackAPI {
                     if let token = cachedAccessToken, !token.isEmpty {
                         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                     }
-                    let (data, response) = try await extendedSession.data(for: request)
+                    let session = waitsForConnectivity
+                        ? extendedSession
+                        : extendedFailFastSession
+                    let (data, response) = try await session.data(for: request)
                     let attemptElapsed = Date().timeIntervalSince(attemptStart)
                     guard let http = response as? HTTPURLResponse else {
                         let dur = AppLogger.formatDuration(attemptElapsed)
@@ -1391,7 +1451,10 @@ struct TrackAPI {
         }
     }
 
-    private static func get(url: URL) async throws -> Data {
+    private static func get(
+        url: URL,
+        waitsForConnectivity: Bool = true
+    ) async throws -> Data {
         let cacheKey = url.absoluteString
         let cacheablePath = cacheablePath(from: url)
 
@@ -1440,7 +1503,8 @@ struct TrackAPI {
                         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                     }
 
-                    let (data, response) = try await session.data(for: request)
+                    let requestSession = waitsForConnectivity ? session : failFastSession
+                    let (data, response) = try await requestSession.data(for: request)
                     guard let http = response as? HTTPURLResponse else {
                         lastError = TrackAPIError.networkError
                         continue

@@ -1048,6 +1048,39 @@ def _trip_siri_circuit() -> None:
     _siri_consecutive_auth_failures = SIRI_FAIL_THRESHOLD
 
 
+def _is_siri_auth_unavailable(exc: Exception) -> bool:
+    """Return True for SIRI auth/circuit failures that are already summarized.
+
+    Background stale-cache refreshes can fan out across many stops/routes. When
+    the BusTime key is rejected, every task sees the same 401/403 and otherwise
+    logs its own warning. The circuit breaker emits the actionable warning; the
+    per-key background failures are noise.
+    """
+    return (
+        isinstance(exc, httpx.HTTPStatusError)
+        and exc.response.status_code in (401, 403)
+    )
+
+
+def _log_siri_background_refresh_failure(
+    kind: str,
+    cache_key: str,
+    exc: Exception,
+) -> None:
+    """Log background refresh failures, suppressing repeated SIRI auth noise."""
+    if _is_siri_auth_unavailable(exc):
+        TrackLogger.debug(
+            f"[{kind}] Background refresh skipped for {cache_key}: SIRI auth unavailable",
+            tag="BUS",
+        )
+        return
+
+    TrackLogger.warning(
+        f"[{kind}] Background refresh failed for {cache_key}: {exc}",
+        tag="BUS",
+    )
+
+
 async def _fetch_bus_json(
     url: str,
     params: dict[str, str],
@@ -1644,9 +1677,10 @@ async def get_realtime_arrivals(stop_id: str) -> list[BusArrival]:
                         stale_ttl=BUS_ARRIVALS_STALE_TTL,
                     )
                 except Exception as exc:
-                    TrackLogger.warning(
-                        f"[BUS_ARRIVALS] Background refresh failed for {cache_key}: {exc}",
-                        tag="BUS",
+                    _log_siri_background_refresh_failure(
+                        "BUS_ARRIVALS",
+                        cache_key,
+                        exc,
                     )
                 finally:
                     if task is not None and _arrivals_inflight.get(cache_key) is task:
@@ -1951,9 +1985,10 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
                         data=[item.model_dump(mode="json") for item in fresh],
                     )
                 except Exception as exc:
-                    TrackLogger.warning(
-                        f"[BUS_VEHICLES] Background refresh failed for {cache_key}: {exc}",
-                        tag="BUS",
+                    _log_siri_background_refresh_failure(
+                        "BUS_VEHICLES",
+                        cache_key,
+                        exc,
                     )
                 finally:
                     if task is not None and _vehicle_inflight.get(cache_key) is task:
@@ -2019,7 +2054,7 @@ async def _fetch_vehicle_positions_uncached(canonical_id: str) -> list[BusVehicl
                     except Exception:
                         pass
                 raise e
-            if e.response.status_code in (401, 403) and _siri_circuit_is_open():
+            if e.response.status_code in (401, 403):
                 raise e
             last_error = e
             if attempt < max_retries:

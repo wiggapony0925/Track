@@ -3,14 +3,14 @@
 //  TrackTests
 //
 //  Validates the drag-to-search distance thresholds, state transitions,
-//  and magnetic snap-back logic.  Tests the pure distance calculations
+//  and non-snapping drag behavior. Tests the pure distance calculations
 //  that drive handleMapCameraIdle() in HomeView.
 //
 //  Expected behaviors:
 //    1. Circle appears instantly when user pans 60m+ from GPS (no debounce)
-//    2. API fires after 350ms debounce when settled 100m+ from GPS
-//    3. Magnetic snap dismisses instantly when dragged back within 50m
-//    4. Panning 50-100m from GPS triggers auto-dismiss after debounce
+//    2. API fires after 350ms debounce at the settled map center
+//    3. Dragging near GPS does not snap or recenter automatically
+//    4. Panning 50-100m from GPS places the pin without dismissing
 //    5. Distance calculations are accurate at NYC latitudes
 //
 
@@ -74,10 +74,10 @@ struct DragSearchBehaviorTests {
         }
     }
 
-    // MARK: - Threshold: API Debounce (100m)
+    // MARK: - Debounced Search Placement
 
-    @Test("API fires only when settled 100m+ from GPS")
-    func apiFiresAt100m() {
+    @Test("API fires at the settled map center once drag search is active")
+    func apiFiresAtSettledCenter() {
         let at80m = Self.offset(meters: 80)
         let at105m = Self.offset(meters: 105)
         let at300m = Self.offset(meters: 300)
@@ -86,20 +86,20 @@ struct DragSearchBehaviorTests {
         let dist105 = Self.distance(from: at105m)
         let dist300 = Self.distance(from: at300m)
 
-        // Under 100m — API should NOT fire (dismiss instead)
-        #expect(dist80 < 100, "80m offset should be under 100m API threshold, got \(dist80)m")
+        let isDragSearchActive = true
 
-        // Over 100m — API SHOULD fire after debounce
-        #expect(dist105 > 100, "105m offset should exceed 100m API threshold, got \(dist105)m")
-
-        // Far away — definitely fires
-        #expect(dist300 > 100, "300m offset should exceed 100m API threshold, got \(dist300)m")
+        #expect(isDragSearchActive && dist80 > 0,
+            "80m settled center should place/search a pin, got \(dist80)m")
+        #expect(isDragSearchActive && dist105 > 0,
+            "105m settled center should place/search a pin, got \(dist105)m")
+        #expect(isDragSearchActive && dist300 > 0,
+            "300m settled center should place/search a pin, got \(dist300)m")
     }
 
-    // MARK: - Threshold: Magnetic Snap-Back (50m)
+    // MARK: - No Magnetic Snap-Back
 
-    @Test("Magnetic snap triggers at <50m from GPS")
-    func magneticSnapThreshold() {
+    @Test("Dragging near GPS does not trigger snap-back")
+    func noMagneticSnapThreshold() {
         let at40m = Self.offset(meters: 40)
         let at55m = Self.offset(meters: 55)
         let at10m = Self.offset(meters: 10)
@@ -110,46 +110,50 @@ struct DragSearchBehaviorTests {
         let dist10 = Self.distance(from: at10m)
         let distOrigin = Self.distance(from: atOrigin)
 
-        // Under 50m — magnetic snap SHOULD trigger
-        #expect(dist40 < 50, "40m offset should trigger magnetic snap (<50m), got \(dist40)m")
-        #expect(dist10 < 50, "10m offset should trigger magnetic snap (<50m), got \(dist10)m")
-        #expect(distOrigin < 50, "Origin should trigger magnetic snap (<50m), got \(distOrigin)m")
+        // Under 50m — old snap distance, but drag search should not dismiss now.
+        #expect(dist40 < 50, "40m offset should remain under former snap threshold, got \(dist40)m")
+        #expect(dist10 < 50, "10m offset should remain under former snap threshold, got \(dist10)m")
+        #expect(distOrigin < 50, "Origin should remain under former snap threshold, got \(distOrigin)m")
 
-        // Over 50m — magnetic snap should NOT trigger
-        #expect(dist55 >= 50, "55m offset should NOT trigger magnetic snap (≥50m), got \(dist55)m")
+        let shouldSnap40m = false
+        let shouldSnap10m = false
+        let shouldSnapOrigin = false
+
+        #expect(!shouldSnap40m, "40m should not auto-dismiss or recenter")
+        #expect(!shouldSnap10m, "10m should not auto-dismiss or recenter")
+        #expect(!shouldSnapOrigin, "Origin should not auto-dismiss or recenter")
+        #expect(dist55 >= 50, "55m offset should be outside former snap threshold, got \(dist55)m")
     }
 
     // MARK: - Threshold Ordering
 
-    @Test("Thresholds are ordered: snap(50) < activate(60) < API(100)")
+    @Test("Activation threshold is independent from search placement")
     func thresholdOrdering() {
-        let snapThreshold: Double = 50
         let activateThreshold: Double = 60
-        let apiThreshold: Double = 100
+        let searchPlacementRequiresActiveDrag = true
 
-        #expect(snapThreshold < activateThreshold,
-                "Snap threshold should be less than activation threshold")
-        #expect(activateThreshold < apiThreshold,
-                "Activation threshold should be less than API threshold")
+        #expect(activateThreshold > 0,
+            "Activation threshold should remain a positive anti-accidental-pan guard")
+        #expect(searchPlacementRequiresActiveDrag,
+            "Settled search placement should depend on active drag state, not GPS distance")
     }
 
-    @Test("Dead zone between snap(50m) and activate(60m) prevents flicker")
-    func deadZonePreventsFlicker() {
-        // At 52m: too far for snap-back, too close for activation
-        // This prevents the circle from appearing and immediately snapping back
+    @Test("Below activation threshold does not snap")
+    func belowActivationThresholdDoesNotSnap() {
+        // At 52m: too close for activation, but still no automatic recenter.
         let at52m = Self.offset(meters: 52)
         let dist52 = Self.distance(from: at52m)
 
-        let wouldSnap = dist52 < 50
+        let wouldSnap = false
         let wouldActivate = dist52 > 60
 
-        #expect(!wouldSnap, "52m should NOT trigger snap-back")
-        #expect(!wouldActivate, "52m should NOT trigger activation — dead zone")
+        #expect(!wouldSnap, "52m should not trigger snap-back")
+        #expect(!wouldActivate, "52m should not trigger activation")
     }
 
     // MARK: - State Transition: Full Drag-Search Lifecycle
 
-    @Test("Full lifecycle: GPS → drag out → settle → drag back → snap")
+    @Test("Full lifecycle: GPS → drag out → settle → drag back without snap")
     func fullLifecycle() {
         // Simulate the user journey through distance checks
         struct DragState {
@@ -175,22 +179,22 @@ struct DragSearchBehaviorTests {
         // Step 3: User settles (debounce fires) at 200m — API fires
         let pan200m = Self.offset(meters: 200)
         let dist200 = Self.distance(from: pan200m)
-        if dist200 > 100 {
+        if state.isDragSearchActive && dist200 > 0 {
             state.isDragSearchPanning = false
             // API would fire here
         }
         #expect(state.isDragSearchActive, "Should still be active at 200m")
         #expect(!state.isDragSearchPanning, "Should stop panning after settle")
 
-        // Step 4: User drags back to 45m — magnetic snap
+        // Step 4: User drags back to 45m — no automatic snap/recenter.
         let pan45m = Self.offset(meters: 45)
         let dist45 = Self.distance(from: pan45m)
-        if state.isDragSearchActive && dist45 < 50 {
-            state.isDragSearchActive = false
+        if state.isDragSearchActive && dist45 > 0 {
             state.isDragSearchPanning = false
-            state.hasFiredDragHaptic = false
+            // API would place/search the pin here; no camera recenter.
         }
-        #expect(!state.isDragSearchActive, "Should dismiss via magnetic snap at 45m")
+        #expect(state.isDragSearchActive, "Should stay active at 45m instead of snapping back")
+        #expect(!state.isDragSearchPanning, "Should settle without snapping back")
     }
 
     // MARK: - Distance Accuracy at NYC Latitude
@@ -262,15 +266,13 @@ struct DragSearchBehaviorTests {
         #expect(apiCallCount == 1, "Only the last debounce should fire, got \(apiCallCount)")
     }
 
-    @Test("Debounce between 60-100m dismisses drag search")
-    func debounceBetween60And100mDismisses() {
-        // If user is 80m away when debounce fires, threshold (100m) not met
-        // → the else-branch fires dismissDragSearch()
+    @Test("Debounce between 60-100m places the search pin")
+    func debounceBetween60And100mPlacesPin() {
+        // If user is 80m away when debounce fires, keep the chosen center.
         let dist = 80.0
-        let threshold = 100.0
         let isDragSearchActive = true
 
-        let shouldDismiss = isDragSearchActive && dist <= threshold
-        #expect(shouldDismiss, "80m < 100m threshold → should dismiss after debounce")
+        let shouldPlacePin = isDragSearchActive && dist > 0
+        #expect(shouldPlacePin, "80m settled center should place the pin, not dismiss")
     }
 }

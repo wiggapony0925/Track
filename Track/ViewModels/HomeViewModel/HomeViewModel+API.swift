@@ -9,9 +9,41 @@ import SwiftData
 import SwiftUI
 import WidgetKit
 
+private typealias NearbyStationTuple = (
+    stationID: String,
+    name: String,
+    lat: Double,
+    lon: Double,
+    routeIDs: [String]
+)
+
 extension HomeViewModel {
 
     // MARK: - Route Selection and Refresh
+
+    private static func awaitStationMetadata(
+        _ task: Task<[NearbyStationTuple], Never>,
+        timeout seconds: TimeInterval
+    ) async -> [NearbyStationTuple]? {
+        await withTaskGroup(of: [NearbyStationTuple]?.self) { group in
+            group.addTask {
+                await task.value
+            }
+            group.addTask {
+                let nanoseconds = UInt64(seconds * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: nanoseconds)
+                return nil
+            }
+
+            let result = await group.next() ?? nil
+            if result == nil {
+                task.cancel()
+            }
+            group.cancelAll()
+            return result
+        }
+    }
+
     /// Selects a specific arrival (from flat list or search) and treats it as a route selection.
     func selectArrival(_ arrival: NearbyTransitResponse, userLocation: CLLocation?) async {
         // Find if this arrival already exists in our grouped list
@@ -71,6 +103,10 @@ extension HomeViewModel {
         guard let routeId = selectedRouteId,
             selectedGroupedRoute?.isBus == true
         else { return }
+        guard OfflineCacheManager.shared.isOnline else {
+            updateBusSimulation()
+            return
+        }
         do {
             let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
 
@@ -1587,7 +1623,15 @@ extension HomeViewModel {
         // and every subsequent request will succeed quickly.
         //
         // On normal launches (backend already warm), this resolves in <1ms.
-        await TrackAPI.waitForBackendReady()
+        let isOnline = OfflineCacheManager.shared.isOnline
+        if isOnline {
+            await TrackAPI.waitForBackendReady()
+        } else {
+            AppLogger.shared.log(
+                "OFFLINE",
+                message: "Skipping backend health gate for nearby refresh"
+            )
+        }
 
         // ── Cancel stale side-effect Tasks from the previous refresh ──
         // These fire-and-forget Tasks can outlive their refresh cycle.
@@ -1612,24 +1656,26 @@ extension HomeViewModel {
         // before they complete. To avoid losing bus stop data entirely,
         // we keep the existing nearbyBusStops when cancelled — they may
         // be slightly stale but still useful for distance calculations.
-        _busStopsFetchTask = Task { @MainActor [weak self] in
-            guard let self, !Task.isCancelled else { return }
-            let stops = (try? await TrackAPI.fetchNearbyBusStops(
-                lat: lat, lon: lon, radius: Self.busStopsNearbyRadius
-            )) ?? self.nearbyBusStops
-            // Don't discard results just because a new refresh started —
-            // stale bus stops are better than no bus stops.
-            let augmented = Self.augmentBusStops(stops, from: self.groupedTransit)
-            // Only update if the stop set actually changed — avoids an
-            // unnecessary @Observable notification that would cascade into
-            // heavy NearbyDashboard body re-evaluations.
-            let oldIDs = Set(self.nearbyBusStops.map(\.id))
-            let newIDs = Set(augmented.map(\.id))
-            if oldIDs != newIDs || augmented.count != self.nearbyBusStops.count {
-                self.nearbyBusStops = augmented
+        if isOnline {
+            _busStopsFetchTask = Task { @MainActor [weak self] in
+                guard let self, !Task.isCancelled else { return }
+                let stops = (try? await TrackAPI.fetchNearbyBusStops(
+                    lat: lat, lon: lon, radius: Self.busStopsNearbyRadius
+                )) ?? self.nearbyBusStops
+                // Don't discard results just because a new refresh started —
+                // stale bus stops are better than no bus stops.
+                let augmented = Self.augmentBusStops(stops, from: self.groupedTransit)
+                // Only update if the stop set actually changed — avoids an
+                // unnecessary @Observable notification that would cascade into
+                // heavy NearbyDashboard body re-evaluations.
+                let oldIDs = Set(self.nearbyBusStops.map(\.id))
+                let newIDs = Set(augmented.map(\.id))
+                if oldIDs != newIDs || augmented.count != self.nearbyBusStops.count {
+                    self.nearbyBusStops = augmented
+                }
+                // Rebuild distance cache with fresh bus stop data.
+                self.rebuildDistanceCache(location: location)
             }
-            // Rebuild distance cache with fresh bus stop data.
-            self.rebuildDistanceCache(location: location)
         }
 
         // ── Alerts + Accessibility ────────────────────────────────────
@@ -1641,7 +1687,7 @@ extension HomeViewModel {
         // delayed. By deferring, only 3 requests hit at once (grouped +
         // stations + bus stops), and alerts fire once the backend is proven warm.
         let isFirstLoad = groupedTransit.isEmpty
-        if !skipGlobalFeeds && !isFirstLoad {
+        if isOnline && !skipGlobalFeeds && !isFirstLoad {
             _globalFeedsFetchTask = Task { @MainActor [weak self] in
                 guard let self, !Task.isCancelled else { return }
                 await self.refreshGlobalFeeds()
@@ -1663,9 +1709,11 @@ extension HomeViewModel {
             let groupedStart = Date()
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, quick: quick)
             async let subwayTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "subway", quick: quick)
-            async let stationsTask = repository.fetchNearbyStations(
-                latitude: lat, longitude: lon
-            )
+            let stationsTask = isOnline
+                ? Task {
+                    (try? await repository.fetchNearbyStations(latitude: lat, longitude: lon)) ?? []
+                }
+                : nil
 
             // Await combined first, then merge subway if needed
             let combined = try await groupedTask
@@ -1725,22 +1773,24 @@ extension HomeViewModel {
             // doesn't return duplicates. Ghost routes are already shown in the
             // inactive section as GroupedRouteRow with full detail.
             let activeNames = newGrouped.map(\.displayName)
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    let inactive = try await TrackAPI.fetchInactiveRoutes(
-                        lat: location.coordinate.latitude,
-                        lon: location.coordinate.longitude,
-                        activeRoutes: activeNames
-                    )
-                    await MainActor.run {
-                        self.inactiveGroupedTransit = inactive
+            if isOnline {
+                Task { [weak self] in
+                    guard let self else { return }
+                    do {
+                        let inactive = try await TrackAPI.fetchInactiveRoutes(
+                            lat: location.coordinate.latitude,
+                            lon: location.coordinate.longitude,
+                            activeRoutes: activeNames
+                        )
+                        await MainActor.run {
+                            self.inactiveGroupedTransit = inactive
+                        }
+                    } catch {
+                        AppLogger.shared.log(
+                            "INACTIVE",
+                            message: "Failed to fetch inactive routes: \(error.localizedDescription)"
+                        )
                     }
-                } catch {
-                    AppLogger.shared.log(
-                        "INACTIVE",
-                        message: "Failed to fetch inactive routes: \(error.localizedDescription)"
-                    )
                 }
             }
 
@@ -1774,7 +1824,11 @@ extension HomeViewModel {
             // By awaiting stations first and batch-assigning all properties
             // in one synchronous block, SwiftUI sees a single consistent
             // snapshot: new groups + new stations + fresh distance cache.
-            let stations = (try? await stationsTask) ?? nearbyStations
+            let stations = if let stationsTask {
+                await Self.awaitStationMetadata(stationsTask, timeout: 2.0) ?? nearbyStations
+            } else {
+                nearbyStations
+            }
             let stationsElapsed = Date().timeIntervalSince(groupedStart)
             AppLogger.shared.log(
                 "TIMING",
@@ -1826,11 +1880,13 @@ extension HomeViewModel {
             // the top 3 bus routes while the user is still on the home screen.
             // When they tap a route, the shape is already in the LRU/disk
             // cache → stops list, polyline, and banner appear instantly.
-            prefetchTopBusShapes(from: newGrouped.filter(\.hasRealArrivals))
+            if isOnline {
+                prefetchTopBusShapes(from: newGrouped.filter(\.hasRealArrivals))
+            }
 
             // On first load (cold start), global feeds were deferred until
             // grouped succeeds — fire them now that the backend is proven warm.
-            if isFirstLoad && !skipGlobalFeeds {
+            if isOnline && isFirstLoad && !skipGlobalFeeds {
                 _globalFeedsFetchTask = Task { @MainActor [weak self] in
                     guard !Task.isCancelled else { return }
                     await self?.refreshGlobalFeeds()

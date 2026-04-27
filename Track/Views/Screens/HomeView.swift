@@ -616,10 +616,14 @@ struct HomeView: View {
             // so the very first fix is delivered ASAP.
             locationManager.requestImmediateFix()
 
-            // Clear any drag search when returning to the app
+            // Preserve drag search when returning to the app. Clearing it
+            // here would yank the camera away from the user's chosen center.
             if isDragSearchActive {
-                // dismissDragSearch already calls clearSearchPin + refresh
-                dismissDragSearch()
+                Task {
+                    if await viewModel.refresh(location: effectiveLocation) {
+                        lastUpdated = Date()
+                    }
+                }
             } else {
                 recenterOnUser()
                 // Prefer the live GPS fix over the stale cached reference
@@ -1461,7 +1465,7 @@ struct HomeView: View {
     // MARK: - Drag to Search
     
     /// Called on every camera change. Debounces, then:
-    ///  1. Activates the drag-search dot if user panned 300m+ from their location
+    ///  1. Activates the drag-search dot once the user pans away from their location
     ///  2. Automatically fires the API to search at the new map center
     ///  3. Sets the settled center so radius circles snap into place
     ///  4. The sheet shows a live loading spinner via viewModel.isLoading
@@ -1479,22 +1483,6 @@ struct HomeView: View {
         
         // Cancel any pending debounce
         dragSearchDebounce?.cancel()
-        
-        // ── Magnetic snap-back ─────────────────────────────────────
-        // When drag-search is active and the user drags back close to
-        // their GPS dot, instantly dismiss — no debounce, no delay.
-        // 50m ≈ half a short NYC block, triggers right as the circles
-        // visually overlap on the map.
-        if isDragSearchActive,
-           let userCoord = locationManager.currentLocation?.coordinate {
-            let userLoc = CLLocation(latitude: userCoord.latitude, longitude: userCoord.longitude)
-            let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-            if userLoc.distance(from: panLoc) < 50 {
-                HapticManager.notification(.success)
-                dismissDragSearch()
-                return
-            }
-        }
         
         // Instant coordinate feedback — show formatted lat/lon immediately
         // so the header updates on every frame. The geocode will replace
@@ -1537,53 +1525,37 @@ struct HomeView: View {
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
             
-            guard let userCoord = locationManager.currentLocation?.coordinate else { return }
-            
-            let userLoc = CLLocation(latitude: userCoord.latitude, longitude: userCoord.longitude)
-            let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-            let distanceMoved = userLoc.distance(from: panLoc)
-            
-            // Threshold: activate when panned 100m+ from real location so
-            // the drag-search dot appears almost immediately when the user
-            // moves the map — it "emerges" from the GPS circle.
-            let threshold: Double = 100
-            
-            if distanceMoved > threshold {
-                // Panning stopped — fire the API search.
-                // The circle is already visible (activated instantly above).
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                    isDragSearchPanning = false
-                }
-                
-                // Geocode *after* debounce settles — one request per
-                // settled position instead of one per camera frame.
-                let dragLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-                viewModel.updateLocationName(for: dragLoc)
+            guard isDragSearchActive else { return }
 
-                await viewModel.setSearchPin(center, userLocation: locationManager.currentLocation)
-                lastUpdated = Date()
-                
-                // Snap the radius circles into place at the settled location
-                dragSearchSettledCenter = center
-                chatBiasPin = center
-                
-                // Satisfying "lock-in" vibration so the user feels the new center
-                HapticManager.impact(.medium)
-            } else {
-                // Panned back near the user — auto-dismiss
-                if isDragSearchActive {
-                    dismissDragSearch()
-                }
+            // Panning stopped — fire the API search at the actual settled
+            // center. Do not gate this by distance from GPS; users often
+            // place nearby pins deliberately, and distance gates made the
+            // experience feel like it bounced back to an old center.
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                isDragSearchPanning = false
             }
+
+            // Geocode *after* debounce settles — one request per
+            // settled position instead of one per camera frame.
+            let dragLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+            viewModel.updateLocationName(for: dragLoc)
+
+            await viewModel.setSearchPin(center, userLocation: locationManager.currentLocation)
+            lastUpdated = Date()
+
+            // Lock the radius circles and chat bias to the dropped pin.
+            dragSearchSettledCenter = center
+            chatBiasPin = center
+
+            // Satisfying "lock-in" vibration so the user feels the new center
+            HapticManager.impact(.medium)
         }
     }
     
     /// Dismisses the drag-search overlay, clears the search pin,
-    /// refreshes data for the user's real location, and recenters.
+    /// and refreshes data for the user's real location without moving the camera.
     private func dismissDragSearch() {
         dismissDragSearchState()
-        // Snap back to user location
-        recenterOnUser()
     }
 
     /// Dismisses drag-search UI state and refreshes data without
