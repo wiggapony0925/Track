@@ -1041,6 +1041,7 @@ extension HomeViewModel {
         let dirStops = routeShape?.stopsForDirection(
             index: selectedDirectionIndex,
             name: selectedDirectionName,
+            shapeDirectionId: selectedShapeDirectionId,
             fallbackToCombined: false
         ) ?? []
 

@@ -1062,8 +1062,11 @@ final class HomeViewModel {
             // Use the async path to avoid main-thread blocking.
             schedulePolylineRebuild()
             if oldValue != selectedDirectionIndex,
-               selectedRouteId != nil,
-               !isStopManuallySelected {
+               selectedRouteId != nil {
+                isStopManuallySelected = false
+                selectedStopId = nil
+                nearestStopCoordinate = nil
+                goMode.cancelWalkingRoute()
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     await self.refreshWalkingState(userLocation: self.lastKnownUserLocation)
