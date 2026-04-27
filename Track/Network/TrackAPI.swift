@@ -125,6 +125,13 @@ struct TrackAPI {
         set { _healthGateLock.withLock { $0 = newValue } }
     }
 
+    nonisolated private static let _localhostSuppressedLock =
+        OSAllocatedUnfairLock(initialState: false)
+    nonisolated(unsafe) private static var _localhostSuppressedThisLaunch: Bool {
+        get { _localhostSuppressedLock.withLock { $0 } }
+        set { _localhostSuppressedLock.withLock { $0 = newValue } }
+    }
+
     /// Fires a lightweight TCP/TLS warm-up to the backend host as early as
     /// possible in the app lifecycle (called from TrackApp.init).
     ///
@@ -193,7 +200,16 @@ struct TrackAPI {
         if serverWarmedUp { return }
         // Wait for the in-flight health probe (if any)
         if let task = _healthGateTask {
-            _ = await task.value
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    _ = await task.value
+                }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+                await group.next()
+                group.cancelAll()
+            }
         }
     }
 
@@ -218,6 +234,7 @@ struct TrackAPI {
         // ── Synchronous: clear the flag NOW so baseURL resolves to prod ──
         // This prevents warmConnection() and the first API call from
         // caching a localhost URL that might be unreachable.
+        _localhostSuppressedThisLaunch = true
         UserDefaults.standard.removeObject(forKey: "dev_use_localhost")
         invalidateBaseURL()
 
@@ -229,7 +246,11 @@ struct TrackAPI {
             ? storedIP!
             : AppSettings.shared.defaultDeviceIP
         let port = AppSettings.shared.localPort
+        #if targetEnvironment(simulator)
+        let localURL = AppSettings.shared.localBaseURL + "/health"
+        #else
         let localURL = "http://\(resolvedIP):\(port)/health"
+        #endif
         let logger = AppLogger.shared       // capture on caller's actor
 
         // ── Async: probe the local server and restore the flag if reachable ──
@@ -246,11 +267,19 @@ struct TrackAPI {
                 // Server responded — restore the flag and switch to local
                 logger.log("API_CONFIG", message: "Local server reachable at \(localURL) ✓")
                 await MainActor.run {
+                    _localhostSuppressedThisLaunch = false
                     UserDefaults.standard.set(true, forKey: "dev_use_localhost")
                     invalidateBaseURL()
                 }
             } catch {
-                // Server unreachable — flag already cleared, nothing to do
+                await MainActor.run {
+                    _localhostSuppressedThisLaunch = true
+                    UserDefaults.standard.removeObject(forKey: "dev_use_localhost")
+                    invalidateBaseURL()
+                    if !serverWarmedUp {
+                        _healthGateTask = nil
+                    }
+                }
                 let msg = "Local server unreachable "
                     + "(\(error.localizedDescription))"
                     + " — staying on production"
@@ -330,6 +359,7 @@ struct TrackAPI {
         // This prevents a leftover `dev_use_localhost` UserDefaults flag
         // from accidentally routing a release/TestFlight build to localhost.
         let useLocalhost = UserDefaults.standard.bool(forKey: "dev_use_localhost")
+            && !_localhostSuppressedThisLaunch
 
         #if targetEnvironment(simulator)
             // Simulator runs on the Mac — localhost works fine
