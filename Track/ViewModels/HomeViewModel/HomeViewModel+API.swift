@@ -1694,6 +1694,34 @@ extension HomeViewModel {
             }
         }
 
+        if quick && isOnline,
+           let localGroups = await TrackAPI.fetchLocalNearbyGrouped(
+            lat: lat,
+            lon: lon,
+            reason: "drag-search optimistic local"
+           ),
+           !localGroups.isEmpty {
+            let localRawTransit = localGroups
+                .filter(\.hasRealArrivals)
+                .flatMap(\ .directions)
+                .flatMap(\ .arrivals)
+
+            isShowingStaticNearbyRoutes = true
+            rebuildDistanceCache(location: location, groups: localGroups)
+            groupedTransit = localGroups
+            rebuildGhostRoutes()
+
+            if !localRawTransit.isEmpty || nearbyTransit.isEmpty {
+                var seenIDs = Set<String>()
+                nearbyTransit = localRawTransit.filter { seenIDs.insert($0.id).inserted }
+            }
+
+            AppLogger.shared.log(
+                "TIMING",
+                message: "  drag/local → \(localGroups.count) groups before live refresh"
+            )
+        }
+
         do {
             // Fire grouped arrivals and station metadata in parallel.
             // Grouped is the critical path; stations refine distance badges.

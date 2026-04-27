@@ -661,12 +661,31 @@ struct TrackAPI {
         }
     }
 
+    static func fetchLocalNearbyGrouped(
+        lat: Double,
+        lon: Double,
+        radius: Int? = nil,
+        mode: String? = nil,
+        reason: String
+    ) async -> [GroupedNearbyTransitResponse]? {
+        let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
+        return await synthesizeNearbyGroupedFallback(
+            lat: lat,
+            lon: lon,
+            radius: effectiveRadius,
+            mode: mode,
+            reason: reason,
+            markOffline: false
+        )
+    }
+
     private static func synthesizeNearbyGroupedFallback(
         lat: Double,
         lon: Double,
         radius: Int,
         mode: String?,
-        reason: String
+        reason: String,
+        markOffline: Bool = true
     ) async -> [GroupedNearbyTransitResponse]? {
         let bundleRef = await MainActor.run {
             GTFSBundleManager.shared.current ?? GTFSBundleManager.shared.bootstrap()
@@ -684,7 +703,7 @@ struct TrackAPI {
         }.value
         guard let synthesized else { return nil }
 
-        if mode == nil {
+        if markOffline && mode == nil {
             await MainActor.run {
                 OfflineCacheManager.shared.noteOfflineFallbackUsed()
             }
