@@ -1078,9 +1078,10 @@ final class MapSystemViewModel {
         }
 
         if cachedTrunkPolylines?.isEmpty ?? true {
+            flattenRawSubwayPolylinesWithoutMerging(subwayLines)
             AppLogger.shared.log(
                 "SYSTEM_MAP",
-                message: "Skipping client-side subway flatten — trunk polylines unavailable")
+                message: "Rendered raw subway branches — trunk polylines unavailable")
             return
         }
 
@@ -1133,6 +1134,72 @@ final class MapSystemViewModel {
                     + " \(commuterFlat.count) commuter rail"
                     + " polylines (\(points) points)")
         }
+    }
+
+    /// Draw raw subway branches one-by-one when backend trunk geometry is not
+    /// available yet. This keeps the map populated during cold starts or old
+    /// cache restores, while avoiding the unsafe client-side trunk merge that
+    /// can connect unrelated branches with long straight chords.
+    private func flattenRawSubwayPolylinesWithoutMerging(_ subwayLines: [CachedTransitLine]) {
+        var flat: [FlattenedMapPolyline] = []
+        for line in subwayLines {
+            let trunkIndex = Self.trunkGroupIndex(for: line.id)
+            for (branchIndex, coordinates) in line.coordinates.enumerated() {
+                let safeSegments = splitPolylineAtLargeJumps(coordinates)
+                for (segmentIndex, segment) in safeSegments.enumerated() where segment.count >= 2 {
+                    flat.append(FlattenedMapPolyline(
+                        id: "raw_\(line.id)_\(branchIndex)_\(segmentIndex)",
+                        coordinates: segment,
+                        color: line.color,
+                        lineWidth: 3,
+                        routeIds: [line.id],
+                        isElevated: false,
+                        trunkIndex: trunkIndex,
+                        laneOffset: 0
+                    ))
+                }
+            }
+        }
+
+        flattenedSubwayPolylines = flat
+        if !flat.isEmpty {
+            let points = flat.reduce(0) { $0 + $1.coordinates.count }
+            AppLogger.shared.log(
+                "SYSTEM_MAP",
+                message: "Flattened raw subway fallback"
+                    + " (\(flat.count) polylines, \(points) points)")
+        }
+    }
+
+    private func splitPolylineAtLargeJumps(
+        _ coordinates: [CLLocationCoordinate2D]
+    ) -> [[CLLocationCoordinate2D]] {
+        let maxGapMeters: CLLocationDistance = 1_200
+        guard coordinates.count >= 2 else { return [] }
+
+        var segments: [[CLLocationCoordinate2D]] = []
+        var current: [CLLocationCoordinate2D] = [coordinates[0]]
+
+        for coordinate in coordinates.dropFirst() {
+            if let previous = current.last {
+                let gap = CLLocation(
+                    latitude: previous.latitude,
+                    longitude: previous.longitude
+                ).distance(from: CLLocation(
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude
+                ))
+                if gap > maxGapMeters {
+                    if current.count >= 2 { segments.append(current) }
+                    current = [coordinate]
+                    continue
+                }
+            }
+            current.append(coordinate)
+        }
+
+        if current.count >= 2 { segments.append(current) }
+        return segments
     }
 
     // MARK: - MTA Trunk Color Groups
