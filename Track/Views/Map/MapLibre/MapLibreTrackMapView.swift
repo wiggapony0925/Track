@@ -467,16 +467,19 @@ struct MapLibreTrackMapView: View {
 
         let maxDisplaySnapDistance: Double =
             viewModel.selectedGroupedRoute?.isBus == true ? 100.0 : 160.0
+        let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
 
-        return visibleStops.map { stop in
+        return visibleStops.compactMap { stop in
             let rawCoordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
-            let displayCoordinate = VehicleInterpolator
-                .snap(
-                    coordinate: rawCoordinate,
-                    to: directionPolylines,
-                    maxDistance: maxDisplaySnapDistance
-                )?
-                .coordinate ?? rawCoordinate
+            let snapped = VehicleInterpolator.snap(
+                coordinate: rawCoordinate,
+                to: directionPolylines,
+                maxDistance: maxDisplaySnapDistance
+            )
+            if isBusRoute, snapped == nil {
+                return nil
+            }
+            let displayCoordinate = snapped?.coordinate ?? rawCoordinate
 
             return DisplayedRouteStop(
                 stop: stop,

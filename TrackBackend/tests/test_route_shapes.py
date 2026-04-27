@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.models import BusStop, RouteShape
+from app.models import BusStop, DirectionShape, RouteShape
 from app.services.mapping.commuter_rail_shapes import (
     get_all_lirr_lines,
     get_all_mnr_lines,
@@ -491,7 +491,75 @@ class TestBusRouteShapeEndpoint:
 
         await bus_client.get_route_shape("MTA NYCT_M11")
 
-        assert shared_cache_keys == ["open-data-v3:MTA NYCT_M11"]
+        assert shared_cache_keys == ["open-data-v4:MTA NYCT_M11"]
+
+    @pytest.mark.asyncio
+    async def test_open_data_shape_uses_oba_ordered_stops(self, monkeypatch):
+        """Open-data geometry must keep OBA stopGroupings travel order."""
+        from app.clients import bus_client
+        from app.services.mapping.bus import routes as open_data_routes
+        from app.services.mapping.bus import stops as open_data_stops
+
+        async def fake_open_data_shapes():
+            return {
+                "M11": RouteShape(
+                    route_id="M11",
+                    polylines=["northPolyline", "southPolyline"],
+                    stops=[],
+                    directions=[
+                        DirectionShape(
+                            direction_id=0,
+                            headsign="Northbound",
+                            polylines=["northPolyline"],
+                            stops=[],
+                        ),
+                        DirectionShape(
+                            direction_id=1,
+                            headsign="Southbound",
+                            polylines=["southPolyline"],
+                            stops=[],
+                        ),
+                    ],
+                )
+            }
+
+        async def fake_oba_shape(route_id: str) -> RouteShape:
+            return RouteShape(
+                route_id=route_id,
+                polylines=["obaCombined"],
+                stops=[],
+                directions=[
+                    DirectionShape(
+                        direction_id=0,
+                        headsign="RIVERBANK 145 ST via 10 AV",
+                        polylines=["obaNorth"],
+                        stops=[
+                            BusStop(id="MTA_1", name="First", lat=40.0, lon=-73.0),
+                            BusStop(id="MTA_2", name="Second", lat=40.1, lon=-73.1),
+                        ],
+                    )
+                ],
+            )
+
+        async def fail_if_unordered_stop_index_used(*_args, **_kwargs):
+            raise AssertionError("unordered open-data bus stop index should not be used")
+
+        monkeypatch.setattr(
+            open_data_routes, "get_bus_open_data_shapes", fake_open_data_shapes
+        )
+        monkeypatch.setattr(
+            bus_client, "_get_route_shape_impl", fake_oba_shape
+        )
+        monkeypatch.setattr(
+            open_data_stops, "get_bus_route_stops", fail_if_unordered_stop_index_used
+        )
+
+        shape = await bus_client._get_open_data_route_shape("MTA NYCT_M11")
+
+        assert shape is not None
+        assert shape.directions[0].polylines == ["northPolyline"]
+        assert shape.directions[0].headsign == "RIVERBANK 145 ST via 10 AV"
+        assert [stop.id for stop in shape.directions[0].stops] == ["MTA_1", "MTA_2"]
 
 
 # ===================================================================

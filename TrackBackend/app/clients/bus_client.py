@@ -527,7 +527,7 @@ def _evict_cache(
 # Route-shape cache: mostly-static data, long-lived (TTLs from cache_config)
 _route_shape_cache: dict[str, _TTLCacheEntry] = {}
 _route_shape_inflight: dict[str, asyncio.Task[RouteShape]] = {}
-_BUS_ROUTE_SHAPE_SOURCE_VERSION = "open-data-v3"
+_BUS_ROUTE_SHAPE_SOURCE_VERSION = "open-data-v4"
 
 _BUS_STATIC_GTFS_ROOT = Path(__file__).resolve().parent.parent / "data" / "bus"
 _static_route_shape_index: dict[str, RouteShape] | None = None
@@ -564,12 +564,12 @@ async def _get_open_data_route_shape(route_id: str) -> RouteShape | None:
 
     The main bus map uses the NYS/MTA Current Bus Routes dataset. Route detail
     should use that same street-level geometry instead of OBA's often-combined
-    per-route polylines, then attach ordered stops from the matching open-data
-    stop index for each direction.
+    per-route polylines, then attach ordered stops from OBA stopGroupings for
+    each direction. The MTA Bus Stops open-data table has no route sequence
+    column, so sorting it by stop_id can create impossible terminal-loop jumps.
     """
     try:
         from app.services.mapping.bus.routes import get_bus_open_data_shapes
-        from app.services.mapping.bus.stops import get_bus_route_stops
 
         shape_index = await get_bus_open_data_shapes()
         source_shape: RouteShape | None = None
@@ -581,16 +581,26 @@ async def _get_open_data_route_shape(route_id: str) -> RouteShape | None:
         if source_shape is None or not source_shape.polylines:
             return None
 
+        oba_shape = await _get_route_shape_impl(route_id)
+        oba_direction_by_id = {
+            direction.direction_id: direction for direction in oba_shape.directions
+        }
+
         enriched_directions: list[DirectionShape] = []
         combined_stops: list[BusStop] = []
         seen_stops: set[str] = set()
 
         for direction in source_shape.directions:
-            stops = await get_bus_route_stops(
-                source_shape.route_id,
-                direction.direction_id,
+            oba_direction = oba_direction_by_id.get(direction.direction_id)
+            stops = oba_direction.stops if oba_direction is not None else []
+            headsign = (
+                oba_direction.headsign
+                if oba_direction is not None and oba_direction.headsign
+                else direction.headsign
             )
-            enriched_directions.append(direction.model_copy(update={"stops": stops}))
+            enriched_directions.append(
+                direction.model_copy(update={"headsign": headsign, "stops": stops})
+            )
             for stop in stops:
                 if stop.id in seen_stops:
                     continue
