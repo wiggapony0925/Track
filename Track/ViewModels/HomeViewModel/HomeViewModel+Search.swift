@@ -212,6 +212,7 @@ extension HomeViewModel {
         if isShowingStaticNearbyRoutes {
             return true
         }
-        return group.hasRealArrivals && (!group.isExpired || showStaleRows)
+        return group.hasRealArrivals
+            && (!group.isExpired || showStaleRows || isRefreshing || isLoading)
     }
 }
