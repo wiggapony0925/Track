@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import csv
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from functools import lru_cache
 from math import atan2, cos, radians, sin, sqrt
 from pathlib import Path
@@ -235,6 +235,53 @@ def _load_direction_headsigns() -> dict[str, dict[int, str]]:
     return headsigns
 
 
+@lru_cache(maxsize=1)
+def _load_shape_headsigns() -> dict[str, dict[int, dict[str, str]]]:
+    """Return route_id -> direction_id -> shape_id -> most-common headsign.
+
+    A GTFS direction can contain multiple passenger-facing branches. For
+    example, A southbound trips share direction_id=1 but split across Far
+    Rockaway, Lefferts Blvd, and Rockaway Park headsigns. The client can only
+    render the correct branch if we preserve the headsign attached to each
+    retained shape instead of collapsing the entire direction to one label.
+    """
+    raw: dict[str, dict[int, dict[str, Counter[str]]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(Counter))
+    )
+
+    if not _TRIPS_PATH.exists():
+        return {}
+
+    with open(_TRIPS_PATH, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            route_id = row.get("route_id", "").strip()
+            shape_id = row.get("shape_id", "").strip()
+            headsign = row.get("trip_headsign", "").strip()
+            if not route_id or not shape_id or not headsign:
+                continue
+            try:
+                direction = int(row.get("direction_id", "0"))
+            except ValueError as exc:
+                TrackLogger.debug(
+                    f"Bad direction_id for route {route_id}, defaulting to 0: {exc}",
+                    tag="DATA",
+                )
+                direction = 0
+            raw[route_id][direction][shape_id][headsign] += 1
+
+    result: dict[str, dict[int, dict[str, str]]] = {}
+    for route_id, dir_map in raw.items():
+        result[route_id] = {}
+        for direction, shape_map in dir_map.items():
+            result[route_id][direction] = {
+                shape_id: counts.most_common(1)[0][0]
+                for shape_id, counts in shape_map.items()
+                if counts
+            }
+    return result
+
+
 @lru_cache(maxsize=512)
 def _get_stops_for_shape(shape_id: str) -> tuple[RouteStopEntry, ...]:
     """Return the ordered stop list for a shape_id, with resolved names/coords."""
@@ -292,6 +339,7 @@ def get_subway_route_shape(
 
     shapes_data = _load_shapes()
     headsigns = _load_direction_headsigns().get(route_id, {})
+    shape_headsigns = _load_shape_headsigns().get(route_id, {})
 
     polylines: list[list[tuple[float, float]]] = []
     all_stops: list[RouteStopEntry] = []
@@ -299,58 +347,72 @@ def get_subway_route_shape(
     direction_data: list[DirectionData] = []
 
     for direction_id, shape_ids in sorted(direction_shapes.items()):
-        dir_polylines: list[list[tuple[float, float]]] = []
-        dir_stops: list[RouteStopEntry] = []
-        dir_seen: set[str] = set()
-
-        # Track per-shape stop sets for express/local classification.
-        per_shape_stop_names: list[set[str]] = []
-
+        branch_groups: dict[str, list[str]] = defaultdict(list)
+        fallback_headsign = headsigns.get(direction_id, "")
         for shape_id in shape_ids:
-            shape_buf = shapes_data.get(shape_id)
-            if shape_buf:
-                coords = _unpack_coords(shape_buf)
-                polylines.append(coords)
-                dir_polylines.append(coords)
-
-            # Collect unique stops from all shapes to ensure branches are covered
-            current_shape_stops = _get_stops_for_shape(shape_id)
-            shape_name_set: set[str] = set()
-            for stop in current_shape_stops:
-                shape_name_set.add(stop.name)
-                if stop.stop_id not in seen_stop_ids:
-                    all_stops.append(stop)
-                    seen_stop_ids.add(stop.stop_id)
-                if stop.stop_id not in dir_seen:
-                    dir_stops.append(stop)
-                    dir_seen.add(stop.stop_id)
-            if shape_name_set:
-                per_shape_stop_names.append(shape_name_set)
-
-        # Determine local-only stop IDs: stops that only appear in the
-        # longer (local) shapes but not in the shortest (express) shape.
-        # When express trains run, they skip these stops.
-        local_only: list[str] = []
-        if len(per_shape_stop_names) >= 2:
-            shortest = min(per_shape_stop_names, key=len)
-            all_names = set().union(*per_shape_stop_names)
-            local_only_names = all_names - shortest
-            if local_only_names:
-                local_only = [
-                    s.stop_id for s in dir_stops
-                    if s.name in local_only_names
-                ]
-
-        if dir_polylines:
-            direction_data.append(
-                DirectionData(
-                    direction_id=direction_id,
-                    headsign=headsigns.get(direction_id, ""),
-                    polylines=dir_polylines,
-                    stops=dir_stops,
-                    local_only_stop_ids=local_only,
-                )
+            headsign = shape_headsigns.get(direction_id, {}).get(shape_id)
+            branch_groups[headsign or fallback_headsign or f"Direction {direction_id}"].append(
+                shape_id
             )
+
+        def branch_sort_key(item: tuple[str, list[str]]) -> tuple[int, str]:
+            headsign, branch_shape_ids = item
+            stop_count = sum(len(_get_stops_for_shape(sid)) for sid in branch_shape_ids)
+            return (-stop_count, headsign)
+
+        for headsign, branch_shape_ids in sorted(branch_groups.items(), key=branch_sort_key):
+            dir_polylines: list[list[tuple[float, float]]] = []
+            dir_stops: list[RouteStopEntry] = []
+            dir_seen: set[str] = set()
+
+            # Track per-shape stop sets for express/local classification.
+            per_shape_stop_names: list[set[str]] = []
+
+            for shape_id in branch_shape_ids:
+                shape_buf = shapes_data.get(shape_id)
+                if shape_buf:
+                    coords = _unpack_coords(shape_buf)
+                    polylines.append(coords)
+                    dir_polylines.append(coords)
+
+                # Collect unique stops from all shapes to ensure branches are covered
+                current_shape_stops = _get_stops_for_shape(shape_id)
+                shape_name_set: set[str] = set()
+                for stop in current_shape_stops:
+                    shape_name_set.add(stop.name)
+                    if stop.stop_id not in seen_stop_ids:
+                        all_stops.append(stop)
+                        seen_stop_ids.add(stop.stop_id)
+                    if stop.stop_id not in dir_seen:
+                        dir_stops.append(stop)
+                        dir_seen.add(stop.stop_id)
+                if shape_name_set:
+                    per_shape_stop_names.append(shape_name_set)
+
+            # Determine local-only stop IDs: stops that only appear in the
+            # longer (local) shapes but not in the shortest (express) shape.
+            # When express trains run, they skip these stops.
+            local_only: list[str] = []
+            if len(per_shape_stop_names) >= 2:
+                shortest = min(per_shape_stop_names, key=len)
+                all_names = set().union(*per_shape_stop_names)
+                local_only_names = all_names - shortest
+                if local_only_names:
+                    local_only = [
+                        s.stop_id for s in dir_stops
+                        if s.name in local_only_names
+                    ]
+
+            if dir_polylines:
+                direction_data.append(
+                    DirectionData(
+                        direction_id=direction_id,
+                        headsign=headsign,
+                        polylines=dir_polylines,
+                        stops=dir_stops,
+                        local_only_stop_ids=local_only,
+                    )
+                )
 
     if not polylines:
         return None

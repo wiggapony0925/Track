@@ -20,7 +20,7 @@ from app.services.mapping.commuter_rail_shapes import (
     get_single_lirr_line,
     get_single_mnr_line,
 )
-from app.services.mapping.subway_shapes import get_subway_route_shape
+from app.services.mapping.subway.shapes import get_subway_route_shape
 from app.utils.transit_utils import get_subway_color
 
 client = TestClient(app)
@@ -119,16 +119,20 @@ class TestSubwayBranches:
         for name in ["Beach 90 St", "Beach 98 St", "Rockaway Park-Beach 116 St"]:
             assert name in stop_names, f"A train missing Rockaway Park stop: {name}"
 
-    def test_a_train_has_multiple_polylines_per_direction(self):
-        """A train should have > 1 polyline per direction (trunk + branches)."""
+    def test_a_train_has_branch_direction_headsigns(self):
+        """A train should expose branch headsigns as separate direction entries."""
         result = get_subway_route_shape("A")
         assert result is not None
         _, _, dirs = result
-        for d in dirs:
-            assert len(d.polylines) >= 2, (
-                f"A train dir {d.direction_id}: only {len(d.polylines)} polyline — "
-                "branches should produce multiple polylines"
-            )
+        headsigns = {d.headsign for d in dirs}
+        expected = {
+            "Inwood-207 St",
+            "Far Rockaway-Mott Av",
+            "Ozone Park-Lefferts Blvd",
+        }
+        missing = expected - headsigns
+        assert not missing, f"A train missing branch headsigns: {sorted(missing)}"
+        assert len([d for d in dirs if d.direction_id == 1]) >= 2
 
     def test_2_train_new_lots_branch(self):
         """2 train must include the New Lots Av branch (248–257)."""

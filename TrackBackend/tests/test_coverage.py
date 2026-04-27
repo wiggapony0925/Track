@@ -14,7 +14,7 @@ from colorama import Back, Fore, Style, init
 sys.path.append(os.getcwd())
 
 from app.clients.bus_client import get_stops, resolve_bus_id
-from app.services.mapping.subway_shapes import get_subway_route_shape
+from app.services.mapping.subway.shapes import get_subway_route_shape
 from app.utils.transit_utils import get_all_subway_lines, get_subway_color
 
 init(autoreset=True)

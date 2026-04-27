@@ -38,7 +38,9 @@ final class OfflineCacheManager: ObservableObject {
         static let cachedStations = "cached_stations"
         static let stationCacheVersion = "cached_stations_version"
         static let lirrShapes = "cached_lirr_shapes"
+        static let lirrShapesCachedAt = "cached_lirr_shapes_timestamp"
         static let mnrShapes = "cached_mnr_shapes"
+        static let mnrShapesCachedAt = "cached_mnr_shapes_timestamp"
         static let subwayShapes = "cached_subway_shapes_v4"
         static let subwayShapesCachedAt = "cached_subway_shapes_timestamp_v4"
         static let flattenedPolylines = "cached_flattened_polylines"
@@ -59,6 +61,11 @@ final class OfflineCacheManager: ObservableObject {
     /// the hash changes automatically — no manual version bumps needed.
     /// See `PipelineFingerprint` for the full parameter registry.
     private static let pipelineHash: String = PipelineFingerprint.shortHash
+
+    /// MTA static GTFS can change outside app releases. Keep rendered map
+    /// geometry cache short-lived so new rail branches/shapes are picked up
+    /// promptly even when the app has a valid local render cache.
+    private static let mapShapeCacheMaxAge: TimeInterval = 86_400
     
     // MARK: - Initialization
     
@@ -214,21 +221,19 @@ final class OfflineCacheManager: ObservableObject {
 
     /// Get disk-cached subway shapes (nil if never cached).
     func getCachedSubwayShapes() -> AllSubwayLinesResponse? {
+        guard !isSubwayShapesCacheStale else { return nil }
         guard let data = userDefaults.data(forKey: CacheKey.subwayShapes) else { return nil }
         return try? JSONDecoder().decode(AllSubwayLinesResponse.self, from: data)
     }
 
-    /// Whether the subway shapes disk cache is stale (> 7 days old) or missing.
-    /// Subway shapes change extremely rarely (MTA service changes happen
-    /// a few times per year).  The previous 24-hour TTL forced a full
-    /// re-download every day, adding 60-90 s to cold starts when the
-    /// backend was also cold.  7 days matches Transit app's approach:
-    /// cache shapes semi-permanently, refresh opportunistically.
+    /// Whether the subway shapes disk cache is stale (> 24 hours old) or missing.
+    /// Static GTFS changes can add or alter route geometry without an app
+    /// release, so system-map geometry should revalidate daily.
     var isSubwayShapesCacheStale: Bool {
         guard let ts = userDefaults.object(
             forKey: CacheKey.subwayShapesCachedAt
         ) as? Date else { return true }
-        return Date().timeIntervalSince(ts) > 604_800  // 7 days
+        return Date().timeIntervalSince(ts) > Self.mapShapeCacheMaxAge
     }
 
     // MARK: - Cache Commuter Rail Shapes
@@ -237,24 +242,42 @@ final class OfflineCacheManager: ObservableObject {
     func cacheLIRRShapes(_ response: AllCommuterRailLinesResponse) {
         guard let data = try? JSONEncoder().encode(response) else { return }
         userDefaults.set(data, forKey: CacheKey.lirrShapes)
+        userDefaults.set(Date(), forKey: CacheKey.lirrShapesCachedAt)
     }
     
     /// Cache Metro-North line shapes for offline map display
     func cacheMNRShapes(_ response: AllCommuterRailLinesResponse) {
         guard let data = try? JSONEncoder().encode(response) else { return }
         userDefaults.set(data, forKey: CacheKey.mnrShapes)
+        userDefaults.set(Date(), forKey: CacheKey.mnrShapesCachedAt)
     }
     
     /// Get cached LIRR shapes
     func getCachedLIRRShapes() -> AllCommuterRailLinesResponse? {
+        guard !isLIRRShapesCacheStale else { return nil }
         guard let data = userDefaults.data(forKey: CacheKey.lirrShapes) else { return nil }
         return try? JSONDecoder().decode(AllCommuterRailLinesResponse.self, from: data)
     }
     
     /// Get cached Metro-North shapes
     func getCachedMNRShapes() -> AllCommuterRailLinesResponse? {
+        guard !isMNRShapesCacheStale else { return nil }
         guard let data = userDefaults.data(forKey: CacheKey.mnrShapes) else { return nil }
         return try? JSONDecoder().decode(AllCommuterRailLinesResponse.self, from: data)
+    }
+
+    var isLIRRShapesCacheStale: Bool {
+        guard let ts = userDefaults.object(
+            forKey: CacheKey.lirrShapesCachedAt
+        ) as? Date else { return true }
+        return Date().timeIntervalSince(ts) > Self.mapShapeCacheMaxAge
+    }
+
+    var isMNRShapesCacheStale: Bool {
+        guard let ts = userDefaults.object(
+            forKey: CacheKey.mnrShapesCachedAt
+        ) as? Date else { return true }
+        return Date().timeIntervalSince(ts) > Self.mapShapeCacheMaxAge
     }
 
     // MARK: - Cache Flattened Polylines (Pre-computed for instant cold start)
@@ -315,16 +338,14 @@ final class OfflineCacheManager: ObservableObject {
         return try? JSONDecoder().decode(CachedFlattenedBundle.self, from: data)
     }
 
-    /// Whether the flattened polyline cache is stale (> 7 days) or missing.
-    /// Flattened polylines are derived from subway shapes — same logic
-    /// applies: shapes barely change, so 7 days is safe.  The previous
-    /// 24-hour TTL meant the expensive decode → unify → simplify → fillet
-    /// pipeline ran on every launch after a day of not using the app.
+    /// Whether the flattened polyline cache is stale (> 24 hours) or missing.
+    /// Flattened polylines are derived from network shape responses, so they
+    /// must expire on the same cadence as the source geometry.
     var isFlattenedPolylinesCacheStale: Bool {
         guard let ts = userDefaults.object(
             forKey: CacheKey.flattenedPolylinesCachedAt
         ) as? Date else { return true }
-        return Date().timeIntervalSince(ts) > 604_800  // 7 days
+        return Date().timeIntervalSince(ts) > Self.mapShapeCacheMaxAge
     }
 
     private func flattenedCacheDirectory() -> URL? {
@@ -591,7 +612,9 @@ final class OfflineCacheManager: ObservableObject {
         userDefaults.removeObject(forKey: CacheKey.cachedStations)
         userDefaults.removeObject(forKey: CacheKey.stationCacheVersion)
         userDefaults.removeObject(forKey: CacheKey.lirrShapes)
+        userDefaults.removeObject(forKey: CacheKey.lirrShapesCachedAt)
         userDefaults.removeObject(forKey: CacheKey.mnrShapes)
+        userDefaults.removeObject(forKey: CacheKey.mnrShapesCachedAt)
         userDefaults.removeObject(forKey: CacheKey.subwayShapes)
         userDefaults.removeObject(forKey: CacheKey.subwayShapesCachedAt)
         userDefaults.removeObject(forKey: CacheKey.flattenedPolylinesCachedAt)

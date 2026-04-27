@@ -512,8 +512,17 @@ final class MapSystemViewModel {
                 + " + \(commuterCount) commuter rail lines"
                 + " (instant render)")
 
+        let trunkPolylines = subwayResponse.trunkPolylines ?? []
+        let hasRenderableSubway = !trunkPolylines.isEmpty || !flattenedSubwayPolylines.isEmpty
+        guard hasRenderableSubway else {
+            AppLogger.shared.log(
+                "SYSTEM_MAP",
+                message: "Disk subway cache has no trunk polylines — waiting for network refresh")
+            return false
+        }
+
         self.cachedSystemMap = decoded
-        self.cachedTrunkPolylines = subwayResponse.trunkPolylines
+        self.cachedTrunkPolylines = trunkPolylines.isEmpty ? nil : trunkPolylines
         self.cachedCrossings = subwayResponse.crossings ?? []
         self.computeSubwayOffsets()
         return true
@@ -1055,7 +1064,8 @@ final class MapSystemViewModel {
         if !forceReflatten && !flattenedSubwayPolylines.isEmpty {
             let hasOffsets = flattenedSubwayPolylines.contains { abs($0.laneOffset) > 0.01 }
             let hasEnoughPolylines = flattenedSubwayPolylines.count >= 30
-            if hasOffsets && hasEnoughPolylines {
+            let hasDrawableGeometry = !hasPolylineJumpOutliers(flattenedSubwayPolylines)
+            if hasOffsets && hasEnoughPolylines && hasDrawableGeometry {
                 AppLogger.shared.log(
                     "SYSTEM_MAP",
                     message: "Keeping"
@@ -1065,6 +1075,13 @@ final class MapSystemViewModel {
                         + " (skip re-flatten)")
                 return
             }
+        }
+
+        if cachedTrunkPolylines?.isEmpty ?? true {
+            AppLogger.shared.log(
+                "SYSTEM_MAP",
+                message: "Skipping client-side subway flatten — trunk polylines unavailable")
+            return
         }
 
         // Pre-compute flattened polylines for efficient rendering.
@@ -1896,6 +1913,35 @@ final class MapSystemViewModel {
 
     // MARK: - Flattened Polyline Disk Cache
 
+    private func hasPolylineJumpOutliers(_ polylines: [FlattenedMapPolyline]) -> Bool {
+        let maxAllowedSubwayGapMeters: CLLocationDistance = 1_200
+        for polyline in polylines where polyline.trunkIndex >= 0 {
+            let coordinates = polyline.coordinates
+            guard coordinates.count >= 2 else { continue }
+            for index in 1..<coordinates.count {
+                let previous = coordinates[index - 1]
+                let current = coordinates[index]
+                let distance = CLLocation(
+                    latitude: previous.latitude,
+                    longitude: previous.longitude
+                ).distance(from: CLLocation(
+                    latitude: current.latitude,
+                    longitude: current.longitude
+                ))
+                if distance > maxAllowedSubwayGapMeters {
+                    AppLogger.shared.log(
+                        "SYSTEM_MAP",
+                        message: "Polyline jump outlier"
+                            + " trunk=\(polyline.trunkIndex)"
+                            + " id=\(polyline.id)"
+                            + " gap=\(Int(distance))m")
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     /// Restores pre-computed flattened polylines from disk, providing an
     /// instant cold-start render (< 50 ms) by skipping the entire
     /// decode → unify → simplify → refine pipeline.
@@ -1903,9 +1949,6 @@ final class MapSystemViewModel {
     /// Returns `true` if the cache was valid and polylines were restored.
     private func loadFlattenedFromDiskCache() -> Bool {
         let cache = OfflineCacheManager.shared
-        // No TTL check — polylines are physical track geometry that
-        // changes maybe 1-2× per year.  Always show whatever we have
-        // cached; the background network refresh keeps it current.
         guard let bundle = cache.getCachedFlattenedPolylines()
         else { return false }
 
@@ -1946,6 +1989,13 @@ final class MapSystemViewModel {
         }
 
         guard !subway.isEmpty else { return false }
+
+        if hasPolylineJumpOutliers(subway) {
+            AppLogger.shared.log(
+                "SYSTEM_MAP",
+                message: "Rejected flattened subway cache with long straight-line jumps")
+            return false
+        }
 
         flattenedSubwayPolylines = subway
         flattenedCommuterRailPolylines = commuter

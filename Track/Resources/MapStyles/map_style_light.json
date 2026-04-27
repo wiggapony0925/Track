@@ -1,6 +1,6 @@
 {
-  "_comment": "Track NYC Transit — Light Mode Map Style",
-  "_description": "Apple Maps–inspired clean base with natural water blue and park green. Subtle lavender personality on neutral surfaces. Per-element tint strengths preserve feature identity during route-colour wash.",
+  "_comment": "Track NYC Transit - Light Mode Map Style",
+  "_description": "Transit-first city atlas base: cool paper land, crisp white streets, natural water and parks, quiet labels, and neutral buildings that keep MTA route colors dominant.",
 
   "strippedLayerPatterns": [
     "poi",
@@ -93,33 +93,33 @@
       "building",
       "boundary"
     ],
-    "opacity": 0.30
+    "opacity": 0.24
   },
 
   "colors": {
-    "water":               "#C8D8F0",
-    "park":                "#C8DDBC",
-    "land":                "#F6F4F2",
+    "water":               "#BFD9EA",
+    "park":                "#D7E8CF",
+    "land":                "#F3F5F2",
     "road":                "#FFFFFF",
-    "roadCasing":          "#E6E2EC",
-    "building":            "#E4DFED",
-    "roadLabel":           "#74727F",
-    "roadLabelHalo":       "#FFFFFFEE",
-    "roadLabelHaloWidth":  1.8,
-    "roadLabelHaloBlur":   0.5,
-    "placeLabel":          "#4D4860",
-    "placeLabelHalo":      "#FFFFFFF5",
-    "placeLabelHaloWidth": 2.5,
-    "placeLabelHaloBlur":  0.8
+    "roadCasing":          "#D9DEE3",
+    "building":            "#D8DADD",
+    "roadLabel":           "#65707A",
+    "roadLabelHalo":       "#F8F9F6F2",
+    "roadLabelHaloWidth":  1.5,
+    "roadLabelHaloBlur":   0.4,
+    "placeLabel":          "#384652",
+    "placeLabelHalo":      "#F8F9F6F5",
+    "placeLabelHaloWidth": 2.2,
+    "placeLabelHaloBlur":  0.7
   },
 
   "tintStrengths": {
-    "water":      0.06,
-    "park":       0.06,
-    "land":       0.14,
-    "road":       0.10,
-    "building":   0.16,
-    "roadLabel":  0.03,
-    "placeLabel": 0.03
+    "water":      0.03,
+    "park":       0.03,
+    "land":       0.07,
+    "road":       0.04,
+    "building":   0.08,
+    "roadLabel":  0.01,
+    "placeLabel": 0.01
   }
 }

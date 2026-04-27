@@ -1,6 +1,6 @@
 {
-  "_comment": "Track NYC Transit — Dark Mode Map Style",
-  "_description": "Rich charcoal-navy base with natural feature depth. Per-element tinting preserves water and park identity while roads and buildings absorb route colour.",
+  "_comment": "Track NYC Transit - Dark Mode Map Style",
+  "_description": "Transit-first night atlas base: charcoal land, blue-black water, subdued streets, restrained labels, and neutral depth so route colors remain the brightest objects.",
 
   "strippedLayerPatterns": [
     "poi",
@@ -96,29 +96,29 @@
   },
 
   "colors": {
-    "water":               "#141828",
-    "park":                "#152015",
-    "land":                "#171924",
-    "road":                "#272A3A",
-    "roadCasing":          "#1E2030",
-    "building":            "#1F2238",
-    "roadLabel":           "#8F8FA0",
-    "roadLabelHalo":       "#171924BB",
+    "water":               "#0D2632",
+    "park":                "#142519",
+    "land":                "#12161B",
+    "road":                "#262D34",
+    "roadCasing":          "#1A2027",
+    "building":            "#20262D",
+    "roadLabel":           "#97A1AA",
+    "roadLabelHalo":       "#12161BBB",
     "roadLabelHaloWidth":  1.8,
     "roadLabelHaloBlur":   0.8,
-    "placeLabel":          "#AEACC4",
-    "placeLabelHalo":      "#171924DD",
+    "placeLabel":          "#B6BEC7",
+    "placeLabelHalo":      "#12161BDD",
     "placeLabelHaloWidth": 2.5,
     "placeLabelHaloBlur":  1.0
   },
 
   "tintStrengths": {
-    "water":      0.05,
-    "park":       0.05,
-    "land":       0.12,
-    "road":       0.08,
-    "building":   0.14,
-    "roadLabel":  0.02,
-    "placeLabel": 0.02
+    "water":      0.03,
+    "park":       0.03,
+    "land":       0.06,
+    "road":       0.04,
+    "building":   0.07,
+    "roadLabel":  0.01,
+    "placeLabel": 0.01
   }
 }
