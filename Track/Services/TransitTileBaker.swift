@@ -155,6 +155,10 @@ nonisolated enum TransitTileBaker {
     ///   - directory: The directory to write GeoJSON files into.
     /// - Returns: A `BakedTileSet` with file URLs, or `nil` on failure.
     static func bake(_ input: BakeInput, to directory: URL) -> BakedTileSet? {
+        guard !input.subwayFill.isEmpty || !input.elevatedFill.isEmpty else {
+            return nil
+        }
+
         let fm = FileManager.default
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
 
@@ -199,7 +203,13 @@ nonisolated enum TransitTileBaker {
             elevatedCasingURL: directory.appendingPathComponent(elevatedCasingFile),
             commuterURL: directory.appendingPathComponent(commuterFile)
         )
-        return tileSet.isValid ? tileSet : nil
+        guard tileSet.isValid,
+              hasRenderableFeatures(at: tileSet.subwayFillURL)
+                || hasRenderableFeatures(at: tileSet.elevatedFillURL)
+        else {
+            return nil
+        }
+        return tileSet
     }
 
     // MARK: - Bus Tile Baking
@@ -486,6 +496,17 @@ nonisolated enum TransitTileBaker {
         } catch {
             return false
         }
+    }
+
+    /// Existing baked files from older cold-start paths may contain a valid
+    /// FeatureCollection wrapper with no line features. Treat those as absent
+    /// so MapLibre falls back to dynamic polylines instead of drawing nothing.
+    private static func hasRenderableFeatures(at url: URL) -> Bool {
+        guard let data = try? Data(contentsOf: url), data.count > 128 else {
+            return false
+        }
+        let emptyFeatureCollection = Data(#""features":[]"#.utf8)
+        return data.range(of: emptyFeatureCollection) == nil
     }
 
     /// Removes baked GeoJSON files from older versions.
