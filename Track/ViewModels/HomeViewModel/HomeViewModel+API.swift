@@ -2061,25 +2061,20 @@ extension HomeViewModel {
                 // Skip if already cached (memory or disk)
                 if self.getCachedRouteShape(for: group.routeId) != nil { continue }
 
-                do {
-                    let shape = try await TrackAPI.fetchRouteShape(routeID: group.routeId)
+                if let shape = await LocalRouteShapeProvider.shape(for: group) {
                     guard !Task.isCancelled else { return }
-                    await MainActor.run {
-                        self.cacheRouteShape(shape, for: group.routeId)
-                    }
+                    self.cacheRouteShape(shape, for: group.routeId)
                     AppLogger.shared.log(
                         "SHAPE_PREFETCH",
-                        message: "\(group.routeId) cached "
+                        message: "\(group.routeId) local cached "
                             + "(\(shape.stops.count) stops)"
                     )
                     // Small yield to avoid hogging the event loop
                     try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                } catch {
-                    // Prefetch is best-effort — never propagate errors
+                } else {
                     AppLogger.shared.log(
                         "SHAPE_PREFETCH",
-                        message: "\(group.routeId) failed: "
-                            + "\(error.localizedDescription)"
+                        message: "\(group.routeId) skipped: no local shape"
                     )
                 }
             }

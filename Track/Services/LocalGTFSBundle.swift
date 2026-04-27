@@ -58,6 +58,12 @@ public struct LocalStopWithRoutes: Hashable, Sendable {
     public let routes: [LocalRoute]
 }
 
+public struct LocalRouteStop: Hashable, Sendable {
+    public let route: LocalRoute
+    public let stop: LocalStop
+    public let directionID: Int?
+}
+
 public struct LocalBundleMetadata: Sendable {
     public let regionID: String
     public let schemaVersion: Int
@@ -314,6 +320,74 @@ nonisolated public final class LocalGTFSBundle: @unchecked Sendable {
             )
             out[stopID, default: []].append(route)
         }
+    }
+
+    /// Returns every stop served by a route, grouped by GTFS direction_id
+    /// when available. The mobile bundle does not include stop_sequence, so
+    /// callers should treat this as static coverage data and derive display
+    /// ordering for their UI.
+    public func routeStops(routeID: String) -> [LocalRouteStop] {
+        let normalized = stripMTAPrefix(routeID)
+        return queue.sync { [self] in
+            routeStopsLocked(routeID: routeID, normalized: normalized)
+        }
+    }
+
+    private func routeStopsLocked(routeID: String, normalized: String) -> [LocalRouteStop] {
+        let sql = """
+        SELECT r.route_id, r.short_name, r.long_name, r.color, r.mode,
+               s.stop_id, s.stop_name, s.stop_lat, s.stop_lon, s.parent_station,
+               rs.direction_id
+          FROM route_stops rs
+          JOIN routes r ON r.route_id = rs.route_id
+          JOIN stops s ON s.stop_id = rs.stop_id
+         WHERE r.route_id = ? OR r.short_name = ? OR r.route_id = ?
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            return []
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        sqlite3_bind_text(stmt, 1, routeID, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, normalized, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 3, normalized, -1, SQLITE_TRANSIENT)
+
+        var results: [LocalRouteStop] = []
+        var seen = Set<String>()
+
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let routeID = String(cString: sqlite3_column_text(stmt, 0))
+            let stopID = String(cString: sqlite3_column_text(stmt, 5))
+            let directionID: Int? = sqlite3_column_type(stmt, 10) == SQLITE_NULL
+                ? nil
+                : Int(sqlite3_column_int(stmt, 10))
+            let dedupKey = "\(routeID)|\(stopID)|\(directionID.map(String.init) ?? "nil")"
+            guard seen.insert(dedupKey).inserted else { continue }
+
+            let route = LocalRoute(
+                routeID: routeID,
+                shortName: sqlite3_column_type(stmt, 1) == SQLITE_NULL
+                    ? nil : String(cString: sqlite3_column_text(stmt, 1)),
+                longName: sqlite3_column_type(stmt, 2) == SQLITE_NULL
+                    ? nil : String(cString: sqlite3_column_text(stmt, 2)),
+                colorHex: sqlite3_column_type(stmt, 3) == SQLITE_NULL
+                    ? nil : String(cString: sqlite3_column_text(stmt, 3)),
+                mode: String(cString: sqlite3_column_text(stmt, 4))
+            )
+            let stop = LocalStop(
+                stopID: stopID,
+                name: String(cString: sqlite3_column_text(stmt, 6)),
+                latitude: sqlite3_column_double(stmt, 7),
+                longitude: sqlite3_column_double(stmt, 8),
+                mode: route.mode,
+                parentStation: sqlite3_column_type(stmt, 9) == SQLITE_NULL
+                    ? nil : String(cString: sqlite3_column_text(stmt, 9))
+            )
+            results.append(LocalRouteStop(route: route, stop: stop, directionID: directionID))
+        }
+
+        return results
     }
 
     // MARK: - Convenience: drag-search in one call

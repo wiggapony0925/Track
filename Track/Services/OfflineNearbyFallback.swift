@@ -154,33 +154,40 @@ enum OfflineNearbyFallback {
             (distances[a.stopID] ?? .infinity) < (distances[b.stopID] ?? .infinity)
         } ?? stops[0]
 
-        // Phase D: prefer a real headway-based estimate from the bundle's
-        // route_headways table.  Falls back to the 99-minute placeholder
-        // only when no schedule data exists for the current bucket
-        // (overnight gap, suspended service, unknown route).
-        let estimated = bundle.expectedWaitMinutes(routeID: route.routeID) ?? 99
-        let status = estimated < 99 ? "Scheduled" : "No Data"
+        // Use the local headway table only as a static/scheduled estimate.
+        // It is not live vehicle data, so provide an arrival timestamp and
+        // keep `isRealTime=false`; the row will render a muted "Sched" pill
+        // until the live backend response replaces this optimistic result.
+        let estimated = bundle.expectedWaitMinutes(routeID: route.routeID)
+        let minutesAway = estimated ?? 99
+        let arrivalTs = estimated.map {
+            Int(Date.now.addingTimeInterval(TimeInterval($0 * 60)).timeIntervalSince1970)
+        }
+        let directionName = localDirectionLabel(route: route, closest: closest)
 
         let placeholder = NearbyTransitResponse(
             routeId: route.routeID,
             stopName: closest.name,
-            direction: "Unknown",
-            destination: nil,
-            minutesAway: estimated,
-            status: status,
+            direction: directionName,
+            destination: directionName,
+            minutesAway: minutesAway,
+            status: estimated == nil ? "No Data" : "Scheduled",
             mode: route.mode,
             stopLat: closest.latitude,
             stopLon: closest.longitude,
-            arrivalTs: nil,
+            arrivalTs: arrivalTs,
             vehicleId: nil,
             tripId: nil,
             stopId: closest.stopID,
-            distanceM: distances[closest.stopID]
+            distanceM: distances[closest.stopID],
+            isRealTime: false,
+            colorHex: route.colorHex,
+            busServiceType: busServiceType(for: route)
         )
 
         let direction = DirectionArrivalsResponse(
-            direction: "Unknown",
-            directionLabel: nil,
+            direction: directionName,
+            directionLabel: directionName,
             directionId: nil,
             branchId: nil,
             arrivals: [placeholder]
@@ -188,14 +195,54 @@ enum OfflineNearbyFallback {
 
         return GroupedNearbyTransitResponse(
             routeId: route.routeID,
-            displayName: route.shortName ?? route.longName ?? route.routeID,
+            displayName: displayName(for: route),
             mode: route.mode,
             colorHex: route.colorHex,
             directions: [direction],
             sortingKey: route.routeID,
             alerts: [],
             expressRoutes: [],
-            busServiceType: nil
+            busServiceType: busServiceType(for: route)
         )
+    }
+
+    nonisolated private static func displayName(for route: LocalRoute) -> String {
+        switch route.mode.lowercased() {
+        case "lirr", "mnr":
+            return BranchNames.resolveDisplayName(routeId: route.routeID, mode: route.mode)
+        default:
+            return route.shortName?.nonEmpty
+                ?? route.longName?.nonEmpty
+                ?? stripMTAPrefix(route.routeID)
+        }
+    }
+
+    nonisolated private static func localDirectionLabel(
+        route: LocalRoute,
+        closest: LocalStop
+    ) -> String {
+        switch route.mode.lowercased() {
+        case "bus":
+            return "Nearby stops"
+        default:
+            return closest.name.nonEmpty ?? "Nearby stops"
+        }
+    }
+
+    nonisolated private static func busServiceType(for route: LocalRoute) -> String? {
+        guard route.mode.lowercased() == "bus" else { return nil }
+        let upper = (route.shortName ?? route.routeID).uppercased()
+        if upper.contains("SBS") || upper.hasSuffix("+") { return "Select Bus Service" }
+        if upper.hasPrefix("BXM") || upper.hasPrefix("BM")
+            || upper.hasPrefix("QM") || upper.hasPrefix("SIM")
+            || upper.hasPrefix("X") { return "Express" }
+        return "Local"
+    }
+}
+
+private extension String {
+    var nonEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

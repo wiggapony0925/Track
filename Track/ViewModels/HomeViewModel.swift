@@ -3496,15 +3496,26 @@ final class HomeViewModel {
         trainVehicles = []
         busSchedule = busScheduleByRoute[group.routeId]
 
-        // Use cached shape immediately if available (memory or disk).
-        // Async disk check keeps the main thread free for the entry animation.
-        let cachedShape: RouteShapeResponse? = await getCachedRouteShapeAsync(for: group.routeId)
+        // Use local static shape data immediately. Route geometry, stop lists,
+        // and direction shells are GTFS-static data, so they should not depend
+        // on backend availability; network calls below are only live enrichment.
+        let shapeCacheKey = group.mode == "subway" ? group.displayName : group.routeId
+        let localShape = LocalRouteShapeProvider.shape(for: group)
+        let cachedShape: RouteShapeResponse?
+        if let localShape {
+            cachedShape = localShape
+        } else {
+            cachedShape = await getCachedRouteShapeAsync(for: shapeCacheKey)
+        }
         if let cached = cachedShape {
             routeShape = cached
             enrichGroupWithShapeDirections(cached)
+            if localShape != nil {
+                cacheRouteShape(cached, for: shapeCacheKey)
+            }
             AppLogger.shared.log(
                 "SHAPE_CACHE",
-                message: "INSTANT \(group.routeId)"
+                message: "INSTANT \(shapeCacheKey)"
                     + " — \(cached.stops.count) stops")
         } else {
             routeShape = nil
@@ -3525,7 +3536,7 @@ final class HomeViewModel {
             // Shape was already applied above from cache if available.
             // If we had a cache hit, the shape task becomes a non-blocking
             // background refresh. If cache miss, it's the primary fetch.
-            let hadCachedShape = cachedShape != nil
+            let hadStaticShape = cachedShape != nil
 
             // Fetch shape + vehicles truly in parallel and process each
             // result the instant it arrives (no sequential bottleneck).
@@ -3568,27 +3579,10 @@ final class HomeViewModel {
 
             let shapeTask = Task { @MainActor [weak self] in
                 guard let self else { return }
-                // If we already applied a cached shape above, just refresh
-                // in the background to keep the cache warm — no need to block.
-                if hadCachedShape {
-                    // Background refresh — don't block on this
-                    do {
-                        let fresh = try await TrackAPI.fetchRouteShape(routeID: loadingRouteId)
-                        self.cacheRouteShape(fresh, for: loadingRouteId)
-                        // Only update the live shape if it actually changed (more stops, etc.)
-                        guard self.selectedRouteId == loadingRouteId else { return }
-                        if fresh.stops.count != self.routeShape?.stops.count ||
-                           fresh.polylines.count != self.routeShape?.polylines.count {
-                            self.routeShape = fresh
-                            self.enrichGroupWithShapeDirections(fresh)
-                        }
-                    } catch {
-                        // Stale cache is better than no shape — just log
-                        AppLogger.shared.logError(
-                            "fetchRouteShape"
-                            + "(bg-refresh \(loadingRouteId))",
-                            error: error)
-                    }
+                // Static geometry is already local/cached. Do not refresh the
+                // route polyline from the backend; live tracking is handled by
+                // the vehicle task above.
+                if hadStaticShape {
                     return
                 }
 
@@ -3633,11 +3627,10 @@ final class HomeViewModel {
         } else if group.isLIRR {
             // LIRR: fetch the branch-specific polyline + live arrivals
             do {
-                let cachedLIRRShape: RouteShapeResponse? = await getCachedRouteShapeAsync(for: group.routeId)
                 async let arrivalsTask = TrackAPI.fetchLIRRArrivals()
 
                 let loadedShape: RouteShapeResponse
-                if let cached = cachedLIRRShape {
+                if let cached = cachedShape {
                     loadedShape = cached
                     AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.routeId)")
                 } else {
@@ -3669,11 +3662,10 @@ final class HomeViewModel {
         } else if group.isMNR {
             // Metro-North: fetch the line-specific polyline + live arrivals
             do {
-                let cachedMNRShape: RouteShapeResponse? = await getCachedRouteShapeAsync(for: group.routeId)
                 async let arrivalsTask = TrackAPI.fetchMNRArrivals()
 
                 let loadedShape: RouteShapeResponse
-                if let cached = cachedMNRShape {
+                if let cached = cachedShape {
                     loadedShape = cached
                     AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.routeId)")
                 } else {
@@ -3705,11 +3697,10 @@ final class HomeViewModel {
         } else {
             // For subway: fetch the full line geometry AND live arrivals from the backend
             do {
-                let cachedSubwayShape = await getCachedRouteShapeAsync(for: group.displayName)
                 async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: group.displayName)
 
                 let loadedShape: RouteShapeResponse
-                if let cached = cachedSubwayShape {
+                if let cached = cachedShape {
                     loadedShape = cached
                     AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.displayName)")
                 } else {
