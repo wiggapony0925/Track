@@ -191,6 +191,6 @@ def get_all_subway_lines() -> list[str]:
         "W",
         "GS",
         "FS",
-        "SR",
+        "H",
         "SI",
     ]

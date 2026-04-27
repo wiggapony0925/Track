@@ -58,7 +58,7 @@ SUBWAY_LINES_CORE = [
 ]
 
 # Shuttles and express overlays may not have separate shapes
-SUBWAY_SHUTTLES = ["GS", "FS", "SI"]
+SUBWAY_SHUTTLES = ["GS", "FS", "H", "SI"]
 
 
 class TestSubwayShapeData:
@@ -92,6 +92,16 @@ class TestSubwayShapeData:
             assert (
                 -74.3 < stop.lon < -73.6
             ), f"Subway {line_id} stop {stop.name}: lon {stop.lon} out of NYC"
+
+    @pytest.mark.parametrize("line_id", SUBWAY_SHUTTLES)
+    def test_subway_shuttle_has_shape_data(self, line_id: str):
+        """Every official MTA shuttle route must render on the system map."""
+        result = get_subway_route_shape(line_id)
+        assert result is not None, f"No shape data for shuttle {line_id}"
+        polylines, stops, directions = result
+        assert polylines, f"Shuttle {line_id}: no polylines"
+        assert stops, f"Shuttle {line_id}: no stops"
+        assert directions, f"Shuttle {line_id}: no directions"
 
 
 class TestSubwayBranches:

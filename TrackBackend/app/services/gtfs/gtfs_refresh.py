@@ -239,15 +239,52 @@ def _download_feed(client: httpx.Client, feed_name: str) -> bool:
 
 
 def _copy_subway_root_files(subway_dir: Path) -> None:
-    """Copy shapes.txt, trips.txt, stops.txt from supplemented_GTFS to DATA_DIR root.
+    """Copy core subway GTFS files from supplemented_GTFS to app data paths.
 
-    subway_shapes.py reads these from the root data dir, not the subway subdir.
+    subway_shapes.py reads shapes/trips/stops from the root data dir, while
+    route color/metadata lookup reads routes.txt from subway/regular_GTFS.
     """
     for fname in ("shapes.txt", "trips.txt", "stops.txt"):
         src = subway_dir / fname
         dst = _DATA_DIR / fname
         if src.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
+
+    routes_src = subway_dir / "routes.txt"
+    routes_dst = _DATA_DIR / "subway" / "regular_GTFS" / "routes.txt"
+    if routes_src.exists():
+        routes_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(routes_src, routes_dst)
+
+
+def _missing_materialized_files(feed_name: str) -> list[Path]:
+    """Return expected local files missing after a successful feed download."""
+    if feed_name == "subway":
+        return [
+            path for path in (
+                _DATA_DIR / "shapes.txt",
+                _DATA_DIR / "trips.txt",
+                _DATA_DIR / "stops.txt",
+                _DATA_DIR / "subway" / "supplemented_GTFS" / "stop_times.txt",
+                _DATA_DIR / "subway" / "regular_GTFS" / "routes.txt",
+            )
+            if not path.exists()
+        ]
+
+    feed = GTFS_FEEDS.get(feed_name)
+    if not feed:
+        return []
+
+    extract_to = feed["extract_to"]
+    return [
+        path for path in (
+            extract_to / "routes.txt",
+            extract_to / "trips.txt",
+            extract_to / "stops.txt",
+        )
+        if not path.exists()
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -781,6 +818,18 @@ def _clear_gtfs_caches() -> None:
             f"[GTFS] Failed to refresh limited route set: {exc}", tag="GTFS"
         )
 
+    # ── Phase 4: clear pre-built endpoint responses/disk caches ──
+    # These sit above the low-level GTFS parsers. If they survive a static
+    # refresh, clients keep receiving old geometry despite fresh MTA files.
+    try:
+        from app.routers.subway import clear_shapes_all_cache
+
+        clear_shapes_all_cache(clear_disk=True)
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[GTFS] Failed to clear subway shapes/all cache: {exc}", tag="GTFS"
+        )
+
     TrackLogger.info(
         f"[GTFS] Cleared caches: {registry_cleared} via registry, "
         f"{legacy_cleared} via legacy imports",
@@ -844,6 +893,16 @@ def _sync_check_and_refresh(full_check: bool) -> dict[str, str]:
         # Phase 1: Check freshness
         stale: list[tuple[str, str | None]] = []
         for name in feeds_to_check:
+            missing_files = _missing_materialized_files(name)
+            if missing_files:
+                TrackLogger.warning(
+                    f"[GTFS] {name}: missing local materialized files — refreshing: "
+                    + ", ".join(str(path.relative_to(_DATA_DIR)) for path in missing_files),
+                    tag="GTFS",
+                )
+                stale.append((name, None))
+                continue
+
             needs_update, new_lm = _check_feed_freshness(client, name)
             if needs_update:
                 stale.append((name, new_lm))

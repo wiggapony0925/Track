@@ -11,6 +11,7 @@ individual requests."""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import os
 import tarfile
 import tempfile
@@ -574,3 +575,63 @@ def check_local_data_status() -> dict[str, bool]:
     for entry in LOCAL_ONLY_FILES:
         status[entry["description"]] = _has_required_files(entry)
     return status
+
+
+def get_local_data_metadata() -> dict[str, Any]:
+    """Return OpenAPI-visible metadata for static/offline datasets.
+
+    These files power map shapes, stops, schedule browsing, and offline
+    fallbacks. Live arrivals still require network, but this metadata tells
+    clients/operators which static assets are present and when they were last
+    written locally.
+    """
+    groups: list[dict[str, Any]] = []
+    for entry in DOWNLOAD_MANIFEST + LOCAL_ONLY_FILES:
+        required_files = entry.get("required_files", [])
+        files = [_file_metadata(relative) for relative in required_files]
+        latest = max(
+            (file["modified_at_epoch"] for file in files if file["exists"]),
+            default=None,
+        )
+        groups.append(
+            {
+                "description": entry["description"],
+                "object": entry.get("object"),
+                "critical": bool(entry.get("critical", False)),
+                "available": all(file["exists"] for file in files),
+                "last_materialized_at": _format_epoch(latest),
+                "last_materialized_at_epoch": latest,
+                "files": files,
+            }
+        )
+
+    return {
+        "source_of_truth": "MTA static GTFS and NYS/MTA Open Data",
+        "offline_contract": (
+            "Shapes, stops, routes, schedules, and static metadata are cached "
+            "for offline use. Network is required only for live arrivals, "
+            "vehicle positions, alerts, weather, and refresh checks."
+        ),
+        "generated_at": _format_epoch(time.time()),
+        "generated_at_epoch": int(time.time()),
+        "groups": groups,
+    }
+
+
+def _file_metadata(relative_path: str) -> dict[str, Any]:
+    path = _DATA_DIR / relative_path
+    exists = path.exists()
+    stat = path.stat() if exists else None
+    return {
+        "path": relative_path,
+        "exists": exists,
+        "size_bytes": stat.st_size if stat else None,
+        "modified_at": _format_epoch(stat.st_mtime) if stat else None,
+        "modified_at_epoch": int(stat.st_mtime) if stat else None,
+    }
+
+
+def _format_epoch(epoch: float | int | None) -> str | None:
+    if epoch is None:
+        return None
+    return datetime.fromtimestamp(epoch, tz=UTC).isoformat().replace("+00:00", "Z")

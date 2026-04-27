@@ -70,8 +70,6 @@ def _do_clear():
     try:
         import app.routers.subway as _subway
 
-        _subway._shapes_all_cache = None
-        _subway._shapes_all_json_bytes = None
-        _subway._shapes_all_building = False
+        _subway.clear_shapes_all_cache()
     except Exception:
         pass

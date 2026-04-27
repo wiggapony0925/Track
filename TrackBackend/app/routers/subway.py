@@ -202,8 +202,8 @@ def _build_shapes_all_sync() -> AllSubwayLinesResponse:
     )
 
     # Routes to skip: express duplicates that share tracks with parent lines.
-    # FS (Franklin Shuttle) and GS (42nd St Shuttle) are NOT skipped —
-    # they are unique standalone routes with their own physical tracks.
+    # FS (Franklin Shuttle), GS (42nd St Shuttle), and H (Rockaway Park
+    # Shuttle) are NOT skipped — MTA publishes them as standalone routes.
     skip_variants = {"6X", "7X", "FX", "SR"}
 
     overlays: list[SubwayLineOverlay] = []
@@ -462,6 +462,22 @@ def set_shapes_all_cache(resp: AllSubwayLinesResponse) -> None:
     _shapes_all_cache = resp
     # Pre-serialize to JSON bytes so the endpoint skips Pydantic serialization.
     _shapes_all_json_bytes = json.dumps(resp.model_dump(mode="json")).encode("utf-8")
+
+
+def clear_shapes_all_cache(*, clear_disk: bool = False) -> None:
+    """Clear cached `/subway/shapes/all` output after GTFS static updates.
+
+    GTFS refresh clears the low-level parser caches, but this endpoint also
+    keeps a fully built response in memory and on persistent disk. If those
+    survive a refresh, clients keep receiving old subway geometry even after
+    fresh MTA files were downloaded.
+    """
+    global _shapes_all_cache, _shapes_all_json_bytes, _shapes_all_building
+    _shapes_all_cache = None
+    _shapes_all_json_bytes = None
+    _shapes_all_building = False
+    if clear_disk:
+        _SHAPES_DISK_CACHE_PATH.unlink(missing_ok=True)
 
 
 @router.get(

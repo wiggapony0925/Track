@@ -65,18 +65,24 @@ async def config() -> dict[str, Any]:
     summary="Get GTFS data status",
     description=(
         "Returns the availability and freshness of every GTFS static data group "
-        "(stops, routes, shapes, transfers, calendar). Includes per-feed last-update "
-        "timestamps so operators can verify that scheduled data refreshes are running."
+        "(stops, routes, shapes, transfers, calendar). Includes per-feed "
+        "MTA Last-Modified timestamps plus local offline-data metadata: which "
+        "files power offline shapes/stops/schedules, their sizes, and when "
+        "they were last materialized on this backend."
     ),
 )
 async def data_status() -> dict[str, Any]:
     """Check GTFS data availability and freshness."""
-    from app.services.gtfs.data_loader import check_local_data_status
+    from app.services.gtfs.data_loader import (
+        check_local_data_status,
+        get_local_data_metadata,
+    )
     from app.services.gtfs.gtfs_refresh import get_gtfs_freshness
 
     return {
         "data_groups": check_local_data_status(),
         "gtfs_feeds": get_gtfs_freshness(),
+        "offline_static_data": get_local_data_metadata(),
     }
 
 
