@@ -512,16 +512,8 @@ final class MapSystemViewModel {
                 + " + \(commuterCount) commuter rail lines"
                 + " (instant render)")
 
-        let trunkPolylines = subwayResponse.trunkPolylines ?? []
-        let hasRenderableSubway = !trunkPolylines.isEmpty || !flattenedSubwayPolylines.isEmpty
-        guard hasRenderableSubway else {
-            AppLogger.shared.log(
-                "SYSTEM_MAP",
-                message: "Disk subway cache has no trunk polylines — waiting for network refresh")
-            return false
-        }
-
         self.cachedSystemMap = decoded
+        let trunkPolylines = subwayResponse.trunkPolylines ?? []
         self.cachedTrunkPolylines = trunkPolylines.isEmpty ? nil : trunkPolylines
         self.cachedCrossings = subwayResponse.crossings ?? []
         self.computeSubwayOffsets()
@@ -2363,6 +2355,8 @@ final class MapSystemViewModel {
                 message: "Restored \(restored.count)"
                     + " stations from disk cache"
                     + " (instant)")
+        } else if cachedStations.isEmpty {
+            loadOfflineStations()
         }
 
         // If offline, use bundled static data (only if disk cache was empty)
