@@ -564,8 +564,20 @@ struct TrackAPI {
         if knownOffline {
             AppLogger.shared.log(
                 "OFFLINE",
-                message: "Reachability says offline; probing /nearby/grouped before local fallback"
+                message: quick
+                    ? "Reachability says offline; using local drag-search bundle"
+                    : "Reachability says offline; probing /nearby/grouped before local fallback"
             )
+            if quick,
+               let synthesized = await synthesizeNearbyGroupedFallback(
+                lat: lat,
+                lon: lon,
+                radius: effectiveRadius,
+                mode: mode,
+                reason: "drag-search offline"
+               ) {
+                return synthesized
+            }
         }
 
         guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {

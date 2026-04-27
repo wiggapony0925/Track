@@ -1708,7 +1708,16 @@ extension HomeViewModel {
             // present in the dedicated response, we merge it in.
             let groupedStart = Date()
             async let groupedTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, quick: quick)
-            async let subwayTask = TrackAPI.fetchNearbyGrouped(lat: lat, lon: lon, mode: "subway", quick: quick)
+            let subwayTask: Task<[GroupedNearbyTransitResponse], Never>? = isOnline
+                ? Task {
+                    (try? await TrackAPI.fetchNearbyGrouped(
+                        lat: lat,
+                        lon: lon,
+                        mode: "subway",
+                        quick: quick
+                    )) ?? []
+                }
+                : nil
             let stationsTask = isOnline
                 ? Task {
                     (try? await repository.fetchNearbyStations(latitude: lat, longitude: lon)) ?? []
@@ -1717,7 +1726,11 @@ extension HomeViewModel {
 
             // Await combined first, then merge subway if needed
             let combined = try await groupedTask
-            let subway = (try? await subwayTask) ?? []
+            let subway: [GroupedNearbyTransitResponse] = if let subwayTask {
+                await subwayTask.value
+            } else {
+                []
+            }
             
             // Count subway in combined response
             let combinedSubwayCount = combined.filter { $0.mode == "subway" }.count
