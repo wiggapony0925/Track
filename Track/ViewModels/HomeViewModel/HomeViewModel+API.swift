@@ -1744,6 +1744,10 @@ extension HomeViewModel {
             let groupedElapsed = Date().timeIntervalSince(groupedStart)
             let subwayCount = newGrouped.filter { $0.mode == "subway" && $0.hasRealArrivals }.count
             let busCount = newGrouped.filter { $0.mode == "bus" && $0.hasRealArrivals }.count
+            let hasLiveBucketData = newGrouped.contains { $0.hasRealArrivals }
+            let shouldShowStaticRoutes = !isOnline
+                || OfflineCacheManager.shared.isUsingCachedData
+                || !hasLiveBucketData
             AppLogger.shared.log(
                 "TIMING",
                 message: "  nearby/grouped → \(newGrouped.count) "
@@ -1849,6 +1853,7 @@ extension HomeViewModel {
             // the distance cache already has correct values for the new
             // pin location → sections appear in the right buckets instantly.
             nearbyStations = augmentedStations
+            isShowingStaticNearbyRoutes = shouldShowStaticRoutes
             rebuildDistanceCache(location: location, groups: mergedGroups)
 
             // NOW publish grouped data — triggers a single SwiftUI body

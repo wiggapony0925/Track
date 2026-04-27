@@ -578,7 +578,13 @@ struct TrackAPI {
             throw error
         }
         do {
-            return try decoder.decode([GroupedNearbyTransitResponse].self, from: data)
+            let decoded = try decoder.decode([GroupedNearbyTransitResponse].self, from: data)
+            if mode == nil {
+                await MainActor.run {
+                    OfflineCacheManager.shared.isUsingCachedData = false
+                }
+            }
+            return decoded
         } catch let decodingError as DecodingError {
             // Log detailed decode context so we can diagnose contract mismatches
             let detail: String

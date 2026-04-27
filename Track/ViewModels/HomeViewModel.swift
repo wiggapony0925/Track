@@ -706,6 +706,12 @@ final class HomeViewModel {
     // Grouped nearby transit (one card per route)
     var groupedTransit: [GroupedNearbyTransitResponse] = []
 
+    /// True when the currently displayed nearby groups are static/offline
+    /// availability data rather than a live-arrival feed. In this mode,
+    /// placeholder-only groups should stay in the main distance buckets so
+    /// users can still see which routes serve the area without network data.
+    var isShowingStaticNearbyRoutes = false
+
     /// Routes with no active service (placeholder-only — no real arrivals).
     /// Shown in the "Inactive Lines" section at the bottom of the dashboard.
     var inactiveGroupedTransit: [InactiveRouteResponse] = []
@@ -748,6 +754,14 @@ final class HomeViewModel {
     /// Rebuilds the ghost-route stored properties from current `groupedTransit`.
     /// Call after every mutation of `groupedTransit`.
     func rebuildGhostRoutes() {
+        guard !isShowingStaticNearbyRoutes else {
+            ghostRoutes = []
+            ghostSubwayRoutes = []
+            ghostBusRoutes = []
+            ghostLIRRRoutes = []
+            ghostMNRRoutes = []
+            return
+        }
         let ghosts = groupedTransit.filter { !$0.hasRealArrivals }
         ghostRoutes = ghosts
         ghostSubwayRoutes = ghosts.filter { $0.mode == "subway" }

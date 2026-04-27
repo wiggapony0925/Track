@@ -467,9 +467,7 @@ struct HomeView: View {
         guard trimmed.count >= 1 else { return [] }
         let query = trimmed.lowercased()
         let stationRoutes = viewModel.stationRoutesForQuery(query)
-        let base = viewModel.groupedTransit.filter {
-            $0.hasRealArrivals && (!$0.isExpired || viewModel.showStaleRows)
-        }
+        let base = viewModel.filteredGroupedTransit
         return base.filter {
             viewModel.groupMatchesQuery($0, query: query, stationRoutes: stationRoutes)
         }
