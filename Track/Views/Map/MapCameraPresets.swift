@@ -230,4 +230,129 @@ enum MapCameraPresets {
             pitch: is3D ? 60 : 0
         ))
     }
+
+    // MARK: - Route Detail Fit
+
+    /// Frames the route-detail "boarding scene" in the same spirit as Transit:
+    /// nearby selected-direction corridor, boarding stop, and walk from the
+    /// user's reference point, without zooming out to the whole route.
+    static func fitRouteDetailScene(
+        user userCoord: CLLocationCoordinate2D?,
+        stop stopCoord: CLLocationCoordinate2D,
+        routePoints: [CLLocationCoordinate2D],
+        walkingPoints: [CLLocationCoordinate2D],
+        is3D: Bool
+    ) -> TrackCameraPosition {
+        let localRoutePoints = nearbyCoordinates(routePoints, to: stopCoord, maxMeters: 2_400)
+        let localWalkingPoints = nearbyCoordinates(walkingPoints, to: stopCoord, maxMeters: 1_800)
+
+        var scenePoints: [CLLocationCoordinate2D] = [stopCoord]
+        scenePoints.append(contentsOf: localRoutePoints)
+        scenePoints.append(contentsOf: localWalkingPoints)
+        if let userCoord {
+            scenePoints.append(userCoord)
+        }
+
+        guard let geometry = boundsGeometry(for: scenePoints) else {
+            return center(on: stopCoord, distance: 1600, is3D: false)
+        }
+
+        let maxSpanMeters = max(geometry.latSpanMeters, geometry.lonSpanMeters)
+        let distance = max(1000, min(maxSpanMeters * 2.75, 5600))
+
+        var center = geometry.center
+        let routeFocusPoints = localRoutePoints.isEmpty ? [stopCoord] : localRoutePoints + [stopCoord]
+        if let routeFocus = averageCoordinate(routeFocusPoints) {
+            // Keep the active route visually dominant even when the walk is angled
+            // away from it. Bottom sheet compensation is handled by contentInset.
+            center = interpolate(from: center, to: routeFocus, fraction: 0.18)
+        }
+        center = interpolate(from: center, to: stopCoord, fraction: 0.08)
+
+        return .camera(TrackCamera(
+            centerCoordinate: center,
+            distance: distance,
+            heading: 0,
+            pitch: is3D ? 60 : 0
+        ))
+    }
+
+    private static func nearbyCoordinates(
+        _ coordinates: [CLLocationCoordinate2D],
+        to anchor: CLLocationCoordinate2D,
+        maxMeters: Double
+    ) -> [CLLocationCoordinate2D] {
+        coordinates.filter { coordinate in
+            guard coordinate.latitude.isFinite, coordinate.longitude.isFinite else { return false }
+            return CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                .distance(from: CLLocation(latitude: anchor.latitude, longitude: anchor.longitude))
+                <= maxMeters
+        }
+    }
+
+    private struct BoundsGeometry {
+        let center: CLLocationCoordinate2D
+        let latSpanMeters: Double
+        let lonSpanMeters: Double
+    }
+
+    private static func boundsGeometry(
+        for coordinates: [CLLocationCoordinate2D]
+    ) -> BoundsGeometry? {
+        let valid = coordinates.filter { $0.latitude.isFinite && $0.longitude.isFinite }
+        guard let first = valid.first else { return nil }
+
+        var minLat = first.latitude
+        var maxLat = first.latitude
+        var minLon = first.longitude
+        var maxLon = first.longitude
+
+        for coordinate in valid.dropFirst() {
+            minLat = min(minLat, coordinate.latitude)
+            maxLat = max(maxLat, coordinate.latitude)
+            minLon = min(minLon, coordinate.longitude)
+            maxLon = max(maxLon, coordinate.longitude)
+        }
+
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+        let latSpanMeters = (maxLat - minLat) * 111_000
+        let lonSpanMeters = (maxLon - minLon) * 111_000 * cos(center.latitude * .pi / 180)
+
+        return BoundsGeometry(
+            center: center,
+            latSpanMeters: latSpanMeters,
+            lonSpanMeters: lonSpanMeters
+        )
+    }
+
+    private static func averageCoordinate(
+        _ coordinates: [CLLocationCoordinate2D]
+    ) -> CLLocationCoordinate2D? {
+        let valid = coordinates.filter { $0.latitude.isFinite && $0.longitude.isFinite }
+        guard !valid.isEmpty else { return nil }
+
+        let sums = valid.reduce((lat: 0.0, lon: 0.0)) { partial, coordinate in
+            (partial.lat + coordinate.latitude, partial.lon + coordinate.longitude)
+        }
+        let count = Double(valid.count)
+        return CLLocationCoordinate2D(
+            latitude: sums.lat / count,
+            longitude: sums.lon / count
+        )
+    }
+
+    private static func interpolate(
+        from start: CLLocationCoordinate2D,
+        to end: CLLocationCoordinate2D,
+        fraction: Double
+    ) -> CLLocationCoordinate2D {
+        let clamped = max(0, min(1, fraction))
+        return CLLocationCoordinate2D(
+            latitude: start.latitude + (end.latitude - start.latitude) * clamped,
+            longitude: start.longitude + (end.longitude - start.longitude) * clamped
+        )
+    }
 }

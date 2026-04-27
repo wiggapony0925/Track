@@ -215,8 +215,18 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
 /// Arrivals for a single direction within a grouped route.
 struct DirectionArrivalsResponse: Codable, Identifiable, Equatable {
     /// Stable identity that handles routes with many directions sharing similar names.
-    /// Falls back to just `direction` when `directionLabel` is nil (backward compat).
-    var id: String { "\(direction)_\(directionLabel ?? "")" }
+    /// Includes backend direction/branch metadata when present so branch tabs that
+    /// share a rendered label don't collide in SwiftUI `ForEach`.
+    var id: String {
+        [direction, directionLabel, directionId, branchId]
+            .compactMap { value in
+                guard let value,
+                      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                else { return nil }
+                return value
+            }
+            .joined(separator: "_")
+    }
 
     let direction: String
     let directionLabel: String?

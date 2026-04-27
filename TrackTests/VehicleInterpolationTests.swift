@@ -677,9 +677,9 @@ struct ArrivalIdStabilityTests {
         #expect(a.id.contains("1709500000"))
     }
 
-    @Test func idFallsBackToMinutesAwayAsLastResort() {
+    @Test func idFallsBackToDirectionAndDestinationAsLastResort() {
         let a = makeArrival(minutesAway: 7, tripId: nil, vehicleId: nil, arrivalTs: nil)
-        #expect(a.id.contains("7"))
+        #expect(a.id == "A-34 St-dir:Northbound-dst:Uptown")
     }
 
     @Test func idIncludesRouteAndStop() {
@@ -1181,9 +1181,9 @@ struct EdgeCaseTests {
             tripId: nil,
             stopId: nil
         )
-        // Should still produce an ID (fallback to minutesAway)
+        // Should still produce a stable ID without using volatile countdown minutes.
         #expect(!a.id.isEmpty)
-        #expect(a.id == "X-Mystery-99")
+        #expect(a.id == "X-Mystery-dir:N-dst:")
     }
 
     @Test func trainVehicleMinutesAwayComputedCorrectly() {

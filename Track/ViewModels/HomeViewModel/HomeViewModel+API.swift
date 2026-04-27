@@ -1008,11 +1008,13 @@ extension HomeViewModel {
     /// while a route detail sheet is open. Only updates the walking
     /// polyline — the camera re-zooms only if `nearestStopCoordinate`
     /// actually changes (SwiftUI .onChange handles that automatically).
-    func refreshWalkingState(userLocation: CLLocation) async {
+    func refreshWalkingState(userLocation: CLLocation?) async {
         guard selectedRouteId != nil else { return }
         
         // Keep lastKnownUserLocation fresh so referenceLocation resolves correctly
-        lastKnownUserLocation = userLocation
+        if let userLocation {
+            lastKnownUserLocation = userLocation
+        }
         
         // When the user manually tapped a stop, keep that stop as the
         // walking-route destination — only update the "from" leg so the
@@ -1027,7 +1029,9 @@ extension HomeViewModel {
         // When a drag-search pin is active, walk from the pin — not GPS.
         if let stopCoord = nearestStopCoordinate {
             let origin = effectiveLocation(userLocation: userLocation)?.coordinate
-                         ?? userLocation.coordinate
+                ?? userLocation?.coordinate
+                ?? referenceLocation?.coordinate
+            guard let origin else { return }
             await fetchWalkingRoute(from: origin, to: stopCoord)
         }
     }
@@ -1036,7 +1040,8 @@ extension HomeViewModel {
         let refLocation = effectiveLocation(userLocation: userLocation)
         let dirStops = routeShape?.stopsForDirection(
             index: selectedDirectionIndex,
-            name: selectedDirectionName
+            name: selectedDirectionName,
+            fallbackToCombined: false
         ) ?? []
 
         guard !dirStops.isEmpty, let userLoc = refLocation else {

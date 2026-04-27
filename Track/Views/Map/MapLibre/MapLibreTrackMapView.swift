@@ -153,6 +153,8 @@ struct MapLibreTrackMapView: View {
     // MARK: - Body
 
     var body: some View {
+        let isSelectedBusRoute = viewModel.selectedGroupedRoute?.isBus == true
+
         ZStack {
             // Base map (MapLibre GL with OSM tiles)
             MapLibreMapView(
@@ -165,10 +167,13 @@ struct MapLibreTrackMapView: View {
                 stations: viewModel.consolidatedStations,
                 stationResnapGeneration: viewModel.mapSystem.stationResnapGeneration,
                 routePolylines: viewModel.cachedRoutePolylines,
-                inactivePolylines: viewModel.cachedInactivePolylines,
+                routeStops: _cachedVisibleStops,
+                selectedRouteStopID: viewModel.selectedStopId,
+                inactivePolylines: [],
                 routeColor: UIColor(selectedRouteColor),
-                isBusRoute: viewModel.selectedGroupedRoute?.isBus == true,
+                isBusRoute: isSelectedBusRoute,
                 directionalSplit: viewModel.directionalSplit,
+                locksCameraToFlatNorthUp: viewModel.routeShape != nil,
                 walkingRouteCoords: cachedWalkingCoords,
                 busVehicles: viewModel.filteredBusVehicles,
                 trainVehicles: viewModel.filteredTrainVehicles,
@@ -199,6 +204,7 @@ struct MapLibreTrackMapView: View {
                     }
                 },
                 onBusStopTap: onBusStopTap,
+                onRouteStopTap: handleStopTap,
                 sheetHeightObserver: sheetHeightObserver
             )
             .equatable() // Bypass deep structural array equality check
@@ -207,6 +213,10 @@ struct MapLibreTrackMapView: View {
             overlayStack
         }
         .onChange(of: currentMapDistance) { _, _ in refreshViewportCacheIfNeeded() }
+        .onChange(of: currentMapCenter?.latitude) { _, _ in refreshViewportCacheIfNeeded() }
+        .onChange(of: currentMapCenter?.longitude) { _, _ in refreshViewportCacheIfNeeded() }
+        .onChange(of: viewModel.selectedDirectionIndex) { _, _ in forceRefreshStopCache() }
+        .onChange(of: viewModel.routeShape?.routeId) { _, _ in forceRefreshStopCache() }
         .onChange(of: viewModel.selectedStopId) { _, _ in forceRefreshStopCache() }
         .onChange(of: viewModel.walkingRoute?.polyline.pointCount) { _, _ in
             cachedWalkingCoords = Self.decodeWalkingRoute(viewModel.walkingRoute)
@@ -221,19 +231,6 @@ struct MapLibreTrackMapView: View {
 
     @ViewBuilder
     private var overlayStack: some View {
-        // Route stops (when a route is selected)
-        if viewModel.routeShape != nil {
-            MapLibreRouteStopOverlay(
-                mapView: mapViewRef,
-                stops: _cachedVisibleStops,
-                isBusRoute: viewModel.selectedGroupedRoute?.isBus == true,
-                selectedStopId: viewModel.selectedStopId,
-                routeColor: selectedRouteColor,
-                onStopTap: handleStopTap,
-                cameraChangeToken: cameraChangeToken
-            )
-        }
-
         if viewModel.routeShape == nil,
            showStations,
            let onSystemStationTap
@@ -395,20 +392,50 @@ struct MapLibreTrackMapView: View {
     ) -> [DisplayedRouteStop] {
         guard let shape = viewModel.routeShape else { return [] }
         let allStops = shape.stopsForDirection(
-            index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
-        let directionPolylines = shape.polylinesForDirection(
-            index: viewModel.selectedDirectionIndex, name: viewModel.selectedDirectionName)
-        let latSpan = (distance / 111_000) * 1.5
-        let lonSpan = (distance / (111_000 * cos(center.latitude * .pi / 180))) * 1.5
-        let visibleStops = allStops.filter { stop in
-            abs(stop.lat - center.latitude) <= latSpan
-                && abs(stop.lon - center.longitude) <= lonSpan
-        }
+            index: viewModel.selectedDirectionIndex,
+            name: viewModel.selectedDirectionName,
+            shapeDirectionId: viewModel.selectedShapeDirectionId,
+            fallbackToCombined: false
+        )
+        let rawDirectionPolylines = shape.polylinesForDirection(
+            index: viewModel.selectedDirectionIndex,
+            name: viewModel.selectedDirectionName,
+            shapeDirectionId: viewModel.selectedShapeDirectionId,
+            fallbackToCombined: false
+        )
+        let directionPolylines = HomeViewModel.filterPolylinesToDirectionStops(
+            rawDirectionPolylines,
+            stops: allStops,
+            isBus: viewModel.selectedGroupedRoute?.isBus == true
+        )
+        let visibleStops = allStops
 
         // Determine which stops are "behind" (already passed by the bus)
         // by finding the nearest stop's position in the ordered stop list.
         let behindStopIds: Set<String>
-        if let nearestCoord = viewModel.nearestStopCoordinate {
+        let splitStopIndex: Int? = {
+            if let selectedStopId = viewModel.selectedStopId, !selectedStopId.isEmpty {
+                let normalizedSelected = normalizeStopId(selectedStopId)
+                if let selectedIndex = allStops.firstIndex(where: {
+                    $0.id == selectedStopId || normalizeStopId($0.id) == normalizedSelected
+                }) {
+                    if let nearestCoord = viewModel.nearestStopCoordinate {
+                        let selected = allStops[selectedIndex]
+                        let selectedLoc = CLLocation(latitude: selected.lat, longitude: selected.lon)
+                        let nearestLoc = CLLocation(
+                            latitude: nearestCoord.latitude,
+                            longitude: nearestCoord.longitude
+                        )
+                        if selectedLoc.distance(from: nearestLoc) <= 45 {
+                            return selectedIndex
+                        }
+                    } else {
+                        return selectedIndex
+                    }
+                }
+            }
+
+            guard let nearestCoord = viewModel.nearestStopCoordinate else { return nil }
             let nearestLoc = CLLocation(
                 latitude: nearestCoord.latitude,
                 longitude: nearestCoord.longitude
@@ -423,8 +450,12 @@ struct MapLibreTrackMapView: View {
                 ).distance(from: nearestLoc)
                 if d < bestDist { bestDist = d; bestIdx = i }
             }
-            // All stops before the nearest stop index are "behind"
-            behindStopIds = Set(allStops.prefix(bestIdx).map(\.id))
+            return bestIdx
+        }()
+
+        if let splitStopIndex {
+            // All stops before the selected/nearest stop index are "behind".
+            behindStopIds = Set(allStops.prefix(splitStopIndex).map(\.id))
         } else {
             behindStopIds = []
         }

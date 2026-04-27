@@ -527,6 +527,7 @@ def _evict_cache(
 # Route-shape cache: mostly-static data, long-lived (TTLs from cache_config)
 _route_shape_cache: dict[str, _TTLCacheEntry] = {}
 _route_shape_inflight: dict[str, asyncio.Task[RouteShape]] = {}
+_BUS_ROUTE_SHAPE_SOURCE_VERSION = "open-data-v3"
 
 _BUS_STATIC_GTFS_ROOT = Path(__file__).resolve().parent.parent / "data" / "bus"
 _static_route_shape_index: dict[str, RouteShape] | None = None
@@ -537,6 +538,77 @@ def _route_short_name(route_id: str) -> str:
     if "_" in rid:
         rid = rid.split("_", 1)[1]
     return rid.strip()
+
+
+def _open_data_route_candidates(route_id: str) -> list[str]:
+    """Return likely NYS Open Data route keys for a caller/OBA route id."""
+    short = _route_short_name(route_id)
+    if not short:
+        return []
+
+    candidates: list[str] = []
+    for candidate in (
+        short,
+        normalize_bus_short_name(short),
+        short.replace("-SBS", "+").replace("+SBS", "+"),
+        short.replace("+", "-SBS"),
+    ):
+        cleaned = candidate.strip()
+        if cleaned and cleaned not in candidates:
+            candidates.append(cleaned)
+    return candidates
+
+
+async def _get_open_data_route_shape(route_id: str) -> RouteShape | None:
+    """Build the preferred route-detail shape from current MTA bus geometry.
+
+    The main bus map uses the NYS/MTA Current Bus Routes dataset. Route detail
+    should use that same street-level geometry instead of OBA's often-combined
+    per-route polylines, then attach ordered stops from the matching open-data
+    stop index for each direction.
+    """
+    try:
+        from app.services.mapping.bus.routes import get_bus_open_data_shapes
+        from app.services.mapping.bus.stops import get_bus_route_stops
+
+        shape_index = await get_bus_open_data_shapes()
+        source_shape: RouteShape | None = None
+        for candidate in _open_data_route_candidates(route_id):
+            source_shape = shape_index.get(candidate)
+            if source_shape is not None:
+                break
+
+        if source_shape is None or not source_shape.polylines:
+            return None
+
+        enriched_directions: list[DirectionShape] = []
+        combined_stops: list[BusStop] = []
+        seen_stops: set[str] = set()
+
+        for direction in source_shape.directions:
+            stops = await get_bus_route_stops(
+                source_shape.route_id,
+                direction.direction_id,
+            )
+            enriched_directions.append(direction.model_copy(update={"stops": stops}))
+            for stop in stops:
+                if stop.id in seen_stops:
+                    continue
+                combined_stops.append(stop)
+                seen_stops.add(stop.id)
+
+        return source_shape.model_copy(
+            update={
+                "stops": combined_stops,
+                "directions": enriched_directions,
+            }
+        )
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[BUS_SHAPE] Open-data shape unavailable for {route_id}: {exc}",
+            tag="BUS",
+        )
+        return None
 
 
 def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
@@ -2245,7 +2317,7 @@ async def get_route_shape(route_id: str) -> RouteShape:
             return RouteShape(route_id=canonical_id, polylines=[], stops=[])
         return RouteShape.model_validate(payload)
 
-    cache_key = canonical_id
+    cache_key = f"{_BUS_ROUTE_SHAPE_SOURCE_VERSION}:{canonical_id}"
     cached, cache_state = _cache_get(
         _route_shape_cache,
         cache_key,
@@ -2348,6 +2420,16 @@ async def get_route_shape(route_id: str) -> RouteShape:
 
 async def _fetch_route_shape_uncached(canonical_id: str) -> RouteShape:
     """Uncached route-shape fetch with retry/fallback behavior."""
+    preferred_shape = await _get_open_data_route_shape(canonical_id)
+    if preferred_shape is not None:
+        TrackLogger.bus(
+            f"Shape for {canonical_id}: using current bus routes geometry "
+            f"({len(preferred_shape.polylines)} polylines, "
+            f"{len(preferred_shape.stops)} stops, "
+            f"{len(preferred_shape.directions)} directions)"
+        )
+        return preferred_shape
+
     settings = get_settings()
 
     max_retries = settings.app_settings.http_max_retries

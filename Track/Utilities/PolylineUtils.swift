@@ -358,6 +358,76 @@ nonisolated func mergeAdjacentPolylines(
     return chains.filter { $0.count >= 2 }
 }
 
+/// Joins already direction-ordered route fragments without reversing any fragment.
+///
+/// Bus route shapes can include one-way terminal loops and short variants where
+/// reversing a fragment to make endpoints meet creates a believable but wrong
+/// path. Use this after fragments have already been filtered/clipped by stop
+/// order so the renderer only stitches true neighbors.
+nonisolated func mergeOrderedPolylines(
+    _ segments: [[CLLocationCoordinate2D]],
+    gapThreshold: Double = 0.002
+) -> [[CLLocationCoordinate2D]] {
+    let valid = segments.filter { $0.count >= 2 }
+    guard valid.count > 1 else { return valid }
+
+    let threshSq = gapThreshold * gapThreshold
+
+    func distSq(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+        let dx = a.longitude - b.longitude
+        let dy = a.latitude - b.latitude
+        return dx * dx + dy * dy
+    }
+
+    var chains: [[CLLocationCoordinate2D]] = []
+    for segment in valid {
+        guard let segFirst = segment.first, let segLast = segment.last else { continue }
+
+        if let index = chains.firstIndex(where: { chain in
+            guard let last = chain.last else { return false }
+            return distSq(last, segFirst) <= threshSq
+        }) {
+            chains[index].append(contentsOf: segment.dropFirst())
+        } else if let index = chains.firstIndex(where: { chain in
+            guard let first = chain.first else { return false }
+            return distSq(segLast, first) <= threshSq
+        }) {
+            chains[index] = segment + chains[index].dropFirst()
+        } else {
+            chains.append(segment)
+        }
+    }
+
+    var didMerge = true
+    while didMerge {
+        didMerge = false
+        outer: for i in 0..<chains.count {
+            for j in (i + 1)..<chains.count {
+                guard let iLast = chains[i].last,
+                      let iFirst = chains[i].first,
+                      let jLast = chains[j].last,
+                      let jFirst = chains[j].first
+                else { continue }
+
+                if distSq(iLast, jFirst) <= threshSq {
+                    chains[i].append(contentsOf: chains[j].dropFirst())
+                    chains.remove(at: j)
+                    didMerge = true
+                    break outer
+                }
+                if distSq(jLast, iFirst) <= threshSq {
+                    chains[i] = chains[j] + chains[i].dropFirst()
+                    chains.remove(at: j)
+                    didMerge = true
+                    break outer
+                }
+            }
+        }
+    }
+
+    return chains.filter { $0.count >= 2 }
+}
+
 // MARK: - Train Polyline Unification (Branch-Extracting)
 
 /// Unifies train polyline segments by keeping ONE trunk polyline and

@@ -754,24 +754,24 @@ struct HomeView: View {
         // called here, causing the walking polyline to remain stale
         // until the user left and returned to the app.
         viewModel.isStopManuallySelected = false
-        if let loc = locationManager.currentLocation {
-            Task {
+        Task { @MainActor in
+            if let loc = locationManager.currentLocation {
                 await viewModel.refreshWalkingState(userLocation: loc)
+            } else {
+                await viewModel.refreshWalkingState(userLocation: nil)
             }
-        } else {
-            viewModel.updateNearestStop(userLocation: nil)
-        }
-        
-        if let fitCamera = viewModel.cameraPositionFittingRoute(
-            userLocation: locationManager.currentLocation,
-            is3D: false
-        ) {
-            CameraHoverEngine.commit(
-                fitCamera,
-                animation: HoverAnimations.fly,
-                to: $cameraPosition,
-                source: .system
-            )
+
+            if let fitCamera = viewModel.cameraPositionFittingRoute(
+                userLocation: locationManager.currentLocation,
+                is3D: false
+            ) {
+                CameraHoverEngine.commit(
+                    fitCamera,
+                    animation: HoverAnimations.fly,
+                    to: $cameraPosition,
+                    source: .system
+                )
+            }
         }
     }
     
@@ -985,8 +985,9 @@ struct HomeView: View {
                 }
             },
             onFocusVehicle: { key in
-                // Mark that this focus came from a chip so handleTappedVehicle
-                // doesn't reopen the dashboard sheet while we are focusing a marker.
+                // Mark chip-originated selection so handleTappedVehicle does not
+                // reinterpret it as a free map tap and fly the route-detail map
+                // away from the boarding stop.
                 focusFromChip = true
 
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -997,29 +998,6 @@ struct HomeView: View {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         sheetDetent = SheetConstants.defaultDetent
                     }
-                }
-
-                // Use the "anywhere" lookup so a transient direction-filter
-                // race doesn't leave the camera frozen when the user taps a
-                // chip.  If the vehicle truly isn't in any index (e.g. it
-                // dropped from the feed mid-tap), we leave the camera put
-                // rather than fly to an unrelated location.
-                if let key,
-                   let coord = viewModel.coordinateForTappedVehicleAnywhere(key) {
-                    // Tilt the camera to 3D when locking onto a vehicle —
-                    // the perspective shift makes "this is the bus you're
-                    // tracking" instantly readable.  Transit-style flat pan
-                    // is preserved when the user later deselects.
-                    CameraHoverEngine.commit(
-                        MapCameraPresets.focusVehicle(at: coord, is3D: true),
-                        animation: HoverAnimations.fly,
-                        to: $cameraPosition,
-                        source: .user
-                    )
-                } else if let key {
-                    #if DEBUG
-                    print("[CHIP_FOCUS] ⚠️ no coordinate for vehicle key \(key) — camera unchanged")
-                    #endif
                 }
             },
             tappedVehicleId: viewModel.tappedVehicleId,
@@ -1052,6 +1030,21 @@ struct HomeView: View {
                 // coloring follows the stop the user tapped.
                 // nil = user deselected -> clear split (full-color polyline).
                 viewModel.nearestStopCoordinate = coord
+                if let coord {
+                    let stops = viewModel.routeShape?.stopsForDirection(
+                        index: viewModel.selectedDirectionIndex,
+                        name: viewModel.selectedDirectionName,
+                        shapeDirectionId: viewModel.selectedShapeDirectionId,
+                        fallbackToCombined: false
+                    ) ?? []
+                    let coordLoc = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+                    viewModel.selectedStopId = stops.min { lhs, rhs in
+                        CLLocation(latitude: lhs.lat, longitude: lhs.lon).distance(from: coordLoc)
+                            < CLLocation(latitude: rhs.lat, longitude: rhs.lon).distance(from: coordLoc)
+                    }?.id
+                } else {
+                    viewModel.selectedStopId = nil
+                }
 
                 // Track whether the user manually picked a stop so that
                 // GPS-driven refreshWalkingState doesn't overwrite it.
@@ -1071,11 +1064,14 @@ struct HomeView: View {
                             )
                         }
                     }
-                } else if let userLoc = locationManager.currentLocation {
+                } else {
                     // Deselected -> revert to auto-nearest stop and its walking route.
                     suppressWalkingRouteZoom = true
                     Task {
-                        await viewModel.refreshWalkingState(userLocation: userLoc)
+                        await viewModel.refreshWalkingState(
+                            userLocation: locationManager.currentLocation
+                                ?? viewModel.lastKnownUserLocation
+                        )
                     }
                 }
             },

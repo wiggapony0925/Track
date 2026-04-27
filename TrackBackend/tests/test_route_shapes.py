@@ -464,6 +464,35 @@ class TestBusRouteShapeEndpoint:
         data = response.json()
         assert data["polylines"] == []
 
+    @pytest.mark.asyncio
+    async def test_bus_shape_cache_key_uses_current_open_data_namespace(
+        self, monkeypatch
+    ):
+        """Route-shape cache must not reuse stale combined OBA geometry."""
+        from app.clients import bus_client
+
+        shared_cache_keys: list[str] = []
+
+        async def fake_shared_cache_get(kind, identifier, **_kwargs):
+            shared_cache_keys.append(identifier)
+            return None, None
+
+        async def fake_shared_cache_set(*_args, **_kwargs):
+            return None
+
+        async def fake_fetch_route_shape(canonical_id: str) -> RouteShape:
+            return RouteShape(route_id=canonical_id, polylines=["encodedPoly"], stops=[])
+
+        monkeypatch.setattr(bus_client, "_shared_cache_get", fake_shared_cache_get)
+        monkeypatch.setattr(bus_client, "_shared_cache_set", fake_shared_cache_set)
+        monkeypatch.setattr(
+            bus_client, "_fetch_route_shape_uncached", fake_fetch_route_shape
+        )
+
+        await bus_client.get_route_shape("MTA NYCT_M11")
+
+        assert shared_cache_keys == ["open-data-v3:MTA NYCT_M11"]
+
 
 # ===================================================================
 # CROSS-MODE: Tap pipeline dispatches to correct shape endpoint

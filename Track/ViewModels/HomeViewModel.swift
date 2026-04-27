@@ -815,6 +815,59 @@ final class HomeViewModel {
         return label.isEmpty ? base : "\(base)|\(label)"
     }
 
+    private func isGenericBusShapeHeadsign(_ headsign: String) -> Bool {
+        DirectionConstants.isFallbackDirection(headsign)
+    }
+
+    /// Scores how strongly an existing grouped direction belongs to a shape direction.
+    /// Bus direction text is often a destination ("Riverbank 145 St") while the
+    /// current MTA bus-shape feed labels geometry as "Northbound/Southbound".
+    /// Stop membership is therefore the most reliable bridge between arrivals
+    /// and the route-detail polyline.
+    private func stopMembershipScore(
+        shapeDirection: DirectionShapeResponse,
+        groupDirection: DirectionArrivalsResponse
+    ) -> Int {
+        let shapeStopIds = Set(shapeDirection.stops.map { normalizeStopId($0.id) })
+        guard !shapeStopIds.isEmpty else { return 0 }
+
+        var score = 0
+        for arrival in groupDirection.arrivals {
+            guard let stopId = arrival.stopId else { continue }
+            let weight = arrival.isPlaceholder ? 1 : 8
+            if shapeStopIds.contains(normalizeStopId(stopId)) {
+                score += weight
+            }
+        }
+        return score
+    }
+
+    private func stopMatchedDirectionIndex(
+        for shapeDirection: DirectionShapeResponse,
+        in directions: [DirectionArrivalsResponse],
+        excluding usedIndices: Set<Int>
+    ) -> Int? {
+        let scored = directions.indices
+            .filter { !usedIndices.contains($0) }
+            .map { idx in
+                (index: idx, score: stopMembershipScore(
+                    shapeDirection: shapeDirection,
+                    groupDirection: directions[idx]
+                ))
+            }
+            .filter { $0.score > 0 }
+            .sorted { lhs, rhs in
+                if lhs.score == rhs.score { return lhs.index < rhs.index }
+                return lhs.score > rhs.score
+            }
+
+        guard let best = scored.first else { return nil }
+        if scored.count > 1, scored[1].score == best.score {
+            return nil
+        }
+        return best.index
+    }
+
     /// Returns the remembered direction index for a grouped route, clamped to
     /// the group's current direction count.
     func preferredDirectionIndex(for group: GroupedNearbyTransitResponse) -> Int {
@@ -1008,6 +1061,14 @@ final class HomeViewModel {
             // teardown/rebuild cycles on MapKit's render thread.
             // Use the async path to avoid main-thread blocking.
             schedulePolylineRebuild()
+            if oldValue != selectedDirectionIndex,
+               selectedRouteId != nil,
+               !isStopManuallySelected {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    await self.refreshWalkingState(userLocation: self.lastKnownUserLocation)
+                }
+            }
         }
     }
     var selectedDirectionName: String? {
@@ -1016,6 +1077,15 @@ final class HomeViewModel {
               selectedDirectionIndex < group.directions.count
         else { return nil }
         return group.directions[selectedDirectionIndex].direction
+    }
+
+    var selectedShapeDirectionId: Int? {
+        guard selectedGroupedRoute?.isBus == true,
+              let group = selectedGroupedRoute,
+              group.directions.indices.contains(selectedDirectionIndex),
+              let rawId = group.directions[selectedDirectionIndex].directionId
+        else { return nil }
+        return Int(rawId)
     }
     var isRouteDetailPresented = false
 
@@ -1062,7 +1132,12 @@ final class HomeViewModel {
             }
         }
     }
-    var selectedStopId: String?
+    var selectedStopId: String? {
+        didSet {
+            guard oldValue != selectedStopId else { return }
+            rebuildDirectionalSplit()
+        }
+    }
 
     /// True when the user manually tapped a stop in the stops list.
     /// Prevents `refreshWalkingState` from overwriting the selection
@@ -1233,8 +1308,9 @@ final class HomeViewModel {
 
     /// Filename-safe key for a route ID (e.g. "MTA NYCT_B63" → "MTA_NYCT_B63").
     private nonisolated static func _shapeDiskKey(_ routeId: String) -> String {
-        routeId.replacingOccurrences(of: " ", with: "_")
-               .replacingOccurrences(of: "/", with: "_")
+        let safeRoute = routeId.replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "/", with: "_")
+        return "v3_\(safeRoute)"
     }
 
     /// Save a shape to disk (fire-and-forget, never blocks UI).
@@ -1353,7 +1429,8 @@ final class HomeViewModel {
         guard let shape = routeShape else { return [] }
         let dir = shape.matchedDirection(
             index: selectedDirectionIndex,
-            name: selectedDirectionName
+            name: selectedDirectionName,
+            shapeDirectionId: selectedShapeDirectionId
         )
         return Set(dir?.localOnlyStopIds ?? [])
     }
@@ -1363,15 +1440,384 @@ final class HomeViewModel {
     /// so the map never decodes encoded strings during render.
     private(set) var cachedRoutePolylines: [[CLLocationCoordinate2D]] = []
 
-    /// Pre-decoded polylines for all NON-selected directions.
-    /// Rendered at low opacity on the map so users can see branching routes,
-    /// short-turn variants, and alternate paths while knowing which direction
-    /// is active. Works for subway branches, bus short-turns, LIRR/MNR splits.
+    /// Reserved for non-selected route context. Route detail currently keeps
+    /// this empty so each direction tag owns exactly one visible route shape.
     private(set) var cachedInactivePolylines: [[CLLocationCoordinate2D]] = []
 
     /// Single combined polyline for vehicle interpolation (bus simulation / train positions).
     /// Invalidated and rebuilt alongside `cachedRoutePolylines`.
     private(set) var cachedInterpolationPolyline: [CLLocationCoordinate2D] = []
+
+    nonisolated static func filterPolylinesToDirectionStops(
+        _ polylines: [[CLLocationCoordinate2D]],
+        stops: [BusStop],
+        isBus: Bool
+    ) -> [[CLLocationCoordinate2D]] {
+        let valid = polylines.filter { $0.count >= 2 }
+        guard !valid.isEmpty else { return [] }
+
+        let filtered: [[CLLocationCoordinate2D]]
+        if valid.count > 1, !stops.isEmpty {
+            filtered = bestDirectionPolylines(valid, stops: stops, isBus: isBus)
+        } else {
+            filtered = valid
+        }
+
+        return clipPolylinesToDirectionStopSpan(filtered, stops: stops, isBus: isBus)
+    }
+
+    private nonisolated static func bestDirectionPolylines(
+        _ polylines: [[CLLocationCoordinate2D]],
+        stops: [BusStop],
+        isBus: Bool
+    ) -> [[CLLocationCoordinate2D]] {
+        let maxDistance: Double = isBus ? 130.0 : 170.0
+        let sampledStops = sampledDirectionStops(stops, maxCount: 96)
+
+        struct ScoredPolyline {
+            let index: Int
+            let polyline: [CLLocationCoordinate2D]
+            let matchedStopIndices: Set<Int>
+            let matchedStops: Int
+            let stopSpan: Int
+            let coverageDensity: Double
+            let lengthMeters: CLLocationDistance
+            let closeness: Double
+        }
+
+        let scored = polylines.enumerated().map { polylineIndex, polyline in
+            var matchedStopIndices = Set<Int>()
+            var closeness = 0.0
+            var lengthMeters = CLLocationDistance(0)
+            for i in 0..<(polyline.count - 1) {
+                lengthMeters += cameraDistance(from: polyline[i], to: polyline[i + 1])
+            }
+            for sampled in sampledStops {
+                let stop = sampled.stop
+                let coord = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
+                guard let snap = Self.snapPoint(coord, to: polyline) else {
+                    continue
+                }
+                let distance = snap.distance
+                if distance <= maxDistance {
+                    matchedStopIndices.insert(sampled.index)
+                    closeness += maxDistance - distance
+                }
+            }
+            let stopSpan: Int = {
+                guard let minIdx = matchedStopIndices.min(),
+                      let maxIdx = matchedStopIndices.max()
+                else { return 0 }
+                return max(1, maxIdx - minIdx + 1)
+            }()
+            let density = stopSpan > 0
+                ? Double(matchedStopIndices.count) / Double(stopSpan)
+                : 0
+            return ScoredPolyline(
+                index: polylineIndex,
+                polyline: polyline,
+                matchedStopIndices: matchedStopIndices,
+                matchedStops: matchedStopIndices.count,
+                stopSpan: stopSpan,
+                coverageDensity: density,
+                lengthMeters: lengthMeters,
+                closeness: closeness
+            )
+        }
+
+        guard let best = scored.max(by: { lhs, rhs in
+            if lhs.matchedStops == rhs.matchedStops {
+                return lhs.closeness < rhs.closeness
+            }
+            return lhs.matchedStops < rhs.matchedStops
+        }), best.matchedStops > 0 else {
+            return polylines
+        }
+
+        if isBus {
+            let sampledCount = max(sampledStops.count, 1)
+            let highCoverageThreshold = max(8, Int(Double(sampledCount) * 0.64))
+
+            let seed = scored.max { lhs, rhs in
+                if lhs.matchedStops == rhs.matchedStops {
+                    if lhs.coverageDensity == rhs.coverageDensity {
+                        return lhs.closeness < rhs.closeness
+                    }
+                    return lhs.coverageDensity < rhs.coverageDensity
+                }
+                return lhs.matchedStops < rhs.matchedStops
+            } ?? best
+
+            var selected = [seed]
+            let seedIsDominant =
+                seed.matchedStops >= highCoverageThreshold
+                && seed.coverageDensity >= 0.62
+            var coveredStopIndices = seed.matchedStopIndices
+            let remaining = scored
+                .filter { $0.index != seed.index && $0.matchedStops > 0 }
+                .sorted { lhs, rhs in
+                    let lhsNew = lhs.matchedStopIndices.subtracting(coveredStopIndices).count
+                    let rhsNew = rhs.matchedStopIndices.subtracting(coveredStopIndices).count
+                    if lhsNew == rhsNew {
+                        if lhs.coverageDensity == rhs.coverageDensity {
+                            if lhs.matchedStops == rhs.matchedStops {
+                                return lhs.closeness > rhs.closeness
+                            }
+                            return lhs.matchedStops > rhs.matchedStops
+                        }
+                        return lhs.coverageDensity > rhs.coverageDensity
+                    }
+                    return lhsNew > rhsNew
+                }
+
+            for candidate in remaining {
+                let newIndices = candidate.matchedStopIndices.subtracting(coveredStopIndices)
+                let newCoverage = newIndices.count
+                guard newCoverage > 0 else { continue }
+
+                let touchesTerminal =
+                    candidate.matchedStopIndices.contains(0)
+                    || candidate.matchedStopIndices.contains(stops.count - 1)
+                let isShortTerminalConnector =
+                    candidate.lengthMeters <= 1_900
+                    && candidate.coverageDensity >= 0.25
+                    && touchesTerminal
+                let isDenseFragment =
+                    candidate.coverageDensity >= 0.55
+                    || (candidate.matchedStops >= 5 && candidate.coverageDensity >= 0.40)
+
+                if seedIsDominant {
+                    guard isShortTerminalConnector && newCoverage >= 1 else { continue }
+                } else {
+                    guard isDenseFragment || isShortTerminalConnector else { continue }
+                    if !isShortTerminalConnector {
+                        guard newCoverage >= 2 else { continue }
+                    }
+                }
+
+                selected.append(candidate)
+                coveredStopIndices.formUnion(candidate.matchedStopIndices)
+            }
+
+            return selected
+                .sorted { lhs, rhs in
+                    let lhsMin = lhs.matchedStopIndices.min() ?? Int.max
+                    let rhsMin = rhs.matchedStopIndices.min() ?? Int.max
+                    if lhsMin == rhsMin {
+                        if lhs.coverageDensity == rhs.coverageDensity {
+                            return lhs.closeness > rhs.closeness
+                        }
+                        return lhs.coverageDensity > rhs.coverageDensity
+                    }
+                    return lhsMin < rhsMin
+                }
+                .map(\.polyline)
+        }
+
+        let minMatches = max(2, Int(Double(best.matchedStops) * 0.55))
+        let filtered = scored
+            .filter { $0.matchedStops >= minMatches }
+            .map(\.polyline)
+        return filtered.isEmpty ? [best.polyline] : filtered
+    }
+
+    private nonisolated static func sampledDirectionStops(
+        _ stops: [BusStop],
+        maxCount: Int
+    ) -> [(index: Int, stop: BusStop)] {
+        guard !stops.isEmpty else { return [] }
+        guard stops.count > 2 else {
+            return stops.indices.map { (index: $0, stop: stops[$0]) }
+        }
+
+        let safeMaxCount = max(2, maxCount)
+        let step = max(1, Int(ceil(Double(stops.count) / Double(safeMaxCount))))
+        var indices = Set<Int>()
+        indices.insert(0)
+        indices.insert(stops.count - 1)
+        for index in stride(from: 0, to: stops.count, by: step) {
+            indices.insert(index)
+        }
+
+        return indices.sorted().map { (index: $0, stop: stops[$0]) }
+    }
+
+    private struct DirectionPolylineSnap {
+        let coordinate: CLLocationCoordinate2D
+        let segmentIndex: Int
+        let segmentFraction: Double
+        let fractionAlongPolyline: Double
+        let distance: CLLocationDistance
+    }
+
+    private nonisolated static func clipPolylinesToDirectionStopSpan(
+        _ polylines: [[CLLocationCoordinate2D]],
+        stops: [BusStop],
+        isBus: Bool
+    ) -> [[CLLocationCoordinate2D]] {
+        guard stops.count >= 2 else { return polylines }
+        let maxEndpointDistance: CLLocationDistance = isBus ? 150.0 : 240.0
+
+        let clipped = polylines.compactMap { polyline in
+            clipPolylineToDirectionStopSpan(
+                polyline,
+                stops: stops,
+                maxEndpointDistance: maxEndpointDistance
+            )
+        }
+        return clipped.isEmpty ? polylines : clipped
+    }
+
+    private nonisolated static func clipPolylineToDirectionStopSpan(
+        _ polyline: [CLLocationCoordinate2D],
+        stops: [BusStop],
+        maxEndpointDistance: CLLocationDistance
+    ) -> [CLLocationCoordinate2D]? {
+        guard polyline.count >= 2, stops.count >= 2 else { return polyline }
+
+        var working = polyline
+        let sampledStops = sampledDirectionStops(stops, maxCount: 160)
+
+        func snappedSamples(
+            on line: [CLLocationCoordinate2D]
+        ) -> [(stopIndex: Int, snap: DirectionPolylineSnap)] {
+            sampledStops.compactMap { sampled in
+                let stop = sampled.stop
+                let coord = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
+                guard let snap = snapPoint(coord, to: line),
+                      snap.distance <= maxEndpointDistance
+                else { return nil }
+                return (sampled.index, snap)
+            }
+        }
+
+        var snappedStops = snappedSamples(on: working)
+        if snappedStops.count >= 2,
+           let firstByStop = snappedStops.min(by: { $0.stopIndex < $1.stopIndex }),
+           let lastByStop = snappedStops.max(by: { $0.stopIndex < $1.stopIndex }),
+           firstByStop.snap.fractionAlongPolyline > lastByStop.snap.fractionAlongPolyline {
+            working.reverse()
+            snappedStops = snappedSamples(on: working)
+        }
+
+        guard snappedStops.count >= 2,
+              let start = snappedStops.min(by: {
+                  $0.snap.fractionAlongPolyline < $1.snap.fractionAlongPolyline
+              }),
+              let end = snappedStops.max(by: {
+                  $0.snap.fractionAlongPolyline < $1.snap.fractionAlongPolyline
+              }),
+              end.snap.fractionAlongPolyline > start.snap.fractionAlongPolyline + 1e-6
+        else {
+            return working
+        }
+
+        let clipped = clippedPolyline(working, from: start.snap, to: end.snap)
+        return clipped.count >= 2 ? removeNearDuplicates(clipped) : working
+    }
+
+    private nonisolated static func clippedPolyline(
+        _ polyline: [CLLocationCoordinate2D],
+        from start: DirectionPolylineSnap,
+        to end: DirectionPolylineSnap
+    ) -> [CLLocationCoordinate2D] {
+        guard polyline.count >= 2 else { return polyline }
+
+        var result: [CLLocationCoordinate2D] = [start.coordinate]
+        let firstVertex = min(start.segmentIndex + 1, polyline.count - 1)
+        let lastVertex = max(0, min(end.segmentIndex, polyline.count - 1))
+        if firstVertex <= lastVertex {
+            result.append(contentsOf: polyline[firstVertex...lastVertex])
+        }
+        result.append(end.coordinate)
+        return result
+    }
+
+    private nonisolated static func snapPoint(
+        _ coordinate: CLLocationCoordinate2D,
+        to polyline: [CLLocationCoordinate2D]
+    ) -> DirectionPolylineSnap? {
+        guard polyline.count >= 2 else { return nil }
+
+        let source = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        var segmentLengths: [CLLocationDistance] = []
+        segmentLengths.reserveCapacity(polyline.count - 1)
+        var totalLength: CLLocationDistance = 0
+
+        for i in 0..<(polyline.count - 1) {
+            let length = CLLocation(
+                latitude: polyline[i].latitude,
+                longitude: polyline[i].longitude
+            ).distance(from: CLLocation(
+                latitude: polyline[i + 1].latitude,
+                longitude: polyline[i + 1].longitude
+            ))
+            segmentLengths.append(length)
+            totalLength += length
+        }
+
+        guard totalLength > 0 else { return nil }
+
+        var distanceBeforeSegment: CLLocationDistance = 0
+        var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+        var bestCoordinate = polyline[0]
+        var bestSegmentIndex = 0
+        var bestSegmentFraction = 0.0
+        var bestDistanceAlong = CLLocationDistance(0)
+
+        for i in 0..<(polyline.count - 1) {
+            let projected = projectPointOntoSegment(
+                point: coordinate,
+                a: polyline[i],
+                b: polyline[i + 1]
+            )
+            let projectedLocation = CLLocation(
+                latitude: projected.coordinate.latitude,
+                longitude: projected.coordinate.longitude
+            )
+            let distance = source.distance(from: projectedLocation)
+            if distance < bestDistance {
+                bestDistance = distance
+                bestCoordinate = projected.coordinate
+                bestSegmentIndex = i
+                bestSegmentFraction = projected.fraction
+                bestDistanceAlong =
+                    distanceBeforeSegment + segmentLengths[i] * projected.fraction
+            }
+            distanceBeforeSegment += segmentLengths[i]
+        }
+
+        return DirectionPolylineSnap(
+            coordinate: bestCoordinate,
+            segmentIndex: bestSegmentIndex,
+            segmentFraction: bestSegmentFraction,
+            fractionAlongPolyline: bestDistanceAlong / totalLength,
+            distance: bestDistance
+        )
+    }
+
+    private nonisolated static func projectPointOntoSegment(
+        point: CLLocationCoordinate2D,
+        a: CLLocationCoordinate2D,
+        b: CLLocationCoordinate2D
+    ) -> (coordinate: CLLocationCoordinate2D, fraction: Double) {
+        let dx = b.longitude - a.longitude
+        let dy = b.latitude - a.latitude
+        let lenSq = dx * dx + dy * dy
+        guard lenSq >= 1e-18 else { return (a, 0) }
+
+        let rawT =
+            ((point.longitude - a.longitude) * dx + (point.latitude - a.latitude) * dy) / lenSq
+        let t = min(max(rawT, 0), 1)
+
+        return (
+            CLLocationCoordinate2D(
+                latitude: a.latitude + t * dy,
+                longitude: a.longitude + t * dx
+            ),
+            t
+        )
+    }
 
     /// Schedules an async polyline rebuild on a background thread.
     /// Heavy decode → unify → smooth work runs off MainActor to avoid blocking
@@ -1396,6 +1842,7 @@ final class HomeViewModel {
         // work can run outside @MainActor.
         let dirIndex = selectedDirectionIndex
         let dirName = selectedDirectionName
+        let shapeDirectionId = selectedShapeDirectionId
         let isBus = selectedGroupedRoute?.isBus == true
         let shouldFilter = !shape.directions.isEmpty
 
@@ -1414,10 +1861,30 @@ final class HomeViewModel {
                     [CLLocationCoordinate2D]
                 ) in
 
-                // 1) Decode active-direction segments.
-                let activeRaw = shouldFilter
-                    ? shape.polylinesForDirection(index: dirIndex, name: dirName)
-                    : shape.decodedPolylines
+                // 1) Decode active-direction segments. Route detail must not
+                // fall back to the route-level combined shape, because bus
+                // route-level shapes often contain both travel directions.
+                let directionStops = shouldFilter
+                    ? shape.stopsForDirection(
+                        index: dirIndex,
+                        name: dirName,
+                        shapeDirectionId: shapeDirectionId,
+                        fallbackToCombined: false
+                    )
+                    : (isBus ? [] : shape.stops)
+                let activeCandidates = shouldFilter
+                    ? shape.polylinesForDirection(
+                        index: dirIndex,
+                        name: dirName,
+                        shapeDirectionId: shapeDirectionId,
+                        fallbackToCombined: false
+                    )
+                    : (isBus ? [] : shape.decodedPolylines)
+                let activeRaw = Self.filterPolylinesToDirectionStops(
+                    activeCandidates,
+                    stops: directionStops,
+                    isBus: isBus
+                )
 
                 // 2) Process polylines differently for bus vs train.
                 //
@@ -1441,7 +1908,7 @@ final class HomeViewModel {
                     // rounds what should be sharp 90° turns into sweeping curves that cut
                     // through city blocks.  The GTFS shape points are already at the right
                     // density for street-level rendering.
-                    let merged = mergeAdjacentPolylines(activeRaw)
+                    let merged = mergeOrderedPolylines(activeRaw)
                     routePolys = merged.filter { $0.count >= 2 }.map {
                         let cleaned = removeNearDuplicates($0)
                         return removeSpikes(removePolylineBacktracks(cleaned))
@@ -1470,7 +1937,7 @@ final class HomeViewModel {
 
                 // For interpolation we need the pre-smoothed unified segments.
                 let unified = isBus
-                    ? mergeAdjacentPolylines(activeRaw)
+                    ? mergeOrderedPolylines(activeRaw)
                     : {
                         let d = removeDuplicateSegments(activeRaw)
                         let m = mergeAdjacentPolylines(d)
@@ -1481,41 +1948,11 @@ final class HomeViewModel {
                         return m
                     }()
 
-                // 5) Build inactive polylines — subway/commuter only.
-                //    Bus routes run the same street in both directions; showing
-                //    the opposite-direction polyline dimmed is misleading noise
-                //    (the user selected a direction, the reverse path is not relevant).
-                //    For subway/LIRR/MNR, inactive branches give useful context
-                //    (e.g. A train Jamaica vs Rockaway branches).
-                var inactivePolys: [[CLLocationCoordinate2D]] = []
-                if !isBus && shouldFilter && shape.directions.count > 1 {
-                    let activeDir = shape.matchedDirection(index: dirIndex, name: dirName)
-                    let activePolylineSet = Set(activeDir?.polylines ?? [])
-                    var seenEncodedPolylines = activePolylineSet
-                    var inactive: [[CLLocationCoordinate2D]] = []
-                    for dir in shape.directions {
-                        if let active = activeDir, dir.directionId == active.directionId,
-                           dir.headsign == active.headsign { continue }
-                        for encodedPoly in dir.polylines {
-                            if seenEncodedPolylines.contains(encodedPoly) { continue }
-                            seenEncodedPolylines.insert(encodedPoly)
-                            let decoded = decodePolyline(encodedPoly)
-                            if decoded.count >= 2 { inactive.append(decoded) }
-                        }
-                    }
-                    // Inactive directions: merge + deduplicate but keep
-                    // separate per-direction lines (multiple visual lines OK).
-                    let mergedInactive = mergeAdjacentPolylines(inactive)
-                    let unifiedInactive = isBus
-                        ? mergedInactive
-                        : unifyTrainPolylines(mergedInactive)
-                    inactivePolys = unifiedInactive.filter { $0.count >= 2 }.map {
-                        let cleaned = removeNearDuplicates($0)
-                        let despiked = removeSpikes(removePolylineBacktracks(cleaned))
-                        let smoothed = smoothPolyline(despiked, segmentsPerCurve: isBus ? 6 : 8)
-                        return refineSharpBends(smoothed, angleThreshold: isBus ? 30.0 : 20.0)
-                    }
-                }
+                // 5) Route detail is direction-focused. Non-selected
+                // directions/branches stay hidden until the user taps their
+                // direction tag (bus reverse paths, A train alternate
+                // branches, commuter branch variants, etc.).
+                let inactivePolys: [[CLLocationCoordinate2D]] = []
 
                 // 6) Build interpolation polyline from raw (pre-smooth) unified segments.
                 //    Snap/interpolation doesn't need visual smoothing — using the raw
@@ -1536,6 +1973,8 @@ final class HomeViewModel {
             // Bounce results back to MainActor (we're already there since
             // the outer Task inherits @MainActor from the enclosing class).
             self.cachedRoutePolylines = result.0
+            // Route detail is direction-focused: non-selected branches stay
+            // hidden until their direction tag is selected.
             self.cachedInactivePolylines = result.1
             self.cachedInterpolationPolyline = result.2
             // Rebuild directional split now that polylines are available.
@@ -1553,74 +1992,115 @@ final class HomeViewModel {
     /// Rebuilds the cached directional split from current state.
     /// Called when `routeShape`, `nearestStopCoordinate`, or `selectedDirectionIndex` changes.
     ///
-    /// Strategy: find which polyline segment contains the point closest to the
-    /// nearest stop, split only that segment, and classify all other segments
-    /// as fully "ahead" or fully "behind" based on their order.
+    /// Strategy: resolve the selected/nearest stop for the active direction,
+    /// project that stop onto the selected route polyline, then split at that
+    /// exact projected coordinate so the dimmed segment starts underneath the
+    /// stop marker instead of at the nearest raw shape vertex.
     private func rebuildDirectionalSplit() {
-        guard let nearestCoord = nearestStopCoordinate,
-            !cachedRoutePolylines.isEmpty,
-            let shape = routeShape
+        guard !cachedRoutePolylines.isEmpty,
+              let shape = routeShape
         else {
             directionalSplit = nil
             return
         }
 
-        let segments = cachedRoutePolylines
-        let nearestLoc = CLLocation(
-            latitude: nearestCoord.latitude, longitude: nearestCoord.longitude)
-
-        // Find the segment and index within that segment closest to the nearest stop
-        var bestSegIdx = 0
-        var bestPtIdx = 0
-        var minDist: CLLocationDistance = .greatestFiniteMagnitude
-        for (segIdx, seg) in segments.enumerated() {
-            for (ptIdx, coord) in seg.enumerated() {
-                let d = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
-                    .distance(from: nearestLoc)
-                if d < minDist {
-                    minDist = d
-                    bestSegIdx = segIdx
-                    bestPtIdx = ptIdx
-                }
-            }
-        }
-
         let directionStops = shape.stopsForDirection(
             index: selectedDirectionIndex,
-            name: selectedDirectionName)
+            name: selectedDirectionName,
+            shapeDirectionId: selectedShapeDirectionId,
+            fallbackToCombined: false)
         guard !directionStops.isEmpty else {
             directionalSplit = nil
             return
         }
 
-        // Determine polyline flow direction relative to stop ordering.
-        // Use the first segment's start/end vs. the first stop.
-        let firstStopLoc = CLLocation(
-            latitude: directionStops[0].lat,
-            longitude: directionStops[0].lon)
-        let firstPoly = segments[0]
-        guard let firstPolyStart = firstPoly.first,
-              let lastSeg = segments.last,
-              let lastPolyEnd = lastSeg.last
-        else {
+        let splitStop: BusStop? = {
+            if let selectedStopId, !selectedStopId.isEmpty {
+                let normalizedSelected = normalizeStopId(selectedStopId)
+                let selected = directionStops.first(where: { $0.id == selectedStopId })
+                    ?? directionStops.first(where: {
+                        normalizeStopId($0.id) == normalizedSelected
+                    })
+                if let selected {
+                    if let nearestCoord = nearestStopCoordinate {
+                        let selectedLoc = CLLocation(
+                            latitude: selected.lat,
+                            longitude: selected.lon
+                        )
+                        let nearestLoc = CLLocation(
+                            latitude: nearestCoord.latitude,
+                            longitude: nearestCoord.longitude
+                        )
+                        if selectedLoc.distance(from: nearestLoc) <= 45 {
+                            return selected
+                        }
+                    } else {
+                        return selected
+                    }
+                }
+            }
+
+            guard let nearestCoord = nearestStopCoordinate else { return nil }
+            let nearestLoc = CLLocation(
+                latitude: nearestCoord.latitude,
+                longitude: nearestCoord.longitude
+            )
+            return directionStops.min { lhs, rhs in
+                CLLocation(latitude: lhs.lat, longitude: lhs.lon).distance(from: nearestLoc)
+                    < CLLocation(latitude: rhs.lat, longitude: rhs.lon).distance(from: nearestLoc)
+            }
+        }()
+
+        guard let splitStop else {
             directionalSplit = nil
             return
         }
-        let firstPolyLoc = CLLocation(
-            latitude: firstPolyStart.latitude,
-            longitude: firstPolyStart.longitude)
-        let lastPolyLoc = CLLocation(
-            latitude: lastPolyEnd.latitude,
-            longitude: lastPolyEnd.longitude)
-        let polyFlowsWithStops =
-            firstPolyLoc.distance(from: firstStopLoc)
-            <= lastPolyLoc.distance(from: firstStopLoc)
+
+        let splitCoord = CLLocationCoordinate2D(
+            latitude: splitStop.lat,
+            longitude: splitStop.lon
+        )
+        let segments = cachedRoutePolylines
+
+        var bestSegIdx = 0
+        var bestSnap: DirectionPolylineSnap?
+        var minDist: CLLocationDistance = .greatestFiniteMagnitude
+        for (segIdx, seg) in segments.enumerated() {
+            guard let snap = Self.snapPoint(splitCoord, to: seg) else { continue }
+            if snap.distance < minDist {
+                minDist = snap.distance
+                bestSegIdx = segIdx
+                bestSnap = snap
+            }
+        }
+
+        guard let splitSnap = bestSnap else {
+            directionalSplit = nil
+            return
+        }
 
         // Split the best segment at the split point
         let splitSeg = segments[bestSegIdx]
-        let clampedIdx = max(0, min(bestPtIdx, splitSeg.count - 1))
-        let beforePart = Array(splitSeg[0...clampedIdx])
-        let afterPart = Array(splitSeg[clampedIdx...])
+        let splitParts = Self.splitPolyline(splitSeg, at: splitSnap)
+        let beforePart = splitParts.before
+        let afterPart = splitParts.after
+
+        // The visual rule is rider-centric: stops before the walking-target
+        // stop are behind/faded, and stops after it are ahead/full color.
+        // Do not infer limited/skip-stop behavior from the line opacity;
+        // skipped stops are already dimmed as stop dots.  Most route-detail
+        // polylines are ordered with the stop list, but encoded bus geometry
+        // can occasionally be reversed, so use adjacent stop projections near
+        // the split as a local orientation check instead of a broad route-end
+        // heuristic that loops/branches can confuse.
+        let splitStopIndex = Self.indexOfStop(splitStop, in: directionStops) ?? 0
+        let polylineFlowsWithStops = Self.polylineFlowsWithStopOrder(
+            splitSegment: splitSeg,
+            splitSnap: splitSnap,
+            splitStopIndex: splitStopIndex,
+            directionStops: directionStops,
+            maxSnapDistance: selectedGroupedRoute?.isBus == true ? 150 : 240
+        ) ?? true
 
         // Classify: segments before bestSegIdx are fully "before",
         // the split segment is divided, segments after are fully "after".
@@ -1636,10 +2116,92 @@ final class HomeViewModel {
             if segments[i].count >= 2 { afterSegments.append(segments[i]) }
         }
 
-        if polyFlowsWithStops {
+        if polylineFlowsWithStops {
             directionalSplit = (ahead: afterSegments, behind: beforeSegments)
         } else {
             directionalSplit = (ahead: beforeSegments, behind: afterSegments)
+        }
+    }
+
+    private nonisolated static func indexOfStop(
+        _ stop: BusStop,
+        in stops: [BusStop]
+    ) -> Int? {
+        let normalized = normalizeStopId(stop.id)
+        return stops.firstIndex {
+            $0.id == stop.id || normalizeStopId($0.id) == normalized
+        }
+    }
+
+    private nonisolated static func polylineFlowsWithStopOrder(
+        splitSegment: [CLLocationCoordinate2D],
+        splitSnap: DirectionPolylineSnap,
+        splitStopIndex: Int,
+        directionStops: [BusStop],
+        maxSnapDistance: CLLocationDistance
+    ) -> Bool? {
+        guard splitSegment.count >= 2 else { return nil }
+
+        func stopCoordinate(at index: Int) -> CLLocationCoordinate2D? {
+            guard directionStops.indices.contains(index) else { return nil }
+            let stop = directionStops[index]
+            return CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
+        }
+
+        if let nextCoordinate = stopCoordinate(at: splitStopIndex + 1),
+           let nextSnap = snapPoint(nextCoordinate, to: splitSegment),
+           nextSnap.distance <= maxSnapDistance {
+            return nextSnap.fractionAlongPolyline > splitSnap.fractionAlongPolyline
+        }
+
+        if let previousCoordinate = stopCoordinate(at: splitStopIndex - 1),
+           let previousSnap = snapPoint(previousCoordinate, to: splitSegment),
+           previousSnap.distance <= maxSnapDistance {
+            return previousSnap.fractionAlongPolyline < splitSnap.fractionAlongPolyline
+        }
+
+        return nil
+    }
+
+    private nonisolated static func splitPolyline(
+        _ polyline: [CLLocationCoordinate2D],
+        at snap: DirectionPolylineSnap
+    ) -> (before: [CLLocationCoordinate2D], after: [CLLocationCoordinate2D]) {
+        guard polyline.count >= 2 else { return (polyline, []) }
+
+        let segmentIndex = max(0, min(snap.segmentIndex, polyline.count - 2))
+        let splitCoordinate = snap.coordinate
+
+        var before: [CLLocationCoordinate2D] = Array(polyline[0...segmentIndex])
+        appendIfDistinct(splitCoordinate, to: &before)
+
+        var after: [CLLocationCoordinate2D] = [splitCoordinate]
+        if segmentIndex + 1 < polyline.count {
+            for coord in polyline[(segmentIndex + 1)...] {
+                appendIfDistinct(coord, to: &after)
+            }
+        }
+
+        return (before, after)
+    }
+
+    private nonisolated static func appendIfDistinct(
+        _ coordinate: CLLocationCoordinate2D,
+        to coordinates: inout [CLLocationCoordinate2D]
+    ) {
+        guard let last = coordinates.last else {
+            coordinates.append(coordinate)
+            return
+        }
+        let distance = CLLocation(
+            latitude: last.latitude,
+            longitude: last.longitude
+        ).distance(from: CLLocation(
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude
+        ))
+        if distance > 0.25 {
+            coordinates.append(coordinate)
         }
     }
 
@@ -1694,7 +2256,8 @@ final class HomeViewModel {
         if let shape = routeShape {
             let matched = shape.matchedDirection(
                 index: selectedDirectionIndex,
-                name: selectedDirectionName)
+                name: selectedDirectionName,
+                shapeDirectionId: selectedShapeDirectionId)
             if let hs = matched?.headsign.uppercased(), !hs.isEmpty {
                 validDestinations.insert(hs)
             }
@@ -3155,7 +3718,12 @@ final class HomeViewModel {
         // may have reordered directions and updated `selectedDirectionIndex`.  The original
         let currentGroup = selectedGroupedRoute ?? group
         let refLocation = referenceLocation
-        let fallbackStops = routeShape?.stopsForDirection(index: selectedDirectionIndex) ?? []
+        let fallbackStops = routeShape?.stopsForDirection(
+            index: selectedDirectionIndex,
+            name: selectedDirectionName,
+            shapeDirectionId: selectedShapeDirectionId,
+            fallbackToCombined: false
+        ) ?? []
 
         var targetStopCoord: CLLocationCoordinate2D?
         var targetStopId: String?
@@ -3335,38 +3903,58 @@ final class HomeViewModel {
         var usedExistingIndices = Set<Int>()
 
         for shapeDir in shape.directions.sorted(by: { $0.directionId < $1.directionId }) {
-            let headsign = shapeDir.headsign.lowercased()
+            let rawHeadsign = shapeDir.headsign
+            let headsign =
+                group.isBus && isGenericBusShapeHeadsign(rawHeadsign)
+                ? ""
+                : rawHeadsign.lowercased()
 
             // Try to find a matching existing group direction
-            var matchedIndex: Int? = nil
-            for (idx, existingDir) in group.directions.enumerated()
-            where !usedExistingIndices.contains(idx) {
-                let existingLower = existingDir.direction.lowercased()
+            var matchedIndex: Int? = stopMatchedDirectionIndex(
+                for: shapeDir,
+                in: group.directions,
+                excluding: usedExistingIndices
+            )
 
-                let exactMatch = !headsign.isEmpty && existingLower == headsign
-                // Only allow loose substring matching when the existing direction
-                // key is long enough (>= 3 chars). Short compass codes like "n"/"s"
-                // false-match against nearly every headsign ("inwood-207 st"
-                // contains "s"), which causes both "N" and "S" to match the same
-                // shape direction.
-                let partialMatch =
-                    !headsign.isEmpty && existingLower.count >= 3
-                    && (existingLower.contains(headsign) || headsign.contains(existingLower))
-                let destMatch =
-                    !headsign.isEmpty
-                    && existingDir.arrivals.contains(where: { arrival in
-                        guard let dest = arrival.destination?.lowercased() else { return false }
-                        return dest.contains(headsign) || headsign.contains(dest)
-                    })
+            if matchedIndex == nil {
+                for (idx, existingDir) in group.directions.enumerated()
+                where !usedExistingIndices.contains(idx) {
+                    let existingLower = existingDir.direction.lowercased()
 
-                if exactMatch || partialMatch || destMatch {
-                    matchedIndex = idx
-                    break
+                    let exactMatch = !headsign.isEmpty && existingLower == headsign
+                    // Only allow loose substring matching when the existing direction
+                    // key is long enough (>= 3 chars). Short compass codes like "n"/"s"
+                    // false-match against nearly every headsign ("inwood-207 st"
+                    // contains "s"), which causes both "N" and "S" to match the same
+                    // shape direction.
+                    let partialMatch =
+                        !headsign.isEmpty && existingLower.count >= 3
+                        && (existingLower.contains(headsign) || headsign.contains(existingLower))
+                    let destMatch =
+                        !headsign.isEmpty
+                        && existingDir.arrivals.contains(where: { arrival in
+                            guard let dest = arrival.destination?.lowercased() else { return false }
+                            return dest.contains(headsign) || headsign.contains(dest)
+                        })
+
+                    if exactMatch || partialMatch || destMatch {
+                        matchedIndex = idx
+                        break
+                    }
                 }
             }
 
             if let idx = matchedIndex {
-                orderedDirections.append(group.directions[idx])
+                let existing = group.directions[idx]
+                orderedDirections.append(
+                    DirectionArrivalsResponse(
+                        direction: existing.direction,
+                        directionLabel: existing.directionLabel,
+                        directionId: group.isBus ? String(shapeDir.directionId) : existing.directionId,
+                        branchId: existing.branchId,
+                        arrivals: existing.arrivals
+                    )
+                )
                 usedExistingIndices.insert(idx)
             } else {
                 // No headsign/destination match found. Before creating a brand-new
@@ -3420,6 +4008,10 @@ final class HomeViewModel {
                             directionLabel: shapeDir.headsign.isEmpty
                                 ? existing.directionLabel
                                 : "→ \(shapeDir.headsign)",
+                            directionId: group.isBus
+                                ? String(shapeDir.directionId)
+                                : existing.directionId,
+                            branchId: existing.branchId,
                             arrivals: existing.arrivals
                         ))
                     usedExistingIndices.insert(pidx)
@@ -3435,6 +4027,7 @@ final class HomeViewModel {
                             directionLabel: shapeDir.headsign.isEmpty
                                 ? nil
                                 : "→ \(shapeDir.headsign)",
+                            directionId: group.isBus ? String(shapeDir.directionId) : nil,
                             arrivals: []
                         ))
                 }
@@ -3567,6 +4160,10 @@ final class HomeViewModel {
             // Now publish the group — view re-render will see the already-
             // correct selectedDirectionIndex.
             selectedGroupedRoute = updatedGroup
+            // Rebuild after publishing so polyline matching sees the updated
+            // direction order/name, especially for bus shapes whose geometry
+            // is keyed by stop membership rather than destination text.
+            schedulePolylineRebuild()
 
             #if DEBUG
             AppLogger.shared.log(
@@ -3594,10 +4191,196 @@ final class HomeViewModel {
         return .automatic
     }
 
-    /// Computes a camera position that frames the user's walking path
-    /// to the nearest stop. The route polyline is already drawn on the map —
-    /// users can pan to explore it — so we zoom to what matters most:
-    /// seeing yourself and how to get to the station/stop.
+    private func routeDetailCameraRoutePoints(
+        around stopCoordinate: CLLocationCoordinate2D
+    ) -> [CLLocationCoordinate2D] {
+        let isBus = selectedGroupedRoute?.isBus == true
+        let forwardMeters: CLLocationDistance = isBus ? 1500 : 2200
+        let behindMeters: CLLocationDistance = isBus ? 420 : 700
+
+        if directionalSplit == nil, !cachedRoutePolylines.isEmpty {
+            rebuildDirectionalSplit()
+        }
+
+        if let split = directionalSplit {
+            let ahead = Self.localRouteContextPoints(
+                from: split.ahead,
+                around: stopCoordinate,
+                maxMeters: forwardMeters
+            )
+            let behind = Self.localRouteContextPoints(
+                from: split.behind,
+                around: stopCoordinate,
+                maxMeters: behindMeters
+            )
+            let points = Self.compactCameraCoordinates([stopCoordinate] + ahead + behind)
+            if points.count >= 2 { return points }
+        }
+
+        return Self.rawRouteContextPoints(
+            from: cachedRoutePolylines,
+            around: stopCoordinate,
+            forwardMeters: forwardMeters,
+            behindMeters: behindMeters
+        )
+    }
+
+    private static func walkingRouteCoordinates(
+        from route: MKRoute?
+    ) -> [CLLocationCoordinate2D] {
+        guard let polyline = route?.polyline else { return [] }
+        let count = polyline.pointCount
+        guard count >= 2 else { return [] }
+        var coordinates = [CLLocationCoordinate2D](
+            repeating: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+            count: count
+        )
+        polyline.getCoordinates(
+            &coordinates,
+            range: NSRange(location: 0, length: count)
+        )
+        return compactCameraCoordinates(coordinates, minDistance: 12)
+    }
+
+    private nonisolated static func localRouteContextPoints(
+        from polylines: [[CLLocationCoordinate2D]],
+        around anchor: CLLocationCoordinate2D,
+        maxMeters: CLLocationDistance
+    ) -> [CLLocationCoordinate2D] {
+        var bestCoordinates: [CLLocationCoordinate2D]?
+        var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+
+        for polyline in polylines where polyline.count >= 2 {
+            guard let first = polyline.first, let last = polyline.last else { continue }
+            let firstDistance = cameraDistance(from: first, to: anchor)
+            let lastDistance = cameraDistance(from: last, to: anchor)
+            let endpointDistance = min(firstDistance, lastDistance)
+            guard endpointDistance < bestDistance else { continue }
+
+            bestDistance = endpointDistance
+            bestCoordinates = firstDistance <= lastDistance
+                ? polyline
+                : Array(polyline.reversed())
+        }
+
+        guard var coordinates = bestCoordinates else { return [] }
+        if let first = coordinates.first,
+           cameraDistance(from: first, to: anchor) <= 35 {
+            coordinates[0] = anchor
+        } else {
+            coordinates.insert(anchor, at: 0)
+        }
+
+        return prefixCameraCoordinates(coordinates, maxMeters: maxMeters)
+    }
+
+    private nonisolated static func rawRouteContextPoints(
+        from polylines: [[CLLocationCoordinate2D]],
+        around anchor: CLLocationCoordinate2D,
+        forwardMeters: CLLocationDistance,
+        behindMeters: CLLocationDistance
+    ) -> [CLLocationCoordinate2D] {
+        var bestPolyline: [CLLocationCoordinate2D]?
+        var bestSnap: DirectionPolylineSnap?
+        var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+
+        for polyline in polylines where polyline.count >= 2 {
+            guard let snap = snapPoint(anchor, to: polyline),
+                  snap.distance < bestDistance
+            else { continue }
+            bestDistance = snap.distance
+            bestPolyline = polyline
+            bestSnap = snap
+        }
+
+        guard let bestPolyline, let bestSnap else { return [] }
+
+        let split = splitPolyline(bestPolyline, at: bestSnap)
+        let after = prefixCameraCoordinates(split.after, maxMeters: forwardMeters)
+        let before = prefixCameraCoordinates(
+            Array(split.before.reversed()),
+            maxMeters: behindMeters
+        )
+
+        return compactCameraCoordinates([anchor] + after + before)
+    }
+
+    private nonisolated static func prefixCameraCoordinates(
+        _ coordinates: [CLLocationCoordinate2D],
+        maxMeters: CLLocationDistance
+    ) -> [CLLocationCoordinate2D] {
+        guard coordinates.count >= 2, maxMeters > 0 else { return coordinates }
+
+        var result: [CLLocationCoordinate2D] = [coordinates[0]]
+        var travelled = CLLocationDistance(0)
+        var previous = coordinates[0]
+
+        for coordinate in coordinates.dropFirst() {
+            let segmentDistance = cameraDistance(from: previous, to: coordinate)
+            guard segmentDistance > 0 else { continue }
+
+            if travelled + segmentDistance > maxMeters {
+                let remaining = max(0, maxMeters - travelled)
+                let fraction = remaining / segmentDistance
+                result.append(interpolateCameraCoordinate(
+                    from: previous,
+                    to: coordinate,
+                    fraction: fraction
+                ))
+                break
+            }
+
+            result.append(coordinate)
+            travelled += segmentDistance
+            previous = coordinate
+        }
+
+        return compactCameraCoordinates(result)
+    }
+
+    private nonisolated static func compactCameraCoordinates(
+        _ coordinates: [CLLocationCoordinate2D],
+        minDistance: CLLocationDistance = 8
+    ) -> [CLLocationCoordinate2D] {
+        var compacted: [CLLocationCoordinate2D] = []
+        compacted.reserveCapacity(coordinates.count)
+        for coordinate in coordinates {
+            guard coordinate.latitude.isFinite, coordinate.longitude.isFinite else { continue }
+            guard let last = compacted.last else {
+                compacted.append(coordinate)
+                continue
+            }
+            if cameraDistance(from: last, to: coordinate) >= minDistance {
+                compacted.append(coordinate)
+            }
+        }
+        return compacted
+    }
+
+    private nonisolated static func interpolateCameraCoordinate(
+        from start: CLLocationCoordinate2D,
+        to end: CLLocationCoordinate2D,
+        fraction: Double
+    ) -> CLLocationCoordinate2D {
+        let clamped = max(0, min(1, fraction))
+        return CLLocationCoordinate2D(
+            latitude: start.latitude + (end.latitude - start.latitude) * clamped,
+            longitude: start.longitude + (end.longitude - start.longitude) * clamped
+        )
+    }
+
+    private nonisolated static func cameraDistance(
+        from start: CLLocationCoordinate2D,
+        to end: CLLocationCoordinate2D
+    ) -> CLLocationDistance {
+        CLLocation(latitude: start.latitude, longitude: start.longitude)
+            .distance(from: CLLocation(latitude: end.latitude, longitude: end.longitude))
+    }
+
+    /// Computes a camera position that frames the route-detail boarding scene:
+    /// selected stop, walking dots, and the useful local stretch of the active
+    /// direction. The whole direction line still renders, but the opening zoom
+    /// intentionally focuses on the place where the rider makes the catch.
     ///
     /// Sheet compensation is handled by `MLNMapView.contentInset` via the
     /// `SheetHeightObserver` — no latitude shifts needed here.
@@ -3608,6 +4391,16 @@ final class HomeViewModel {
         guard routeShape != nil else { return nil }
 
         let refLocation = effectiveLocation(userLocation: userLocation)
+
+        if let nearestCoord = nearestStopCoordinate {
+            return MapCameraPresets.fitRouteDetailScene(
+                user: refLocation?.coordinate,
+                stop: nearestCoord,
+                routePoints: routeDetailCameraRoutePoints(around: nearestCoord),
+                walkingPoints: Self.walkingRouteCoordinates(from: walkingRoute),
+                is3D: false
+            )
+        }
 
         // ── Optimal: actual walking route polyline (if fetched) ─────
         if let route = walkingRoute {

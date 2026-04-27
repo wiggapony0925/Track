@@ -33,6 +33,61 @@ import UIKit
 /// with OpenStreetMap tiles.
 struct MapLibreMapView: UIViewRepresentable, Equatable {
 
+    private static func coordinateSignature(_ coordinate: CLLocationCoordinate2D) -> Int {
+        let lat = Int((coordinate.latitude * 1_000_000).rounded())
+        let lon = Int((coordinate.longitude * 1_000_000).rounded())
+        return (lat &* 16_777_619) ^ lon
+    }
+
+    private static func polylineSignature(_ coordinates: [CLLocationCoordinate2D]?) -> Int {
+        guard let coordinates, !coordinates.isEmpty else { return 0 }
+
+        var signature = coordinates.count &* 16_777_619
+        func mix(_ index: Int, salt: Int) {
+            guard coordinates.indices.contains(index) else { return }
+            signature ^= Self.coordinateSignature(coordinates[index]) &+ salt
+            signature = signature &* 16_777_619
+        }
+
+        mix(0, salt: 0x11)
+        mix(coordinates.count / 2, salt: 0x22)
+        mix(coordinates.count - 1, salt: 0x33)
+        return signature
+    }
+
+    private static func polylineArraySignature(
+        _ polylines: [[CLLocationCoordinate2D]]
+    ) -> Int {
+        var signature = polylines.count &* 16_777_619
+        for (index, polyline) in polylines.enumerated() {
+            signature ^= (index &+ 1) &* 31
+            signature ^= Self.polylineSignature(polyline)
+            signature = signature &* 16_777_619
+        }
+        return signature
+    }
+
+    private static func splitSignature(
+        _ split: (ahead: [[CLLocationCoordinate2D]], behind: [[CLLocationCoordinate2D]])?
+    ) -> Int {
+        guard let split else { return 0 }
+        return 0x51A7
+            ^ Self.polylineArraySignature(split.ahead)
+            ^ (Self.polylineArraySignature(split.behind) &* 31)
+    }
+
+    private static func routeStopSignature(_ stops: [DisplayedRouteStop]) -> Int {
+        var signature = stops.count &* 16_777_619
+        for stop in stops {
+            signature ^= stop.id.hashValue
+            signature ^= Self.coordinateSignature(stop.displayCoordinate)
+            signature ^= stop.isBehind ? 0xBEE : 0
+            signature ^= stop.isSkipped ? 0x51C : 0
+            signature = signature &* 16_777_619
+        }
+        return signature
+    }
+
     private static func stationsRenderSignature(
         _ stations: [MapSystemViewModel.ConsolidatedStation]
     ) -> Int {
@@ -59,12 +114,15 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         let stationsEq: Bool = lhs.showStations == rhs.showStations
         let darkEq: Bool = lhs.isDarkMode == rhs.isDarkMode
         let activeEq: Bool = lhs.hasActiveRoute == rhs.hasActiveRoute
+        let flatEq: Bool = lhs.locksCameraToFlatNorthUp == rhs.locksCameraToFlatNorthUp
         let busEq: Bool = lhs.isBusRoute == rhs.isBusRoute
         let colorEq: Bool = lhs.routeColor == rhs.routeColor
+        let selectedStopEq: Bool = lhs.selectedRouteStopID == rhs.selectedRouteStopID
         let rerouteEq: Bool = lhs.reroutedRouteIDs == rhs.reroutedRouteIDs
         let modeEq: Bool = lhs.selectedMode == rhs.selectedMode
 
-        guard camEq, stationsEq, darkEq, activeEq, busEq, colorEq, rerouteEq, modeEq else {
+        guard camEq, stationsEq, darkEq, activeEq, flatEq, busEq, colorEq,
+              selectedStopEq, rerouteEq, modeEq else {
             return false
         }
 
@@ -75,7 +133,13 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             && stationsRenderSignature(lhs.stations) == stationsRenderSignature(rhs.stations)
         let busCntEq: Bool = lhs.busVehicles.count == rhs.busVehicles.count
         let trainCntEq: Bool = lhs.trainVehicles.count == rhs.trainVehicles.count
-        let routeCntEq: Bool = lhs.routePolylines.count == rhs.routePolylines.count
+        let routeEq: Bool = lhs.routePolylines.count == rhs.routePolylines.count
+            && lhs.inactivePolylines.count == rhs.inactivePolylines.count
+            && polylineArraySignature(lhs.routePolylines)
+                == polylineArraySignature(rhs.routePolylines)
+            && polylineArraySignature(lhs.inactivePolylines)
+                == polylineArraySignature(rhs.inactivePolylines)
+            && routeStopSignature(lhs.routeStops) == routeStopSignature(rhs.routeStops)
         let xferCntEq: Bool = lhs.transferConnectors.count == rhs.transferConnectors.count
         let bakedEq: Bool = lhs.bakedTileSet?.isValid == rhs.bakedTileSet?.isValid
         let bakedBusEq: Bool = lhs.bakedBusTileSet?.isValid == rhs.bakedBusTileSet?.isValid
@@ -84,37 +148,19 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             && lhs.searchRadiusFarther == rhs.searchRadiusFarther
             && lhs.searchRadiusMuch == rhs.searchRadiusMuch
 
-        guard subwayEq, commuterEq, stationCntEq, busCntEq, trainCntEq, routeCntEq,
+        guard subwayEq, commuterEq, stationCntEq, busCntEq, trainCntEq, routeEq,
               xferCntEq, bakedEq, bakedBusEq, radiusEq else {
             return false
         }
 
-        // Directional split: detect when the ahead/behind boundary moves (nearest stop
-        // changes) so the map re-renders the behind-dimmed / ahead-full-color layers.
-        // We compare segment counts + the split-point coordinate (last coord of the
-        // behind segment) as a cheap but accurate proxy.
-        let splitEq: Bool = {
-            let lSplit = lhs.directionalSplit
-            let rSplit = rhs.directionalSplit
-            guard (lSplit == nil) == (rSplit == nil) else { return false }
-            guard let l = lSplit, let r = rSplit else { return true }
-            guard l.ahead.count == r.ahead.count,
-                  l.behind.count == r.behind.count
-            else { return false }
-            // Use the last coordinate of the last "behind" segment as the
-            // split-point fingerprint — this changes whenever nearestStop changes.
-            if let lPt = l.behind.last?.last, let rPt = r.behind.last?.last {
-                return lPt.latitude == rPt.latitude && lPt.longitude == rPt.longitude
-            }
-            return true
-        }()
-        let inactiveSplitEq: Bool = lhs.inactivePolylines.count == rhs.inactivePolylines.count
-        guard splitEq, inactiveSplitEq else { return false }
+        let splitEq: Bool = splitSignature(lhs.directionalSplit)
+            == splitSignature(rhs.directionalSplit)
+        guard splitEq else { return false }
 
         // Walking route — must be included so clearing the route on sheet dismiss
         // actually triggers updateUIView and removes the dotted line from the map.
-        let walkingEq: Bool = (lhs.walkingRouteCoords?.count ?? 0)
-            == (rhs.walkingRouteCoords?.count ?? 0)
+        let walkingEq: Bool = polylineSignature(lhs.walkingRouteCoords)
+            == polylineSignature(rhs.walkingRouteCoords)
         guard walkingEq else { return false }
 
         // Trip route overlay
@@ -159,6 +205,13 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// Active route polyline coordinates (when a route is selected).
     var routePolylines: [[CLLocationCoordinate2D]]
 
+    /// Active route stops rendered by MapLibre layers so stop dots stay
+    /// pinned to the map during pan/zoom gestures.
+    var routeStops: [DisplayedRouteStop] = []
+
+    /// Currently selected route stop id, used for native MapLibre styling.
+    var selectedRouteStopID: String?
+
     /// Inactive direction polylines (dimmed).
     var inactivePolylines: [[CLLocationCoordinate2D]]
 
@@ -170,6 +223,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
     /// Directional split (ahead/behind nearest stop).
     var directionalSplit: (ahead: [[CLLocationCoordinate2D]], behind: [[CLLocationCoordinate2D]])?
+
+    /// Route detail uses a flat north-up map. Pitch/rotation makes stop
+    /// dots feel detached from the street grid.
+    var locksCameraToFlatNorthUp: Bool = false
 
     /// Walking route coordinates (decoded from MKRoute polyline).
     var walkingRouteCoords: [CLLocationCoordinate2D]?
@@ -233,6 +290,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// Carries a lightweight `BusStop` built from the GeoJSON feature.
     var onBusStopTap: ((BusStop) -> Void)?
 
+    /// Called when a selected route stop dot is tapped on the map.
+    var onRouteStopTap: ((BusStop) -> Void)?
+
     /// Bridges real-time sheet height → contentInset.bottom (bypasses SwiftUI).
     /// Wired once in makeUIView; not included in Equatable check.
     var sheetHeightObserver: SheetHeightObserver?
@@ -272,7 +332,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // Core configuration
         mapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         mapView.automaticallyAdjustsContentInset = false
-        mapView.isRotateEnabled = false
+        mapView.isRotateEnabled = !locksCameraToFlatNorthUp
+        mapView.isPitchEnabled = !locksCameraToFlatNorthUp
         mapView.showsUserLocation = showUserLocation
         mapView.minimumZoomLevel = MapLibreStyleConfig.minZoom
         mapView.maximumZoomLevel = MapLibreStyleConfig.maxZoom
@@ -291,7 +352,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         mapView.compassView.compassVisibility = .adaptive
 
         // Set initial camera from binding
-        let state = MapLibreCameraState(from: cameraPosition)
+        var state = MapLibreCameraState(from: cameraPosition)
+        if locksCameraToFlatNorthUp {
+            state.pitch = 0
+            state.bearing = 0
+        }
         mapView.setCenter(state.center, zoomLevel: state.zoom, animated: false)
         mapView.direction = state.bearing
         let initialCamera = mapView.camera
@@ -351,6 +416,18 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     func updateUIView(_ mapView: MLNMapView, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self   // Keep coordinator in sync with latest struct
+
+        mapView.isRotateEnabled = !locksCameraToFlatNorthUp
+        mapView.isPitchEnabled = !locksCameraToFlatNorthUp
+        if locksCameraToFlatNorthUp {
+            let flatCamera = mapView.camera
+            let needsFlatten = abs(Double(flatCamera.pitch)) > 0.5 || abs(mapView.direction) > 0.5
+            if needsFlatten {
+                flatCamera.pitch = 0
+                mapView.direction = 0
+                mapView.setCamera(flatCamera, animated: false)
+            }
+        }
 
         // ── Dark mode style switching (smooth crossfade) ──
         // MapTiler provides both light (pastel) and dark (dataviz-dark) styles.
@@ -439,7 +516,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // This prevents the "bounce" where a round-tripped binding value
         // triggers an animated setCenter that fights the user's gesture.
         if coordinator.shouldSyncCamera && !coordinator.userGestureInProgress {
-            let state = MapLibreCameraState(from: cameraPosition)
+            var state = MapLibreCameraState(from: cameraPosition)
+            if locksCameraToFlatNorthUp {
+                state.pitch = 0
+                state.bearing = 0
+            }
 
             // Echo detection: if the binding value matches what we last
             // wrote, this updateUIView was triggered by our own async
@@ -556,6 +637,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private var lastSubwayHash: Int = -1
         private var lastStationHash: Int = -1
         private var lastRouteHash: Int = -1
+        private var lastRouteStopsHash: Int = -1
         private var lastWalkingHash: Int = -1
         private var lastTransferHash: Int = -1
         private var lastRadiusHash: Int = -1
@@ -681,6 +763,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             lastSubwayHash = -1
             lastStationHash = -1
             lastRouteHash = -1
+            lastRouteStopsHash = -1
             lastWalkingHash = -1
             lastTransferHash = -1
             lastRadiusHash = -1
@@ -744,8 +827,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             let center = mapView.centerCoordinate
             let zoom = mapView.zoomLevel
             let distance = MapLibreCameraState.distanceFromZoom(zoom, at: center.latitude)
-            let pitch = Double(mapView.camera.pitch)
-            let bearing = mapView.direction
+            let pitch = parent.locksCameraToFlatNorthUp ? 0 : Double(mapView.camera.pitch)
+            let bearing = parent.locksCameraToFlatNorthUp ? 0 : mapView.direction
 
             let zoomThreshold = AppSettings.shared.stationVisibilityZoomMeters
             let shouldShow = distance < zoomThreshold
@@ -859,8 +942,6 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         /// would be too expensive as overlay views).
         @objc func handleMapTap(_ sender: UITapGestureRecognizer) {
             guard sender.state == .ended,
-                  parent.selectedMode == .bus,
-                  !parent.hasActiveRoute,
                   let mapView = sender.view as? MLNMapView else { return }
 
             let point = sender.location(in: mapView)
@@ -869,6 +950,35 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 x: point.x - 22, y: point.y - 22,
                 width: 44, height: 44
             )
+
+            if parent.hasActiveRoute {
+                let features = mapView.visibleFeatures(
+                    in: rect,
+                    styleLayerIdentifiers: [
+                        Self.routeStopCenterLayerID,
+                        Self.routeStopDotLayerID,
+                    ]
+                )
+
+                guard let hit = features.first,
+                      let stopId = hit.attributes["stop_id"] as? String,
+                      let name = hit.attributes["name"] as? String,
+                      let pointFeature = hit as? MLNPointFeature else { return }
+
+                let coord = pointFeature.coordinate
+                let busStop = BusStop(
+                    id: stopId,
+                    name: name,
+                    lat: coord.latitude,
+                    lon: coord.longitude,
+                    direction: nil,
+                    routeIds: nil
+                )
+                parent.onRouteStopTap?(busStop)
+                return
+            }
+
+            guard parent.selectedMode == .bus else { return }
 
             let features = mapView.visibleFeatures(
                 in: rect,
@@ -926,6 +1036,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 darkChanged: darkChanged
             )
             updateWalkingIfNeeded(style: style, representable: representable)
+            updateRouteStopsIfNeeded(
+                style: style,
+                representable: representable,
+                darkChanged: darkChanged
+            )
             updateTransferIfNeeded(style: style, representable: representable)
             updateSearchRadiusIfNeeded(
                 mapView: mapView, style: style, representable: representable
@@ -1008,30 +1123,41 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             representable: MapLibreMapView,
             darkChanged: Bool
         ) {
-            let splitContentHash: Int = computeSplitContentHash(representable)
-            let splitDirHash: Int = representable.directionalSplit
-                .map { $0.ahead.count ^ $0.behind.count } ?? 0
-            let routeHash: Int = representable.routePolylines.count
-                ^ (representable.inactivePolylines.count &* 31)
-                ^ splitDirHash
-                ^ splitContentHash
+            let routeHash: Int = MapLibreMapView.polylineArraySignature(
+                    representable.routePolylines
+                )
+                ^ (MapLibreMapView.polylineArraySignature(
+                    representable.inactivePolylines
+                ) &* 31)
+                ^ MapLibreMapView.splitSignature(representable.directionalSplit)
                 ^ representable.routeColor.hash
+                ^ (representable.isBusRoute ? 0xB05 : 0)
             if routeHash != lastRouteHash || darkChanged {
                 updateRouteLayers(style: style, representable: representable)
                 lastRouteHash = routeHash
             }
         }
 
-        private func computeSplitContentHash(_ representable: MapLibreMapView) -> Int {
-            guard let split = representable.directionalSplit,
-                  let firstAhead = split.ahead.first?.first else { return 0 }
-            let latHash: Int = Int(firstAhead.latitude * 1e4)
-            let lonHash: Int = Int(firstAhead.longitude * 1e4)
-            return latHash ^ lonHash
+        private func updateRouteStopsIfNeeded(
+            style: MLNStyle,
+            representable: MapLibreMapView,
+            darkChanged: Bool
+        ) {
+            let stopsHash: Int = MapLibreMapView.routeStopSignature(representable.routeStops)
+                ^ representable.routeColor.hash
+                ^ (representable.selectedRouteStopID?.hashValue ?? 0)
+                ^ (representable.hasActiveRoute ? 0xA17 : 0)
+                ^ (representable.isBusRoute ? 0xB05 : 0)
+            if stopsHash != lastRouteStopsHash || darkChanged {
+                updateRouteStopLayers(style: style, representable: representable)
+                lastRouteStopsHash = stopsHash
+            }
         }
 
         private func updateWalkingIfNeeded(style: MLNStyle, representable: MapLibreMapView) {
-            let walkingHash: Int = representable.walkingRouteCoords?.count ?? 0
+            let walkingHash: Int = MapLibreMapView.polylineSignature(
+                representable.walkingRouteCoords
+            )
             if walkingHash != lastWalkingHash {
                 updateWalkingRouteLayer(style: style, representable: representable)
                 lastWalkingHash = walkingHash
@@ -2410,6 +2536,150 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             }
         }
 
+        // MARK: - Route Stop Layers
+
+        private static let routeStopSourceID = "route-stops-source"
+        private static let routeStopHaloLayerID = "route-stops-halo"
+        private static let routeStopDotLayerID = "route-stops-dot"
+        private static let routeStopCenterLayerID = "route-stops-center"
+        private static let routeStopLabelLayerID = "route-stops-label"
+
+        func updateRouteStopLayers(style: MLNStyle, representable: MapLibreMapView) {
+            guard representable.hasActiveRoute, !representable.routeStops.isEmpty else {
+                clearSource(style: style, sourceID: Self.routeStopSourceID)
+                return
+            }
+
+            var features: [MLNPointFeature] = []
+            features.reserveCapacity(representable.routeStops.count)
+            for displayed in representable.routeStops {
+                let stop = displayed.stop
+                let isSelected = stop.id == representable.selectedRouteStopID
+                let opacity: Double = displayed.isSkipped
+                    ? 0.15
+                    : (displayed.isBehind && !isSelected ? 0.30 : 1.0)
+
+                let feature = MLNPointFeature()
+                feature.coordinate = displayed.displayCoordinate
+                feature.attributes = [
+                    "stop_id": stop.id,
+                    "name": stop.name,
+                    "selected": isSelected,
+                    "opacity": opacity,
+                    "radius": isSelected ? 7.0 : 5.0,
+                    "strokeWidth": isSelected ? 2.5 : 2.0,
+                ]
+                features.append(feature)
+            }
+
+            let shape = MLNShapeCollectionFeature(shapes: features)
+            let routeColor = representable.routeColor
+            let isDark = representable.isDarkMode
+            let stopFillColor = isDark
+                ? UIColor(red: 0.08, green: 0.10, blue: 0.13, alpha: 1.0)
+                : UIColor.white
+
+            if let existing = style.source(withIdentifier: Self.routeStopSourceID) as? MLNShapeSource {
+                existing.shape = shape
+            } else {
+                let source = MLNShapeSource(
+                    identifier: Self.routeStopSourceID,
+                    shape: shape,
+                    options: nil
+                )
+                style.addSource(source)
+                sourcesCreated.insert(Self.routeStopSourceID)
+
+                let halo = MLNCircleStyleLayer(
+                    identifier: Self.routeStopHaloLayerID,
+                    source: source
+                )
+                halo.predicate = NSPredicate(format: "selected == YES")
+                halo.circleRadius = NSExpression(forConstantValue: 13.0)
+                halo.circleColor = NSExpression(
+                    forConstantValue: routeColor.withAlphaComponent(0.14)
+                )
+                halo.circleOpacity = NSExpression(forConstantValue: 1.0)
+                style.addLayer(halo)
+
+                let dot = MLNCircleStyleLayer(
+                    identifier: Self.routeStopDotLayerID,
+                    source: source
+                )
+                dot.circleRadius = NSExpression(forKeyPath: "radius")
+                dot.circleColor = NSExpression(forConstantValue: stopFillColor)
+                dot.circleStrokeColor = NSExpression(forConstantValue: routeColor)
+                dot.circleStrokeWidth = NSExpression(forKeyPath: "strokeWidth")
+                dot.circleOpacity = NSExpression(forKeyPath: "opacity")
+                dot.circleStrokeOpacity = NSExpression(forKeyPath: "opacity")
+                style.addLayer(dot)
+
+                let center = MLNCircleStyleLayer(
+                    identifier: Self.routeStopCenterLayerID,
+                    source: source
+                )
+                center.predicate = NSPredicate(format: "selected == YES")
+                center.circleRadius = NSExpression(forConstantValue: 2.5)
+                center.circleColor = NSExpression(forConstantValue: routeColor)
+                style.addLayer(center)
+
+                let label = MLNSymbolStyleLayer(
+                    identifier: Self.routeStopLabelLayerID,
+                    source: source
+                )
+                label.predicate = NSPredicate(format: "selected == YES")
+                label.text = NSExpression(forKeyPath: "name")
+                label.textFontSize = NSExpression(forConstantValue: 11.0)
+                label.textColor = NSExpression(
+                    forConstantValue: isDark
+                        ? UIColor(red: 0.94, green: 0.96, blue: 1.0, alpha: 1.0)
+                        : UIColor(white: 0.08, alpha: 1.0)
+                )
+                label.textHaloColor = NSExpression(
+                    forConstantValue: isDark
+                        ? UIColor(red: 0.02, green: 0.03, blue: 0.05, alpha: 0.95)
+                        : UIColor.white.withAlphaComponent(0.95)
+                )
+                label.textHaloWidth = NSExpression(forConstantValue: 2.2)
+                label.textHaloBlur = NSExpression(forConstantValue: 0.2)
+                label.textOffset = NSExpression(
+                    forConstantValue: NSValue(cgVector: CGVector(dx: 0, dy: 1.35))
+                )
+                label.textAnchor = NSExpression(forConstantValue: "top")
+                label.textFontNames = NSExpression(
+                    forConstantValue: ["Open Sans Semibold", "Arial Unicode MS Bold"]
+                )
+                label.textAllowsOverlap = NSExpression(forConstantValue: true)
+                label.iconAllowsOverlap = NSExpression(forConstantValue: true)
+                style.addLayer(label)
+            }
+
+            if let halo = style.layer(withIdentifier: Self.routeStopHaloLayerID) as? MLNCircleStyleLayer {
+                halo.circleColor = NSExpression(
+                    forConstantValue: routeColor.withAlphaComponent(0.14)
+                )
+            }
+            if let dot = style.layer(withIdentifier: Self.routeStopDotLayerID) as? MLNCircleStyleLayer {
+                dot.circleColor = NSExpression(forConstantValue: stopFillColor)
+                dot.circleStrokeColor = NSExpression(forConstantValue: routeColor)
+            }
+            if let center = style.layer(withIdentifier: Self.routeStopCenterLayerID) as? MLNCircleStyleLayer {
+                center.circleColor = NSExpression(forConstantValue: routeColor)
+            }
+            if let label = style.layer(withIdentifier: Self.routeStopLabelLayerID) as? MLNSymbolStyleLayer {
+                label.textColor = NSExpression(
+                    forConstantValue: isDark
+                        ? UIColor(red: 0.94, green: 0.96, blue: 1.0, alpha: 1.0)
+                        : UIColor(white: 0.08, alpha: 1.0)
+                )
+                label.textHaloColor = NSExpression(
+                    forConstantValue: isDark
+                        ? UIColor(red: 0.02, green: 0.03, blue: 0.05, alpha: 0.95)
+                        : UIColor.white.withAlphaComponent(0.95)
+                )
+            }
+        }
+
         // MARK: - Walking Route Layer
 
         func updateWalkingRouteLayer(style: MLNStyle, representable: MapLibreMapView) {
@@ -2455,7 +2725,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 glow.lineMiterLimit = NSExpression(forConstantValue: 1.05)
                 glow.lineDashPattern = NSExpression(forConstantValue: [0, 3])
                 glow.lineBlur = NSExpression(forConstantValue: 1.5)
-                style.addLayer(glow)
+                if let stopLayer = style.layer(withIdentifier: Self.routeStopHaloLayerID) {
+                    style.insertLayer(glow, below: stopLayer)
+                } else {
+                    style.addLayer(glow)
+                }
 
                 let dash = MLNLineStyleLayer(identifier: dashLayerID, source: source)
                 dash.lineColor = NSExpression(forConstantValue: dotColor)
@@ -2464,7 +2738,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 dash.lineJoin = NSExpression(forConstantValue: "round")
                 dash.lineMiterLimit = NSExpression(forConstantValue: 1.05)
                 dash.lineDashPattern = NSExpression(forConstantValue: [0, 3])
-                style.addLayer(dash)
+                if let stopLayer = style.layer(withIdentifier: Self.routeStopHaloLayerID) {
+                    style.insertLayer(dash, below: stopLayer)
+                } else {
+                    style.addLayer(dash)
+                }
             }
 
             // Update colors on source change (route switch, dark mode toggle)
@@ -2896,7 +3174,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 casing.lineJoin = NSExpression(forConstantValue: "round")
                 casing.lineMiterLimit = NSExpression(forConstantValue: 1.05)
                 casing.lineBlur = MapLibreStyleConfig.routeCasingBlur
-                style.addLayer(casing)
+                if let stopLayer = style.layer(withIdentifier: Self.routeStopHaloLayerID) {
+                    style.insertLayer(casing, below: stopLayer)
+                } else {
+                    style.addLayer(casing)
+                }
 
                 let fill = MLNLineStyleLayer(identifier: fillLayerID, source: source)
                 fill.lineColor = NSExpression(forConstantValue: color)
@@ -2904,7 +3186,13 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 fill.lineCap = NSExpression(forConstantValue: "round")
                 fill.lineJoin = NSExpression(forConstantValue: "round")
                 fill.lineMiterLimit = NSExpression(forConstantValue: 1.05)
-                style.addLayer(fill)
+                if let stopLayer = style.layer(withIdentifier: Self.routeStopHaloLayerID) {
+                    style.insertLayer(fill, below: stopLayer)
+                } else if let casingLayer = style.layer(withIdentifier: casingLayerID) {
+                    style.insertLayer(fill, above: casingLayer)
+                } else {
+                    style.addLayer(fill)
+                }
             }
 
             // Update colors (for route switches)

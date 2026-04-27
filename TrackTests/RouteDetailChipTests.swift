@@ -422,15 +422,16 @@ struct ChipThreeTierTests {
 
     @Test func deduplicatesNearbyTimestamps_subway60sBucket() {
         let now = Int(Date.now.timeIntervalSince1970)
+        let bucketAlignedNow = (now / 60) * 60
         let d = dir(arrivals: [
             makeArrival(
                 routeId: "1", minutesAway: 5, mode: "subway",
-                arrivalTs: now + 300, vehicleId: nil, tripId: "trip-A",
+                arrivalTs: bucketAlignedNow + 300, vehicleId: nil, tripId: "trip-A",
                 isRealTime: true
             ),
             makeArrival(
                 routeId: "1", minutesAway: 5, mode: "subway",
-                arrivalTs: now + 330,  // +30s, same 60s bucket
+                arrivalTs: bucketAlignedNow + 330,  // +30s, same 60s bucket
                 vehicleId: nil, tripId: "trip-B",
                 isRealTime: true
             ),

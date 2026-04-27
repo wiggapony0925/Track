@@ -441,15 +441,33 @@ struct RouteShapeResponse: Codable, Sendable {
     /// Falls back to the combined polylines if no direction data exists.
     nonisolated func polylinesForDirection(
         index: Int,
-        name: String? = nil
+        name: String? = nil,
+        shapeDirectionId: Int? = nil,
+        fallbackToCombined: Bool = true
     ) -> [[CLLocationCoordinate2D]] {
-        matchedDirection(index: index, name: name)?.decodedPolylines ?? decodedPolylines
+        if let matched = matchedDirection(
+            index: index,
+            name: name,
+            shapeDirectionId: shapeDirectionId
+        ) {
+            return matched.decodedPolylines
+        }
+        return fallbackToCombined ? decodedPolylines : []
     }
 
     /// Returns the `DirectionShapeResponse` that matches the given index/name.
     /// Used by `polylinesForDirection` and by the ViewModel to identify inactive directions.
-    nonisolated func matchedDirection(index: Int, name: String? = nil) -> DirectionShapeResponse? {
+    nonisolated func matchedDirection(
+        index: Int,
+        name: String? = nil,
+        shapeDirectionId: Int? = nil
+    ) -> DirectionShapeResponse? {
         guard !directions.isEmpty else { return nil }
+
+        if let shapeDirectionId,
+           let match = directions.first(where: { $0.directionId == shapeDirectionId }) {
+            return match
+        }
         
         // Prefer matching by name to headsign — but only when the name is
         // long enough for substring matching to be reliable.  Short compass
@@ -488,8 +506,18 @@ struct RouteShapeResponse: Codable, Sendable {
     /// Matches by `name` against `headsign` first, then
     /// `directionId` (falling back to array position).
     /// Falls back to the combined stops if no direction data exists.
-    nonisolated func stopsForDirection(index: Int, name: String? = nil) -> [BusStop] {
+    nonisolated func stopsForDirection(
+        index: Int,
+        name: String? = nil,
+        shapeDirectionId: Int? = nil,
+        fallbackToCombined: Bool = true
+    ) -> [BusStop] {
         guard !directions.isEmpty else { return stops }
+
+        if let shapeDirectionId,
+           let match = directions.first(where: { $0.directionId == shapeDirectionId }) {
+            return match.stops.isEmpty && fallbackToCombined ? stops : match.stops
+        }
         
         // Prefer matching by name to headsign — same guard as matchedDirection
         // to avoid short compass codes ("N"/"S") false-matching on substrings.
@@ -498,7 +526,7 @@ struct RouteShapeResponse: Codable, Sendable {
             if let match = directions.first(where: {
                 $0.headsign.uppercased() == name
             }) {
-                return match.stops.isEmpty ? stops : match.stops
+                return match.stops.isEmpty && fallbackToCombined ? stops : match.stops
             }
             
             // Substring matching only for names >= 3 chars
@@ -507,18 +535,18 @@ struct RouteShapeResponse: Codable, Sendable {
                     let hs = $0.headsign.uppercased()
                     return name.contains(hs) || hs.contains(name)
                 }) {
-                    return match.stops.isEmpty ? stops : match.stops
+                    return match.stops.isEmpty && fallbackToCombined ? stops : match.stops
                 }
             }
         }
         
         // Fallback to GTFS direction_id (0 or 1)
         if let match = directions.first(where: { $0.directionId == index }) {
-            return match.stops.isEmpty ? stops : match.stops
+            return match.stops.isEmpty && fallbackToCombined ? stops : match.stops
         }
         let safeIdx = min(index, directions.count - 1)
         let dirStops = directions[safeIdx].stops
-        return dirStops.isEmpty ? stops : dirStops
+        return dirStops.isEmpty && fallbackToCombined ? stops : dirStops
     }
 }
 

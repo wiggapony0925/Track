@@ -366,12 +366,25 @@ struct RouteDetailSheet: View {
         return nil
     }
 
+    private static func isGenericShapeHeadsign(_ headsign: String?) -> Bool {
+        guard let headsign, !headsign.isEmpty else { return true }
+        return DirectionConstants.isFallbackDirection(headsign)
+    }
+
     /// The name of the currently selected direction, used to match headsigns in RouteShape.
     private var selectedDirectionName: String? {
         guard selectedDirectionIndex >= 0,
             selectedDirectionIndex < group.directions.count
         else { return nil }
         return group.directions[selectedDirectionIndex].direction
+    }
+
+    private var selectedShapeDirectionId: Int? {
+        guard group.isBus,
+              group.directions.indices.contains(selectedDirectionIndex),
+              let rawId = group.directions[selectedDirectionIndex].directionId
+        else { return nil }
+        return Int(rawId)
     }
 
     /// Resolves the best display label for a direction.
@@ -396,12 +409,13 @@ struct RouteDetailSheet: View {
         let matchedDir = routeShape?.matchedDirection(
             index: index, name: dir.direction
         )
+        let useShapeTerminal = !group.isBus || !Self.isGenericShapeHeadsign(matchedDir?.headsign)
         // Skip backend label only for subway — bus labels are already clean.
         let skipBackend = !group.isBus
         return ArrivalHelpers.resolveDirectionLabel(
             for: dir,
-            shapeHeadsign: matchedDir?.headsign,
-            shapeLastStopName: matchedDir?.stops.last?.name,
+            shapeHeadsign: useShapeTerminal ? matchedDir?.headsign : nil,
+            shapeLastStopName: useShapeTerminal ? matchedDir?.stops.last?.name : nil,
             skipBackendLabel: skipBackend,
             useShortCompass: true
         )
@@ -487,7 +501,7 @@ struct RouteDetailSheet: View {
             .onChange(of: busSchedule) { _, _ in handleScheduleChange() }
             .onChange(of: cachedTrainArrivals) { _, _ in handleScheduleChange() }
             .onChange(of: favoritesManager.favorites) { _, _ in handleFavoritesChange() }
-            .onChange(of: selectedStopId) { _, newId in handleMapStopTap(newId) }
+            .onChange(of: selectedStopId) { _, newId in handleSelectedStopIdChange(newId) }
             .onChange(of: inSheetSelectedStopId) { _, _ in handleStopSelectionChange() }
             .onChange(of: selectedDirectionIndex) { _, _ in handleDirectionChange() }
             .onChange(of: selectedChipId) { _, newId in handleChipSelectionChange(newId) }
@@ -832,14 +846,28 @@ struct RouteDetailSheet: View {
             cachedDirectionPolyline = []
             return
         }
-        let segments = shape.polylinesForDirection(
-            index: selectedDirectionIndex, name: selectedDirectionName
+        let directionStops = shape.stopsForDirection(
+            index: selectedDirectionIndex,
+            name: selectedDirectionName,
+            shapeDirectionId: selectedShapeDirectionId,
+            fallbackToCombined: false
+        )
+        let rawSegments = shape.polylinesForDirection(
+            index: selectedDirectionIndex,
+            name: selectedDirectionName,
+            shapeDirectionId: selectedShapeDirectionId,
+            fallbackToCombined: false
+        )
+        let segments = HomeViewModel.filterPolylinesToDirectionStops(
+            rawSegments,
+            stops: directionStops,
+            isBus: group.isBus
         )
         // Bus routes can have loops/branches — keep segments merged but
         // don't force-consolidate into a single line.  Trains benefit
         // from consolidation for seamless vehicle interpolation.
         if group.isBus {
-            let merged = mergeAdjacentPolylines(segments)
+            let merged = mergeOrderedPolylines(segments)
             cachedDirectionPolyline = merged.flatMap { $0 }
         } else if segments.count > 1 {
             cachedDirectionPolyline = consolidateIntoSinglePolyline(segments)
@@ -881,7 +909,10 @@ struct RouteDetailSheet: View {
             lockedDirectionHeadsign = safeDirection.direction
         }
         if lockedStopKeyPerDirection[selectedDirectionIndex] == nil,
-           let first = stableNearestArrivals.first {
+           let selectedStopId, !selectedStopId.isEmpty {
+            lockedStopKeyPerDirection[selectedDirectionIndex] = selectedStopId
+        } else if lockedStopKeyPerDirection[selectedDirectionIndex] == nil,
+                  let first = stableNearestArrivals.first {
             lockedStopKeyPerDirection[selectedDirectionIndex] = first.stopId ?? first.stopName
         }
         #if DEBUG
@@ -912,7 +943,10 @@ struct RouteDetailSheet: View {
         }
 
         let fresh = nearestStopArrivals
-        if lockedStopKeyPerDirection[selectedDirectionIndex] == nil, let first = fresh.first {
+        if let selectedStopId, !selectedStopId.isEmpty {
+            lockedStopKeyPerDirection[selectedDirectionIndex] = selectedStopId
+        } else if lockedStopKeyPerDirection[selectedDirectionIndex] == nil,
+                  let first = fresh.first {
             lockedStopKeyPerDirection[selectedDirectionIndex] = first.stopId ?? first.stopName
         }
 
@@ -996,6 +1030,34 @@ struct RouteDetailSheet: View {
             )
         }
         #endif
+    }
+
+    private func handleSelectedStopIdChange(_ newId: String?) {
+        // Manual stop taps are mirrored into `inSheetSelectedStopId`; keep
+        // that existing path so the user-selected pill and clear button work.
+        guard !isStopManuallySelected else {
+            handleMapStopTap(newId)
+            return
+        }
+
+        // Auto-nearest GPS / drag-search updates should refresh the departure
+        // board and route split anchor, but they should not be treated like a
+        // user tap.  In particular, live chip auto-selection must never move
+        // the walking route to a far prediction stop.
+        if let newId, !newId.isEmpty {
+            lockedStopKeyPerDirection[selectedDirectionIndex] = newId
+        } else {
+            lockedStopKeyPerDirection[selectedDirectionIndex] = nil
+        }
+
+        selectedChipId = nil
+        selectedChipRouteId = nil
+        onFocusVehicle?(nil)
+
+        let fresh = nearestStopArrivals
+        stableNearestArrivals = fresh
+        lastStableRefreshDate = .now
+        syncExpressState()
     }
 
     private func handleDirectionChange() {
@@ -1452,6 +1514,7 @@ struct RouteDetailSheet: View {
 
         let nearestStopKey: String? = {
             if let userStop = inSheetSelectedStopId, !userStop.isEmpty { return userStop }
+            if let vmStop = selectedStopId, !vmStop.isEmpty { return vmStop }
             if let lockedKey = lockedStopKeyPerDirection[selectedDirectionIndex] {
                 if liveOnly.contains(where: { ($0.stopId ?? $0.stopName) == lockedKey }) {
                     return lockedKey
@@ -1464,10 +1527,15 @@ struct RouteDetailSheet: View {
             var bestDist: CLLocationDistance = .greatestFiniteMagnitude
             for arrival in liveOnly {
                 let dist: CLLocationDistance
-                if let dm = arrival.distanceM { dist = dm }
-                else if let loc = refLoc, let lat = arrival.stopLat, let lon = arrival.stopLon {
+                if let loc = refLoc, let lat = arrival.stopLat, let lon = arrival.stopLon {
                     dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
-                } else { dist = .greatestFiniteMagnitude }
+                } else if let loc = refLoc {
+                    dist = arrivalDistance(arrival, from: loc)
+                } else if let dm = arrival.distanceM {
+                    dist = dm
+                } else {
+                    dist = .greatestFiniteMagnitude
+                }
                 if dist < bestDist { bestDist = dist; bestKey = arrival.stopId ?? arrival.stopName }
             }
             return bestKey
@@ -1694,6 +1762,17 @@ struct RouteDetailSheet: View {
             return appendScheduledDepartures(to: atSelected, direction: safeDirection)
         }
 
+        // ── Prefer ViewModel's selectedStopId (GPS/drag nearest shape stop) ─
+        // This is the route-detail boarding stop.  Do not let a live chip's
+        // prediction stop override it; buses report many future onward-call
+        // stops and the first live vehicle may be far from the rider.
+        if let vmStop = selectedStopId, !vmStop.isEmpty {
+            let atVM = deduped(live.filter {
+                arrivalMatchesStop($0, stopId: vmStop)
+            })
+            return appendScheduledDepartures(to: atVM, direction: safeDirection)
+        }
+
         // ── Prefer the locked stop key if arrivals still exist there ────────
         // This prevents the nearest-stop from hopping between polls when a
         // backend re-sort changes distance ordering.
@@ -1713,16 +1792,6 @@ struct RouteDetailSheet: View {
             }
         }
 
-        // ── Prefer ViewModel's selectedStopId (aligned with walking polyline) ──
-        // The ViewModel already resolved the nearest stop with arrival data;
-        // honour it so chips match the walking-polyline destination exactly.
-        if nearestStopKey == nil, let vmStop = selectedStopId, !vmStop.isEmpty {
-            let atVM = live.filter { stopKeyMatches($0.stopId ?? $0.stopName, vmStop) }
-            if !atVM.isEmpty {
-                nearestStopKey = vmStop
-            }
-        }
-
         // ── Fall back to distance-based nearest stop ───────────────────────
         // Resolve from `raw` (unfiltered) so the nearest-stop key matches
         // `ArrivalHelpers.countdownArrival` used by the home row.  The
@@ -1737,10 +1806,12 @@ struct RouteDetailSheet: View {
 
             for arrival in raw {
                 let dist: CLLocationDistance
-                if let dm = arrival.distanceM {
-                    dist = dm
-                } else if let loc = refLoc, let lat = arrival.stopLat, let lon = arrival.stopLon {
+                if let loc = refLoc, let lat = arrival.stopLat, let lon = arrival.stopLon {
                     dist = loc.distance(from: CLLocation(latitude: lat, longitude: lon))
+                } else if let loc = refLoc {
+                    dist = arrivalDistance(arrival, from: loc)
+                } else if let dm = arrival.distanceM {
+                    dist = dm
                 } else {
                     dist = .greatestFiniteMagnitude
                 }
@@ -1838,6 +1909,7 @@ struct RouteDetailSheet: View {
         let anchorStopName: String? =
             baseChips.first(where: { $0.isRealTime })?.stopName
             ?? baseChips.first?.stopName
+            ?? autoNearestShapeStopName()
 
         func schedItemMatchesAnchor(_ itemStop: String) -> Bool {
             guard let anchor = anchorStopName else { return true }
@@ -2194,6 +2266,18 @@ struct RouteDetailSheet: View {
         #endif
     }
 
+    private func autoNearestShapeStopName() -> String? {
+        let stopId = inSheetSelectedStopId ?? selectedStopId
+        guard let stopId, !stopId.isEmpty, let shape = routeShape else { return nil }
+        let stops = shape.stopsForDirection(
+            index: selectedDirectionIndex,
+            name: selectedDirectionName
+        )
+        let normalized = normalizeStopId(stopId)
+        return stops.first(where: { $0.id == stopId })?.name
+            ?? stops.first(where: { normalizeStopId($0.id) == normalized })?.name
+    }
+
     /// Checks if an arrival matches a stop ID, with fuzzy matching for
     /// different ID formats (e.g. "MTA_305423" vs "305423" vs "MTA NYCT_305423").
     /// Also handles subway N/S direction suffixes (e.g. "120N" vs "120S" both
@@ -2425,12 +2509,6 @@ struct RouteDetailSheet: View {
                 isSelectedArrivalExpress = arrival.isExpress
                 if let key = vehicleKey {
                     onFocusVehicle?(key)
-                }
-                // Wave 6: scroll the Stops list to this arrival's stop so
-                // the rider can see where the selected vehicle is heading.
-                if let sid = arrival.stopId, !sid.isEmpty {
-                    inSheetSelectedStopId = sid
-                    onStopSelected?(coordinateForStopId(sid))
                 }
             }
             // Selection-style haptic: Transit-grade snappy click instead
@@ -2875,13 +2953,6 @@ struct RouteDetailSheet: View {
         selectedChipId = firstLive.arrival.id
         selectedChipRouteId = firstLive.arrival.routeId
         isSelectedArrivalExpress = firstLive.arrival.isExpress
-        if let key = firstLive.arrival.vehicleId ?? firstLive.arrival.tripId {
-            onFocusVehicle?(key)
-        }
-        if let sid = firstLive.arrival.stopId, !sid.isEmpty {
-            inSheetSelectedStopId = sid
-            onStopSelected?(coordinateForStopId(sid))
-        }
     }
 
     /// Resolve a stop_id to its `CLLocationCoordinate2D` using the route
@@ -3291,7 +3362,7 @@ struct RouteDetailSheet: View {
             ordered.insert(selected, at: 0)
         }
 
-        return ordered.map { index, dir in
+        let pills = ordered.map { index, dir in
             let matchedDir = routeShape?.matchedDirection(index: index, name: dir.direction)
             return DirectionPillData(
                 id: dir.id,
@@ -3302,6 +3373,62 @@ struct RouteDetailSheet: View {
                 isActive: selectedDirectionIndex == index
             )
         }
+        return deduplicatedDirectionPills(pills)
+    }
+
+    /// Collapses identical rendered direction labels so backend/shape enrichment
+    /// can't surface duplicate-looking tags like "Downtown" / "Downtown".
+    /// If the selected direction is one of the duplicates, its pill wins so the
+    /// map and selected polyline remain in sync with the user's current choice.
+    private func deduplicatedDirectionPills(_ pills: [DirectionPillData]) -> [DirectionPillData] {
+        var ordered: [DirectionPillData] = []
+        var indexByLabel: [String: Int] = [:]
+
+        for pill in pills {
+            let key = normalizedDirectionPillLabel(pill.label)
+            guard let existingIndex = indexByLabel[key] else {
+                indexByLabel[key] = ordered.count
+                ordered.append(pill)
+                continue
+            }
+
+            let existing = ordered[existingIndex]
+            let winner: DirectionPillData
+            if pill.isActive || (!existing.isActive && pill.vehicleCount > existing.vehicleCount) {
+                winner = DirectionPillData(
+                    id: existing.id + "|" + pill.id,
+                    index: pill.index,
+                    label: pill.label,
+                    serviceType: pill.serviceType ?? existing.serviceType,
+                    vehicleCount: max(existing.vehicleCount, pill.vehicleCount),
+                    isActive: existing.isActive || pill.isActive
+                )
+            } else {
+                winner = DirectionPillData(
+                    id: existing.id + "|" + pill.id,
+                    index: existing.index,
+                    label: existing.label,
+                    serviceType: existing.serviceType ?? pill.serviceType,
+                    vehicleCount: max(existing.vehicleCount, pill.vehicleCount),
+                    isActive: existing.isActive || pill.isActive
+                )
+            }
+            ordered[existingIndex] = winner
+        }
+
+        return ordered
+    }
+
+    private func normalizedDirectionPillLabel(_ label: String) -> String {
+        label
+            .replacingOccurrences(of: "→", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(
+                of: #"\s+"#,
+                with: " ",
+                options: .regularExpression
+            )
     }
 
     private var directionPicker: some View {

@@ -584,10 +584,10 @@ struct ClipStopsTests {
             boardStopId: "MTA_300002",
             alightStopId: "MTA_300006"
         )
-        // Board (idx 1) to alight (idx 5) inclusive = 5 stops
+        // Board (idx 2) to alight (idx 6) inclusive = 5 stops
         #expect(stops.count == 5)
-        #expect(abs(stops.first!.latitude - 40.7095) < 0.001) // Stop 2
-        #expect(abs(stops.last!.latitude - 40.7135) < 0.001)  // Stop 6
+        #expect(abs(stops.first!.latitude - 40.7120) < 0.001) // Stop 2
+        #expect(abs(stops.last!.latitude - 40.7280) < 0.001)  // Stop 6
     }
 
     @Test func bareIdsResolveToMTAPrefixed() {
