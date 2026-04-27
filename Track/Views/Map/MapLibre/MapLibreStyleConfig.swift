@@ -422,6 +422,13 @@ enum MapLibreStyleConfig {
         stops: [10: 5.0, 14: 7.0, 16: 9.0, 18: 11.0]
     )
 
+    /// Walking route offset in screen points. Keeps pedestrian directions
+    /// parallel and readable when they share pavement with transit polylines.
+    static let walkingRouteOffset = zoomInterpolate(
+        base: 1.5,
+        stops: [10: 2.0, 14: 4.0, 16: 5.5, 18: 7.0]
+    )
+
     // MARK: - Dynamic Corridor Lane Offset
     //
     // Each polyline feature carries a `lane_offset` attribute (signed

@@ -1030,12 +1030,16 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 representable: representable,
                 darkChanged: darkChanged
             )
-            updateRouteIfNeeded(
+            let routeLayersChanged = updateRouteIfNeeded(
                 style: style,
                 representable: representable,
                 darkChanged: darkChanged
             )
-            updateWalkingIfNeeded(style: style, representable: representable)
+            updateWalkingIfNeeded(
+                style: style,
+                representable: representable,
+                routeLayersChanged: routeLayersChanged
+            )
             updateRouteStopsIfNeeded(
                 style: style,
                 representable: representable,
@@ -1122,7 +1126,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             style: MLNStyle,
             representable: MapLibreMapView,
             darkChanged: Bool
-        ) {
+        ) -> Bool {
             let routeHash: Int = MapLibreMapView.polylineArraySignature(
                     representable.routePolylines
                 )
@@ -1135,7 +1139,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             if routeHash != lastRouteHash || darkChanged {
                 updateRouteLayers(style: style, representable: representable)
                 lastRouteHash = routeHash
+                return true
             }
+            return false
         }
 
         private func updateRouteStopsIfNeeded(
@@ -1154,13 +1160,22 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             }
         }
 
-        private func updateWalkingIfNeeded(style: MLNStyle, representable: MapLibreMapView) {
+        private func updateWalkingIfNeeded(
+            style: MLNStyle,
+            representable: MapLibreMapView,
+            routeLayersChanged: Bool
+        ) {
             let walkingHash: Int = MapLibreMapView.polylineSignature(
                 representable.walkingRouteCoords
             )
+                ^ representable.routeColor.hash
+                ^ (representable.isDarkMode ? 0xDAD : 0)
+                ^ (representable.hasActiveRoute ? 0xA11 : 0)
             if walkingHash != lastWalkingHash {
                 updateWalkingRouteLayer(style: style, representable: representable)
                 lastWalkingHash = walkingHash
+            } else if routeLayersChanged {
+                positionWalkingRouteLayers(style: style)
             }
         }
 
@@ -2697,11 +2712,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             // Tight round dots with a soft shadow glow — visible on both
             // light and dark tiles without overpowering the route line.
             let dotColor = isDark
-                ? UIColor.white
-                : routeColor.withAlphaComponent(0.85)
+                ? MapLibreStyleConfig.blendColor(base: routeColor, overlay: .white, t: 0.68)
+                : MapLibreStyleConfig.blendColor(base: routeColor, overlay: .white, t: 0.18)
             let glowColor = isDark
-                ? routeColor.withAlphaComponent(0.30)
-                : UIColor.black.withAlphaComponent(0.12)
+                ? routeColor.withAlphaComponent(0.38)
+                : UIColor.white.withAlphaComponent(0.82)
 
             var mutableCoords = coords
             let feature = MLNPolylineFeature(
@@ -2723,8 +2738,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 glow.lineCap = NSExpression(forConstantValue: "round")
                 glow.lineJoin = NSExpression(forConstantValue: "round")
                 glow.lineMiterLimit = NSExpression(forConstantValue: 1.05)
-                glow.lineDashPattern = NSExpression(forConstantValue: [0, 3])
-                glow.lineBlur = NSExpression(forConstantValue: 1.5)
+                glow.lineDashPattern = NSExpression(forConstantValue: [0, 2.6])
+                glow.lineBlur = NSExpression(forConstantValue: isDark ? 1.8 : 1.0)
+                glow.lineOffset = MapLibreStyleConfig.walkingRouteOffset
                 if let stopLayer = style.layer(withIdentifier: Self.routeStopHaloLayerID) {
                     style.insertLayer(glow, below: stopLayer)
                 } else {
@@ -2737,7 +2753,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 dash.lineCap = NSExpression(forConstantValue: "round")
                 dash.lineJoin = NSExpression(forConstantValue: "round")
                 dash.lineMiterLimit = NSExpression(forConstantValue: 1.05)
-                dash.lineDashPattern = NSExpression(forConstantValue: [0, 3])
+                dash.lineDashPattern = NSExpression(forConstantValue: [0, 2.6])
+                dash.lineOffset = MapLibreStyleConfig.walkingRouteOffset
                 if let stopLayer = style.layer(withIdentifier: Self.routeStopHaloLayerID) {
                     style.insertLayer(dash, below: stopLayer)
                 } else {
@@ -2748,9 +2765,32 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             // Update colors on source change (route switch, dark mode toggle)
             if let glow = style.layer(withIdentifier: glowLayerID) as? MLNLineStyleLayer {
                 glow.lineColor = NSExpression(forConstantValue: glowColor)
+                glow.lineBlur = NSExpression(forConstantValue: isDark ? 1.8 : 1.0)
+                glow.lineOffset = MapLibreStyleConfig.walkingRouteOffset
             }
             if let dash = style.layer(withIdentifier: dashLayerID) as? MLNLineStyleLayer {
                 dash.lineColor = NSExpression(forConstantValue: dotColor)
+                dash.lineOffset = MapLibreStyleConfig.walkingRouteOffset
+            }
+            positionWalkingRouteLayers(style: style)
+        }
+
+        private func positionWalkingRouteLayers(style: MLNStyle) {
+            let glowLayerID = "walking-route-glow"
+            let dashLayerID = "walking-route-dash"
+
+            guard let glow = style.layer(withIdentifier: glowLayerID),
+                  let dash = style.layer(withIdentifier: dashLayerID) else { return }
+
+            style.removeLayer(dash)
+            style.removeLayer(glow)
+
+            if let stopLayer = style.layer(withIdentifier: Self.routeStopHaloLayerID) {
+                style.insertLayer(glow, below: stopLayer)
+                style.insertLayer(dash, below: stopLayer)
+            } else {
+                style.addLayer(glow)
+                style.insertLayer(dash, above: glow)
             }
         }
 
