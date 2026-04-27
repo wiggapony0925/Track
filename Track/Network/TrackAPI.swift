@@ -531,16 +531,11 @@ struct TrackAPI {
         let effectiveRadius = radius ?? AppSettings.shared.effectiveAPISearchRadius
 
         let knownOffline = await MainActor.run { !OfflineCacheManager.shared.isOnline }
-        if knownOffline,
-           let synthesized = await synthesizeNearbyGroupedFallback(
-                lat: lat,
-                lon: lon,
-                radius: effectiveRadius,
-                mode: mode,
-                reason: "network unavailable"
-           )
-        {
-            return synthesized
+        if knownOffline {
+            AppLogger.shared.log(
+                "OFFLINE",
+                message: "Reachability says offline; probing /nearby/grouped before local fallback"
+            )
         }
 
         guard var components = URLComponents(string: baseURL + "/nearby/grouped") else {
@@ -581,7 +576,7 @@ struct TrackAPI {
             let decoded = try decoder.decode([GroupedNearbyTransitResponse].self, from: data)
             if mode == nil {
                 await MainActor.run {
-                    OfflineCacheManager.shared.isUsingCachedData = false
+                    OfflineCacheManager.shared.noteNetworkRequestSucceeded()
                 }
             }
             return decoded
@@ -647,8 +642,10 @@ struct TrackAPI {
         }.value
         guard let synthesized else { return nil }
 
-        await MainActor.run {
-            OfflineCacheManager.shared.isUsingCachedData = true
+        if mode == nil {
+            await MainActor.run {
+                OfflineCacheManager.shared.noteOfflineFallbackUsed()
+            }
         }
         AppLogger.shared.log(
             "OFFLINE",

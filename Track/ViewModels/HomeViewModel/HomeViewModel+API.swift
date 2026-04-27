@@ -1745,7 +1745,8 @@ extension HomeViewModel {
             let subwayCount = newGrouped.filter { $0.mode == "subway" && $0.hasRealArrivals }.count
             let busCount = newGrouped.filter { $0.mode == "bus" && $0.hasRealArrivals }.count
             let hasLiveBucketData = newGrouped.contains { $0.hasRealArrivals }
-            let shouldShowStaticRoutes = !isOnline
+            let isOnlineAfterGrouped = OfflineCacheManager.shared.isOnline
+            let shouldShowStaticRoutes = !isOnlineAfterGrouped
                 || OfflineCacheManager.shared.isUsingCachedData
                 || !hasLiveBucketData
             AppLogger.shared.log(

@@ -116,6 +116,15 @@ final class OfflineCacheManager: ObservableObject {
         }
         monitor.start(queue: monitorQueue)
     }
+
+    func noteNetworkRequestSucceeded() {
+        isOnline = true
+        isUsingCachedData = false
+    }
+
+    func noteOfflineFallbackUsed() {
+        isUsingCachedData = true
+    }
     
     // MARK: - Cache Arrivals
     
