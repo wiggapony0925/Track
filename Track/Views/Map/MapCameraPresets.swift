@@ -243,8 +243,8 @@ enum MapCameraPresets {
         walkingPoints: [CLLocationCoordinate2D],
         is3D: Bool
     ) -> TrackCameraPosition {
-        let localRoutePoints = nearbyCoordinates(routePoints, to: stopCoord, maxMeters: 2_400)
-        let localWalkingPoints = nearbyCoordinates(walkingPoints, to: stopCoord, maxMeters: 1_800)
+        let localRoutePoints = nearbyCoordinates(routePoints, to: stopCoord, maxMeters: 3_200)
+        let localWalkingPoints = nearbyCoordinates(walkingPoints, to: stopCoord, maxMeters: 2_400)
 
         var scenePoints: [CLLocationCoordinate2D] = [stopCoord]
         scenePoints.append(contentsOf: localRoutePoints)
@@ -258,16 +258,20 @@ enum MapCameraPresets {
         }
 
         let maxSpanMeters = max(geometry.latSpanMeters, geometry.lonSpanMeters)
-        let distance = max(1000, min(maxSpanMeters * 2.75, 5600))
+        let distance = max(1500, min(maxSpanMeters * 3.35, 7200))
 
         var center = geometry.center
         let routeFocusPoints = localRoutePoints.isEmpty ? [stopCoord] : localRoutePoints + [stopCoord]
         if let routeFocus = averageCoordinate(routeFocusPoints) {
             // Keep the active route visually dominant even when the walk is angled
-            // away from it. Bottom sheet compensation is handled by contentInset.
-            center = interpolate(from: center, to: routeFocus, fraction: 0.18)
+            // away from it, then apply a sheet-aware center bias below.
+            center = interpolate(from: center, to: routeFocus, fraction: 0.12)
         }
-        center = interpolate(from: center, to: stopCoord, fraction: 0.08)
+        center = routeDetailSheetAwareCenter(
+            center: center,
+            geometry: geometry,
+            maxSpanMeters: maxSpanMeters
+        )
 
         return .camera(TrackCamera(
             centerCoordinate: center,
@@ -292,6 +296,8 @@ enum MapCameraPresets {
 
     private struct BoundsGeometry {
         let center: CLLocationCoordinate2D
+        let minLat: Double
+        let maxLat: Double
         let latSpanMeters: Double
         let lonSpanMeters: Double
     }
@@ -323,6 +329,8 @@ enum MapCameraPresets {
 
         return BoundsGeometry(
             center: center,
+            minLat: minLat,
+            maxLat: maxLat,
             latSpanMeters: latSpanMeters,
             lonSpanMeters: lonSpanMeters
         )
@@ -353,6 +361,20 @@ enum MapCameraPresets {
         return CLLocationCoordinate2D(
             latitude: start.latitude + (end.latitude - start.latitude) * clamped,
             longitude: start.longitude + (end.longitude - start.longitude) * clamped
+        )
+    }
+
+    private static func routeDetailSheetAwareCenter(
+        center: CLLocationCoordinate2D,
+        geometry: BoundsGeometry,
+        maxSpanMeters: Double
+    ) -> CLLocationCoordinate2D {
+        let spanLatDegrees = max(geometry.maxLat - geometry.minLat, 0.0018)
+        let sheetClearanceMeters = max(260, min(maxSpanMeters * 0.20, 760))
+        let sheetClearanceDegrees = sheetClearanceMeters / 111_000
+        return CLLocationCoordinate2D(
+            latitude: center.latitude - (spanLatDegrees * 0.14) - sheetClearanceDegrees,
+            longitude: center.longitude
         )
     }
 }
