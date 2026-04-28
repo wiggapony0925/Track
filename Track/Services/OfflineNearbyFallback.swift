@@ -38,6 +38,29 @@ enum OfflineNearbyFallback {
         bundle: LocalGTFSBundle
     ) -> [GroupedNearbyTransitResponse]? {
 
+        let radii = searchRadii(startingAt: radiusMeters)
+        for radius in radii {
+            if let result = synthesizeOnce(
+                lat: lat,
+                lon: lon,
+                radiusMeters: radius,
+                mode: mode,
+                bundle: bundle
+            ), !result.isEmpty {
+                return result
+            }
+        }
+        return []
+    }
+
+    private nonisolated static func synthesizeOnce(
+        lat: Double,
+        lon: Double,
+        radiusMeters: Double,
+        mode: String?,
+        bundle: LocalGTFSBundle
+    ) -> [GroupedNearbyTransitResponse]? {
+
         let bbox = boundingBox(lat: lat, lon: lon, radiusMeters: radiusMeters)
         let modeFilter: Set<String>? = mode.map { Set([normalizeMode($0)]) }
 
@@ -112,6 +135,19 @@ enum OfflineNearbyFallback {
     }
 
     // MARK: - Helpers
+
+    nonisolated private static func searchRadii(startingAt radiusMeters: Double) -> [Double] {
+        let base = max(300, radiusMeters)
+        var radii: [Double] = []
+        var seen = Set<Int>()
+        for radius in [base, base * 1.75, base * 3.0, 2_500, 5_000, 8_000] {
+            let rounded = Int(radius.rounded())
+            if seen.insert(rounded).inserted {
+                radii.append(Double(rounded))
+            }
+        }
+        return radii.sorted()
+    }
 
     nonisolated private static func boundingBox(
         lat: Double, lon: Double, radiusMeters: Double
@@ -241,7 +277,7 @@ enum OfflineNearbyFallback {
 }
 
 private extension String {
-    var nonEmpty: String? {
+    nonisolated var nonEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }

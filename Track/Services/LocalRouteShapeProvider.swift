@@ -15,6 +15,9 @@ enum LocalRouteShapeProvider {
     static func isStopDerivedShape(_ shape: RouteShapeResponse) -> Bool {
         guard !shape.directions.isEmpty else { return false }
         return shape.directions.allSatisfy { direction in
+            if direction.polylines.isEmpty, !direction.stops.isEmpty {
+                return true
+            }
             guard direction.polylines.count == 1,
                   let polyline = direction.decodedPolylines.first,
                   polyline.count == direction.stops.count,
@@ -98,11 +101,16 @@ enum LocalRouteShapeProvider {
                     routeIds: [route.routeID]
                 )
             }
-            let polyline = busStops.count >= 2
-                ? [encodePolyline(busStops.map {
-                    CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
-                })]
-                : []
+            let polyline: [String]
+            if group.isBus {
+                polyline = []
+            } else {
+                polyline = busStops.count >= 2
+                    ? [encodePolyline(busStops.map {
+                        CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon)
+                    })]
+                    : []
+            }
             return DirectionShapeResponse(
                 directionId: directionID,
                 headsign: headsign(for: busStops, directionID: directionID),

@@ -409,9 +409,8 @@ struct MapLibreTrackMapView: View {
             isBus: viewModel.selectedGroupedRoute?.isBus == true
         )
         let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-        if isBusRoute, LocalRouteShapeProvider.isStopDerivedShape(shape) {
-            return []
-        }
+        let usesLocalCoverageOnlyShape = isBusRoute
+            && LocalRouteShapeProvider.isStopDerivedShape(shape)
         let visibleStops = allStops
 
         // Determine which stops are "behind" (already passed by the bus)
@@ -478,7 +477,7 @@ struct MapLibreTrackMapView: View {
                 to: directionPolylines,
                 maxDistance: maxDisplaySnapDistance
             )
-            if isBusRoute, snapped == nil {
+            if isBusRoute, !usesLocalCoverageOnlyShape, snapped == nil {
                 return nil
             }
             let displayCoordinate = snapped?.coordinate ?? rawCoordinate
