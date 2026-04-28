@@ -359,6 +359,66 @@ def _build_route_headways(src: sqlite3.Connection, dst: sqlite3.Connection) -> i
     return len(buckets)
 
 
+def _source_active_route_ids(src: sqlite3.Connection) -> set[str]:
+    """Routes with at least one scheduled stop in the source GTFS DB.
+
+    This is the inventory that must flow into the mobile bundle.  If MTA
+    adds a new route (for example a future D/X variant) or removes one, this
+    query changes automatically after GTFS ingest; no app code should need a
+    hardcoded route list update.
+    """
+    return {
+        row["route_id"]
+        for row in src.execute(
+            """
+            SELECT DISTINCT t.route_id
+              FROM trips t
+              JOIN stop_times st ON st.trip_id = t.trip_id
+             WHERE t.route_id IS NOT NULL AND t.route_id != ''
+            """
+        )
+    }
+
+
+def _route_inventory_hash(route_ids: set[str]) -> str:
+    payload = "\n".join(sorted(route_ids)).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _validate_route_inventory(
+    src: sqlite3.Connection,
+    dst: sqlite3.Connection,
+) -> tuple[int, str]:
+    """Fail the bundle build if active GTFS routes did not make it to iOS.
+
+    The mobile bundle powers offline nearby, drag search, and local route
+    details.  A missing route here means the app can silently lose a train or
+    branch until a human notices.  Raise during refresh instead, so the deploy
+    pipeline catches the drift immediately.
+    """
+    active_routes = _source_active_route_ids(src)
+    bundled_routes = {row[0] for row in dst.execute("SELECT route_id FROM routes")}
+    served_routes = {
+        row[0] for row in dst.execute("SELECT DISTINCT route_id FROM route_stops")
+    }
+
+    missing_routes = sorted(active_routes - bundled_routes)
+    missing_service = sorted(active_routes - served_routes)
+    dangling_service = sorted(served_routes - bundled_routes)
+
+    errors: list[str] = []
+    if missing_routes:
+        errors.append("missing routes table entries: " + ", ".join(missing_routes[:20]))
+    if missing_service:
+        errors.append("missing route_stops entries: " + ", ".join(missing_service[:20]))
+    if dangling_service:
+        errors.append("route_stops without routes: " + ", ".join(dangling_service[:20]))
+    if errors:
+        raise RuntimeError("Mobile GTFS route inventory mismatch — " + "; ".join(errors))
+
+    return len(active_routes), _route_inventory_hash(active_routes)
+
+
 def _write_metadata(dst: sqlite3.Connection, **values: str) -> None:
     cur = dst.cursor()
     cur.execute("BEGIN")
@@ -415,6 +475,7 @@ def build_bundle(
         routes_n = _copy_routes(src, dst)
         rs_n = _build_route_stops(src, dst)
         hw_n = _build_route_headways(src, dst)
+        active_routes_n, route_inventory_sha = _validate_route_inventory(src, dst)
 
         _write_metadata(
             dst,
@@ -424,6 +485,8 @@ def build_bundle(
             source_db=str(source_db.name),
             stops_count=str(stops_n),
             routes_count=str(routes_n),
+            active_routes_count=str(active_routes_n),
+            route_inventory_sha256=route_inventory_sha,
             route_stops_count=str(rs_n),
             route_headways_count=str(hw_n),
         )
@@ -447,6 +510,8 @@ def build_bundle(
         "size_bytes": size,
         "stops_count": stops_n,
         "routes_count": routes_n,
+        "active_routes_count": active_routes_n,
+        "route_inventory_sha256": route_inventory_sha,
         "route_stops_count": rs_n,
         "route_headways_count": hw_n,
         "generated_at": int(started),
@@ -457,7 +522,8 @@ def build_bundle(
     TrackLogger.info(
         f"[GTFS-BUNDLE] ✓ {final.name} | "
         f"{size / (1024 * 1024):.1f} MB | "
-        f"stops={stops_n} routes={routes_n} route_stops={rs_n} headways={hw_n} | "
+        f"stops={stops_n} routes={routes_n} active_routes={active_routes_n} "
+        f"route_stops={rs_n} headways={hw_n} | "
         f"build={time.time() - started:.1f}s",
         tag="GTFS",
     )
