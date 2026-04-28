@@ -186,20 +186,120 @@ enum OfflineNearbyFallback {
         distances: [String: Double],
         bundle: LocalGTFSBundle
     ) -> GroupedNearbyTransitResponse {
-        let closest = stops.min { (a: LocalStop, b: LocalStop) in
-            (distances[a.stopID] ?? .infinity) < (distances[b.stopID] ?? .infinity)
-        } ?? stops[0]
+        let routeStops = bundle.routeStops(routeID: route.routeID)
+        let estimated = bundle.expectedWaitMinutes(routeID: route.routeID)
+        let directions = buildLocalDirections(
+            route: route,
+            nearbyStops: stops,
+            distances: distances,
+            routeStops: routeStops,
+            estimatedWaitMinutes: estimated
+        )
 
+        return GroupedNearbyTransitResponse(
+            routeId: route.routeID,
+            displayName: displayName(for: route),
+            mode: route.mode,
+            colorHex: route.colorHex,
+            directions: directions,
+            sortingKey: route.routeID,
+            alerts: [],
+            expressRoutes: [],
+            busServiceType: busServiceType(for: route)
+        )
+    }
+
+    nonisolated static func buildLocalDirections(
+        route: LocalRoute,
+        nearbyStops: [LocalStop],
+        distances: [String: Double],
+        routeStops: [LocalRouteStop],
+        estimatedWaitMinutes: Int?,
+        now: Date = Date.now
+    ) -> [DirectionArrivalsResponse] {
+        guard let closest = nearbyStops.min(by: {
+            (distances[$0.stopID] ?? .infinity) < (distances[$1.stopID] ?? .infinity)
+        }) else { return [] }
+
+        let nearbyStopIds = Set(nearbyStops.map(\.stopID))
+        let nearbyRouteStops = routeStops.filter { nearbyStopIds.contains($0.stop.stopID) }
+        let allStopsByDirection = Dictionary(grouping: routeStops, by: \.directionID)
+            .mapValues { entries in entries.map(\.stop) }
+        let directionalStops = nearbyRouteStops.isEmpty
+            ? [nil: nearbyStops]
+            : Dictionary(grouping: nearbyRouteStops, by: \.directionID)
+                .mapValues { entries in entries.map(\.stop) }
+
+        let sortedKeys = directionalStops.keys.sorted { lhs, rhs in
+            switch (lhs, rhs) {
+            case let (.some(left), .some(right)): return left < right
+            case (.some, .none): return true
+            case (.none, .some): return false
+            case (.none, .none): return false
+            }
+        }
+
+        let directions = sortedKeys.compactMap { directionID -> DirectionArrivalsResponse? in
+            let stopsForDirection = directionalStops[directionID] ?? []
+            let directionClosest = stopsForDirection.min {
+                (distances[$0.stopID] ?? .infinity) < (distances[$1.stopID] ?? .infinity)
+            } ?? closest
+            let terminal = terminalStop(
+                from: allStopsByDirection[directionID] ?? stopsForDirection,
+                relativeTo: directionClosest
+            )
+            return buildLocalDirection(
+                route: route,
+                closest: directionClosest,
+                terminal: terminal,
+                distance: distances[directionClosest.stopID],
+                directionID: directionID,
+                totalDirections: sortedKeys.count,
+                estimatedWaitMinutes: estimatedWaitMinutes,
+                now: now
+            )
+        }
+
+        if directions.isEmpty {
+            return [buildLocalDirection(
+                route: route,
+                closest: closest,
+                terminal: nil,
+                distance: distances[closest.stopID],
+                directionID: nil,
+                totalDirections: 1,
+                estimatedWaitMinutes: estimatedWaitMinutes,
+                now: now
+            )]
+        }
+        return directions
+    }
+
+    nonisolated private static func buildLocalDirection(
+        route: LocalRoute,
+        closest: LocalStop,
+        terminal: LocalStop?,
+        distance: Double?,
+        directionID: Int?,
+        totalDirections: Int,
+        estimatedWaitMinutes: Int?,
+        now: Date
+    ) -> DirectionArrivalsResponse {
         // Use the local headway table only as a static/scheduled estimate.
         // It is not live vehicle data, so provide an arrival timestamp and
         // keep `isRealTime=false`; the row will render a muted "Sched" pill
         // until the live backend response replaces this optimistic result.
-        let estimated = bundle.expectedWaitMinutes(routeID: route.routeID)
-        let minutesAway = estimated ?? 99
-        let arrivalTs = estimated.map {
-            Int(Date.now.addingTimeInterval(TimeInterval($0 * 60)).timeIntervalSince1970)
+        let minutesAway = estimatedWaitMinutes ?? 99
+        let arrivalTs = estimatedWaitMinutes.map {
+            Int(now.addingTimeInterval(TimeInterval($0 * 60)).timeIntervalSince1970)
         }
-        let directionName = localDirectionLabel(route: route, closest: closest)
+        let directionName = localDirectionLabel(
+            route: route,
+            closest: closest,
+            terminal: terminal,
+            directionID: directionID,
+            totalDirections: totalDirections
+        )
 
         let placeholder = NearbyTransitResponse(
             routeId: route.routeID,
@@ -207,7 +307,7 @@ enum OfflineNearbyFallback {
             direction: directionName,
             destination: directionName,
             minutesAway: minutesAway,
-            status: estimated == nil ? "No Data" : "Scheduled",
+            status: estimatedWaitMinutes == nil ? "No Data" : "Scheduled",
             mode: route.mode,
             stopLat: closest.latitude,
             stopLon: closest.longitude,
@@ -215,7 +315,7 @@ enum OfflineNearbyFallback {
             vehicleId: nil,
             tripId: nil,
             stopId: closest.stopID,
-            distanceM: distances[closest.stopID],
+            distanceM: distance,
             isRealTime: false,
             colorHex: route.colorHex,
             busServiceType: busServiceType(for: route)
@@ -224,22 +324,11 @@ enum OfflineNearbyFallback {
         let direction = DirectionArrivalsResponse(
             direction: directionName,
             directionLabel: directionName,
-            directionId: nil,
+            directionId: directionID.map(String.init),
             branchId: nil,
             arrivals: [placeholder]
         )
-
-        return GroupedNearbyTransitResponse(
-            routeId: route.routeID,
-            displayName: displayName(for: route),
-            mode: route.mode,
-            colorHex: route.colorHex,
-            directions: [direction],
-            sortingKey: route.routeID,
-            alerts: [],
-            expressRoutes: [],
-            busServiceType: busServiceType(for: route)
-        )
+        return direction
     }
 
     nonisolated private static func displayName(for route: LocalRoute) -> String {
@@ -255,14 +344,69 @@ enum OfflineNearbyFallback {
 
     nonisolated private static func localDirectionLabel(
         route: LocalRoute,
-        closest: LocalStop
+        closest: LocalStop,
+        terminal: LocalStop?,
+        directionID: Int?,
+        totalDirections: Int
     ) -> String {
+        if let terminalName = terminal?.name.nonEmpty,
+           normalizeStopName(terminalName) != normalizeStopName(closest.name) {
+            return "To \(terminalName)"
+        }
+
+        if let directionID, totalDirections > 1 {
+            let key = "DIRECTION \(directionID)"
+            if let label = DirectionConstants.labels[key] {
+                return label
+            }
+            return "Branch \(directionID)"
+        }
+
         switch route.mode.lowercased() {
         case "bus":
             return "Nearby stops"
         default:
             return closest.name.nonEmpty ?? "Nearby stops"
         }
+    }
+
+    nonisolated private static func terminalStop(
+        from stops: [LocalStop],
+        relativeTo closest: LocalStop
+    ) -> LocalStop? {
+        let candidates = deduplicatedStops(stops).filter {
+            normalizeStopName($0.name) != normalizeStopName(closest.name)
+        }
+        guard !candidates.isEmpty else { return nil }
+        return candidates.max { lhs, rhs in
+            distanceMeters(from: closest, to: lhs) < distanceMeters(from: closest, to: rhs)
+        }
+    }
+
+    nonisolated private static func deduplicatedStops(_ stops: [LocalStop]) -> [LocalStop] {
+        var seen = Set<String>()
+        var result: [LocalStop] = []
+        for stop in stops {
+            let key = stop.stopID.nonEmpty ?? normalizeStopName(stop.name)
+            guard seen.insert(key).inserted else { continue }
+            result.append(stop)
+        }
+        return result
+    }
+
+    nonisolated private static func distanceMeters(from lhs: LocalStop, to rhs: LocalStop) -> Double {
+        haversineMeters(
+            lat1: lhs.latitude,
+            lon1: lhs.longitude,
+            lat2: rhs.latitude,
+            lon2: rhs.longitude
+        )
+    }
+
+    nonisolated private static func normalizeStopName(_ value: String) -> String {
+        value.lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .joined(separator: " ")
     }
 
     nonisolated private static func busServiceType(for route: LocalRoute) -> String? {

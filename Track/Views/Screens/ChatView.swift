@@ -891,7 +891,12 @@ struct ChatView: View {
         // Re-sync bias whenever the shared LocationContext changes source
         // (pin dropped, pin cleared, or GPS coordinate updates).
         .onChange(of: locationContext.isUsingDroppedPin) { _, _ in syncBias() }
+        .onChange(of: locationContext.droppedPin?.latitude) { _, _ in syncBias() }
+        .onChange(of: locationContext.droppedPin?.longitude) { _, _ in syncBias() }
         .onChange(of: locationContext.gpsCoordinate?.latitude) { _, _ in
+            if !locationContext.isUsingDroppedPin { syncBias() }
+        }
+        .onChange(of: locationContext.gpsCoordinate?.longitude) { _, _ in
             if !locationContext.isUsingDroppedPin { syncBias() }
         }
     }
@@ -3429,10 +3434,12 @@ private struct ChatComposer: View {
 
 #Preview("Light") {
     ChatView()
+        .environment(LocationContext())
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark") {
     ChatView()
+        .environment(LocationContext())
         .preferredColorScheme(.dark)
 }

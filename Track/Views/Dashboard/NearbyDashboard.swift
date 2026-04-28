@@ -28,9 +28,10 @@ struct NearbyDashboard: View {
     private var nearYouRadius: Double { AppSettings.shared.nearYouRadiusMeters }
     private var fartherAwayRadius: Double { AppSettings.shared.fartherAwayRadiusMeters }
     private var muchFartherAwayRadius: Double { AppSettings.shared.muchFartherAwayRadiusMeters }
+    private var sectionSpacing: CGFloat { viewModel.isSearchPinActive ? 8 : 16 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: sectionSpacing) {
             // Use active search pin OR user location for distance calculation
             let refLocation = viewModel.referenceLocation
 
@@ -374,8 +375,8 @@ struct NearYouSectionHeader: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, AppTheme.Layout.margin)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.top, 2)
+        .padding(.bottom, 2)
     }
 }
 
@@ -524,7 +525,7 @@ struct InactiveRouteList: View {
     let sheetNavigator: SheetNavigator
 
     var body: some View {
-        LazyVStack(spacing: 12) {
+        LazyVStack(spacing: 8) {
             ForEach(routes) { route in
                 InactiveRouteRow(route: route, sheetNavigator: sheetNavigator)
             }
@@ -617,62 +618,70 @@ struct GroupedRouteList: View {
         // LazyVStack: rows are only built when they scroll into view.
         // Critical for busy stops with 10+ routes — plain VStack eagerly
         // renders every GroupedRouteRow, including all their arrival chips.
-        LazyVStack(spacing: 12) {
-            ForEach(groups) { group in
-                GroupedRouteRow(
-                    group: group,
-                    hasAlert: group.hasAlert
-                        || viewModel.hasActiveAlert(
-                            routeId: group.routeId, mode: group.mode)
-                        || viewModel.hasActiveAlert(
-                            routeId: group.displayName, mode: group.mode),
-                    userLocation: referenceLocation,
-                    distanceMetersOverride: viewModel.displayDistanceMeters(
-                        for: group, from: referenceLocation),
-                    smartETAProvider: { viewModel.smartETA(for: $0) },
-                    initialDirectionIndex: viewModel.preferredDirectionIndex(for: group),
-                    onDirectionChanged: { newIndex in
-                        viewModel.setPreferredDirectionIndex(newIndex, for: group)
-                    },
-                    onSelect: { directionIndex in
-                        sheetNavigator.navigate(
-                            to: .routeDetail(group: group, directionIndex: directionIndex))
-                        Task {
-                            await viewModel.handleRouteSelection(
-                                group, directionIndex: directionIndex,
-                                userLocation: locationManager.currentLocation)
-                        }
-                    },
-                    onTrack: { directionIndex in
-                        viewModel.setPreferredDirectionIndex(directionIndex, for: group)
-                        let dir = group.directions[
-                            min(directionIndex, group.directions.count - 1)]
-                        guard let arrival = ArrivalHelpers.countdownArrival(
-                            for: dir,
-                            userLocation: locationManager.currentLocation,
-                            provider: { viewModel.smartETA(for: $0) }
-                        ) else { return }
-                        viewModel.trackNearbyArrival(
-                            arrival, location: locationManager.currentLocation)
-                    },
-                    onAlertTapped: {
-                        let directionIndex = viewModel.preferredDirectionIndex(for: group)
-                        sheetNavigator.navigate(
-                            to: .routeDetail(
-                                group: group,
-                                directionIndex: directionIndex,
-                                initialTab: .stops))
-                        Task {
-                            await viewModel.handleRouteSelection(
-                                group, directionIndex: directionIndex,
-                                userLocation: locationManager.currentLocation)
-                        }
-                    },
-                    isStale: isStale
-                )
+        LazyVStack(spacing: 0) {
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                VStack(spacing: 0) {
+                    GroupedRouteRow(
+                        group: group,
+                        hasAlert: group.hasAlert
+                            || viewModel.hasActiveAlert(
+                                routeId: group.routeId, mode: group.mode)
+                            || viewModel.hasActiveAlert(
+                                routeId: group.displayName, mode: group.mode),
+                        userLocation: referenceLocation,
+                        distanceMetersOverride: viewModel.displayDistanceMeters(
+                            for: group, from: referenceLocation),
+                        smartETAProvider: { viewModel.smartETA(for: $0) },
+                        initialDirectionIndex: viewModel.preferredDirectionIndex(for: group),
+                        onDirectionChanged: { newIndex in
+                            viewModel.setPreferredDirectionIndex(newIndex, for: group)
+                        },
+                        onSelect: { directionIndex in
+                            sheetNavigator.navigate(
+                                to: .routeDetail(group: group, directionIndex: directionIndex))
+                            Task {
+                                await viewModel.handleRouteSelection(
+                                    group, directionIndex: directionIndex,
+                                    userLocation: locationManager.currentLocation)
+                            }
+                        },
+                        onTrack: { directionIndex in
+                            viewModel.setPreferredDirectionIndex(directionIndex, for: group)
+                            let dir = group.directions[
+                                min(directionIndex, group.directions.count - 1)]
+                            guard let arrival = ArrivalHelpers.countdownArrival(
+                                for: dir,
+                                userLocation: locationManager.currentLocation,
+                                provider: { viewModel.smartETA(for: $0) }
+                            ) else { return }
+                            viewModel.trackNearbyArrival(
+                                arrival, location: locationManager.currentLocation)
+                        },
+                        onAlertTapped: {
+                            let directionIndex = viewModel.preferredDirectionIndex(for: group)
+                            sheetNavigator.navigate(
+                                to: .routeDetail(
+                                    group: group,
+                                    directionIndex: directionIndex,
+                                    initialTab: .stops))
+                            Task {
+                                await viewModel.handleRouteSelection(
+                                    group, directionIndex: directionIndex,
+                                    userLocation: locationManager.currentLocation)
+                            }
+                        },
+                        isStale: isStale
+                    )
+
+                    if index < groups.count - 1 {
+                        Divider()
+                            .background(AppTheme.Colors.borderSubtle.opacity(0.6))
+                            .padding(.leading, 68)
+                    }
+                }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 0)
         .padding(.horizontal, AppTheme.Layout.margin)
     }
 }

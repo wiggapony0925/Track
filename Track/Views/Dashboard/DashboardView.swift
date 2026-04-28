@@ -4,6 +4,7 @@
 
 import SwiftUI
 import CoreLocation
+import Combine
 
 /// Main dashboard content showing transit arrivals based on selected mode.
 struct DashboardView: View {
@@ -25,6 +26,14 @@ struct DashboardView: View {
         sheetDetent != .large
     }
 
+    nonisolated static func shouldShowFavorites(isSearchPinActive: Bool) -> Bool {
+        !isSearchPinActive
+    }
+
+    nonisolated static func contentSpacing(isSearchPinActive: Bool) -> CGFloat {
+        isSearchPinActive ? 8 : 18
+    }
+
     /// Live drag state — captured at gesture start so onChange writes
     /// are relative to where the user touched down, not to live values
     /// already being updated by the gesture.
@@ -32,6 +41,9 @@ struct DashboardView: View {
     @State private var containerHeight: CGFloat = 0
     /// Resolves to the upper bound of the sheet (≈ full screen).
     @State private var maxSheetHeight: CGFloat = 0
+    @State private var dashboardNow = Date()
+
+    private let dashboardClock = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     var body: some View {
         GeometryReader { proxy in
@@ -57,6 +69,7 @@ struct DashboardView: View {
                 // by the navbar drag gesture above \u2014 the rows themselves
                 // never resize the sheet.
                 scrollableContent
+                    .environment(\.dashboardNow, dashboardNow)
             }
             .onAppear {
                 containerHeight = proxy.size.height
@@ -74,6 +87,9 @@ struct DashboardView: View {
                     : screenH
             }
             .onChange(of: proxy.size.height) { _, h in containerHeight = h }
+            .onReceive(dashboardClock) { now in
+                dashboardNow = now
+            }
         }
     }
 
@@ -139,7 +155,10 @@ struct DashboardView: View {
 
     private var scrollableContent: some View {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(
+                    alignment: .leading,
+                    spacing: Self.contentSpacing(isSearchPinActive: viewModel.isSearchPinActive)
+                ) {
                     let initialLoad = !viewModel.hasLoadedOnce && viewModel.isLoading
                     let showTransitSkeleton = initialLoad && !hasTransitData
 
@@ -158,7 +177,7 @@ struct DashboardView: View {
                             Circle()
                                 .fill(AppTheme.Colors.successGreen)
                                 .frame(width: 5, height: 5)
-                            Text("Updated \(updated, style: .relative) ago")
+                            Text(DashboardRelativeTime.updatedText(since: updated, now: dashboardNow))
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(AppTheme.Colors.textSecondary)
                         } else {
@@ -173,44 +192,60 @@ struct DashboardView: View {
                     .padding(.horizontal, AppTheme.Layout.margin)
                     .padding(.top, 4)
 
-                    // ── Favorites: skeleton OR real section ───────────────────
-                    let favsLoading = favoritesManager.isLoading
-                        && favoritesManager.favorites.isEmpty
                     Group {
-                        if initialLoad || favsLoading {
-                            FavoritesSectionSkeleton()
-                                .transition(.opacity)
-                        } else {
-                            FavoritesSection(
-                                groupedTransit: viewModel.groupedTransit,
-                                userLocation: viewModel.referenceLocation ?? locationManager.currentLocation,
-                                sheetNavigator: sheetNavigator,
-                                onSelect: { group, directionIndex in
-                                    sheetNavigator.navigate(
-                                        to: .routeDetail(
-                                            group: group,
-                                            directionIndex: directionIndex
+                        if Self.shouldShowFavorites(isSearchPinActive: viewModel.isSearchPinActive) {
+                            // ── Favorites: skeleton OR real section ───────────
+                            let favsLoading = favoritesManager.isLoading
+                                && favoritesManager.favorites.isEmpty
+                            Group {
+                                if initialLoad || favsLoading {
+                                    FavoritesSectionSkeleton()
+                                        .transition(.opacity)
+                                } else {
+                                    FavoritesSection(
+                                        groupedTransit: viewModel.groupedTransit,
+                                        userLocation: viewModel.referenceLocation ?? locationManager.currentLocation,
+                                        sheetNavigator: sheetNavigator,
+                                        onSelect: { group, directionIndex in
+                                            sheetNavigator.navigate(
+                                                to: .routeDetail(
+                                                    group: group,
+                                                    directionIndex: directionIndex
+                                                )
+                                            )
+                                            Task {
+                                                await viewModel.handleRouteSelection(
+                                                    group,
+                                                    directionIndex: directionIndex,
+                                                    userLocation: locationManager.currentLocation
+                                                )
+                                            }
+                                        },
+                                        selectedMode: viewModel.selectedMode,
+                                        smartETAProvider: { viewModel.smartETA(for: $0) },
+                                        isStale: viewModel.showStaleRows,
+                                        weatherSnapshot: viewModel.weatherSnapshot
+                                    )
+                                    .transition(
+                                        .asymmetric(
+                                            insertion: .opacity,
+                                            removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .top))
                                         )
                                     )
-                                    Task {
-                                        await viewModel.handleRouteSelection(
-                                            group,
-                                            directionIndex: directionIndex,
-                                            userLocation: locationManager.currentLocation
-                                        )
-                                    }
-                                },
-                                selectedMode: viewModel.selectedMode,
-                                smartETAProvider: { viewModel.smartETA(for: $0) },
-                                isStale: viewModel.showStaleRows,
-                                weatherSnapshot: viewModel.weatherSnapshot
+                                }
+                            }
+                            // Scoped: only animates the skeleton→favorites swap,
+                            // not the entire VStack of dashboard rows.
+                            .animation(.easeInOut(duration: 0.3), value: favoritesManager.isLoading)
+                            .transition(
+                                .asymmetric(
+                                    insertion: .opacity,
+                                    removal: .opacity.combined(with: .scale(scale: 0.98, anchor: .top))
+                                )
                             )
-                            .transition(.opacity.animation(.easeIn(duration: 0.25)))
                         }
                     }
-                    // Scoped: only animates the skeleton→favorites swap,
-                    // not the entire VStack of dashboard rows.
-                    .animation(.easeInOut(duration: 0.3), value: favoritesManager.isLoading)
+                    .animation(.easeOut(duration: 0.14), value: viewModel.isSearchPinActive)
 
                     // ── Transit: skeleton OR mode-specific content ────────────
                     Group {

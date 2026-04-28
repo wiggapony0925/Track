@@ -111,6 +111,166 @@ struct StaticNearbyDisplayTests {
         #expect(viewModel.ghostRoutes.isEmpty)
     }
 
+    @Test func offlineNearbyFallbackBuildsAllLocalDirections() {
+        let route = LocalRoute(
+            routeID: "M11",
+            shortName: "M11",
+            longName: nil,
+            colorHex: nil,
+            mode: "bus"
+        )
+        let northStop = LocalStop(
+            stopID: "M11-N",
+            name: "W 42 St/8 Av",
+            latitude: 40.7570,
+            longitude: -73.9897,
+            mode: "bus",
+            parentStation: nil
+        )
+        let southStop = LocalStop(
+            stopID: "M11-S",
+            name: "9 Av/W 42 St",
+            latitude: 40.7580,
+            longitude: -73.9900,
+            mode: "bus",
+            parentStation: nil
+        )
+        let northTerminal = LocalStop(
+            stopID: "M11-N-T",
+            name: "Riverbank Park",
+            latitude: 40.8250,
+            longitude: -73.9550,
+            mode: "bus",
+            parentStation: nil
+        )
+        let southTerminal = LocalStop(
+            stopID: "M11-S-T",
+            name: "West Village Abingdon Sq",
+            latitude: 40.7370,
+            longitude: -74.0050,
+            mode: "bus",
+            parentStation: nil
+        )
+        let routeStops = [
+            LocalRouteStop(route: route, stop: northStop, directionID: 0),
+            LocalRouteStop(route: route, stop: northTerminal, directionID: 0),
+            LocalRouteStop(route: route, stop: southStop, directionID: 1),
+            LocalRouteStop(route: route, stop: southTerminal, directionID: 1)
+        ]
+
+        let directions = OfflineNearbyFallback.buildLocalDirections(
+            route: route,
+            nearbyStops: [northStop, southStop],
+            distances: [northStop.stopID: 80, southStop.stopID: 95],
+            routeStops: routeStops,
+            estimatedWaitMinutes: nil
+        )
+
+        #expect(directions.map(\.directionId) == ["0", "1"])
+        #expect(directions.map(\.direction) == ["To Riverbank Park", "To West Village Abingdon Sq"])
+        #expect(directions.flatMap(\.arrivals).map(\.stopId) == ["M11-N", "M11-S"])
+    }
+
+    @Test func liveDragSearchPreservesStaticMissingDirections() {
+        let staticTwoWay = GroupedNearbyTransitResponse(
+            routeId: "M11",
+            displayName: "M11",
+            mode: "bus",
+            colorHex: nil,
+            directions: [
+                DirectionArrivalsResponse(
+                    direction: "Outbound",
+                    directionLabel: "Outbound",
+                    directionId: "0",
+                    arrivals: [placeholderArrival(routeId: "M11")]
+                ),
+                DirectionArrivalsResponse(
+                    direction: "Inbound",
+                    directionLabel: "Inbound",
+                    directionId: "1",
+                    arrivals: [placeholderArrival(routeId: "M11")]
+                )
+            ]
+        )
+        let liveOneWay = GroupedNearbyTransitResponse(
+            routeId: "M11",
+            displayName: "M11",
+            mode: "bus",
+            colorHex: nil,
+            directions: [
+                DirectionArrivalsResponse(
+                    direction: "Riverbank Park",
+                    directionLabel: "Riverbank Park",
+                    directionId: "0",
+                    arrivals: [expiredLiveArrival(routeId: "M11")]
+                )
+            ]
+        )
+
+        let merged = HomeViewModel.preservingMissingDirections(
+            from: staticTwoWay,
+            in: liveOneWay
+        )
+
+        #expect(merged.directions.map(\.directionId) == ["0", "1"])
+        #expect(merged.directions[0].direction == "Riverbank Park")
+        #expect(merged.directions[1].direction == "Inbound")
+    }
+
+    @Test func liveDragSearchKeepsBetterStaticDirectionLabels() {
+        let staticTwoWay = GroupedNearbyTransitResponse(
+            routeId: "M11",
+            displayName: "M11",
+            mode: "bus",
+            colorHex: nil,
+            directions: [
+                DirectionArrivalsResponse(
+                    direction: "To Riverbank Park",
+                    directionLabel: "To Riverbank Park",
+                    directionId: "0",
+                    arrivals: [placeholderArrival(routeId: "M11")]
+                ),
+                DirectionArrivalsResponse(
+                    direction: "To West Village Abingdon Sq",
+                    directionLabel: "To West Village Abingdon Sq",
+                    directionId: "1",
+                    arrivals: [placeholderArrival(routeId: "M11")]
+                )
+            ]
+        )
+        let liveRenamed = GroupedNearbyTransitResponse(
+            routeId: "M11",
+            displayName: "M11",
+            mode: "bus",
+            colorHex: nil,
+            directions: [
+                DirectionArrivalsResponse(
+                    direction: "Outbound",
+                    directionLabel: "Outbound",
+                    directionId: "0",
+                    arrivals: [expiredLiveArrival(routeId: "M11")]
+                ),
+                DirectionArrivalsResponse(
+                    direction: "Inbound",
+                    directionLabel: "Inbound",
+                    directionId: "1",
+                    arrivals: [expiredLiveArrival(routeId: "M11")]
+                )
+            ]
+        )
+
+        let merged = HomeViewModel.preservingMissingDirections(
+            from: staticTwoWay,
+            in: liveRenamed
+        )
+
+        #expect(merged.directions.map(\.direction) == [
+            "To Riverbank Park",
+            "To West Village Abingdon Sq"
+        ])
+        #expect(merged.directions.flatMap(\.arrivals).allSatisfy { !$0.isPlaceholder })
+    }
+
     @Test func expiredCachedGroupsStayVisibleDuringRefresh() {
         let viewModel = HomeViewModel()
         viewModel.groupedTransit = [expiredLiveGroup()]

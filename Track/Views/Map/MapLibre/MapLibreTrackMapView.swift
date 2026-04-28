@@ -217,7 +217,11 @@ struct MapLibreTrackMapView: View {
         .onChange(of: currentMapCenter?.latitude) { _, _ in refreshViewportCacheIfNeeded() }
         .onChange(of: currentMapCenter?.longitude) { _, _ in refreshViewportCacheIfNeeded() }
         .onChange(of: viewModel.selectedDirectionIndex) { _, _ in forceRefreshStopCache() }
+        .onChange(of: viewModel.selectedDirectionName) { _, _ in forceRefreshStopCache() }
+        .onChange(of: viewModel.selectedShapeDirectionId) { _, _ in forceRefreshStopCache() }
         .onChange(of: viewModel.routeShape?.routeId) { _, _ in forceRefreshStopCache() }
+        .onChange(of: viewModel.nearestStopCoordinate?.latitude) { _, _ in forceRefreshStopCache() }
+        .onChange(of: viewModel.nearestStopCoordinate?.longitude) { _, _ in forceRefreshStopCache() }
         .onChange(of: viewModel.selectedStopId) { _, _ in forceRefreshStopCache() }
         .onChange(of: viewModel.walkingRoute?.polyline.pointCount) { _, _ in
             cachedWalkingCoords = Self.decodeWalkingRoute(viewModel.walkingRoute)
@@ -270,7 +274,12 @@ struct MapLibreTrackMapView: View {
     /// Force-refresh only the stop markers (e.g. when the nearest stop or
     /// selected stop changes, so behind/ahead dimming updates).
     private func forceRefreshStopCache() {
-        guard let center = currentMapCenter, let d = currentMapDistance else { return }
+        guard viewModel.routeShape != nil else {
+            _cachedVisibleStops = []
+            return
+        }
+        let center = currentMapCenter ?? CLLocationCoordinate2D(latitude: 0, longitude: 0)
+        let d = currentMapDistance ?? 0
         _cachedVisibleStops = computeVisibleDirectionStops(center: center, distance: d)
     }
 

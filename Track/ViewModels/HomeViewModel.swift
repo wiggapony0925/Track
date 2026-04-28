@@ -2338,6 +2338,8 @@ final class HomeViewModel {
     @ObservationIgnored private var _filteredBusVehicleIds: Set<String>?
     /// Cached set of train IDs that pass the direction filter.
     @ObservationIgnored private var _filteredTrainVehicleIds: Set<String>?
+    /// Direction/arrival signature for the cached train filter.
+    @ObservationIgnored private var _filteredTrainVehicleContextKey: Int?
 
     /// Bus vehicles filtered to the currently selected direction.
     /// Uses an ID-set cache so positions are always fresh while
@@ -2411,12 +2413,32 @@ final class HomeViewModel {
     /// Train vehicles filtered to the currently selected direction.
     /// Uses an ID-set cache so positions are always fresh.
     var filteredTrainVehicles: [TrainVehicle] {
-        if let cachedIds = _filteredTrainVehicleIds {
+        let contextKey = trainVehicleFilterContextKey()
+        if let cachedIds = _filteredTrainVehicleIds,
+           _filteredTrainVehicleContextKey == contextKey {
             return trainVehicles.filter { cachedIds.contains($0.id) }
         }
         let result = _computeFilteredTrainVehicles()
         _filteredTrainVehicleIds = Set(result.map(\.id))
+        _filteredTrainVehicleContextKey = contextKey
         return result
+    }
+
+    private func trainVehicleFilterContextKey() -> Int {
+        var signature = selectedDirectionIndex &* 16_777_619
+        signature ^= selectedRouteId?.hashValue ?? 0
+        signature ^= selectedDirectionName?.hashValue ?? 0
+        if let group = selectedGroupedRoute,
+           group.directions.indices.contains(selectedDirectionIndex) {
+            let selectedDir = group.directions[selectedDirectionIndex]
+            signature ^= selectedDir.direction.hashValue
+            for arrival in selectedDir.arrivals {
+                signature ^= arrival.tripId?.hashValue ?? 0
+                signature ^= arrival.vehicleId?.hashValue ?? 0
+                signature = signature &* 16_777_619
+            }
+        }
+        return signature
     }
 
     /// Subway directions use "N"/"S" (or destination names); we match by
@@ -2432,6 +2454,19 @@ final class HomeViewModel {
         }
         let safeIdx = min(selectedDirectionIndex, group.directions.count - 1)
         let selectedDir = group.directions[safeIdx]
+
+        let tripIds = Set(selectedDir.arrivals.compactMap { $0.tripId?.uppercased() })
+        let vehicleIds = Set(selectedDir.arrivals.compactMap { $0.vehicleId?.uppercased() })
+        let hasSelectedVehicleKeys = !tripIds.isEmpty || !vehicleIds.isEmpty
+        let isBranchyDirectionSet = group.directions.count > 2 || (routeShape?.directions.count ?? 0) > 2
+
+        if isBranchyDirectionSet && hasSelectedVehicleKeys {
+            let bySelectedArrival = trainVehicles.filter { vehicle in
+                if let trip = vehicle.tripId?.uppercased(), tripIds.contains(trip) { return true }
+                return vehicleIds.contains(vehicle.id.uppercased())
+            }
+            if !bySelectedArrival.isEmpty { return bySelectedArrival }
+        }
 
         // Collect all direction strings that belong to this direction tab
         // (the direction field, plus any arrival directions/destinations)
@@ -2511,9 +2546,7 @@ final class HomeViewModel {
         // Each arrival has a tripId — if a vehicle's tripId matches an arrival in
         // the selected direction, it belongs here.
         if filtered.isEmpty && group.directions.count > 2 {
-            let tripIds = Set(selectedDir.arrivals.compactMap { $0.tripId?.uppercased() })
-            let vehicleIds = Set(selectedDir.arrivals.compactMap { $0.vehicleId?.uppercased() })
-            if !tripIds.isEmpty || !vehicleIds.isEmpty {
+            if hasSelectedVehicleKeys {
                 let byTrip = trainVehicles.filter { vehicle in
                     if let trip = vehicle.tripId?.uppercased(),
                        tripIds.contains(trip) { return true }
@@ -3549,6 +3582,7 @@ final class HomeViewModel {
     func handleRouteSelection(
         _ group: GroupedNearbyTransitResponse, directionIndex: Int = 0, userLocation: CLLocation?
     ) async {
+        await Task.yield()
         await selectGroupedRoute(group, directionIndex: directionIndex, userLocation: userLocation)
     }
 

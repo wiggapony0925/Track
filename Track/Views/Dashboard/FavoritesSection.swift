@@ -307,6 +307,8 @@ struct FavoriteCard: View {
     /// When true, card renders desaturated and non-interactive during refresh.
     var isStale: Bool = false
 
+    @Environment(\.dashboardNow) private var dashboardNow
+
     // MARK: Helpers
 
     private var routeColor: Color {
@@ -470,40 +472,40 @@ struct FavoriteCard: View {
     @ViewBuilder
     private var countdownPill: some View {
         if let arrival = nextArrival {
-            TimelineView(.periodic(from: .now, by: 15.0)) { _ in
-                let eta = resolvedETA(for: arrival)
-                let isNow = eta.isAtStop || eta.secondsRemaining <= 30
-                HStack(spacing: 5) {
-                    // Live / Scheduled indicator
-                    if arrival.isScheduledOnly {
-                        Image(systemName: "calendar.badge.clock")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
-                    } else {
-                        Circle()
-                            .fill(AppTheme.Colors.successGreen)
-                            .frame(width: 5, height: 5)
-                    }
-                    Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(
-                            eta.minutesRemaining <= 2
-                                ? .white
-                                : AppTheme.Colors.mtaBlue
-                        )
+            let eta = resolvedETA(for: arrival)
+            let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+            let _ = dashboardNow
+
+            HStack(spacing: 5) {
+                // Live / Scheduled indicator
+                if arrival.isScheduledOnly {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.6))
+                } else {
+                    Circle()
+                        .fill(AppTheme.Colors.successGreen)
+                        .frame(width: 5, height: 5)
                 }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background {
-                    Capsule()
-                        .fill(
-                            eta.minutesRemaining <= 2
-                                ? AnyShapeStyle(AppTheme.Colors.alertRed)
-                                : AnyShapeStyle(AppTheme.Gradients.accentSurface)
-                        )
-                }
-                .clipShape(Capsule())
+                Text(isNow ? "Now" : "\(eta.minutesRemaining) min")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(
+                        eta.minutesRemaining <= 2
+                            ? .white
+                            : AppTheme.Colors.mtaBlue
+                    )
             }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background {
+                Capsule()
+                    .fill(
+                        eta.minutesRemaining <= 2
+                            ? AnyShapeStyle(AppTheme.Colors.alertRed)
+                            : AnyShapeStyle(AppTheme.Gradients.accentSurface)
+                    )
+            }
+            .clipShape(Capsule())
         } else {
             Text("—")
                 .font(.system(size: 13, weight: .semibold))
@@ -574,32 +576,32 @@ struct FavoriteCard: View {
     @ViewBuilder
     private var countdownChip: some View {
         if let arrival = nextArrival {
-            TimelineView(.periodic(from: .now, by: 15.0)) { _ in
-                let eta = resolvedETA(for: arrival)
-                let isNow = eta.isAtStop || eta.secondsRemaining <= 30
-                VStack(alignment: .trailing, spacing: -1) {
-                    if isNow {
-                        Text("Now")
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.alertRed)
-                    } else {
-                        Text("\(eta.minutesRemaining)")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .foregroundColor(AppTheme.Colors.countdown(eta.minutesRemaining))
-                            .contentTransition(.numericText())
-                        Text("min")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundColor(AppTheme.Colors.textTertiary)
-                    }
-                    Text(arrival.isScheduledOnly ? "Sched" : "Live")
-                        .font(.system(size: 7, weight: .bold))
-                        .textCase(.uppercase)
-                        .foregroundColor(
-                            arrival.isScheduledOnly
-                                ? AppTheme.Colors.textTertiary
-                                : AppTheme.Colors.successGreen
-                        )
+            let eta = resolvedETA(for: arrival)
+            let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+            let _ = dashboardNow
+
+            VStack(alignment: .trailing, spacing: -1) {
+                if isNow {
+                    Text("Now")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.alertRed)
+                } else {
+                    Text("\(eta.minutesRemaining)")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(AppTheme.Colors.countdown(eta.minutesRemaining))
+                        .contentTransition(.numericText())
+                    Text("min")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.textTertiary)
                 }
+                Text(arrival.isScheduledOnly ? "Sched" : "Live")
+                    .font(.system(size: 7, weight: .bold))
+                    .textCase(.uppercase)
+                    .foregroundColor(
+                        arrival.isScheduledOnly
+                            ? AppTheme.Colors.textTertiary
+                            : AppTheme.Colors.successGreen
+                    )
             }
         } else {
             Text("—")

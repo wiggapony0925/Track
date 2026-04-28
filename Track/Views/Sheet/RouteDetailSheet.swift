@@ -151,6 +151,10 @@ struct RouteDetailSheet: View {
     /// True while the first arrivals batch is still in-flight.
     /// Drives skeleton placeholders so the sheet never looks empty on open.
     @State private var isLoadingArrivals: Bool = true
+    /// Set after first-frame route-detail cache warmup finishes. Until then,
+    /// the sheet renders light skeletons instead of synchronously deriving
+    /// polyline snaps, nearest-stop chips, and stop-arrival lookup tables.
+    @State private var didWarmInitialContent: Bool = false
 
     /// Debounced snapshot of the nearest-stop arrivals shown in countdown chips.
     /// Refreshes when the set of vehicles changes (appeared / vanished).
@@ -455,14 +459,18 @@ struct RouteDetailSheet: View {
 
     @ViewBuilder
     private var tabContent: some View {
-        switch selectedTab {
-        case .stops:
-            stopsListSection
-            lostAndFoundPrompt
-        case .departures:
-            arrivalsList
-        case .alerts:
-            alertsList
+        if !didWarmInitialContent {
+            routeDetailWarmupPlaceholder
+        } else {
+            switch selectedTab {
+            case .stops:
+                stopsListSection
+                lostAndFoundPrompt
+            case .departures:
+                arrivalsList
+            case .alerts:
+                alertsList
+            }
         }
     }
 
@@ -893,27 +901,19 @@ struct RouteDetailSheet: View {
         // Prime the direction-change guard so the first real direction change
         // (e.g. from a DIR_PREF restore) is handled, not spurious double-fires.
         _lastHandledDirectionIndex = selectedDirectionIndex
-        rebuildCachedPolyline()
         isFavorited = favoritesManager.isFavorite(routeId: group.routeId, mode: group.mode)
-        isLoadingArrivals = safeDirection.arrivals.isEmpty
+        isLoadingArrivals = true
         // Initialize stable schedule snapshots from props
         if busSchedule != nil { stableBusSchedule = busSchedule }
         if !cachedTrainArrivals.isEmpty { stableTrainArrivals = cachedTrainArrivals }
-        stableNearestArrivals = nearestStopArrivals
         lastStableRefreshDate = .distantPast
-        // Sync express state so map + stops list start with correct skip state.
-        syncExpressState()
-        refreshDirectionBadgeCounts()
-        refreshArrivalByStopCache()
         if lockedDirectionHeadsign == nil {
             lockedDirectionHeadsign = safeDirection.direction
         }
-        if lockedStopKeyPerDirection[selectedDirectionIndex] == nil,
-           let selectedStopId, !selectedStopId.isEmpty {
-            lockedStopKeyPerDirection[selectedDirectionIndex] = selectedStopId
-        } else if lockedStopKeyPerDirection[selectedDirectionIndex] == nil,
-                  let first = stableNearestArrivals.first {
-            lockedStopKeyPerDirection[selectedDirectionIndex] = first.stopId ?? first.stopName
+        didWarmInitialContent = false
+        Task { @MainActor in
+            await Task.yield()
+            warmInitialRouteDetailContent()
         }
         #if DEBUG
         AppLogger.shared.log(
@@ -926,7 +926,29 @@ struct RouteDetailSheet: View {
         #endif
     }
 
+    private func warmInitialRouteDetailContent() {
+        rebuildCachedPolyline()
+        isLoadingArrivals = safeDirection.arrivals.isEmpty
+        stableNearestArrivals = nearestStopArrivals
+        // Sync express state so map + stops list start with correct skip state.
+        syncExpressState()
+        refreshDirectionBadgeCounts()
+        refreshArrivalByStopCache()
+        if lockedStopKeyPerDirection[selectedDirectionIndex] == nil,
+           let selectedStopId, !selectedStopId.isEmpty {
+            lockedStopKeyPerDirection[selectedDirectionIndex] = selectedStopId
+        } else if lockedStopKeyPerDirection[selectedDirectionIndex] == nil,
+                  let first = stableNearestArrivals.first {
+            lockedStopKeyPerDirection[selectedDirectionIndex] = first.stopId ?? first.stopName
+        }
+        didWarmInitialContent = true
+    }
+
     private func handleGroupChange() {
+        if !didWarmInitialContent {
+            warmInitialRouteDetailContent()
+            return
+        }
         refreshDirectionBadgeCounts()
         refreshArrivalByStopCache()
         if let locked = lockedDirectionHeadsign,
@@ -3021,7 +3043,9 @@ struct RouteDetailSheet: View {
     }
 
     private var countdownSection: some View {
-        let source = stableNearestArrivals.isEmpty ? nearestStopArrivals : stableNearestArrivals
+        let source = didWarmInitialContent
+            ? (stableNearestArrivals.isEmpty ? nearestStopArrivals : stableNearestArrivals)
+            : []
         let isUserSelected = inSheetSelectedStopId != nil
         let displayStopName = resolveDisplayStopName(source: source)
 
@@ -3038,6 +3062,18 @@ struct RouteDetailSheet: View {
                 countdownChipScroller(arrivals: source)
             }
         }
+    }
+
+    private var routeDetailWarmupPlaceholder: some View {
+        VStack(spacing: 10) {
+            ForEach(0..<5, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(AppTheme.Colors.textTertiary.opacity(0.08))
+                    .frame(height: 54)
+                    .padding(.horizontal, AppTheme.Layout.margin)
+            }
+        }
+        .redacted(reason: .placeholder)
     }
 
     /// Computes a "walk now to catch the next one" hint when the user is

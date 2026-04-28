@@ -2117,7 +2117,7 @@ extension HomeViewModel {
         // casings (SIRI → "BXM2", OBA → "BxM2").  The backend merge-key
         // normalises, but belt-and-suspenders: collapse duplicates here
         // so two cards for the same route never appear simultaneously.
-        let deduped: [GroupedNearbyTransitResponse] = {
+        var deduped: [GroupedNearbyTransitResponse] = {
             var seen: [String: Int] = [:]          // uppercased routeId → index
             var result: [GroupedNearbyTransitResponse] = []
             for group in new {
@@ -2144,6 +2144,19 @@ extension HomeViewModel {
             }
             return result
         }()
+
+        if !existing.isEmpty {
+            let existingByRoute = existing.reduce(into: [String: GroupedNearbyTransitResponse]()) {
+                result, group in
+                result[group.routeId.uppercased()] = group
+            }
+            deduped = deduped.map { fresh in
+                guard let prior = existingByRoute[fresh.routeId.uppercased()] else {
+                    return fresh
+                }
+                return Self.preservingMissingDirections(from: prior, in: fresh)
+            }
+        }
 
         // First load or previous was empty — nothing to merge.
         guard !existing.isEmpty else {
@@ -2215,6 +2228,87 @@ extension HomeViewModel {
 
         graceMissCountBySource[source] = missCounts
         return merged
+    }
+
+    nonisolated static func preservingMissingDirections(
+        from prior: GroupedNearbyTransitResponse,
+        in fresh: GroupedNearbyTransitResponse
+    ) -> GroupedNearbyTransitResponse {
+        var merged = fresh
+        merged.directions = fresh.directions.map { freshDirection in
+            guard let priorDirection = matchingDirection(for: freshDirection, in: prior) else {
+                return freshDirection
+            }
+            return stabilizedDirectionLabel(prior: priorDirection, fresh: freshDirection)
+        }
+        for direction in prior.directions where matchingDirection(for: direction, in: merged) == nil {
+            merged.directions.append(direction)
+        }
+        return merged
+    }
+
+    private nonisolated static func matchingDirection(
+        for candidate: DirectionArrivalsResponse,
+        in group: GroupedNearbyTransitResponse
+    ) -> DirectionArrivalsResponse? {
+        group.directions.first { existing in
+            if let left = nonEmptyDirectionId(candidate.directionId),
+               let right = nonEmptyDirectionId(existing.directionId),
+               left == right {
+                return true
+            }
+            let leftDirection = candidate.direction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let rightDirection = existing.direction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let leftLabel = candidate.directionLabel?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() ?? ""
+            let rightLabel = existing.directionLabel?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() ?? ""
+            return !leftDirection.isEmpty
+                && leftDirection == rightDirection
+                && leftLabel == rightLabel
+        }
+    }
+
+    private nonisolated static func stabilizedDirectionLabel(
+        prior: DirectionArrivalsResponse,
+        fresh: DirectionArrivalsResponse
+    ) -> DirectionArrivalsResponse {
+        let keepPriorLabel = directionLabelScore(prior) >= directionLabelScore(fresh)
+        guard keepPriorLabel else { return fresh }
+        return DirectionArrivalsResponse(
+            direction: prior.direction,
+            directionLabel: prior.directionLabel,
+            directionId: fresh.directionId ?? prior.directionId,
+            branchId: fresh.branchId ?? prior.branchId,
+            arrivals: fresh.arrivals
+        )
+    }
+
+    private nonisolated static func directionLabelScore(_ direction: DirectionArrivalsResponse) -> Int {
+        let label = direction.directionLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let primary = direction.direction.trimmingCharacters(in: .whitespacesAndNewlines)
+        let best = label.isEmpty ? primary : label
+        let normalized = best.lowercased()
+        if normalized.hasPrefix("to ") || normalized.hasPrefix("→ ") {
+            return 4
+        }
+        if !DirectionConstants.isFallbackDirection(best), best.count >= 3 {
+            return 3
+        }
+        if !primary.isEmpty, !DirectionConstants.isFallbackDirection(primary), primary.count >= 3 {
+            return 2
+        }
+        if nonEmptyDirectionId(direction.directionId) != nil || nonEmptyDirectionId(direction.branchId) != nil {
+            return 1
+        }
+        return 0
+    }
+
+    private nonisolated static func nonEmptyDirectionId(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Searches a wider radius to find the nearest metro stop when

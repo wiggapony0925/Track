@@ -32,6 +32,8 @@ struct NearbyTransitRow: View {
     var isExpanded: Bool
     var onExpand: (() -> Void)?
 
+    @Environment(\.dashboardNow) private var dashboardNow
+
     /// Whether this row's arrival matches the vehicle tapped on the map.
     private var isMapHighlighted: Bool {
         guard let tapped = tappedVehicleId, !tapped.isEmpty else { return false }
@@ -175,23 +177,23 @@ struct NearbyTransitRow: View {
                     .foregroundColor(AppTheme.Colors.textSecondary)
                     .textCase(.uppercase)
                 // Smart ETA for expanded detail — consistent with main countdown
-                TimelineView(.periodic(from: .now, by: 15.0)) { _ in
-                    let eta: SmartETA = resolvedETA(for: arrival)
-                    let mins: Int = eta.minutesRemaining
-                    let isNow: Bool = eta.isAtStop || eta.secondsRemaining <= 30
-                    let timeStr: String = {
-                        if let ts = arrival.arrivalTs {
-                            return Date(timeIntervalSince1970: Double(ts))
-                                .formatted(date: .omitted, time: .shortened)
-                        }
-                        return ""
-                    }()
-                    Text(isNow || mins <= 0
-                        ? "Arriving now"
-                        : "In \(mins) min" + (timeStr.isEmpty ? "" : " — \(timeStr)"))
-                        .font(.custom("Helvetica-Bold", size: 14))
-                        .foregroundColor(AppTheme.Colors.textPrimary)
-                }
+                let eta: SmartETA = resolvedETA(for: arrival)
+                let mins: Int = eta.minutesRemaining
+                let isNow: Bool = eta.isAtStop || eta.secondsRemaining <= 30
+                let timeStr: String = {
+                    if let ts = arrival.arrivalTs {
+                        return Date(timeIntervalSince1970: Double(ts))
+                            .formatted(date: .omitted, time: .shortened)
+                    }
+                    return ""
+                }()
+                let _ = dashboardNow
+
+                Text(isNow || mins <= 0
+                    ? "Arriving now"
+                    : "In \(mins) min" + (timeStr.isEmpty ? "" : " - \(timeStr)"))
+                    .font(.custom("Helvetica-Bold", size: 14))
+                    .foregroundColor(AppTheme.Colors.textPrimary)
             }
 
             Spacer()
@@ -287,26 +289,25 @@ struct NearbyTransitRow: View {
                 .font(.system(size: 20, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.4))
         } else {
-            TimelineView(.periodic(from: .now, by: 15.0)) { _ in
-                let eta: SmartETA = resolvedETA(for: arrival)
-                let mins: Int = eta.minutesRemaining
-                let isNow: Bool = !arrival.isScheduledOnly
-                    && (eta.isAtStop || eta.secondsRemaining <= 30)
-                let countdownColor: Color = arrival.isScheduledOnly
-                    ? AppTheme.Colors.textSecondary.opacity(0.55)
-                    : AppTheme.Colors.countdown(mins)
+            let eta: SmartETA = resolvedETA(for: arrival)
+            let mins: Int = eta.minutesRemaining
+            let isNow: Bool = !arrival.isScheduledOnly
+                && (eta.isAtStop || eta.secondsRemaining <= 30)
+            let countdownColor: Color = arrival.isScheduledOnly
+                ? AppTheme.Colors.textSecondary.opacity(0.55)
+                : AppTheme.Colors.countdown(mins)
+            let _ = dashboardNow
 
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text(isNow ? "Now" : "\(mins)")
-                        .font(.custom("Helvetica-Bold", size: isNow ? 22 : 32))
-                        .foregroundColor(countdownColor)
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(isNow ? "Now" : "\(mins)")
+                    .font(.custom("Helvetica-Bold", size: isNow ? 22 : 32))
+                    .foregroundColor(countdownColor)
 
-                    if !isNow {
-                        Text("min")
-                            .font(.custom("Helvetica-Bold", size: 13))
-                            .foregroundColor(AppTheme.Colors.textSecondary)
-                            .offset(y: -2)
-                    }
+                if !isNow {
+                    Text("min")
+                        .font(.custom("Helvetica-Bold", size: 13))
+                        .foregroundColor(AppTheme.Colors.textSecondary)
+                        .offset(y: -2)
                 }
             }
         }

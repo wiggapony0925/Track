@@ -3,14 +3,14 @@
 //  TrackTests
 //
 //  Validates the drag-to-search distance thresholds, state transitions,
-//  and non-snapping drag behavior. Tests the pure distance calculations
+//  and GPS snap-back behavior. Tests the pure distance calculations
 //  that drive handleMapCameraIdle() in HomeView.
 //
 //  Expected behaviors:
 //    1. Circle appears instantly when user pans 60m+ from GPS (no debounce)
 //    2. API fires after 350ms debounce at the settled map center
-//    3. Dragging near GPS does not snap or recenter automatically
-//    4. Panning 50-100m from GPS places the pin without dismissing
+//    3. Settling a drag-search pin very close to GPS returns to GPS mode
+//    4. Panning beyond the small GPS snap radius places the pin normally
 //    5. Distance calculations are accurate at NYC latitudes
 //
 
@@ -96,33 +96,33 @@ struct DragSearchBehaviorTests {
             "300m settled center should place/search a pin, got \(dist300)m")
     }
 
-    // MARK: - No Magnetic Snap-Back
+    // MARK: - GPS Snap-Back
 
-    @Test("Dragging near GPS does not trigger snap-back")
-    func noMagneticSnapThreshold() {
+    @Test("Settling near GPS snaps back to current location")
+    func nearGPSSnapThreshold() {
         let at40m = Self.offset(meters: 40)
         let at55m = Self.offset(meters: 55)
+        let at80m = Self.offset(meters: 80)
         let at10m = Self.offset(meters: 10)
         let atOrigin = Self.gpsLocation
 
         let dist40 = Self.distance(from: at40m)
         let dist55 = Self.distance(from: at55m)
+        let dist80 = Self.distance(from: at80m)
         let dist10 = Self.distance(from: at10m)
         let distOrigin = Self.distance(from: atOrigin)
 
-        // Under 50m — old snap distance, but drag search should not dismiss now.
-        #expect(dist40 < 50, "40m offset should remain under former snap threshold, got \(dist40)m")
-        #expect(dist10 < 50, "10m offset should remain under former snap threshold, got \(dist10)m")
-        #expect(distOrigin < 50, "Origin should remain under former snap threshold, got \(distOrigin)m")
+        let snapRadius = 45.0
 
-        let shouldSnap40m = false
-        let shouldSnap10m = false
-        let shouldSnapOrigin = false
+        #expect(dist40 < snapRadius, "40m offset should be inside GPS snap radius, got \(dist40)m")
+        #expect(dist10 < snapRadius, "10m offset should be inside GPS snap radius, got \(dist10)m")
+        #expect(distOrigin < snapRadius, "Origin should be inside GPS snap radius, got \(distOrigin)m")
+        #expect(dist55 > snapRadius, "55m offset should stay outside the GPS snap radius, got \(dist55)m")
+        #expect(dist80 > snapRadius, "80m offset should stay outside the GPS snap radius, got \(dist80)m")
 
-        #expect(!shouldSnap40m, "40m should not auto-dismiss or recenter")
-        #expect(!shouldSnap10m, "10m should not auto-dismiss or recenter")
-        #expect(!shouldSnapOrigin, "Origin should not auto-dismiss or recenter")
-        #expect(dist55 >= 50, "55m offset should be outside former snap threshold, got \(dist55)m")
+        #expect(dist40 <= snapRadius, "40m should clear the pin and use GPS")
+        #expect(dist55 > snapRadius, "55m should not be bounced back by GPS snap")
+        #expect(dist80 > snapRadius, "80m should still place a search pin")
     }
 
     // MARK: - Threshold Ordering
@@ -138,22 +138,40 @@ struct DragSearchBehaviorTests {
             "Settled search placement should depend on active drag state, not GPS distance")
     }
 
-    @Test("Below activation threshold does not snap")
-    func belowActivationThresholdDoesNotSnap() {
-        // At 52m: too close for activation, but still no automatic recenter.
+    @Test("Between snap and activation threshold does not bounce")
+    func betweenSnapAndActivationThresholdDoesNotBounce() {
+        // At 52m: outside the tiny GPS snap radius, but still too close
+        // for activation. The map should stay where the user put it.
         let at52m = Self.offset(meters: 52)
         let dist52 = Self.distance(from: at52m)
 
-        let wouldSnap = false
+        let snapRadius = 45.0
+        let wouldUseGPS = dist52 <= snapRadius
         let wouldActivate = dist52 > 60
 
-        #expect(!wouldSnap, "52m should not trigger snap-back")
+        #expect(!wouldUseGPS, "52m should not snap back; it also should not activate yet")
         #expect(!wouldActivate, "52m should not trigger activation")
+    }
+
+    @Test("Recent drag-search camera movement blocks GPS auto-recenter")
+    func recentDragSearchMovementBlocksGPSRecenter() {
+        let dragToSearchEnabled = true
+        let selectedRouteId: String? = nil
+        let isDragSearchActive = false
+        let isDragSearchPanning = false
+        let secondsSinceCameraMove = 0.8
+        let graceSeconds = 2.0
+
+        let isPositioningPin = dragToSearchEnabled
+            && selectedRouteId == nil
+            && (isDragSearchActive || isDragSearchPanning || secondsSinceCameraMove < graceSeconds)
+
+        #expect(isPositioningPin, "GPS ticks should not recenter while the user is placing a drag-search pin")
     }
 
     // MARK: - State Transition: Full Drag-Search Lifecycle
 
-    @Test("Full lifecycle: GPS → drag out → settle → drag back without snap")
+    @Test("Full lifecycle: GPS → drag out → settle → drag back to GPS")
     func fullLifecycle() {
         // Simulate the user journey through distance checks
         struct DragState {
@@ -186,15 +204,15 @@ struct DragSearchBehaviorTests {
         #expect(state.isDragSearchActive, "Should still be active at 200m")
         #expect(!state.isDragSearchPanning, "Should stop panning after settle")
 
-        // Step 4: User drags back to 45m — no automatic snap/recenter.
-        let pan45m = Self.offset(meters: 45)
-        let dist45 = Self.distance(from: pan45m)
-        if state.isDragSearchActive && dist45 > 0 {
+        // Step 4: User drags back inside the 45m snap radius — GPS becomes active.
+        let pan40m = Self.offset(meters: 40)
+        let dist40 = Self.distance(from: pan40m)
+        if state.isDragSearchActive && dist40 <= 45 {
+            state.isDragSearchActive = false
             state.isDragSearchPanning = false
-            // API would place/search the pin here; no camera recenter.
         }
-        #expect(state.isDragSearchActive, "Should stay active at 45m instead of snapping back")
-        #expect(!state.isDragSearchPanning, "Should settle without snapping back")
+        #expect(!state.isDragSearchActive, "Should clear the pin at 40m and return to GPS")
+        #expect(!state.isDragSearchPanning, "Should stop panning after returning to GPS")
     }
 
     // MARK: - Distance Accuracy at NYC Latitude
@@ -229,6 +247,13 @@ struct DragSearchBehaviorTests {
         let selectedRouteId: String? = "A"
         let shouldProcess = selectedRouteId == nil
         #expect(!shouldProcess, "Route detail open → drag search blocked")
+    }
+
+    @Test("Search pin hides favorites")
+    func searchPinHidesFavorites() {
+        #expect(DashboardView.shouldShowFavorites(isSearchPinActive: false))
+        #expect(!DashboardView.shouldShowFavorites(isSearchPinActive: true))
+        #expect(DashboardView.contentSpacing(isSearchPinActive: true) < DashboardView.contentSpacing(isSearchPinActive: false))
     }
 
     @Test("Drag-to-search disabled blocks drag search")
@@ -266,13 +291,14 @@ struct DragSearchBehaviorTests {
         #expect(apiCallCount == 1, "Only the last debounce should fire, got \(apiCallCount)")
     }
 
-    @Test("Debounce between 60-100m places the search pin")
-    func debounceBetween60And100mPlacesPin() {
+    @Test("Debounce outside GPS snap radius places the search pin")
+    func debounceOutsideGPSSnapRadiusPlacesPin() {
         // If user is 80m away when debounce fires, keep the chosen center.
         let dist = 80.0
         let isDragSearchActive = true
+        let snapRadius = 45.0
 
-        let shouldPlacePin = isDragSearchActive && dist > 0
+        let shouldPlacePin = isDragSearchActive && dist > snapRadius
         #expect(shouldPlacePin, "80m settled center should place the pin, not dismiss")
     }
 }

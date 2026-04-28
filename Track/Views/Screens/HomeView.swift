@@ -19,6 +19,7 @@ struct HomeView: View {
     
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(LocationContext.self) private var locationContext
     @Bindable var viewModel: HomeViewModel
     var locationManager: LocationManager
     /// Saved home/work places — sourced from SavedPlacesCache which
@@ -66,6 +67,10 @@ struct HomeView: View {
     /// The settled center after a drag-search debounce fires. `nil` while
     /// the user is still panning — the radius circles hide until this is set.
     @State private var dragSearchSettledCenter: CLLocationCoordinate2D?
+    /// Last camera movement while drag-search mode was available. Used to
+    /// keep live GPS updates from snapping the map back while the user is
+    /// positioning the pin but has not crossed the activation threshold yet.
+    @State private var lastDragSearchCameraMoveAt: Date?
     /// Stamped when drag-search is dismissed so that the programmatic
     /// recenter animation (which fires many `handleMapCameraIdle` calls
     /// while the camera is still mid-flight) cannot re-activate drag search.
@@ -101,6 +106,10 @@ struct HomeView: View {
     /// tap inside the route detail sheet — the sheet should collapse (not expand)
     /// so the user can see the focused vehicle on the map.
     @State private var focusFromChip = false
+
+    private static let dragSearchActivationDistanceMeters: CLLocationDistance = 60
+    private static let dragSearchGPSSnapRadiusMeters: CLLocationDistance = 45
+    private static let dragSearchInteractionGraceSeconds: TimeInterval = 2.0
     
     /// Whether a drag-search API call is in-flight.
     /// Derived from the ViewModel's loading state instead of maintaining
@@ -157,6 +166,7 @@ struct HomeView: View {
     private var dataObservedContent: some View {
         notificationObservedContent
             .onChange(of: currentMapCenter?.latitude) { handleMapCenterChange() }
+            .onChange(of: currentMapCenter?.longitude) { handleMapCenterChange() }
             .onChange(of: viewModel.routeShape?.polylines.count) { handleRouteShapeLoaded() }
             .onChange(of: viewModel.nearestStopCoordinate?.latitude) { handleNearestStopChanged() }
             .onChange(of: viewModel.selectedDirectionIndex) { handleDirectionIndexChanged() }
@@ -682,12 +692,27 @@ struct HomeView: View {
     }
     
     private func handleDragToggle(_ enabled: Bool) {
-        if !enabled && isDragSearchActive {
+        if !enabled && hasAnySearchPinState {
             dismissDragSearch()
         }
         // Immediately persist to Supabase so the saved preference
         // is not overwritten by the next pull during a full sync.
         Task { await SyncManager.shared.pushUserSettings() }
+    }
+
+    private var hasAnySearchPinState: Bool {
+        isDragSearchActive
+            || viewModel.isSearchPinActive
+            || viewModel.searchPinCoordinate != nil
+            || chatBiasPin != nil
+            || dragSearchSettledCenter != nil
+    }
+
+    private var isPositioningDragSearchPin: Bool {
+        guard dragToSearchEnabled, viewModel.selectedRouteId == nil else { return false }
+        if isDragSearchActive || isDragSearchPanning { return true }
+        guard let movedAt = lastDragSearchCameraMoveAt else { return false }
+        return Date().timeIntervalSince(movedAt) < Self.dragSearchInteractionGraceSeconds
     }
     
     private func handleMapCenterChange() {
@@ -1363,7 +1388,7 @@ struct HomeView: View {
             // the next GPS fix would yank the camera back to their real
             // location, undoing the drag. Also guard against panning even if 
             // the threshold hasn't been crossed yet.
-            if !isDragSearchActive && !isDragSearchPanning {
+            if !isPositioningDragSearchPin {
                 // Skip the system recenter when the map is already close to
                 // the GPS dot — avoids a redundant write that can make the
                 // recenter button's first tap appear to do nothing (the engine
@@ -1478,6 +1503,8 @@ struct HomeView: View {
 
         guard dragToSearchEnabled,
               viewModel.selectedRouteId == nil else { return }
+
+                lastDragSearchCameraMoveAt = Date()
         
         // Cancel any pending debounce
         dragSearchDebounce?.cancel()
@@ -1489,7 +1516,7 @@ struct HomeView: View {
             let panLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
             let dist = panLoc.distance(from: userLoc)
             
-            if dist > 60 {
+            if dist > Self.dragSearchActivationDistanceMeters {
                 viewModel.setInstantCoordinate(center)
                 
                 // ── Instant activation ─────────────────────────────────
@@ -1525,17 +1552,21 @@ struct HomeView: View {
             
             guard isDragSearchActive else { return }
 
-            // Panning stopped — fire the API search at the actual settled
-            // center. Do not gate this by distance from GPS; users often
-            // place nearby pins deliberately, and distance gates made the
-            // experience feel like it bounced back to an old center.
+            let dragLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+            if let userLoc = locationManager.currentLocation,
+               dragLoc.distance(from: userLoc) <= Self.dragSearchGPSSnapRadiusMeters {
+                clearDragSearchToGPS(stampDismissal: false)
+                return
+            }
+
+            // Panning stopped outside the GPS snap radius — fire the API
+            // search at the actual settled center.
             withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
                 isDragSearchPanning = false
             }
 
             // Geocode *after* debounce settles — one request per
             // settled position instead of one per camera frame.
-            let dragLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
             viewModel.updateLocationName(for: dragLoc)
 
             await viewModel.setSearchPin(center, userLocation: locationManager.currentLocation)
@@ -1544,6 +1575,7 @@ struct HomeView: View {
             // Lock the radius circles and chat bias to the dropped pin.
             dragSearchSettledCenter = center
             chatBiasPin = center
+            locationContext.setDroppedPin(center)
 
             // Satisfying "lock-in" vibration so the user feels the new center
             HapticManager.impact(.medium)
@@ -1564,7 +1596,15 @@ struct HomeView: View {
 
         // Stamp dismissal time so handleMapCameraIdle ignores intermediate
         // camera positions produced by the recenter animation flying back.
-        dragSearchDismissedAt = Date()
+        clearDragSearchToGPS(stampDismissal: true)
+    }
+
+    private func clearDragSearchToGPS(stampDismissal: Bool) {
+        dragSearchDebounce?.cancel()
+
+        if stampDismissal {
+            dragSearchDismissedAt = Date()
+        }
 
         // Staggered exit: circle shrinks first, then state clears
         withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
@@ -1575,7 +1615,9 @@ struct HomeView: View {
             hasFiredDragHaptic = false
             dragSearchSettledCenter = nil
         }
+        lastDragSearchCameraMoveAt = nil
         chatBiasPin = nil
+        locationContext.clearDroppedPin()
         
         HapticManager.notification(.success)
         
@@ -1751,4 +1793,5 @@ struct HomeView: View {
         currentMapDistance: .constant(nil),
         chatBiasPin: .constant(nil)
     )
+    .environment(LocationContext())
 }
