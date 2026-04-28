@@ -88,6 +88,7 @@ struct MapLibreTrackMapView: View {
     /// Cached walking route coordinates — decoded from MKPolyline once,
     /// not on every body re-evaluation (which fires 60x/sec during gestures).
     @State private var cachedWalkingCoords: [CLLocationCoordinate2D]?
+    @State private var savedPlacesCache = SavedPlacesCache.shared
 
     // MARK: - Computed Properties
 
@@ -266,6 +267,20 @@ struct MapLibreTrackMapView: View {
             isActive: viewModel.isSearchPinActive,
             hasSelectedRoute: viewModel.selectedRouteId != nil,
             cameraChangeToken: cameraChangeToken
+        )
+
+        MapLibreSavedPlacesOverlay(
+            mapView: mapViewRef,
+            places: savedPlacesCache.visibleMapPlaces,
+            cameraChangeToken: cameraChangeToken,
+            onTap: { place in
+                NotificationCenter.default.post(
+                    name: .quickDestination,
+                    object: PlanLocation.saved(place)
+                )
+                NotificationCenter.default.post(name: .switchToTab, object: AppTab.trips)
+                HapticManager.impact(.medium)
+            }
         )
     }
 

@@ -3127,6 +3127,7 @@ class TrackEngineService:
         lon: float,
         address: str | None = None,
         icon: str | None = None,
+        visible_on_map: bool = True,
         place_id: int | None = None,
     ) -> SavedPlace:
         return self.store.upsert_saved_place(
@@ -3137,6 +3138,7 @@ class TrackEngineService:
             lon=lon,
             address=address,
             icon=icon,
+            visible_on_map=visible_on_map,
             place_id=place_id,
         )
 

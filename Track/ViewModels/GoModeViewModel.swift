@@ -153,6 +153,14 @@ final class GoModeViewModel {
         checkGetOffProximity(userLocation: loc)
     }
 
+    /// Updates proximity-only GO guidance when the route shape is not owned by
+    /// the current screen. Used by the global GoTripSession so notifications
+    /// continue to fire from app-level GPS updates.
+    func updateUserLocation(_ location: CLLocation?) {
+        guard isGoModeActive, let location else { return }
+        checkGetOffProximity(userLocation: location)
+    }
+
     // MARK: - Get-Off Proximity Check
 
     /// Checks whether the user is approaching or has arrived at their

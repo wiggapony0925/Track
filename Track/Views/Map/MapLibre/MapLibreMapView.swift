@@ -76,6 +76,22 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             ^ (Self.polylineArraySignature(split.behind) &* 31)
     }
 
+    private static func tripRouteLegSignature(_ legs: [TripRouteLegData]?) -> Int {
+        guard let legs else { return 0 }
+        var signature = legs.count &* 16_777_619
+        for (index, leg) in legs.enumerated() {
+            signature ^= (index &+ 1) &* 31
+            signature ^= Self.polylineSignature(leg.coordinates)
+            signature ^= Self.polylineArraySignature(leg.fullRouteCoordinates ?? []) &* 17
+            signature ^= Self.polylineArraySignature([leg.stopCoordinates]) &* 13
+            signature ^= leg.color.hash
+            signature ^= leg.isWalk ? 0xA11 : 0
+            signature ^= leg.isBusRoute ? 0xB05 : 0
+            signature = signature &* 16_777_619
+        }
+        return signature
+    }
+
     private static func routeStopSignature(_ stops: [DisplayedRouteStop]) -> Int {
         var signature = stops.count &* 16_777_619
         for stop in stops {
@@ -166,8 +182,13 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         guard walkingEq else { return false }
 
         // Trip route overlay
-        let tripEq: Bool = (lhs.tripRouteLegs?.count ?? 0) == (rhs.tripRouteLegs?.count ?? 0)
+        let tripEq: Bool = Self.tripRouteLegSignature(lhs.tripRouteLegs)
+            == Self.tripRouteLegSignature(rhs.tripRouteLegs)
             && lhs.tripFitCamera == rhs.tripFitCamera
+            && Self.coordinateSignature(lhs.tripOriginCoordinate ?? CLLocationCoordinate2D())
+                == Self.coordinateSignature(rhs.tripOriginCoordinate ?? CLLocationCoordinate2D())
+            && Self.coordinateSignature(lhs.tripDestinationCoordinate ?? CLLocationCoordinate2D())
+                == Self.coordinateSignature(rhs.tripDestinationCoordinate ?? CLLocationCoordinate2D())
         guard tripEq else { return false }
 
         return true
@@ -294,6 +315,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
     /// Called when a selected route stop dot is tapped on the map.
     var onRouteStopTap: ((BusStop) -> Void)?
+
+    /// Called when a trip route stop dot is tapped on the map.
+    var onTripStopTap: ((BusStop) -> Void)?
 
     /// Bridges real-time sheet height → contentInset.bottom (bypasses SwiftUI).
     /// Wired once in makeUIView; not included in Equatable check.
@@ -678,6 +702,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private var lastRadiusHash: Int = -1
         private var lastBusHash: Int = -1
         private var lastTripRouteHash: Int = -1
+        private var lastTripFitCameraSignature: Int = -1
         private var lastDarkMode: Bool?
 
         /// Route-colour tint tracking — detects when the tint should
@@ -803,6 +828,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             lastTransferHash = -1
             lastRadiusHash = -1
             lastTripRouteHash = -1
+            lastTripFitCameraSignature = -1
             lastDarkMode = nil
             lastRouteTintActive = false
             lastRouteTintColor = nil
@@ -1013,6 +1039,33 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 )
                 parent.onRouteStopTap?(busStop)
                 return
+            }
+
+            if parent.tripRouteLegs?.isEmpty == false {
+                let features = mapView.visibleFeatures(
+                    in: rect,
+                    styleLayerIdentifiers: [
+                        Self.tripStopCasingID,
+                        Self.tripStopFillID,
+                    ]
+                )
+
+                if let hit = features.first,
+                   let stopId = hit.attributes["stop_id"] as? String,
+                   let name = hit.attributes["name"] as? String,
+                   let pointFeature = hit as? MLNPointFeature {
+                    let coord = pointFeature.coordinate
+                    let busStop = BusStop(
+                        id: stopId,
+                        name: name,
+                        lat: coord.latitude,
+                        lon: coord.longitude,
+                        direction: nil,
+                        routeIds: nil
+                    )
+                    parent.onTripStopTap?(busStop)
+                    return
+                }
             }
 
             guard parent.selectedMode == .bus else { return }
@@ -2193,8 +2246,14 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             style: MLNStyle,
             representable: MapLibreMapView
         ) {
-            let legCount = representable.tripRouteLegs?.count ?? 0
-            let tripHash = legCount ^ (representable.tripFitCamera ? 0x100 : 0)
+            let tripHash = MapLibreMapView.tripRouteLegSignature(representable.tripRouteLegs)
+                ^ (representable.tripFitCamera ? 0x100 : 0)
+                ^ MapLibreMapView.coordinateSignature(
+                    representable.tripOriginCoordinate ?? CLLocationCoordinate2D()
+                )
+                ^ (MapLibreMapView.coordinateSignature(
+                    representable.tripDestinationCoordinate ?? CLLocationCoordinate2D()
+                ) &* 31)
             guard tripHash != lastTripRouteHash else { return }
             lastTripRouteHash = tripHash
             updateTripRouteLayers(
@@ -2216,6 +2275,46 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private static let tripStopCasingID    = "trip-stop-casing"
         private static let tripStopFillID      = "trip-stop-fill"
 
+        private static var tripStopRadiusExpression: NSExpression {
+            NSExpression(
+                forMLNInterpolating: .zoomLevelVariable,
+                curveType: .linear,
+                parameters: nil,
+                stops: NSExpression(forConstantValue: [
+                    9: 1.7,
+                    11: 2.4,
+                    13: 4.0,
+                    15: 5.5,
+                ])
+            )
+        }
+
+        private static var tripStopStrokeWidthExpression: NSExpression {
+            NSExpression(
+                forMLNInterpolating: .zoomLevelVariable,
+                curveType: .linear,
+                parameters: nil,
+                stops: NSExpression(forConstantValue: [
+                    9: 0.8,
+                    12: 1.3,
+                    14: 2.0,
+                ])
+            )
+        }
+
+        private static var tripStopOpacityExpression: NSExpression {
+            NSExpression(
+                forMLNInterpolating: .zoomLevelVariable,
+                curveType: .linear,
+                parameters: nil,
+                stops: NSExpression(forConstantValue: [
+                    9: 0.42,
+                    11: 0.68,
+                    13: 1.0,
+                ])
+            )
+        }
+
         func updateTripRouteLayers(
             mapView: MLNMapView,
             style: MLNStyle,
@@ -2234,14 +2333,103 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 return
             }
 
-            // Full-route context lines are disabled — only the clipped
-            // user segment is drawn, so always clear this source.
-            clearSource(style: style, sourceID: Self.tripFullRouteSourceID)
-
             let isDark = representable.isDarkMode
 
             // ── Active transit segments (matching main-page route style) ──
             let transitSegs = legs.filter { !$0.isWalk }
+
+            // ── Faded full-route context (same route, non-user sections dimmed) ──
+            let fullRouteSegs = transitSegs.compactMap { seg -> (TripRouteLegData, [[CLLocationCoordinate2D]])? in
+                guard let full = seg.fullRouteCoordinates?.filter({ $0.count >= 2 }), !full.isEmpty else {
+                    return nil
+                }
+                return (seg, full)
+            }
+
+            if !fullRouteSegs.isEmpty {
+                var features: [MLNPolylineFeature] = []
+                for (seg, polylines) in fullRouteSegs {
+                    for coords in polylines {
+                        guard coords.count >= 2 else { continue }
+                        var mutable = coords
+                        let feature = MLNPolylineFeature(
+                            coordinates: &mutable,
+                            count: UInt(mutable.count)
+                        )
+                        feature.attributes = [
+                            "color": tripHexString(from: seg.color),
+                            "fill_opacity": seg.isBusRoute ? 0.18 : 0.12,
+                            "casing_opacity": seg.isBusRoute ? 0.07 : 0.10,
+                        ]
+                        features.append(feature)
+                    }
+                }
+
+                let shape = MLNShapeCollectionFeature(shapes: features)
+
+                if let existing = style.source(withIdentifier: Self.tripFullRouteSourceID) as? MLNShapeSource {
+                    existing.shape = shape
+                } else {
+                    let source = MLNShapeSource(
+                        identifier: Self.tripFullRouteSourceID,
+                        shape: shape,
+                        options: nil
+                    )
+                    style.addSource(source)
+                    sourcesCreated.insert(Self.tripFullRouteSourceID)
+
+                    let casing = MLNLineStyleLayer(
+                        identifier: Self.tripFullRouteCasingID,
+                        source: source
+                    )
+                    casing.lineColor = NSExpression(
+                        forConstantValue: Self.routeCasingBaseColor(isDark: isDark)
+                    )
+                    casing.lineWidth = MapLibreStyleConfig.routeCasingWidth
+                    casing.lineOpacity = NSExpression(forKeyPath: "casing_opacity")
+                    casing.lineCap = NSExpression(forConstantValue: "round")
+                    casing.lineJoin = NSExpression(forConstantValue: "round")
+                    casing.lineMiterLimit = NSExpression(forConstantValue: 1.05)
+                    casing.lineBlur = MapLibreStyleConfig.routeCasingBlur
+                    if let activeCasing = style.layer(withIdentifier: Self.tripTransitCasingID) {
+                        style.insertLayer(casing, below: activeCasing)
+                    } else {
+                        style.addLayer(casing)
+                    }
+
+                    let fill = MLNLineStyleLayer(
+                        identifier: Self.tripFullRouteFillID,
+                        source: source
+                    )
+                    fill.lineColor = NSExpression(forKeyPath: "color")
+                    fill.lineWidth = MapLibreStyleConfig.routeFillWidth
+                    fill.lineOpacity = NSExpression(forKeyPath: "fill_opacity")
+                    fill.lineCap = NSExpression(forConstantValue: "round")
+                    fill.lineJoin = NSExpression(forConstantValue: "round")
+                    fill.lineMiterLimit = NSExpression(forConstantValue: 1.05)
+                    if let activeCasing = style.layer(withIdentifier: Self.tripTransitCasingID) {
+                        style.insertLayer(fill, below: activeCasing)
+                    } else if let fullCasing = style.layer(withIdentifier: Self.tripFullRouteCasingID) {
+                        style.insertLayer(fill, above: fullCasing)
+                    } else {
+                        style.addLayer(fill)
+                    }
+                }
+
+                if let casing = style.layer(withIdentifier: Self.tripFullRouteCasingID) as? MLNLineStyleLayer {
+                    casing.lineColor = NSExpression(
+                        forConstantValue: Self.routeCasingBaseColor(isDark: isDark)
+                    )
+                    casing.lineOpacity = NSExpression(forKeyPath: "casing_opacity")
+                }
+                if let fill = style.layer(withIdentifier: Self.tripFullRouteFillID) as? MLNLineStyleLayer {
+                    fill.lineColor = NSExpression(forKeyPath: "color")
+                    fill.lineOpacity = NSExpression(forKeyPath: "fill_opacity")
+                }
+            } else {
+                clearSource(style: style, sourceID: Self.tripFullRouteSourceID)
+            }
+
             if !transitSegs.isEmpty {
                 var features: [MLNPolylineFeature] = []
                 for seg in transitSegs {
@@ -2251,7 +2439,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                         coordinates: &mutable,
                         count: UInt(mutable.count)
                     )
-                    feature.attributes = ["color": tripHexString(from: seg.color)]
+                    feature.attributes = [
+                        "color": tripHexString(from: seg.color),
+                        "casing_opacity": Self.routeCasingOpacity(isBus: seg.isBusRoute)
+                    ]
                     features.append(feature)
                 }
 
@@ -2268,22 +2459,23 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     style.addSource(source)
                     sourcesCreated.insert(Self.tripTransitSourceID)
 
-                    // Casing layer — same width + blur as main page routes
+                    // Casing layer — same selected-route style as RouteDetail.
                     let casing = MLNLineStyleLayer(
                         identifier: Self.tripTransitCasingID,
                         source: source
                     )
-                    let casingUIColor = isDark
-                        ? UIColor(white: 0.7, alpha: 0.8)
-                        : UIColor.white.withAlphaComponent(0.8)
-                    casing.lineColor = NSExpression(forConstantValue: casingUIColor)
+                    casing.lineColor = NSExpression(
+                        forConstantValue: Self.routeCasingBaseColor(isDark: isDark)
+                    )
                     casing.lineWidth = MapLibreStyleConfig.routeCasingWidth
+                    casing.lineOpacity = NSExpression(forKeyPath: "casing_opacity")
                     casing.lineCap = NSExpression(forConstantValue: "round")
                     casing.lineJoin = NSExpression(forConstantValue: "round")
+                    casing.lineMiterLimit = NSExpression(forConstantValue: 1.05)
                     casing.lineBlur = MapLibreStyleConfig.routeCasingBlur
                     style.addLayer(casing)
 
-                    // Fill layer — same width as main page routes
+                    // Fill layer — same selected-route fill style as RouteDetail.
                     let fill = MLNLineStyleLayer(
                         identifier: Self.tripTransitFillID,
                         source: source
@@ -2295,18 +2487,29 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     fill.lineMiterLimit = NSExpression(forConstantValue: 1.05)
                     style.addLayer(fill)
                 }
+
+                if let casing = style.layer(withIdentifier: Self.tripTransitCasingID) as? MLNLineStyleLayer {
+                    casing.lineColor = NSExpression(
+                        forConstantValue: Self.routeCasingBaseColor(isDark: isDark)
+                    )
+                    casing.lineOpacity = NSExpression(forKeyPath: "casing_opacity")
+                }
             } else {
                 clearSource(style: style, sourceID: Self.tripTransitSourceID)
             }
 
             // ── Stop dots on transit segments (same style as main-page station dots) ──
             let allStopFeatures: [MLNPointFeature] = transitSegs.flatMap { seg -> [MLNPointFeature] in
-                guard !seg.stopCoordinates.isEmpty else { return [] }
+                guard !seg.stops.isEmpty else { return [] }
                 let hex = tripHexString(from: seg.color)
-                return seg.stopCoordinates.map { coord in
+                return seg.stops.map { stop in
                     let feature = MLNPointFeature()
-                    feature.coordinate = coord
-                    feature.attributes = ["color": hex]
+                    feature.coordinate = stop.coordinate
+                    feature.attributes = [
+                        "stop_id": stop.id,
+                        "name": stop.name,
+                        "color": hex,
+                    ]
                     return feature
                 }
             }
@@ -2314,8 +2517,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             if !allStopFeatures.isEmpty {
                 let stopShape = MLNShapeCollectionFeature(shapes: allStopFeatures)
 
-                let casingColor = isDark
-                    ? UIColor(white: 0.12, alpha: 1.0)
+                let stopFillColor = isDark
+                    ? UIColor(red: 0.08, green: 0.10, blue: 0.13, alpha: 1.0)
                     : UIColor.white
 
                 if let existing = style.source(withIdentifier: Self.tripStopSourceID) as? MLNShapeSource {
@@ -2329,43 +2532,43 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     style.addSource(source)
                     sourcesCreated.insert(Self.tripStopSourceID)
 
-                    // Casing circle (border ring)
+                    // Route-detail-style stop dot: neutral fill, route-colored stroke.
                     let casing = MLNCircleStyleLayer(
                         identifier: Self.tripStopCasingID,
                         source: source
                     )
-                    casing.circleRadius = MapLibreStyleConfig.stationDotRadius
-                    casing.circleColor = NSExpression(forConstantValue: casingColor)
-                    casing.circleStrokeWidth = NSExpression(forConstantValue: 0)
+                    casing.circleRadius = Self.tripStopRadiusExpression
+                    casing.circleColor = NSExpression(forConstantValue: stopFillColor)
+                    casing.circleStrokeColor = NSExpression(forKeyPath: "color")
+                    casing.circleStrokeWidth = Self.tripStopStrokeWidthExpression
+                    casing.circleOpacity = Self.tripStopOpacityExpression
+                    casing.circleStrokeOpacity = Self.tripStopOpacityExpression
                     style.addLayer(casing)
 
-                    // Fill circle (route-colored interior)
+                    // Kept as an invisible compatibility layer so older
+                    // style instances with this ID update cleanly.
                     let fill = MLNCircleStyleLayer(
                         identifier: Self.tripStopFillID,
                         source: source
                     )
-                    // Slightly smaller radius so the casing shows as a border
-                    let innerRadiusStops: [Double: Double] = [
-                        11: 1.4, 12: 2.2, 13: 2.8, 14: 3.4,
-                        15: 4.2, 16: 5.5, 17: 6.8, 18: 8.0,
-                    ]
-                    fill.circleRadius = NSExpression(
-                        forMLNInterpolating: .zoomLevelVariable,
-                        curveType: .exponential,
-                        parameters: NSExpression(forConstantValue: 1.4),
-                        stops: NSExpression(forConstantValue: innerRadiusStops)
-                    )
-                    fill.circleColor = NSExpression(forKeyPath: "color")
+                    fill.circleRadius = NSExpression(forConstantValue: 0)
+                    fill.circleOpacity = NSExpression(forConstantValue: 0)
                     fill.circleStrokeWidth = NSExpression(forConstantValue: 0)
                     style.addLayer(fill)
                 }
 
                 // Update casing color on dark-mode toggle
                 if let casing = style.layer(withIdentifier: Self.tripStopCasingID) as? MLNCircleStyleLayer {
-                    let casingUIColor = isDark
-                        ? UIColor(white: 0.12, alpha: 1.0)
-                        : UIColor.white
-                    casing.circleColor = NSExpression(forConstantValue: casingUIColor)
+                    casing.circleRadius = Self.tripStopRadiusExpression
+                    casing.circleColor = NSExpression(forConstantValue: stopFillColor)
+                    casing.circleStrokeColor = NSExpression(forKeyPath: "color")
+                    casing.circleStrokeWidth = Self.tripStopStrokeWidthExpression
+                    casing.circleOpacity = Self.tripStopOpacityExpression
+                    casing.circleStrokeOpacity = Self.tripStopOpacityExpression
+                }
+                if let fill = style.layer(withIdentifier: Self.tripStopFillID) as? MLNCircleStyleLayer {
+                    fill.circleRadius = NSExpression(forConstantValue: 0)
+                    fill.circleOpacity = NSExpression(forConstantValue: 0)
                 }
             } else {
                 clearSource(style: style, sourceID: Self.tripStopSourceID)
@@ -2382,18 +2585,17 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                         coordinates: &mutable,
                         count: UInt(mutable.count)
                     )
+                    feature.attributes = ["color": tripHexString(from: seg.color)]
                     features.append(feature)
                 }
 
                 let shape = MLNShapeCollectionFeature(shapes: features)
 
-                // Color computation matching main-page walking route
-                let walkColor = isDark
-                    ? UIColor.white
-                    : UIColor.systemGray.withAlphaComponent(0.85)
+                // Match the route-detail walking treatment while keeping
+                // trip walks tinted to their leg color.
                 let glowColor = isDark
-                    ? UIColor.systemGray.withAlphaComponent(0.30)
-                    : UIColor.black.withAlphaComponent(0.12)
+                    ? UIColor.white.withAlphaComponent(0.38)
+                    : UIColor.white.withAlphaComponent(0.82)
 
                 if let existing = style.source(withIdentifier: Self.tripWalkSourceID) as? MLNShapeSource {
                     existing.shape = shape
@@ -2416,31 +2618,45 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     glow.lineCap = NSExpression(forConstantValue: "round")
                     glow.lineJoin = NSExpression(forConstantValue: "round")
                     glow.lineMiterLimit = NSExpression(forConstantValue: 1.05)
-                    glow.lineDashPattern = NSExpression(forConstantValue: [0, 3])
-                    glow.lineBlur = NSExpression(forConstantValue: 1.5)
-                    style.addLayer(glow)
+                    glow.lineDashPattern = NSExpression(forConstantValue: [0, 2.6])
+                    glow.lineBlur = NSExpression(forConstantValue: isDark ? 1.8 : 1.0)
+                    glow.lineOffset = MapLibreStyleConfig.walkingRouteOffset
+                    if let stopLayer = style.layer(withIdentifier: Self.tripStopCasingID) {
+                        style.insertLayer(glow, below: stopLayer)
+                    } else {
+                        style.addLayer(glow)
+                    }
 
                     // Dot layer (tight round dots)
                     let dots = MLNLineStyleLayer(
                         identifier: Self.tripWalkLineID,
                         source: source
                     )
-                    dots.lineColor = NSExpression(forConstantValue: walkColor)
+                    dots.lineColor = NSExpression(forKeyPath: "color")
                     dots.lineWidth = MapLibreStyleConfig.walkingRouteWidth
                     dots.lineCap = NSExpression(forConstantValue: "round")
                     dots.lineJoin = NSExpression(forConstantValue: "round")
                     dots.lineMiterLimit = NSExpression(forConstantValue: 1.05)
-                    dots.lineDashPattern = NSExpression(forConstantValue: [0, 3])
-                    style.addLayer(dots)
+                    dots.lineDashPattern = NSExpression(forConstantValue: [0, 2.6])
+                    dots.lineOffset = MapLibreStyleConfig.walkingRouteOffset
+                    if let stopLayer = style.layer(withIdentifier: Self.tripStopCasingID) {
+                        style.insertLayer(dots, below: stopLayer)
+                    } else {
+                        style.insertLayer(dots, above: glow)
+                    }
                 }
 
                 // Update colors on re-render (dark mode toggle)
                 if let glow = style.layer(withIdentifier: Self.tripWalkLineID + "-glow") as? MLNLineStyleLayer {
                     glow.lineColor = NSExpression(forConstantValue: glowColor)
+                    glow.lineBlur = NSExpression(forConstantValue: isDark ? 1.8 : 1.0)
+                    glow.lineOffset = MapLibreStyleConfig.walkingRouteOffset
                 }
                 if let dots = style.layer(withIdentifier: Self.tripWalkLineID) as? MLNLineStyleLayer {
-                    dots.lineColor = NSExpression(forConstantValue: walkColor)
+                    dots.lineColor = NSExpression(forKeyPath: "color")
+                    dots.lineOffset = MapLibreStyleConfig.walkingRouteOffset
                 }
+                positionTripWalkingRouteLayers(style: style)
             } else {
                 clearSource(style: style, sourceID: Self.tripWalkSourceID)
             }
@@ -2472,6 +2688,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 let allCoords = legs.flatMap(\.coordinates)
                 guard allCoords.count >= 2 else { return }
 
+                let fitSignature = MapLibreMapView.tripRouteLegSignature(legs)
+                guard fitSignature != lastTripFitCameraSignature,
+                      !userGestureInProgress,
+                      !programmaticCameraInFlight else { return }
+                lastTripFitCameraSignature = fitSignature
+
                 var minLat = allCoords[0].latitude
                 var maxLat = allCoords[0].latitude
                 var minLon = allCoords[0].longitude
@@ -2490,12 +2712,32 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 )
 
                 let padding = UIEdgeInsets(top: 60, left: 40, bottom: 60, right: 40)
+                programmaticCameraInFlight = true
                 mapView.setVisibleCoordinateBounds(
                     bounds,
                     edgePadding: padding,
-                    animated: true,
+                    animated: false,
                     completionHandler: nil
                 )
+            }
+        }
+
+        private func positionTripWalkingRouteLayers(style: MLNStyle) {
+            let glowLayerID = Self.tripWalkLineID + "-glow"
+            let dashLayerID = Self.tripWalkLineID
+
+            guard let glow = style.layer(withIdentifier: glowLayerID),
+                  let dash = style.layer(withIdentifier: dashLayerID) else { return }
+
+            style.removeLayer(dash)
+            style.removeLayer(glow)
+
+            if let stopLayer = style.layer(withIdentifier: Self.tripStopCasingID) {
+                style.insertLayer(glow, below: stopLayer)
+                style.insertLayer(dash, below: stopLayer)
+            } else {
+                style.addLayer(glow)
+                style.insertLayer(dash, above: glow)
             }
         }
 
@@ -2508,6 +2750,14 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 format: "#%02X%02X%02X",
                 Int(r * 255), Int(g * 255), Int(b * 255)
             )
+        }
+
+        private static func routeCasingBaseColor(isDark: Bool) -> UIColor {
+            isDark ? UIColor(white: 0.7, alpha: 1) : UIColor.white
+        }
+
+        private static func routeCasingOpacity(isBus: Bool) -> NSNumber {
+            NSNumber(value: 0.8 * (isBus ? 0.6 : 1.0))
         }
 
         // MARK: - Route Layers (selected route)

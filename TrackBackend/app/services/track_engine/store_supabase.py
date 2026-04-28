@@ -154,6 +154,7 @@ class SupabaseEngineStore:
             lon=float(row["lon"]),
             address=row.get("address"),
             icon=row.get("icon"),
+            visible_on_map=bool(row.get("visible_on_map", True)),
             created_at=int(_iso_to_unix(row["created_at"]) or 0),
             updated_at=int(_iso_to_unix(row["updated_at"]) or 0),
             last_used_at=_iso_to_unix(row.get("last_used_at")),
@@ -210,7 +211,7 @@ class SupabaseEngineStore:
             params={
                 "select": (
                     "id,user_id,label,kind,lat,lon,address,icon,"
-                    "created_at,updated_at,last_used_at"
+                    "visible_on_map,created_at,updated_at,last_used_at"
                 ),
                 "user_id": f"eq.{user_id}",
                 "order": "kind.asc,updated_at.desc,label.asc",
@@ -228,6 +229,7 @@ class SupabaseEngineStore:
         lon: float,
         address: str | None = None,
         icon: str | None = None,
+        visible_on_map: bool = True,
         place_id: int | None = None,
     ) -> SavedPlace:
         payload = {
@@ -238,6 +240,7 @@ class SupabaseEngineStore:
             "lon": lon,
             "address": address,
             "icon": icon,
+            "visible_on_map": visible_on_map,
         }
         if place_id is None:
             row = self._select_one(
@@ -253,7 +256,7 @@ class SupabaseEngineStore:
                 params={
                     "select": (
                         "id,user_id,label,kind,lat,lon,address,icon,"
-                        "created_at,updated_at,last_used_at"
+                        "visible_on_map,created_at,updated_at,last_used_at"
                     ),
                     "id": f"eq.{place_id}",
                     "user_id": f"eq.{user_id}",

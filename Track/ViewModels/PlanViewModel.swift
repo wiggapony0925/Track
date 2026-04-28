@@ -292,7 +292,7 @@ final class PlanViewModel {
                             walkMeters: distanceM
                         )
                     ]
-                )
+                ).withMapEndpoints(origin: originCL.coordinate, destination: destCL.coordinate)
                 tripResults = [walkTrip]
                 scheduleNote = "It's close enough to walk — \(walkMinutes) min on foot."
                 errorMessage = nil
@@ -354,7 +354,13 @@ final class PlanViewModel {
             #if DEBUG
             print("[TrackEngine] \(ms)ms — \(response.tripPlans.count) trips")
             #endif
-            tripResults = response.tripPlans
+            let enrichedPlans = response.tripPlans.map {
+                $0.withMapEndpoints(
+                    origin: originPayload.coordinate,
+                    destination: destinationPayload.coordinate
+                )
+            }
+            tripResults = enrichedPlans
             scheduleNote = response.scheduleNote
 
             // ── Future-day fallback ──
@@ -407,7 +413,7 @@ final class PlanViewModel {
             }
             // Store in session cache
             tripCache[cacheKey] = TripCacheEntry(
-                plans: response.tripPlans,
+                plans: tripResults,
                 scheduleNote: response.scheduleNote,
                 timestamp: Date()
             )
@@ -1126,6 +1132,7 @@ final class PlanViewModel {
                     lon: coordinate.longitude,
                     address: location.displayAddress,
                     icon: effectiveIcon,
+                    visibleOnMap: savedLocation(for: category)?.visibleOnMap ?? true,
                     placeID: category == .custom ? nil : savedLocation(for: category)?.enginePlaceID
                 )
             )
@@ -1146,6 +1153,7 @@ final class PlanViewModel {
                     longitude: savedRecord.lon,
                     category: category,
                     iconName: savedRecord.icon ?? category.defaultIcon,
+                    visibleOnMap: savedRecord.visibleOnMap,
                     createdAt: Date(timeIntervalSince1970: TimeInterval(savedRecord.createdAt)),
                     lastUsedAt: savedRecord.lastUsedAt.map {
                         Date(timeIntervalSince1970: TimeInterval($0))
@@ -1173,6 +1181,15 @@ final class PlanViewModel {
         }
     }
 
+    var tripMapOriginCoordinate: CLLocationCoordinate2D? {
+        resolvedCoordinate(for: origin)
+    }
+
+    var tripMapDestinationCoordinate: CLLocationCoordinate2D? {
+        guard let destination else { return nil }
+        return resolvedCoordinate(for: destination)
+    }
+
     private func applyPlannerSnapshot(
         savedPlaces: [PlannerSavedPlaceRecord],
         recentTrips: [PlannerRecentTripRecord],
@@ -1188,6 +1205,7 @@ final class PlanViewModel {
                 longitude: place.lon,
                 category: category,
                 iconName: place.icon ?? category.defaultIcon,
+                visibleOnMap: place.visibleOnMap,
                 createdAt: Date(timeIntervalSince1970: TimeInterval(place.createdAt)),
                 lastUsedAt: place.lastUsedAt.map {
                     Date(timeIntervalSince1970: TimeInterval($0))

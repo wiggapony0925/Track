@@ -117,9 +117,12 @@ struct PlanView: View {
                 MapLocationPickerView(viewModel: viewModel)
             }
             .sheet(isPresented: $viewModel.showAddPlaceSheet) {
-                AddPlaceSheet(viewModel: viewModel)
+                ManageSavedAddressesView()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .savedPlacesDidChange)) { _ in
+                Task { await viewModel.refreshPlannerData() }
             }
             .overlay(alignment: .top) {
                 if !viewModel.showResults, let message = viewModel.errorMessage {
@@ -627,12 +630,12 @@ struct PlanView: View {
                 sectionTitle("Saved Places")
                 Spacer()
                 Button {
-                    viewModel.beginCustomPlaceFlow()
+                    viewModel.showAddPlaceSheet = true
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
                             .font(.system(size: 10, weight: .black))
-                        Text("Add")
+                        Text("Manage")
                             .font(.system(size: 12, weight: .bold, design: .rounded))
                     }
                     .foregroundStyle(AppTheme.Colors.accent)
@@ -688,7 +691,7 @@ struct PlanView: View {
                     }
 
                     // Add new circle
-                    Button { viewModel.beginCustomPlaceFlow() } label: {
+                    Button { viewModel.showAddPlaceSheet = true } label: {
                         VStack(spacing: 8) {
                             ZStack {
                                 Circle()

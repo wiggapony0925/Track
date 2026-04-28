@@ -43,6 +43,24 @@ struct TransferConnector: Identifiable {
 
 // MARK: - Trip Route Leg Data
 
+struct TripRouteStopData: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let coordinate: CLLocationCoordinate2D
+
+    static func == (lhs: TripRouteStopData, rhs: TripRouteStopData) -> Bool {
+        lhs.id == rhs.id
+            && lhs.name == rhs.name
+            && coordinateSignature(lhs.coordinate) == coordinateSignature(rhs.coordinate)
+    }
+
+    private static func coordinateSignature(_ coordinate: CLLocationCoordinate2D) -> Int {
+        let lat = Int((coordinate.latitude * 1_000_000).rounded())
+        let lon = Int((coordinate.longitude * 1_000_000).rounded())
+        return (lat &* 16_777_619) ^ lon
+    }
+}
+
 /// A resolved polyline segment for one trip leg, used by
 /// MapLibreMapView's trip-route overlay.  Produced by `TripRouteMapView`'s
 /// shape-fetching pipeline and consumed by the shared map renderer.
@@ -55,22 +73,30 @@ struct TripRouteLegData: Identifiable, Equatable {
     let fullRouteCoordinates: [[CLLocationCoordinate2D]]?
     let color: UIColor     // UIColor for MapLibre NSExpression
     let isWalk: Bool
+    /// Whether this transit leg should use the bus variant of the selected-route casing.
+    let isBusRoute: Bool
     /// Intermediate stop coordinates (board → alight inclusive)
     /// for rendering station dots on transit legs.
-    let stopCoordinates: [CLLocationCoordinate2D]
+    let stops: [TripRouteStopData]
+
+    var stopCoordinates: [CLLocationCoordinate2D] {
+        stops.map(\.coordinate)
+    }
 
     init(
         coordinates: [CLLocationCoordinate2D],
         fullRouteCoordinates: [[CLLocationCoordinate2D]]? = nil,
         color: UIColor,
         isWalk: Bool,
-        stopCoordinates: [CLLocationCoordinate2D] = []
+        isBusRoute: Bool = false,
+        stops: [TripRouteStopData] = []
     ) {
         self.coordinates = coordinates
         self.fullRouteCoordinates = fullRouteCoordinates
         self.color = color
         self.isWalk = isWalk
-        self.stopCoordinates = stopCoordinates
+        self.isBusRoute = isBusRoute
+        self.stops = stops
     }
 
     static func == (lhs: TripRouteLegData, rhs: TripRouteLegData) -> Bool {

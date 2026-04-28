@@ -8,6 +8,7 @@
 // must explicitly exit via the close button.
 
 import CoreLocation
+import EventKit
 import MapKit
 import SwiftUI
 
@@ -20,14 +21,159 @@ struct GoTripView: View {
     @State private var heroVisible = false
     @State private var bodyVisible = false
     @State private var showShareSheet = false
+    @State private var showExitConfirmation = false
+    @State private var shareItems: [Any] = []
+    @State private var calendarDraft: CalendarEventDraft?
+    @State private var calendarError: String?
+    @State private var calendarEventStore = EKEventStore()
     @State private var expandedLegIDs: Set<UUID> = []
+    @State private var sheetDetent: TrackSheetDetent = .height(300)
+    @State private var sheetDragStartHeight: CGFloat = 0
 
     var body: some View {
-        ZStack(alignment: .top) {
-            AppTheme.Colors.background.ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack(alignment: .top) {
+                AppTheme.Colors.background.ignoresSafeArea()
 
+                mapBackdrop
+
+                bottomTripSheet(in: proxy)
+
+                // Floating top controls layered above the map
+                floatingTopControls(topInset: proxy.safeAreaInsets.top)
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: shareItems.isEmpty ? [shareText] : shareItems)
+                .presentationDetents([.medium])
+        }
+        .sheet(item: $calendarDraft) { draft in
+            CalendarEventEditor(eventStore: calendarEventStore, draft: draft)
+                .ignoresSafeArea()
+        }
+        .alert("Calendar unavailable", isPresented: calendarErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(calendarError ?? "Track could not open Calendar.")
+        }
+        .confirmationDialog(
+            "Exit this trip?",
+            isPresented: $showExitConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Exit Trip", role: .destructive) {
+                session.stop()
+            }
+            Button("Keep Tracking", role: .cancel) {}
+        } message: {
+            Text("Track is using this trip to power live guidance, notifications, widgets, and Live Activities.")
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                heroVisible = true
+            }
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.15)) {
+                bodyVisible = true
+            }
+            // Auto-expand the current transit leg so user immediately sees details
+            if let firstTransit = trip.legs.first(where: { $0.isTransit }) {
+                expandedLegIDs.insert(firstTransit.id)
+            }
+            session.refreshGuidance()
+        }
+        .task(id: trip.id) {
+            while !Task.isCancelled {
+                await session.refreshLiveGuidance()
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+            }
+        }
+    }
+
+    // MARK: - Map + Go Status
+
+    private var mapBackdrop: some View {
+        ZStack(alignment: .bottom) {
+            TripRouteMapView(trip: trip, isInteractive: true)
+                .ignoresSafeArea()
+                .opacity(heroVisible ? 1 : 0)
+
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.0),
+                    .init(color: AppTheme.Colors.background.opacity(0.08), location: 0.42),
+                    .init(color: AppTheme.Colors.background.opacity(0.55), location: 0.76),
+                    .init(color: AppTheme.Colors.background.opacity(0.92), location: 1.0),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var goStatusHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "arrowshape.turn.up.right.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+
+                Text(session.guidanceStatusText)
+                    .font(.system(size: 21, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+
+                Spacer(minLength: 0)
+            }
+
+            GoLegProgressBar(
+                legs: trip.legs,
+                currentLegIndex: session.currentLegIndex
+            )
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.18), lineWidth: 1)
+        )
+        .shadow(color: AppTheme.Colors.shadow.opacity(0.45), radius: 18, y: 8)
+    }
+
+    private func floatingTopControls(topInset: CGFloat) -> some View {
+        HStack {
+            Spacer()
+
+            FloatingCircleButton(icon: "xmark") {
+                showExitConfirmation = true
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, max(2, topInset + 2))
+    }
+
+    // MARK: - Bottom Sheet
+
+    private static let goStatusHeaderHeight: CGFloat = 96
+
+    private func bottomTripSheet(in proxy: GeometryProxy) -> some View {
+        return TrackBottomSheet(
+            selection: $sheetDetent,
+            detents: goSheetDetents,
+            cornerRadius: 28,
+            topInset: proxy.safeAreaInsets.top + 108,
+            background: AnyView(AppTheme.Colors.background.opacity(0.96))
+        ) {
             VStack(spacing: 0) {
-                stickyHeader
+                sheetHandle
+                    .gesture(sheetDragGesture(in: proxy))
+
+                goStatusHeader
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .contentShape(Rectangle())
+                    .gesture(sheetDragGesture(in: proxy))
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 12) {
@@ -49,105 +195,65 @@ struct GoTripView: View {
                             .padding(.top, 6)
                             .opacity(bodyVisible ? 1 : 0)
 
-                        Spacer(minLength: 100)
+                        arrivalSummary
+                            .padding(.top, 8)
+
+                        Spacer(minLength: proxy.safeAreaInsets.bottom + 28)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.bottom, 8)
                 }
-
-                bottomArrivalBar
-            }
-
-            // Floating top controls layered above the map
-            floatingTopControls
-        }
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: [shareText])
-                .presentationDetents([.medium])
-        }
-        .onAppear {
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                heroVisible = true
-            }
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.15)) {
-                bodyVisible = true
-            }
-            // Auto-expand the current transit leg so user immediately sees details
-            if let firstTransit = trip.legs.first(where: { $0.isTransit }) {
-                expandedLegIDs.insert(firstTransit.id)
             }
         }
     }
 
-    // MARK: - Sticky Header (map + Go-in title + progress bar)
+    private var goSheetDetents: [TrackSheetDetent] {
+        [.height(260), .height(360), .fraction(0.62), .large]
+    }
 
-    private var stickyHeader: some View {
+    private var sheetHandle: some View {
         VStack(spacing: 0) {
-            // Compact map preview at the very top
-            ZStack(alignment: .bottom) {
-                TripRouteMapView(trip: trip, isInteractive: false)
-                    .frame(height: 180)
-                    .clipped()
-
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: AppTheme.Colors.background.opacity(0.5), location: 0.6),
-                        .init(color: AppTheme.Colors.background, location: 1),
-                    ],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .frame(height: 70)
-                .allowsHitTesting(false)
-            }
-            .opacity(heroVisible ? 1 : 0)
-
-            // "Go in X min" + multi-segment progress
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
-                    Image(systemName: "arrowshape.turn.up.right.fill")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
-
-                    Text(goInTitle)
-                        .font(.system(size: 22, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
-
-                    Spacer()
-                }
-
-                GoLegProgressBar(
-                    legs: trip.legs,
-                    currentLegIndex: session.currentLegIndex
-                )
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 14)
-            .background(AppTheme.Colors.background)
+            Capsule()
+                .fill(AppTheme.Colors.textTertiary.opacity(0.35))
+                .frame(width: 42, height: 5)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
         }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
     }
 
-    private var floatingTopControls: some View {
-        HStack {
-            FloatingCircleButton(
-                icon: "chevron.left",
-                fillColor: AppTheme.Colors.cardElevated,
-                iconColor: AppTheme.Colors.textPrimary,
-                iconSize: 14
-            ) {
-                // Back == exit Go mode (no underlying nav stack to pop in fullScreenCover)
-                session.stop()
+    private func sheetDragGesture(in proxy: GeometryProxy) -> some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            .onChanged { value in
+                let topInset = proxy.safeAreaInsets.top + 108
+                let available = proxy.size.height
+                if sheetDragStartHeight == 0 {
+                    sheetDragStartHeight = sheetDetent.resolve(in: available, topInset: topInset)
+                }
+                let maxHeight = TrackSheetDetent.large.resolve(in: available, topInset: topInset)
+                let minHeight = TrackSheetDetent.height(240).resolve(in: available, topInset: topInset)
+                let proposed = sheetDragStartHeight - value.translation.height
+                sheetDetent = .height(min(max(proposed, minHeight), maxHeight))
             }
+            .onEnded { value in
+                let topInset = proxy.safeAreaInsets.top + 108
+                let available = proxy.size.height
+                let maxHeight = TrackSheetDetent.large.resolve(in: available, topInset: topInset)
+                let minHeight = TrackSheetDetent.height(260).resolve(in: available, topInset: topInset)
+                let proposed = sheetDragStartHeight - value.predictedEndTranslation.height
+                sheetDragStartHeight = 0
 
-            Spacer()
-
-            FloatingCircleButton(icon: "xmark") {
-                session.stop()
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                    if proposed > maxHeight * 0.84 {
+                        sheetDetent = .large
+                    } else if proposed < minHeight + 55 {
+                        sheetDetent = .height(260)
+                    } else {
+                        sheetDetent = .height(min(max(proposed, minHeight), maxHeight))
+                    }
+                }
             }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 54)
     }
 
     // MARK: - Leg Cards
@@ -211,10 +317,7 @@ struct GoTripView: View {
     }
 
     private var destinationCoordinate: CLLocationCoordinate2D? {
-        // We don't currently persist coordinates on TripLeg, so derive from
-        // the trip route map data if available.  Returning nil hides the
-        // Look Around preview gracefully.
-        nil
+        trip.mapDestinationCoordinate
     }
 
     // MARK: - Action Buttons
@@ -225,6 +328,11 @@ struct GoTripView: View {
                 // Reserved for future: present a stop picker
             }
             actionRow(icon: "square.and.arrow.up", title: "Share ETA") {
+                shareItems = [shareText]
+                showShareSheet = true
+            }
+            actionRow(icon: "mappin.and.ellipse", title: "Share destination") {
+                shareItems = [destinationShareText]
                 showShareSheet = true
             }
             actionRow(icon: "calendar.badge.plus", title: "Add to calendar") {
@@ -259,16 +367,16 @@ struct GoTripView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Bottom Arrival Bar
+    // MARK: - Arrival Summary
 
-    private var bottomArrivalBar: some View {
+    private var arrivalSummary: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Arrival time")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textSecondary)
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(timeString(trip.arrivalTime))
+                    Text(timeString(session.liveArrivalTime ?? trip.arrivalTime))
                         .font(.system(size: 26, weight: .heavy, design: .rounded))
                         .foregroundStyle(AppTheme.Colors.successGreen)
                     Circle()
@@ -281,13 +389,11 @@ struct GoTripView: View {
             }
             Spacer()
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
-        .padding(.bottom, 24)
+        .padding(16)
         .background(
-            AppTheme.Colors.cardElevated
-                .ignoresSafeArea(edges: .bottom)
-                .shadow(color: AppTheme.Colors.shadow, radius: 8, y: -2)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AppTheme.Colors.cardElevated)
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.45), radius: 10, y: 4)
         )
     }
 
@@ -313,15 +419,35 @@ struct GoTripView: View {
         return "I'm on my way! ETA \(timeString(trip.arrivalTime)) (\(trip.durationString)) → \(dest). Tracked with Track."
     }
 
+    private var destinationShareText: String {
+        let dest = trip.legs.last?.alightStopName ?? "Destination"
+        if let coordinate = trip.mapDestinationCoordinate {
+            return "\(dest)\nhttps://maps.apple.com/?ll=\(coordinate.latitude),\(coordinate.longitude)&q=\(dest.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? dest)"
+        }
+        return dest
+    }
+
+    private var calendarErrorBinding: Binding<Bool> {
+        Binding(
+            get: { calendarError != nil },
+            set: { if !$0 { calendarError = nil } }
+        )
+    }
+
     private func addToCalendar() {
-        // Lightweight stub — opens default Calendar app via URL scheme.
-        // Full EKEventEditViewController integration can replace this later.
-        let title = "Trip to \(trip.legs.last?.alightStopName ?? "Destination")"
-        let start = Int(trip.departureTime.timeIntervalSinceReferenceDate)
-        let end = Int(trip.arrivalTime.timeIntervalSinceReferenceDate)
-        if let url = URL(string: "calshow:\(start)") {
-            _ = (start, end, title)
-            UIApplication.shared.open(url)
+        Task { @MainActor in
+            guard await CalendarEventAccess.request(for: calendarEventStore) else {
+                calendarError = "Allow calendar access in Settings to add this trip."
+                return
+            }
+            let destination = trip.legs.last?.alightStopName ?? "Destination"
+            calendarDraft = CalendarEventDraft(
+                title: "Trip to \(destination)",
+                location: destination,
+                notes: shareText,
+                startDate: trip.departureTime,
+                endDate: trip.arrivalTime
+            )
         }
     }
 }
@@ -335,12 +461,21 @@ private struct GoLegProgressBar: View {
     var body: some View {
         GeometryReader { geo in
             let totalDuration = max(1, legs.map(\.durationMinutes).reduce(0, +))
-            HStack(spacing: 4) {
-                ForEach(Array(legs.enumerated()), id: \.element.id) { index, leg in
-                    let fraction = CGFloat(leg.durationMinutes) / CGFloat(totalDuration)
-                    let width = max(36, fraction * geo.size.width - 4)
-                    segment(for: leg, index: index, width: width)
+            let minimumLegWidth: CGFloat = 58
+            let contentWidth = max(
+                geo.size.width,
+                CGFloat(legs.count) * minimumLegWidth + CGFloat(max(0, legs.count - 1)) * 4
+            )
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(Array(legs.enumerated()), id: \.element.id) { index, leg in
+                        let fraction = CGFloat(leg.durationMinutes) / CGFloat(totalDuration)
+                        let width = max(minimumLegWidth, fraction * contentWidth - 4)
+                        segment(for: leg, index: index, width: width)
+                    }
                 }
+                .frame(minWidth: geo.size.width, alignment: .leading)
             }
         }
         .frame(height: 36)
@@ -507,6 +642,10 @@ private struct GoTransitLegCard: View {
     let expanded: Bool
     let toggleExpanded: () -> Void
 
+    @State private var routeStops: [BusStop] = []
+    @State private var liveDepartures: [GoLiveDeparture] = []
+    @State private var didLoadRouteDetails = false
+
     private var routeColor: Color {
         if let hex = leg.routeColor, !hex.isEmpty { return Color(hex: hex) }
         return AppTheme.Colors.accent
@@ -599,6 +738,9 @@ private struct GoTransitLegCard: View {
                 .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.3), lineWidth: 1)
         )
         .shadow(color: AppTheme.Colors.shadow.opacity(0.6), radius: 12, y: 4)
+        .task(id: leg.id) {
+            await loadRouteDetails()
+        }
     }
 
     private var modeString: String? {
@@ -653,34 +795,40 @@ private struct GoTransitLegCard: View {
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(AppTheme.Colors.textTertiary)
 
-            // Real next-departure data isn't currently surfaced per-leg,
-            // so we display the leg's primary departure as a live count
-            // down.  When liveStatus is added with multiple ETAs this
-            // section can iterate and render each row.
-            departureRow(
-                routeId: leg.routeId ?? "",
-                headsign: leg.headsign ?? leg.alightStopName,
-                date: leg.departureTime,
-                isLive: leg.liveStatus != nil
-            )
+            ForEach(displayDepartures) { departure in
+                departureRow(departure)
+            }
         }
     }
 
-    private func departureRow(routeId: String, headsign: String, date: Date, isLive: Bool)
-        -> some View
-    {
+    private var displayDepartures: [GoLiveDeparture] {
+        if !liveDepartures.isEmpty { return liveDepartures }
+        return [GoLiveDeparture(
+            routeId: leg.routeId ?? "",
+            headsign: leg.headsign ?? leg.alightStopName,
+            date: resolvedDepartureTime,
+            isLive: leg.liveStatus?.isRealtime == true,
+            isSelected: true
+        )]
+    }
+
+    private var resolvedDepartureTime: Date {
+        leg.liveStatus?.predictedDepartureTime ?? leg.departureTime
+    }
+
+    private func departureRow(_ departure: GoLiveDeparture) -> some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            let mins = max(0, Int((date.timeIntervalSince(context.date) / 60).rounded()))
+            let mins = max(0, Int((departure.date.timeIntervalSince(context.date) / 60).rounded()))
             HStack(spacing: 10) {
-                if !routeId.isEmpty {
-                    RouteBadge(routeID: routeId, size: .small, mode: modeString)
+                if !departure.routeId.isEmpty {
+                    RouteBadge(routeID: departure.routeId, size: .small, mode: modeString)
                 }
-                Text(headsign)
+                Text(departure.headsign)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textSecondary)
                     .lineLimit(1)
                 Spacer()
-                if isLive {
+                if departure.isLive {
                     Image(systemName: "wifi")
                         .rotationEffect(.degrees(90))
                         .font(.system(size: 10, weight: .bold))
@@ -689,13 +837,15 @@ private struct GoTransitLegCard: View {
                 Text(mins <= 0 ? "now" : "\(mins) min")
                     .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundStyle(
-                        isLive ? AppTheme.Colors.successGreen : AppTheme.Colors.textPrimary)
+                        departure.isLive ? AppTheme.Colors.successGreen : AppTheme.Colors.textPrimary)
             }
             .padding(.vertical, 6)
             .padding(.horizontal, 8)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(AppTheme.Colors.cardInset.opacity(0.4))
+                    .fill(departure.isSelected
+                        ? routeColor.opacity(0.16)
+                        : AppTheme.Colors.cardInset.opacity(0.4))
             )
         }
     }
@@ -724,12 +874,26 @@ private struct GoTransitLegCard: View {
 
     private var intermediateStopsList: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(0..<max(0, leg.numStops - 1), id: \.self) { i in
+            if !intermediateStops.isEmpty {
+                ForEach(intermediateStops, id: \.id) { stop in
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(routeColor.opacity(0.45))
+                            .frame(width: 6, height: 6)
+                        Text(stop.name)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(AppTheme.Colors.textTertiary)
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                }
+            } else if intermediateStopCount > 0 {
                 HStack(spacing: 10) {
                     Circle()
                         .fill(routeColor.opacity(0.4))
                         .frame(width: 6, height: 6)
-                    Text("Stop \(i + 1)")
+                    Text("\(intermediateStopCount) intermediate stop\(intermediateStopCount == 1 ? "" : "s")")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(AppTheme.Colors.textTertiary)
                     Spacer()
@@ -737,6 +901,15 @@ private struct GoTransitLegCard: View {
                 .padding(.vertical, 2)
             }
         }
+    }
+
+    private var intermediateStopCount: Int {
+        max(0, leg.numStops - 1)
+    }
+
+    private var intermediateStops: [BusStop] {
+        guard routeStops.count > 2 else { return [] }
+        return Array(routeStops.dropFirst().dropLast())
     }
 
     private var alightRow: some View {
@@ -758,6 +931,199 @@ private struct GoTransitLegCard: View {
         return f
     }()
     private func timeString(_ d: Date) -> String { Self.timeFormatter.string(from: d) }
+
+    private func loadRouteDetails() async {
+        guard !didLoadRouteDetails else { return }
+        didLoadRouteDetails = true
+        do {
+            let shape = try await fetchShapeForLeg()
+            let stops = Self.stopSequence(for: leg, shape: shape)
+            routeStops = stops
+            await loadLiveDepartures(boardStop: stops.first)
+        } catch {
+            await loadLiveDepartures(boardStop: nil)
+        }
+    }
+
+    private func fetchShapeForLeg() async throws -> RouteShapeResponse {
+        guard let routeId = leg.routeId else { throw URLError(.badURL) }
+        switch leg.mode {
+        case .subway:
+            return try await TrackAPI.fetchSubwayShape(routeID: routeId)
+        case .bus:
+            return try await TrackAPI.fetchRouteShape(routeID: routeId)
+        case .lirr:
+            return try await TrackAPI.fetchLIRRShape(routeID: routeId)
+        case .mnr:
+            return try await TrackAPI.fetchMNRShape(routeID: routeId)
+        default:
+            throw URLError(.unsupportedURL)
+        }
+    }
+
+    private func loadLiveDepartures(boardStop: BusStop?) async {
+        guard let boardStop else { return }
+        do {
+            let arrivals = try await TrackAPI.fetchNearbyTransit(
+                lat: boardStop.lat,
+                lon: boardStop.lon,
+                radius: 650
+            )
+            let routeToken = Self.normalizedMatchToken(leg.routeId ?? leg.routeName ?? "")
+            let stopId = leg.boardStopId?.uppercased()
+            let stopName = Self.normalizedMatchToken(leg.boardStopName)
+            let matching = arrivals
+                .filter { arrival in
+                    guard !arrival.isPlaceholder,
+                          Self.widgetMode(for: arrival.mode) == Self.widgetMode(for: leg),
+                          Self.normalizedMatchToken(arrival.routeId) == routeToken
+                    else { return false }
+
+                    if let stopId,
+                       let arrivalStopId = arrival.stopId?.uppercased(),
+                       arrivalStopId == stopId {
+                        return true
+                    }
+                    let arrivalStopName = Self.normalizedMatchToken(arrival.stopName)
+                    return arrivalStopName == stopName
+                        || arrivalStopName.contains(stopName)
+                        || stopName.contains(arrivalStopName)
+                }
+                .map { arrival in
+                    GoLiveDeparture(
+                        routeId: leg.routeId ?? arrival.routeId,
+                        headsign: arrival.destination ?? leg.headsign ?? leg.alightStopName,
+                        date: Self.arrivalDate(for: arrival),
+                        isLive: arrival.isRealTime,
+                        isSelected: Self.isSameArrival(arrival, as: resolvedDepartureTime)
+                    )
+                }
+                .sorted { $0.date < $1.date }
+
+            liveDepartures = Array(matching.prefix(3))
+        } catch {
+            liveDepartures = []
+        }
+    }
+
+    nonisolated private static func stopSequence(for leg: TripLeg, shape: RouteShapeResponse) -> [BusStop] {
+        guard let direction = bestDirection(for: leg, shape: shape) else { return [] }
+        guard let boardStop = TripRouteClipping.findStop(
+            in: direction.stops,
+            id: leg.boardStopId,
+            name: leg.boardStopName
+        ),
+              let alightStop = TripRouteClipping.findStop(
+                in: direction.stops,
+                id: leg.alightStopId,
+                name: leg.alightStopName
+              ),
+              let boardIndex = direction.stops.firstIndex(where: { $0.id == boardStop.id }),
+              let alightIndex = direction.stops.firstIndex(where: { $0.id == alightStop.id }),
+              boardIndex != alightIndex
+        else { return [] }
+
+        if boardIndex < alightIndex {
+            return Array(direction.stops[boardIndex...alightIndex])
+        }
+        return Array(direction.stops[alightIndex...boardIndex].reversed())
+    }
+
+    nonisolated private static func bestDirection(
+        for leg: TripLeg,
+        shape: RouteShapeResponse
+    ) -> DirectionShapeResponse? {
+        guard !shape.directions.isEmpty else { return nil }
+        let headsign = leg.headsign.map(normalizedMatchToken)
+
+        struct Candidate {
+            let direction: DirectionShapeResponse
+            let forward: Bool
+            let nameMatches: Bool
+            let span: Int
+        }
+
+        let candidates: [Candidate] = shape.directions.compactMap { direction in
+            guard let boardStop = TripRouteClipping.findStop(
+                in: direction.stops,
+                id: leg.boardStopId,
+                name: leg.boardStopName
+            ),
+                  let alightStop = TripRouteClipping.findStop(
+                    in: direction.stops,
+                    id: leg.alightStopId,
+                    name: leg.alightStopName
+                  ),
+                  let boardIndex = direction.stops.firstIndex(where: { $0.id == boardStop.id }),
+                  let alightIndex = direction.stops.firstIndex(where: { $0.id == alightStop.id }),
+                  boardIndex != alightIndex
+            else { return nil }
+
+            let directionHeadsign = normalizedMatchToken(direction.headsign)
+            let nameMatches = headsign.map {
+                $0 == directionHeadsign || $0.contains(directionHeadsign) || directionHeadsign.contains($0)
+            } ?? false
+            return Candidate(
+                direction: direction,
+                forward: boardIndex < alightIndex,
+                nameMatches: nameMatches,
+                span: abs(alightIndex - boardIndex)
+            )
+        }
+
+        return candidates.min { lhs, rhs in
+            if lhs.forward != rhs.forward { return lhs.forward && !rhs.forward }
+            if lhs.nameMatches != rhs.nameMatches { return lhs.nameMatches && !rhs.nameMatches }
+            return lhs.span < rhs.span
+        }?.direction
+    }
+
+    nonisolated private static func arrivalDate(for arrival: NearbyTransitResponse) -> Date {
+        if let ts = arrival.arrivalTs, ts > 0 {
+            return Date(timeIntervalSince1970: TimeInterval(ts))
+        }
+        return Date().addingTimeInterval(TimeInterval(max(0, arrival.minutesAway)) * 60)
+    }
+
+    nonisolated private static func isSameArrival(_ arrival: NearbyTransitResponse, as date: Date) -> Bool {
+        abs(arrivalDate(for: arrival).timeIntervalSince(date)) <= 90
+    }
+
+    nonisolated private static func widgetMode(for leg: TripLeg) -> String {
+        switch leg.mode {
+        case .bus: return "bus"
+        case .lirr: return "lirr"
+        case .mnr: return "mnr"
+        default: return "subway"
+        }
+    }
+
+    nonisolated private static func widgetMode(for mode: String) -> String {
+        switch mode.lowercased() {
+        case "bus": return "bus"
+        case "lirr": return "lirr"
+        case "mnr", "metro_north": return "mnr"
+        default: return "subway"
+        }
+    }
+
+    nonisolated private static func normalizedMatchToken(_ value: String) -> String {
+        value.uppercased()
+            .replacingOccurrences(of: "MTA NYCT_", with: "")
+            .replacingOccurrences(of: "-", with: " ")
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+}
+
+private struct GoLiveDeparture: Identifiable, Equatable {
+    let id = UUID()
+    let routeId: String
+    let headsign: String
+    let date: Date
+    let isLive: Bool
+    let isSelected: Bool
 }
 
 // MARK: - Look Around preview wrapper

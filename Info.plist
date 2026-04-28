@@ -72,11 +72,20 @@
 	<string>Track uses speech recognition to help you search for trains and stations using your voice.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Track needs microphone access to enable voice search.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Track adds planned trips to your calendar so you can leave on time.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Track adds planned trips to your calendar so you can leave on time.</string>
 	<key>SUPABASE_URL</key>
 	<string>$(SUPABASE_URL)</string>
 	<key>SUPABASE_ANON_KEY</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
 	<key>MAPTILER_API_KEY</key>
 	<string>$(MAPTILER_API_KEY)</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 </dict>
 </plist>

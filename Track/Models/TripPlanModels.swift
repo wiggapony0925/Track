@@ -18,6 +18,7 @@ final class SavedLocation {
     var longitude: Double
     var category: String
     var iconName: String
+    var visibleOnMap: Bool
     var createdAt: Date
     var lastUsedAt: Date?
 
@@ -29,6 +30,7 @@ final class SavedLocation {
         longitude: Double,
         category: SavedLocationCategory = .custom,
         iconName: String? = nil,
+        visibleOnMap: Bool = true,
         createdAt: Date = .now,
         lastUsedAt: Date? = nil
     ) {
@@ -40,6 +42,7 @@ final class SavedLocation {
         self.longitude = longitude
         self.category = category.rawValue
         self.iconName = iconName ?? category.defaultIcon
+        self.visibleOnMap = visibleOnMap
         self.createdAt = createdAt
         self.lastUsedAt = lastUsedAt
     }
@@ -176,6 +179,39 @@ struct TripPlan: Identifiable, Codable, Equatable {
     var fare: TripFareEstimate? = nil
     /// CO₂ savings and calorie burn for the trip.
     var environmentalImpact: TripEnvironmentalImpact? = nil
+    /// Exact user-requested origin/destination coordinates for trip maps.
+    /// Engine legs only carry stop IDs/names, so the map keeps these separately
+    /// to draw first/final walking legs all the way to the chosen address.
+    var mapOriginLatitude: Double? = nil
+    var mapOriginLongitude: Double? = nil
+    var mapDestinationLatitude: Double? = nil
+    var mapDestinationLongitude: Double? = nil
+
+    var mapOriginCoordinate: CLLocationCoordinate2D? {
+        guard let mapOriginLatitude, let mapOriginLongitude else { return nil }
+        return CLLocationCoordinate2D(latitude: mapOriginLatitude, longitude: mapOriginLongitude)
+    }
+
+    var mapDestinationCoordinate: CLLocationCoordinate2D? {
+        guard let mapDestinationLatitude, let mapDestinationLongitude else { return nil }
+        return CLLocationCoordinate2D(latitude: mapDestinationLatitude, longitude: mapDestinationLongitude)
+    }
+
+    func withMapEndpoints(
+        origin: CLLocationCoordinate2D?,
+        destination: CLLocationCoordinate2D?
+    ) -> TripPlan {
+        var copy = self
+        if let origin {
+            copy.mapOriginLatitude = origin.latitude
+            copy.mapOriginLongitude = origin.longitude
+        }
+        if let destination {
+            copy.mapDestinationLatitude = destination.latitude
+            copy.mapDestinationLongitude = destination.longitude
+        }
+        return copy
+    }
 
     var departureTimeString: String {
         Self.timeFormatter.string(from: departureTime)
@@ -242,6 +278,104 @@ struct TripFareEstimate: Codable, Equatable {
     var formattedTotal: String {
         let dollars = Double(totalCents) / 100.0
         return String(format: "$%.2f", dollars)
+    }
+
+    static func localEstimate(for trip: TripPlan) -> TripFareEstimate? {
+        let transitLegs = trip.legs.filter(\.isTransit)
+        guard !transitLegs.isEmpty else {
+            return TripFareEstimate(
+                totalCents: 0,
+                currency: "USD",
+                description: "Walking — no transit fare",
+                legs: [],
+                freeTransfersUsed: 0
+            )
+        }
+
+        var totalCents = 0
+        var freeTransfersUsed = 0
+        var firstFareTime: Date?
+        var legFares: [TripLegFare] = []
+
+        for leg in transitLegs {
+            let routeId = leg.routeId ?? leg.routeName ?? leg.modeName ?? ""
+            let mode = Self.fareMode(for: leg)
+            let fareCents: Int
+            let isFreeTransfer: Bool
+
+            switch leg.mode {
+            case .bus where Self.isExpressBus(routeId):
+                fareCents = 700
+                isFreeTransfer = false
+                firstFareTime = firstFareTime ?? leg.departureTime
+            case .bus, .subway:
+                if let firstFareTime,
+                   leg.departureTime.timeIntervalSince(firstFareTime) <= 2 * 60 * 60,
+                   !legFares.isEmpty {
+                    fareCents = 0
+                    isFreeTransfer = true
+                    freeTransfersUsed += 1
+                } else {
+                    fareCents = 290
+                    isFreeTransfer = false
+                    firstFareTime = leg.departureTime
+                }
+            case .lirr:
+                fareCents = Self.isPeakRail(leg.departureTime) ? 575 : 425
+                isFreeTransfer = false
+            case .mnr:
+                fareCents = Self.isPeakRail(leg.departureTime) ? 575 : 425
+                isFreeTransfer = false
+            default:
+                fareCents = 0
+                isFreeTransfer = false
+            }
+
+            totalCents += fareCents
+            legFares.append(TripLegFare(
+                mode: mode,
+                routeId: routeId,
+                fareCents: fareCents,
+                isFreeTransfer: isFreeTransfer,
+                fareMedia: "omny"
+            ))
+        }
+
+        let description = totalCents == 0
+            ? "No transit fare"
+            : String(format: "$%.2f with OMNY", Double(totalCents) / 100.0)
+        return TripFareEstimate(
+            totalCents: totalCents,
+            currency: "USD",
+            description: description,
+            legs: legFares,
+            freeTransfersUsed: freeTransfersUsed
+        )
+    }
+
+    private static func fareMode(for leg: TripLeg) -> String {
+        switch leg.mode {
+        case .bus: return "bus"
+        case .subway: return "subway"
+        case .lirr: return "lirr"
+        case .mnr: return "mnr"
+        case .walk, .transfer: return "walk"
+        }
+    }
+
+    private static func isExpressBus(_ routeId: String) -> Bool {
+        let route = routeId.uppercased()
+            .replacingOccurrences(of: "MTA NYCT_", with: "")
+            .replacingOccurrences(of: "MTABC_", with: "")
+        return route.hasPrefix("X")
+            || route.hasPrefix("BM")
+            || route.hasPrefix("QM")
+            || route.hasPrefix("SIM")
+    }
+
+    private static func isPeakRail(_ date: Date) -> Bool {
+        let hour = Calendar.current.component(.hour, from: date)
+        return (6...9).contains(hour) || (16...19).contains(hour)
     }
 }
 
@@ -772,6 +906,7 @@ struct PlannerSavedPlaceRecord: Codable, Equatable {
     let lon: Double
     let address: String?
     let icon: String?
+    let visibleOnMap: Bool
     let createdAt: Int
     let updatedAt: Int
     let lastUsedAt: Int?
@@ -785,9 +920,54 @@ struct PlannerSavedPlaceRecord: Codable, Equatable {
         case lon
         case address
         case icon
+        case visibleOnMap = "visible_on_map"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case lastUsedAt = "last_used_at"
+    }
+
+    init(
+        placeID: Int,
+        userID: String,
+        label: String,
+        kind: String,
+        lat: Double,
+        lon: Double,
+        address: String?,
+        icon: String?,
+        visibleOnMap: Bool = true,
+        createdAt: Int,
+        updatedAt: Int,
+        lastUsedAt: Int?
+    ) {
+        self.placeID = placeID
+        self.userID = userID
+        self.label = label
+        self.kind = kind
+        self.lat = lat
+        self.lon = lon
+        self.address = address
+        self.icon = icon
+        self.visibleOnMap = visibleOnMap
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.lastUsedAt = lastUsedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        placeID = try container.decode(Int.self, forKey: .placeID)
+        userID = try container.decode(String.self, forKey: .userID)
+        label = try container.decode(String.self, forKey: .label)
+        kind = try container.decode(String.self, forKey: .kind)
+        lat = try container.decode(Double.self, forKey: .lat)
+        lon = try container.decode(Double.self, forKey: .lon)
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+        icon = try container.decodeIfPresent(String.self, forKey: .icon)
+        visibleOnMap = try container.decodeIfPresent(Bool.self, forKey: .visibleOnMap) ?? true
+        createdAt = try container.decode(Int.self, forKey: .createdAt)
+        updatedAt = try container.decode(Int.self, forKey: .updatedAt)
+        lastUsedAt = try container.decodeIfPresent(Int.self, forKey: .lastUsedAt)
     }
 }
 
@@ -799,6 +979,7 @@ struct EngineSavedPlaceUpsertRequest: Encodable, Equatable {
     let lon: Double
     let address: String?
     let icon: String?
+    let visibleOnMap: Bool
     let placeID: Int?
 
     enum CodingKeys: String, CodingKey {
@@ -809,6 +990,7 @@ struct EngineSavedPlaceUpsertRequest: Encodable, Equatable {
         case lon
         case address
         case icon
+        case visibleOnMap = "visible_on_map"
         case placeID = "place_id"
     }
 }
@@ -957,6 +1139,11 @@ struct EngineLocationPayloadRequest: Encodable, Equatable {
         case lon
         case stopID = "stop_id"
         case address
+    }
+
+    var coordinate: CLLocationCoordinate2D? {
+        guard let lat, let lon else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
     }
 }
 

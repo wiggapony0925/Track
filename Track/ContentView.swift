@@ -45,6 +45,8 @@ struct ContentView: View {
                 authLoadingView
             } else if !isAuth {
                 LoginView()
+            } else if !onboarding.isResolved {
+                authLoadingView
             } else if !onboarding.hasCompletedOnboarding {
                 OnboardingView()
             } else if locationGranted {

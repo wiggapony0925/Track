@@ -2,10 +2,15 @@
 // with route polylines, glass stat cards, rich timeline, and polished
 // action buttons.  Presented as a full-screen cover.
 
+import CoreLocation
+import EventKit
+import MapKit
 import SwiftUI
 
 struct TripDetailSheet: View {
     let trip: TripPlan
+    var originCoordinate: CLLocationCoordinate2D?
+    var destinationCoordinate: CLLocationCoordinate2D?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(GoTripSession.self) private var goSession
@@ -13,92 +18,39 @@ struct TripDetailSheet: View {
     @State private var statsVisible = false
     @State private var bodyVisible = false
     @State private var showShareSheet = false
+    @State private var shareItems: [Any] = []
+    @State private var calendarDraft: CalendarEventDraft?
+    @State private var calendarError: String?
+    @State private var calendarEventStore = EKEventStore()
+    @State private var sheetDetent: TrackSheetDetent = .height(300)
+    @State private var sheetDragStartHeight: CGFloat = 0
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Background
-            AppTheme.Colors.background
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack(alignment: .top) {
+                AppTheme.Colors.background
+                    .ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // Map hero with overlaid summary card
-                    mapHero
-                        .opacity(heroVisible ? 1 : 0)
-                        .scaleEffect(heroVisible ? 1 : 0.99)
+                mapBackdrop
 
-                    // Stats row (overlapping hero)
-                    statsRow
-                        .padding(.top, -24)
-                        .padding(.horizontal, 16)
+                tripDetailBottomSheet(in: proxy)
 
-                    // Route summary
-                    routeSummary
-                        .padding(.top, 20)
-                        .padding(.horizontal, 16)
-                        .opacity(bodyVisible ? 1 : 0)
-                        .offset(y: bodyVisible ? 0 : 12)
-
-                    if let nextAction = trip.nextAction {
-                        nextActionCard(nextAction)
-                            .padding(.top, 18)
-                            .padding(.horizontal, 16)
-                            .opacity(bodyVisible ? 1 : 0)
-                            .offset(y: bodyVisible ? 0 : 12)
-                    }
-
-                    // Divider
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(AppTheme.Colors.borderSubtle.opacity(0.2))
-                        .frame(height: 1)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 18)
-                        .opacity(bodyVisible ? 1 : 0)
-
-                    if !trip.serviceAlerts.isEmpty {
-                        alertsSection
-                            .padding(.top, 18)
-                            .padding(.horizontal, 16)
-                            .opacity(bodyVisible ? 1 : 0)
-                            .offset(y: bodyVisible ? 0 : 12)
-                    }
-
-                    // Full timeline
-                    TripTimelineView(trip: trip)
-                        .padding(.horizontal, 16)
-                        .padding(.top, trip.serviceAlerts.isEmpty ? 16 : 20)
-                        .opacity(bodyVisible ? 1 : 0)
-                        .offset(y: bodyVisible ? 0 : 12)
-
-                    // Fare estimate
-                    fareEstimate
-                        .padding(.top, 20)
-                        .padding(.horizontal, 16)
-                        .opacity(bodyVisible ? 1 : 0)
-
-                    // Environmental impact (CO₂ + calories)
-                    environmentalImpactView
-                        .padding(.top, 12)
-                        .padding(.horizontal, 16)
-                        .opacity(bodyVisible ? 1 : 0)
-
-                    // Action buttons
-                    actionButtons
-                        .padding(.top, 24)
-                        .padding(.horizontal, 16)
-                        .opacity(bodyVisible ? 1 : 0)
-                        .offset(y: bodyVisible ? 0 : 8)
-
-                    Spacer(minLength: 40)
-                }
+                // Floating close + share buttons over map
+                floatingButtons(topInset: proxy.safeAreaInsets.top)
             }
-
-            // Floating close + share buttons over map
-            floatingButtons
         }
         .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: [buildShareText()])
+            ShareSheet(items: shareItems.isEmpty ? [buildShareText()] : shareItems)
                 .presentationDetents([.medium, .large])
+        }
+        .sheet(item: $calendarDraft) { draft in
+            CalendarEventEditor(eventStore: calendarEventStore, draft: draft)
+                .ignoresSafeArea()
+        }
+        .alert("Calendar unavailable", isPresented: calendarErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(calendarError ?? "Track could not open Calendar.")
         }
         .onAppear {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -115,48 +67,165 @@ struct TripDetailSheet: View {
 
     // MARK: - Floating Buttons
 
-    private var floatingButtons: some View {
+    private func floatingButtons(topInset: CGFloat) -> some View {
         HStack {
             Spacer()
-            VStack(spacing: 12) {
-                FloatingCircleButton(icon: "xmark") { dismiss() }
 
-                FloatingCircleButton(
-                    icon: "location.fill",
-                    fillColor: AppTheme.Colors.accent,
-                    iconSize: 14
-                ) { showShareSheet = true }
-            }
+            FloatingCircleButton(icon: "xmark") { dismiss() }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 54) // below status bar
+        .padding(.horizontal, 18)
+        .padding(.top, max(2, topInset + 2))
     }
 
-    // MARK: - Map Hero
+    // MARK: - Map + Bottom Sheet
 
-    private var mapHero: some View {
+    private var mapBackdrop: some View {
         ZStack(alignment: .bottom) {
-            // Live interactive route map (MapLibre GL)
-            TripRouteMapView(trip: trip, isInteractive: true)
-                .frame(height: 420)
+            TripRouteMapView(
+                trip: mapTrip,
+                isInteractive: true,
+                originOverride: originCoordinate,
+                destinationOverride: destinationCoordinate
+            )
+                .ignoresSafeArea()
+                .opacity(heroVisible ? 1 : 0)
 
-            // Gradient fade into background
             LinearGradient(
                 stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: AppTheme.Colors.background.opacity(0.3), location: 0.4),
-                    .init(color: AppTheme.Colors.background.opacity(0.85), location: 0.75),
-                    .init(color: AppTheme.Colors.background, location: 1),
+                    .init(color: .clear, location: 0.0),
+                    .init(color: AppTheme.Colors.background.opacity(0.08), location: 0.42),
+                    .init(color: AppTheme.Colors.background.opacity(0.55), location: 0.78),
+                    .init(color: AppTheme.Colors.background.opacity(0.94), location: 1.0),
                 ],
-                startPoint: .top, endPoint: .bottom
+                startPoint: .top,
+                endPoint: .bottom
             )
-            .frame(height: 180)
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+        }
+    }
 
-            // Overlaid trip summary card
-            tripSummaryCard
-                .padding(.horizontal, 16)
+    private var mapTrip: TripPlan {
+        trip.withMapEndpoints(origin: originCoordinate, destination: destinationCoordinate)
+    }
+
+    private func tripDetailBottomSheet(in proxy: GeometryProxy) -> some View {
+        TrackBottomSheet(
+            selection: $sheetDetent,
+            detents: tripSheetDetents,
+            cornerRadius: 28,
+            topInset: proxy.safeAreaInsets.top + 108,
+            background: AnyView(AppTheme.Colors.background.opacity(0.96))
+        ) {
+            VStack(spacing: 0) {
+                sheetHandle
+                    .gesture(sheetDragGesture(in: proxy))
+
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 12) {
+                        tripSummaryCard
+                            .opacity(bodyVisible ? 1 : 0)
+                            .offset(y: bodyVisible ? 0 : 10)
+                            .contentShape(Rectangle())
+                            .gesture(sheetDragGesture(in: proxy))
+
+                        actionButtons
+                            .opacity(bodyVisible ? 1 : 0)
+                            .offset(y: bodyVisible ? 0 : 8)
+
+                        statsRow
+                            .opacity(statsVisible ? 1 : 0)
+
+                        routeSummary
+                            .padding(.top, 4)
+                            .opacity(bodyVisible ? 1 : 0)
+
+                        if let nextAction = trip.nextAction {
+                            nextActionCard(nextAction)
+                                .opacity(bodyVisible ? 1 : 0)
+                                .offset(y: bodyVisible ? 0 : 12)
+                        }
+
+                        if !trip.serviceAlerts.isEmpty {
+                            alertsSection
+                                .padding(.top, 4)
+                                .opacity(bodyVisible ? 1 : 0)
+                                .offset(y: bodyVisible ? 0 : 12)
+                        }
+
+                        TripTimelineView(trip: trip)
+                            .padding(.top, trip.serviceAlerts.isEmpty ? 8 : 12)
+                            .opacity(bodyVisible ? 1 : 0)
+                            .offset(y: bodyVisible ? 0 : 12)
+
+                        arrivalDestinationSection
+                            .padding(.top, 8)
+                            .opacity(bodyVisible ? 1 : 0)
+                            .offset(y: bodyVisible ? 0 : 12)
+
+                        fareEstimate
+                            .padding(.top, 8)
+                            .opacity(bodyVisible ? 1 : 0)
+
+                        environmentalImpactView
+                            .opacity(bodyVisible ? 1 : 0)
+
+                        Spacer(minLength: proxy.safeAreaInsets.bottom + 36)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                }
+            }
+        }
+    }
+
+    private var tripSheetDetents: [TrackSheetDetent] {
+        [.height(260), .height(360), .fraction(0.62), .large]
+    }
+
+    private var sheetHandle: some View {
+        VStack(spacing: 0) {
+            Capsule()
+                .fill(AppTheme.Colors.textTertiary.opacity(0.35))
+                .frame(width: 42, height: 5)
+                .padding(.top, 10)
                 .padding(.bottom, 8)
         }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+    }
+
+    private func sheetDragGesture(in proxy: GeometryProxy) -> some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            .onChanged { value in
+                let topInset = proxy.safeAreaInsets.top + 108
+                let available = proxy.size.height
+                if sheetDragStartHeight == 0 {
+                    sheetDragStartHeight = sheetDetent.resolve(in: available, topInset: topInset)
+                }
+                let maxHeight = TrackSheetDetent.large.resolve(in: available, topInset: topInset)
+                let minHeight = TrackSheetDetent.height(240).resolve(in: available, topInset: topInset)
+                let proposed = sheetDragStartHeight - value.translation.height
+                sheetDetent = .height(min(max(proposed, minHeight), maxHeight))
+            }
+            .onEnded { value in
+                let topInset = proxy.safeAreaInsets.top + 108
+                let available = proxy.size.height
+                let maxHeight = TrackSheetDetent.large.resolve(in: available, topInset: topInset)
+                let minHeight = TrackSheetDetent.height(260).resolve(in: available, topInset: topInset)
+                let proposed = sheetDragStartHeight - value.predictedEndTranslation.height
+                sheetDragStartHeight = 0
+
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+                    if proposed > maxHeight * 0.84 {
+                        sheetDetent = .large
+                    } else if proposed < minHeight + 55 {
+                        sheetDetent = .height(260)
+                    } else {
+                        sheetDetent = .height(min(max(proposed, minHeight), maxHeight))
+                    }
+                }
+            }
     }
 
     // MARK: - Trip Summary Card
@@ -301,6 +370,66 @@ struct TripDetailSheet: View {
         .trackTintedCard(cornerRadius: 18)
     }
 
+    // MARK: - Arrival Destination
+
+    private var arrivalDestinationSection: some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(AppTheme.Colors.borderSubtle.opacity(0.55))
+                    .frame(width: 2, height: 22)
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 22, height: 22)
+                    .shadow(color: Color.red.opacity(0.28), radius: 8, y: 3)
+                Rectangle()
+                    .fill(AppTheme.Colors.borderSubtle.opacity(0.55))
+                    .frame(width: 2, height: destinationCoordinate == nil ? 18 : 154)
+            }
+            .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Destination")
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+
+                    Text(destinationName)
+                        .font(.system(size: 28, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+                }
+
+                if let destinationCoordinate {
+                    TripLookAroundCardView(coordinate: destinationCoordinate)
+                        .frame(height: 172)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                        )
+                        .shadow(color: AppTheme.Colors.shadow.opacity(0.18), radius: 12, y: 5)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 18)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(AppTheme.Colors.cardElevated.opacity(0.82))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private var destinationName: String {
+        trip.legs.last?.alightStopName ?? "Destination"
+    }
+
     @ViewBuilder
     private var alertsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -348,10 +477,10 @@ struct TripDetailSheet: View {
     }
 
     private var fareSubtitle: String {
-        if let fare = trip.fare {
+        if let fare = trip.fare ?? TripFareEstimate.localEstimate(for: trip) {
             return fare.description.isEmpty ? fare.formattedTotal : fare.description
         }
-        return "$2.90 with OMNY"
+        return "Fare unavailable"
     }
 
     // MARK: - Environmental Impact
@@ -396,7 +525,7 @@ struct TripDetailSheet: View {
                 // delay — the previous asyncAfter approach would
                 // sometimes drop the GO tap if the sheet's dismissal
                 // animation interrupted the start call.
-                goSession.start(trip)
+                goSession.start(mapTrip)
                 dismiss()
             } label: {
                 HStack(spacing: 10) {
@@ -453,6 +582,27 @@ struct TripDetailSheet: View {
                 .buttonStyle(.plain)
 
                 Button {
+                    shareItems = [destinationShareText]
+                    showShareSheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("Destination")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                    }
+                    .foregroundStyle(AppTheme.Colors.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        Capsule()
+                            .fill(AppTheme.Colors.cardInset)
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    shareItems = [buildShareText()]
                     showShareSheet = true
                 } label: {
                     HStack(spacing: 6) {
@@ -471,6 +621,29 @@ struct TripDetailSheet: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            Button {
+                addToCalendar()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Add to Calendar")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                }
+                .foregroundStyle(AppTheme.Colors.accent)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    Capsule()
+                        .fill(AppTheme.Colors.accent.opacity(0.1))
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(AppTheme.Colors.accent.opacity(0.18), lineWidth: 1)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -525,6 +698,37 @@ struct TripDetailSheet: View {
         return "in \(minutes)m"
     }
 
+    private var destinationShareText: String {
+        let dest = destinationName
+        if let destinationCoordinate {
+            return "\(dest)\nhttps://maps.apple.com/?ll=\(destinationCoordinate.latitude),\(destinationCoordinate.longitude)&q=\(dest.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? dest)"
+        }
+        return dest
+    }
+
+    private var calendarErrorBinding: Binding<Bool> {
+        Binding(
+            get: { calendarError != nil },
+            set: { if !$0 { calendarError = nil } }
+        )
+    }
+
+    private func addToCalendar() {
+        Task { @MainActor in
+            guard await CalendarEventAccess.request(for: calendarEventStore) else {
+                calendarError = "Allow calendar access in Settings to add this trip."
+                return
+            }
+            calendarDraft = CalendarEventDraft(
+                title: "Trip to \(destinationName)",
+                location: destinationName,
+                notes: buildShareText(),
+                startDate: trip.departureTime,
+                endDate: trip.arrivalTime
+            )
+        }
+    }
+
     // MARK: - Share Builder
 
     private static let shareDateFormatter: DateFormatter = {
@@ -577,7 +781,7 @@ struct TripDetailSheet: View {
         }
 
         // Fare
-        if let fare = trip.fare {
+        if let fare = trip.fare ?? TripFareEstimate.localEstimate(for: trip) {
             lines.append("")
             if !fare.description.isEmpty {
                 lines.append("💳 \(fare.description)")
@@ -609,6 +813,93 @@ struct TripDetailSheet: View {
         lines.append("Shared from Track")
 
         return lines.joined(separator: "\n")
+    }
+}
+
+private struct TripLookAroundCardView: View {
+    let coordinate: CLLocationCoordinate2D
+    @State private var scene: MKLookAroundScene?
+
+    var body: some View {
+        Group {
+            if let scene {
+                LookAroundPreview(initialScene: scene)
+                    .overlay(alignment: .topLeading) {
+                        Label("Look Around", systemImage: "binoculars.fill")
+                            .font(.system(size: 15, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(.black.opacity(0.58))
+                            )
+                            .padding(12)
+                    }
+            } else {
+                TripDestinationMiniMap(coordinate: coordinate)
+                    .overlay(alignment: .topLeading) {
+                        Label("Map Preview", systemImage: "map.fill")
+                            .font(.system(size: 13, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(.black.opacity(0.52))
+                            )
+                            .padding(12)
+                    }
+            }
+        }
+        .task(id: "\(coordinate.latitude),\(coordinate.longitude)") {
+            await loadScene()
+        }
+    }
+
+    private func loadScene() async {
+        let request = MKLookAroundSceneRequest(coordinate: coordinate)
+        do {
+            let nextScene = try await request.scene
+            await MainActor.run { scene = nextScene }
+        } catch {
+            await MainActor.run { scene = nil }
+        }
+    }
+}
+
+private struct TripDestinationMiniMap: UIViewRepresentable {
+    let coordinate: CLLocationCoordinate2D
+
+    func makeUIView(context: Context) -> MKMapView {
+        let mapView = MKMapView(frame: .zero)
+        mapView.isUserInteractionEnabled = false
+        mapView.showsCompass = false
+        mapView.showsScale = false
+        mapView.pointOfInterestFilter = .excludingAll
+        if #available(iOS 16.0, *) {
+            let configuration = MKStandardMapConfiguration(elevationStyle: .flat)
+            configuration.pointOfInterestFilter = .excludingAll
+            mapView.preferredConfiguration = configuration
+        } else {
+            mapView.mapType = .mutedStandard
+        }
+        return mapView
+    }
+
+    func updateUIView(_ mapView: MKMapView, context: Context) {
+        mapView.removeAnnotations(mapView.annotations)
+        let annotation = MKPointAnnotation()
+        annotation.coordinate = coordinate
+        mapView.addAnnotation(annotation)
+        mapView.setRegion(
+            MKCoordinateRegion(
+                center: coordinate,
+                latitudinalMeters: 520,
+                longitudinalMeters: 520
+            ),
+            animated: false
+        )
     }
 }
 

@@ -590,6 +590,15 @@ struct SettingsContentView: View {
     private var navList: some View {
         VStack(spacing: 10) {
             navRow(
+                icon: "mappin.and.ellipse",
+                tint: AppTheme.Colors.successGreen,
+                title: "Saved Addresses",
+                subtitle: "Home, work, and map places"
+            ) {
+                sheetNavigator.navigate(to: .savedAddresses)
+            }
+
+            navRow(
                 icon: "calendar.badge.clock",
                 tint: AppTheme.Colors.accent,
                 title: "Widget Schedules",

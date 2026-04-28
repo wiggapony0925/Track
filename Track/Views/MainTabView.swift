@@ -35,6 +35,8 @@ extension Notification.Name {
     /// Payload: a `PlanLocation` — tells PlanView to set this as the destination
     /// and begin planning immediately, then switches to the Trips tab.
     static let quickDestination = Notification.Name("quickDestination")
+    /// Posted after saved addresses are added, edited, deleted, or map visibility changes.
+    static let savedPlacesDidChange = Notification.Name("savedPlacesDidChange")
     /// Posted by `HomeView` whenever its bottom sheet collapses fully or
     /// re-expands. Object: `Bool` (true = collapsed). Picked up by
     /// `FloatingTabBar` to morph into a "grabber" affordance.
@@ -153,6 +155,7 @@ struct MainTabView: View {
         .onAppear {
             locationContext.setGPSCoordinate(locationManager.currentLocation?.coordinate)
             locationContext.setDroppedPin(chatBiasPin)
+            goSession.updateUserLocation(locationManager.currentLocation)
         }
         .onChange(of: chatBiasPin?.latitude) { _, _ in
             locationContext.setDroppedPin(chatBiasPin)
@@ -162,6 +165,7 @@ struct MainTabView: View {
         }
         .onChange(of: locationManager.currentLocation) { _, new in
             locationContext.setGPSCoordinate(new?.coordinate)
+            goSession.updateUserLocation(new)
         }
         .environment(locationContext)
         .environment(goSession)

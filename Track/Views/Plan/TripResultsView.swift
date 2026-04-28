@@ -52,7 +52,11 @@ struct TripResultsView: View {
             .animation(AppTheme.Animation.snappy, value: showSettings)
             .navigationBarHidden(true)
             .fullScreenCover(item: $selectedTrip) { (trip: TripPlan) in
-                TripDetailSheet(trip: trip)
+                TripDetailSheet(
+                    trip: trip,
+                    originCoordinate: viewModel.tripMapOriginCoordinate,
+                    destinationCoordinate: viewModel.tripMapDestinationCoordinate
+                )
             }
             .sheet(isPresented: $showSettings) {
                 TripSettingsSheet(

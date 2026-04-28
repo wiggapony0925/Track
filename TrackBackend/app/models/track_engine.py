@@ -78,6 +78,7 @@ class EngineSavedPlaceUpsert(BaseModel):
                 "lon": -73.9855,
                 "address": "Times Sq, Manhattan, NY",
                 "icon": "briefcase.fill",
+                "visible_on_map": True,
                 "place_id": None,
             }
         }
@@ -90,6 +91,10 @@ class EngineSavedPlaceUpsert(BaseModel):
     lon: float = Field(..., description="Longitude in WGS84.")
     address: str | None = Field(None, description="Optional human-readable address.")
     icon: str | None = Field(None, description="Optional icon token for the app.")
+    visible_on_map: bool = Field(
+        True,
+        description="Whether this saved place should appear as a tappable map pin.",
+    )
     place_id: int | None = Field(
         None,
         description="Existing place ID when editing an existing saved place.",
@@ -110,6 +115,7 @@ class EngineSavedPlace(BaseModel):
                 "lon": -73.9855,
                 "address": "Times Sq, Manhattan, NY",
                 "icon": "briefcase.fill",
+                "visible_on_map": True,
                 "created_at": 1735603200,
                 "updated_at": 1735606800,
                 "last_used_at": 1735693200,
@@ -125,6 +131,10 @@ class EngineSavedPlace(BaseModel):
     lon: float = Field(..., description="Longitude in WGS84.")
     address: str | None = Field(None, description="Human-readable address.")
     icon: str | None = Field(None, description="Optional icon token.")
+    visible_on_map: bool = Field(
+        True,
+        description="Whether this saved place should appear as a tappable map pin.",
+    )
     created_at: int = Field(..., description="Unix timestamp when the row was created.")
     updated_at: int = Field(..., description="Unix timestamp when the row was updated.")
     last_used_at: int | None = Field(

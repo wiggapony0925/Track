@@ -709,6 +709,7 @@ private struct OnboardingPlacePickerSheet: View {
                     lon: coord.longitude,
                     address: address,
                     icon: category.defaultIcon,
+                    visibleOnMap: true,
                     placeID: nil
                 )
             )

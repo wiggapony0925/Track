@@ -375,6 +375,7 @@ def list_saved_places(
             lon=place.lon,
             address=place.address,
             icon=place.icon,
+            visible_on_map=place.visible_on_map,
             created_at=place.created_at,
             updated_at=place.updated_at,
             last_used_at=place.last_used_at,
@@ -404,6 +405,7 @@ def upsert_saved_place(
         lon=payload.lon,
         address=payload.address,
         icon=payload.icon,
+        visible_on_map=payload.visible_on_map,
         place_id=payload.place_id,
     )
     return EngineSavedPlace(
@@ -415,6 +417,7 @@ def upsert_saved_place(
         lon=place.lon,
         address=place.address,
         icon=place.icon,
+        visible_on_map=place.visible_on_map,
         created_at=place.created_at,
         updated_at=place.updated_at,
         last_used_at=place.last_used_at,

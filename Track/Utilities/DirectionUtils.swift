@@ -84,7 +84,7 @@ enum DirectionConstants {
     /// primary reverse-direction label — it IS a real direction, not
     /// a placeholder.  Treating it as fallback caused those directions
     /// to vanish from the home row swipe tabs.
-    static let fallbackDirectionStrings: Set<String> = {
+    nonisolated static let fallbackDirectionStrings: Set<String> = {
         var s = Set<String>()
         // Compass codes + their long labels (excluding Inbound/Outbound)
         for (code, label) in labels {
@@ -106,7 +106,7 @@ enum DirectionConstants {
 
     /// Returns `true` when the direction string is a compass code, a long
     /// compass label, or any other generic fallback — NOT a real destination.
-    static func isFallbackDirection(_ direction: String) -> Bool {
+    nonisolated static func isFallbackDirection(_ direction: String) -> Bool {
         fallbackDirectionStrings.contains(direction.uppercased())
     }
 }

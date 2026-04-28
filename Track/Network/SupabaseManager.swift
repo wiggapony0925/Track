@@ -95,6 +95,10 @@ class SupabaseManager: ObservableObject {
     private var defaults: UserDefaults {
         UserDefaults(suiteName: appGroupIdentifier) ?? .standard
     }
+
+    var storedUserIdString: String? {
+        defaults.string(forKey: userIdKey)
+    }
     
     // MARK: - URL Helpers
     

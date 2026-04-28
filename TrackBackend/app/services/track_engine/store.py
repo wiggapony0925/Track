@@ -64,6 +64,7 @@ class EngineStore:
                     lon REAL NOT NULL,
                     address TEXT,
                     icon TEXT,
+                    visible_on_map INTEGER NOT NULL DEFAULT 1,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL,
                     last_used_at INTEGER
@@ -129,6 +130,16 @@ class EngineStore:
                 """
             )
             conn.commit()
+            existing_columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(saved_places)").fetchall()
+            }
+            if "visible_on_map" not in existing_columns:
+                conn.execute(
+                    "ALTER TABLE saved_places "
+                    "ADD COLUMN visible_on_map INTEGER NOT NULL DEFAULT 1"
+                )
+                conn.commit()
             conn.close()
             self._schema_ready = True
 
@@ -137,7 +148,7 @@ class EngineStore:
         rows = conn.execute(
             """
             SELECT id, user_id, label, kind, lat, lon, address, icon,
-                   created_at, updated_at, last_used_at
+                     visible_on_map, created_at, updated_at, last_used_at
             FROM saved_places
             WHERE user_id = ?
             ORDER BY kind ASC, updated_at DESC, label COLLATE NOCASE ASC
@@ -155,6 +166,7 @@ class EngineStore:
                 lon=float(row["lon"]),
                 address=row["address"],
                 icon=row["icon"],
+                visible_on_map=bool(row["visible_on_map"]),
                 created_at=int(row["created_at"]),
                 updated_at=int(row["updated_at"]),
                 last_used_at=(
@@ -176,6 +188,7 @@ class EngineStore:
         lon: float,
         address: str | None = None,
         icon: str | None = None,
+        visible_on_map: bool = True,
         place_id: int | None = None,
     ) -> SavedPlace:
         now_ts = int(time.time())
@@ -185,9 +198,9 @@ class EngineStore:
                 """
                 INSERT INTO saved_places (
                     user_id, label, kind, lat, lon, address, icon,
-                    created_at, updated_at, last_used_at
+                    visible_on_map, created_at, updated_at, last_used_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -197,6 +210,7 @@ class EngineStore:
                     lon,
                     address,
                     icon,
+                    1 if visible_on_map else 0,
                     now_ts,
                     now_ts,
                     None,
@@ -208,7 +222,7 @@ class EngineStore:
                 """
                 UPDATE saved_places
                 SET label = ?, kind = ?, lat = ?, lon = ?, address = ?,
-                    icon = ?, updated_at = ?
+                    icon = ?, visible_on_map = ?, updated_at = ?
                 WHERE id = ? AND user_id = ?
                 """,
                 (
@@ -218,6 +232,7 @@ class EngineStore:
                     lon,
                     address,
                     icon,
+                    1 if visible_on_map else 0,
                     now_ts,
                     place_id,
                     user_id,

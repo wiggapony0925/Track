@@ -29,6 +29,9 @@ enum SheetPage: Equatable, Identifiable {
     /// Widget schedule management
     case widgetSchedules
 
+    /// Saved address management
+    case savedAddresses
+
     /// Manage and remove saved favorites
     case manageFavorites
 
@@ -56,6 +59,8 @@ enum SheetPage: Equatable, Identifiable {
             return "serviceAlerts"
         case .widgetSchedules:
             return "widgetSchedules"
+        case .savedAddresses:
+            return "savedAddresses"
         case .manageFavorites:
             return "manageFavorites"
 #if DEBUG
@@ -82,6 +87,8 @@ enum SheetPage: Equatable, Identifiable {
         case (.serviceAlerts, .serviceAlerts):
             return true
         case (.widgetSchedules, .widgetSchedules):
+            return true
+        case (.savedAddresses, .savedAddresses):
             return true
         case (.manageFavorites, .manageFavorites):
             return true

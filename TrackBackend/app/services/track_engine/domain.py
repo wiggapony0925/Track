@@ -277,6 +277,7 @@ class SavedPlace:
     created_at: int
     updated_at: int
     last_used_at: int | None = None
+    visible_on_map: bool = True
 
 
 @dataclass(slots=True)

@@ -7,6 +7,7 @@ import WidgetKit
 @main
 struct TrackWidgetBundle: WidgetBundle {
     var body: some Widget {
+        TripWidget()
         SingleRouteWidget()
         LiveNearMeWidget()
         TrackWidget()

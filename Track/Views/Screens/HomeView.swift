@@ -876,6 +876,9 @@ struct HomeView: View {
         case .widgetSchedules:
             WidgetSchedulesContentView(sheetNavigator: sheetNavigator)
 
+        case .savedAddresses:
+            ManageSavedAddressesView(sheetNavigator: sheetNavigator)
+
         case .manageFavorites:
             ManageFavoritesView(
                 sheetNavigator: sheetNavigator,

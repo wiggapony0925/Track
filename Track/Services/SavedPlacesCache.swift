@@ -1,11 +1,12 @@
-// Lightweight singleton that caches the user's saved Home and Work
-// places so any view in the app can read them without hitting the
-// backend.  PlanViewModel populates this after each planner-data
-// refresh; HomeView reads it to drive the FloatingSearchBar shortcut.
+// Lightweight singleton that caches the user's saved places so views can
+// read them without hitting the backend. PlanViewModel populates this after
+// each planner-data refresh; HomeView reads home/work and map overlays read
+// visible places.
 //
 // Usage:
 //   PlanViewModel  → SavedPlacesCache.shared.update(all: savedLocations)
 //   FloatingSearchBar ← HomeView reads .homePlace / .workPlace
+//   MapLibreTrackMapView ← reads .visibleMapPlaces
 
 import Foundation
 import Observation
@@ -20,6 +21,8 @@ final class SavedPlacesCache {
     private(set) var homePlace: SavedLocation? = nil
     /// The user's saved Work location (nil if not set).
     private(set) var workPlace: SavedLocation? = nil
+    /// Saved places that should appear as tappable pins on the map.
+    private(set) var visibleMapPlaces: [SavedLocation] = []
 
     // MARK: - Update
 
@@ -29,5 +32,6 @@ final class SavedPlacesCache {
     func update(all locations: [SavedLocation]) {
         homePlace = locations.first { $0.resolvedCategory == .home }
         workPlace = locations.first { $0.resolvedCategory == .work }
+        visibleMapPlaces = locations.filter(\.visibleOnMap)
     }
 }

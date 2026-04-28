@@ -54,6 +54,17 @@ def test_supabase_store_round_trips_engine_state() -> None:
             rows["engine_saved_places"].append(row)
             return httpx.Response(201, json=[row])
 
+        if path == "engine_saved_places" and request.method == "PATCH":
+            payload = json.loads(request.content)
+            place_id = int(request.url.params["id"].removeprefix("eq."))
+            user_id = request.url.params["user_id"].removeprefix("eq.")
+            for row in rows["engine_saved_places"]:
+                if row["id"] == place_id and row["user_id"] == user_id:
+                    row.update(payload)
+                    row["updated_at"] = _iso(now_ts + 60)
+                    return httpx.Response(200, json=[row])
+            return httpx.Response(404, json=[])
+
         if path == "engine_saved_places" and request.method == "GET":
             return httpx.Response(200, json=rows["engine_saved_places"])
 
@@ -156,7 +167,22 @@ def test_supabase_store_round_trips_engine_state() -> None:
         address="117-13 125th St",
     )
     assert isinstance(place, SavedPlace)
-    assert store.list_saved_places("user-1")[0].label == "Home"
+    assert place.visible_on_map is True
+
+    hidden_place = store.upsert_saved_place(
+        user_id="user-1",
+        label="Home",
+        kind="home",
+        lat=40.7,
+        lon=-73.9,
+        address="117-13 125th St",
+        visible_on_map=False,
+        place_id=place.place_id,
+    )
+    assert hidden_place.visible_on_map is False
+    listed_place = store.list_saved_places("user-1")[0]
+    assert listed_place.label == "Home"
+    assert listed_place.visible_on_map is False
 
     trip = store.upsert_saved_trip(
         user_id="user-1",

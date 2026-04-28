@@ -17,6 +17,7 @@ final class OnboardingTracker: ObservableObject {
 
     /// Public state ContentView and OnboardingView observe.
     @Published private(set) var hasCompletedOnboarding: Bool = false
+    @Published private(set) var isResolved: Bool = false
 
     /// Legacy device-wide key, retained for one-time migration.
     private let legacyKey = "hasCompletedOnboarding"
@@ -30,14 +31,35 @@ final class OnboardingTracker: ObservableObject {
     }
 
     private init() {
-        // Re-derive the flag whenever the signed-in user changes.
-        cancellable = SupabaseManager.shared.$currentUser
+        // Re-derive the flag whenever auth or the signed-in user changes.
+        // On cold restore Supabase marks the token as authenticated before
+        // the profile arrives, so use the stored user ID during that brief gap.
+        cancellable = Publishers.CombineLatest3(
+            SupabaseManager.shared.$currentUser,
+            SupabaseManager.shared.$isAuthenticated,
+            SupabaseManager.shared.$isAuthResolved
+        )
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] user in
-                self?.refresh(for: user?.id.uuidString)
+            .sink { [weak self] user, isAuthenticated, isAuthResolved in
+                self?.refresh(
+                    for: Self.resolvedUserId(
+                        user: user,
+                        isAuthenticated: isAuthenticated,
+                        isAuthResolved: isAuthResolved
+                    ),
+                    authResolved: isAuthResolved,
+                    isAuthenticated: isAuthenticated
+                )
             }
-        // Initial read covers the cold-start case before Combine fires.
-        refresh(for: SupabaseManager.shared.currentUser?.id.uuidString)
+        refresh(
+            for: Self.resolvedUserId(
+                user: SupabaseManager.shared.currentUser,
+                isAuthenticated: SupabaseManager.shared.isAuthenticated,
+                isAuthResolved: SupabaseManager.shared.isAuthResolved
+            ),
+            authResolved: SupabaseManager.shared.isAuthResolved,
+            isAuthenticated: SupabaseManager.shared.isAuthenticated
+        )
     }
 
     /// Mark onboarding complete for the current user.
@@ -59,6 +81,7 @@ final class OnboardingTracker: ObservableObject {
         if let key = currentKey() { defaults.removeObject(forKey: key) }
         defaults.removeObject(forKey: legacyKey)
         hasCompletedOnboarding = false
+        isResolved = true
     }
 
     // MARK: - Private
@@ -68,12 +91,28 @@ final class OnboardingTracker: ObservableObject {
         return perUserKeyPrefix + id
     }
 
-    private func refresh(for userId: String?) {
+    private static func resolvedUserId(
+        user: UserProfile?,
+        isAuthenticated: Bool,
+        isAuthResolved: Bool
+    ) -> String? {
+        if let id = user?.id.uuidString { return id }
+        guard isAuthenticated, isAuthResolved else { return nil }
+        return SupabaseManager.shared.storedUserIdString
+    }
+
+    private func refresh(
+        for userId: String?,
+        authResolved: Bool,
+        isAuthenticated: Bool
+    ) {
         currentUserId = userId
 
-        // Signed out — surface false so ContentView routes to LoginView.
+        // Signed out — surface false so ContentView routes to LoginView once
+        // auth itself has resolved.
         guard let userId, !userId.isEmpty else {
             hasCompletedOnboarding = false
+            isResolved = authResolved && !isAuthenticated
             return
         }
 
@@ -90,6 +129,7 @@ final class OnboardingTracker: ObservableObject {
         }
 
         hasCompletedOnboarding = defaults.bool(forKey: perUserKey)
+        isResolved = true
     }
 
     /// Heuristic for the migration above: we only forward the legacy
