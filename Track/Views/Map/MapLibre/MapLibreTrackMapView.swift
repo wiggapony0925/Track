@@ -408,6 +408,10 @@ struct MapLibreTrackMapView: View {
             stops: allStops,
             isBus: viewModel.selectedGroupedRoute?.isBus == true
         )
+        let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
+        if isBusRoute, LocalRouteShapeProvider.isStopDerivedShape(shape) {
+            return []
+        }
         let visibleStops = allStops
 
         // Determine which stops are "behind" (already passed by the bus)
@@ -467,8 +471,6 @@ struct MapLibreTrackMapView: View {
 
         let maxDisplaySnapDistance: Double =
             viewModel.selectedGroupedRoute?.isBus == true ? 100.0 : 160.0
-        let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
-
         return visibleStops.compactMap { stop in
             let rawCoordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
             let snapped = VehicleInterpolator.snap(

@@ -3496,21 +3496,35 @@ final class HomeViewModel {
         trainVehicles = []
         busSchedule = busScheduleByRoute[group.routeId]
 
-        // Use local static shape data immediately. Route geometry, stop lists,
-        // and direction shells are GTFS-static data, so they should not depend
-        // on backend availability; network calls below are only live enrichment.
+        // Use static shape data immediately. Prefer the persisted backend/open-data
+        // bus geometry when present; the current local GTFS bundle has bus stop
+        // coverage but no true shape geometry/stop_sequence, so its bus polyline
+        // is only an approximate last-resort fallback.
         let shapeCacheKey = group.mode == "subway" ? group.displayName : group.routeId
         let localShape = LocalRouteShapeProvider.shape(for: group)
+        let persistedShape = await getCachedRouteShapeAsync(for: shapeCacheKey)
         let cachedShape: RouteShapeResponse?
-        if let localShape {
+        let shouldPersistInitialShape: Bool
+        if group.isBus {
+            if let persistedShape,
+               !LocalRouteShapeProvider.isStopDerivedShape(persistedShape) {
+                cachedShape = persistedShape
+                shouldPersistInitialShape = false
+            } else {
+                cachedShape = localShape
+                shouldPersistInitialShape = false
+            }
+        } else if let localShape {
             cachedShape = localShape
+            shouldPersistInitialShape = true
         } else {
-            cachedShape = await getCachedRouteShapeAsync(for: shapeCacheKey)
+            cachedShape = persistedShape
+            shouldPersistInitialShape = false
         }
         if let cached = cachedShape {
             routeShape = cached
             enrichGroupWithShapeDirections(cached)
-            if localShape != nil {
+            if shouldPersistInitialShape {
                 cacheRouteShape(cached, for: shapeCacheKey)
             }
             AppLogger.shared.log(

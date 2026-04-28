@@ -2061,7 +2061,8 @@ extension HomeViewModel {
                 // Skip if already cached (memory or disk)
                 if self.getCachedRouteShape(for: group.routeId) != nil { continue }
 
-                if let shape = await LocalRouteShapeProvider.shape(for: group) {
+                if let shape = LocalRouteShapeProvider.shape(for: group),
+                   !LocalRouteShapeProvider.isStopDerivedShape(shape) {
                     guard !Task.isCancelled else { return }
                     self.cacheRouteShape(shape, for: group.routeId)
                     AppLogger.shared.log(
@@ -2074,7 +2075,7 @@ extension HomeViewModel {
                 } else {
                     AppLogger.shared.log(
                         "SHAPE_PREFETCH",
-                        message: "\(group.routeId) skipped: no local shape"
+                        message: "\(group.routeId) skipped: no authoritative local shape"
                     )
                 }
             }

@@ -12,6 +12,22 @@ enum LocalRouteShapeProvider {
         return sqliteShape(for: group, bundle: bundle)
     }
 
+    static func isStopDerivedShape(_ shape: RouteShapeResponse) -> Bool {
+        guard !shape.directions.isEmpty else { return false }
+        return shape.directions.allSatisfy { direction in
+            guard direction.polylines.count == 1,
+                  let polyline = direction.decodedPolylines.first,
+                  polyline.count == direction.stops.count,
+                  polyline.count >= 2
+            else { return false }
+
+            return zip(polyline, direction.stops).allSatisfy { coordinate, stop in
+                abs(coordinate.latitude - stop.lat) < 0.00001
+                    && abs(coordinate.longitude - stop.lon) < 0.00001
+            }
+        }
+    }
+
     private static func subwayShape(for group: GroupedNearbyTransitResponse) -> RouteShapeResponse? {
         let routeID = stripMTAPrefix(group.displayName).uppercased()
         let bundle = SubwayRoutesData.loadBundle()
