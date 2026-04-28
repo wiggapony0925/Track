@@ -2061,8 +2061,8 @@ extension HomeViewModel {
                 // Skip if already cached (memory or disk)
                 if self.getCachedRouteShape(for: group.routeId) != nil { continue }
 
-                if let shape = LocalRouteShapeProvider.shape(for: group),
-                   !LocalRouteShapeProvider.isStopDerivedShape(shape) {
+                                if let shape = LocalRouteShapeProvider.shape(for: group),
+                                     LocalRouteShapeProvider.hasRenderableGeometry(shape) {
                     guard !Task.isCancelled else { return }
                     self.cacheRouteShape(shape, for: group.routeId)
                     AppLogger.shared.log(

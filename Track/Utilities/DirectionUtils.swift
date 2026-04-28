@@ -24,6 +24,10 @@ enum DirectionConstants {
         "SW": "Southwest",
         "INBOUND": "Inbound",
         "OUTBOUND": "Outbound",
+        "DIRECTION 0": "Outbound",
+        "DIRECTION 1": "Inbound",
+        "DIRECTION 2": "Branch 2",
+        "DIRECTION 3": "Branch 3",
     ]
 
     /// Short arrow-prefixed labels for compact UI (tab chips, badges).
@@ -38,6 +42,10 @@ enum DirectionConstants {
         "SW": "↙ SW",
         "INBOUND": "↑ Inbound",
         "OUTBOUND": "↓ Outbound",
+        "DIRECTION 0": "Outbound",
+        "DIRECTION 1": "Inbound",
+        "DIRECTION 2": "Branch 2",
+        "DIRECTION 3": "Branch 3",
     ]
 
     // MARK: Compass Expansion (for GTFS-RT matching)
@@ -89,6 +97,7 @@ enum DirectionConstants {
         // Generic / numeric / special
         s.formUnion([
             "DIRECTION A", "DIRECTION B", "DIRECTION C", "DIRECTION D",
+            "DIRECTION 0", "DIRECTION 1", "DIRECTION 2", "DIRECTION 3",
             "ALL DIRECTIONS", "LOOP", "OPPOSITE DIRECTION",
             "N/A", "0", "1", "2", "3",
         ])

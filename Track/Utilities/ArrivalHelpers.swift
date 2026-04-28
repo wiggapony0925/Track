@@ -99,7 +99,9 @@ enum ArrivalHelpers {
         useShortCompass: Bool = false
     ) -> String {
         // 1. GTFS headsign (most reliable when available)
-        if let hs = shapeHeadsign, !hs.isEmpty {
+        if let hs = shapeHeadsign,
+           !hs.isEmpty,
+           !DirectionConstants.isFallbackDirection(hs) {
             return cleanBusHeadsign(hs)
         }
 

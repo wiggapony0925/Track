@@ -345,7 +345,9 @@ struct MapControlsOverlay: View {
         if let shape = viewModel.routeShape, shape.directions.count >= 2 {
             let a = shape.directions[0].headsign
             let b = shape.directions[1].headsign
-            if !a.isEmpty && !b.isEmpty && a != b {
+            if !a.isEmpty && !b.isEmpty && a != b,
+               !DirectionConstants.isFallbackDirection(a),
+               !DirectionConstants.isFallbackDirection(b) {
                 return (a, b)
             }
         }
@@ -366,7 +368,9 @@ struct MapControlsOverlay: View {
             let idx = viewModel.selectedDirectionIndex
             if idx >= 0, idx < shape.directions.count {
                 let h = shape.directions[idx].headsign
-                if !h.isEmpty { return h }
+                if !h.isEmpty, !DirectionConstants.isFallbackDirection(h) {
+                    return h
+                }
             }
         }
         if let pair = bannerTerminalPair {

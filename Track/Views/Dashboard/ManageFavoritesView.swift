@@ -67,7 +67,14 @@ struct ManageFavoritesView: View {
     /// (same `groupMinDistance` function as the nearby list).
     private var uniqueFilteredRouteIds: [String] {
         let groupLookup: [String: GroupedNearbyTransitResponse] = Dictionary(
-            uniqueKeysWithValues: groupedTransit.map { ($0.routeId, $0) }
+            groupedTransit.map { ($0.routeId, $0) },
+            uniquingKeysWith: { existing, candidate in
+                preferredManagedFavoriteMatch(
+                    existing,
+                    candidate,
+                    userLocation: userLocation
+                )
+            }
         )
         let sorted = filtered.sorted { a, b in
             let ag = groupLookup[a.routeId]
@@ -559,6 +566,23 @@ struct ManageFavoritesView: View {
             HapticManager.notification(.success)
         }
     }
+}
+
+private func preferredManagedFavoriteMatch(
+    _ existing: GroupedNearbyTransitResponse,
+    _ candidate: GroupedNearbyTransitResponse,
+    userLocation: CLLocation?
+) -> GroupedNearbyTransitResponse {
+    guard let userLocation else {
+        return existing.soonestMinutes <= candidate.soonestMinutes ? existing : candidate
+    }
+
+    let existingDistance = groupMinDistance(for: existing, from: userLocation)
+    let candidateDistance = groupMinDistance(for: candidate, from: userLocation)
+    if abs(existingDistance - candidateDistance) > 0.5 {
+        return existingDistance < candidateDistance ? existing : candidate
+    }
+    return existing.soonestMinutes <= candidate.soonestMinutes ? existing : candidate
 }
 
 #Preview {

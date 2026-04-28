@@ -31,6 +31,16 @@ enum LocalRouteShapeProvider {
         }
     }
 
+    static func hasRenderableGeometry(_ shape: RouteShapeResponse) -> Bool {
+        guard !isStopDerivedShape(shape) else { return false }
+        if shape.decodedPolylines.contains(where: { $0.count >= 2 }) {
+            return true
+        }
+        return shape.directions.contains { direction in
+            direction.decodedPolylines.contains { $0.count >= 2 }
+        }
+    }
+
     private static func subwayShape(for group: GroupedNearbyTransitResponse) -> RouteShapeResponse? {
         let routeID = stripMTAPrefix(group.displayName).uppercased()
         let bundle = SubwayRoutesData.loadBundle()
@@ -47,7 +57,8 @@ enum LocalRouteShapeProvider {
         let polylines = decodedBranches
             .map(encodePolyline)
 
-        let stops = bundle.stops
+        var seenStopIds = Set<String>()
+        var stops = bundle.stops
             .filter { stop in
                 stop.routes?.contains(where: {
                     stripMTAPrefix($0).caseInsensitiveCompare(routeID) == .orderedSame
@@ -63,6 +74,27 @@ enum LocalRouteShapeProvider {
                     routeIds: [routeID]
                 )
             }
+
+        seenStopIds.formUnion(stops.map(\.id))
+        if let gtfsBundle = GTFSBundleManager.shared.bootstrap() {
+            let routeStops = gtfsBundle.routeStops(routeID: routeID)
+            let groupedStops = Dictionary(grouping: routeStops) { $0.directionID ?? 0 }
+            let supplementalStops = groupedStops.keys.sorted().flatMap { directionID in
+                orderedStops(groupedStops[directionID] ?? [], directionID: directionID)
+            }
+            for localStop in supplementalStops where seenStopIds.insert(localStop.stopID).inserted {
+                stops.append(
+                    BusStop(
+                        id: localStop.stopID,
+                        name: localStop.name,
+                        lat: localStop.latitude,
+                        lon: localStop.longitude,
+                        direction: nil,
+                        routeIds: [routeID]
+                    )
+                )
+            }
+        }
 
         let directions = subwayDirections(
             stops: stops,
@@ -149,7 +181,8 @@ enum LocalRouteShapeProvider {
             let terminal = directionID == 0 ? outbound : inbound
             return DirectionShapeResponse(
                 directionId: directionID,
-                headsign: terminal.map { "To \($0)" } ?? "Direction \(directionID)",
+                headsign: terminal.map { "To \($0)" }
+                    ?? (directionID == 0 ? "Outbound" : "Inbound"),
                 polylines: polylines,
                 stops: stops,
                 serviceType: nil
@@ -186,7 +219,7 @@ enum LocalRouteShapeProvider {
         directionID: Int
     ) -> String {
         guard let terminal = stops.last?.name, !terminal.isEmpty else {
-            return "Direction \(directionID)"
+            return directionID == 0 ? "Outbound" : "Inbound"
         }
         return "To \(terminal)"
     }

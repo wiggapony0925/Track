@@ -36,8 +36,15 @@ struct FavoritesSection: View {
     private var sortedFavorites: [CloudFavorite] {
         // Build a lookup: routeId → matched GroupedNearbyTransitResponse
         let groupLookup: [String: GroupedNearbyTransitResponse] = Dictionary(
-            uniqueKeysWithValues: groupedTransit.map {
+            groupedTransit.map {
                 (favoriteRouteLookupKey(routeId: $0.routeId, mode: $0.mode), $0)
+            },
+            uniquingKeysWith: { existing, candidate in
+                preferredFavoriteMatch(
+                    existing,
+                    candidate,
+                    userLocation: userLocation
+                )
             }
         )
 
@@ -151,6 +158,23 @@ struct FavoritesSection: View {
             .padding(.bottom, 4)
         }
     }
+}
+
+private func preferredFavoriteMatch(
+    _ existing: GroupedNearbyTransitResponse,
+    _ candidate: GroupedNearbyTransitResponse,
+    userLocation: CLLocation?
+) -> GroupedNearbyTransitResponse {
+    guard let userLocation else {
+        return existing.soonestMinutes <= candidate.soonestMinutes ? existing : candidate
+    }
+
+    let existingDistance = groupMinDistance(for: existing, from: userLocation)
+    let candidateDistance = groupMinDistance(for: candidate, from: userLocation)
+    if abs(existingDistance - candidateDistance) > 0.5 {
+        return existingDistance < candidateDistance ? existing : candidate
+    }
+    return existing.soonestMinutes <= candidate.soonestMinutes ? existing : candidate
 }
 
 private func favoriteRouteLookupKey(for favorite: CloudFavorite) -> String {

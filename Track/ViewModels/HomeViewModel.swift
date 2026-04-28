@@ -1483,6 +1483,31 @@ final class HomeViewModel {
         return clipPolylinesToDirectionStopSpan(filtered, stops: stops, isBus: isBus)
     }
 
+    nonisolated static func polylineCandidatesForSelectedDirection(
+        shape: RouteShapeResponse,
+        index: Int,
+        name: String?,
+        shapeDirectionId: Int?,
+        hasDirectionData: Bool,
+        isBus: Bool
+    ) -> [[CLLocationCoordinate2D]] {
+        guard hasDirectionData else {
+            return isBus ? [] : shape.decodedPolylines
+        }
+
+        let directionCandidates = shape.polylinesForDirection(
+            index: index,
+            name: name,
+            shapeDirectionId: shapeDirectionId,
+            fallbackToCombined: false
+        )
+        if !directionCandidates.isEmpty {
+            return directionCandidates
+        }
+
+        return shape.decodedPolylines
+    }
+
     private nonisolated static func bestDirectionPolylines(
         _ polylines: [[CLLocationCoordinate2D]],
         stops: [BusStop],
@@ -1889,14 +1914,14 @@ final class HomeViewModel {
                         fallbackToCombined: false
                     )
                     : (isBus ? [] : shape.stops)
-                let activeCandidates = shouldFilter
-                    ? shape.polylinesForDirection(
-                        index: dirIndex,
-                        name: dirName,
-                        shapeDirectionId: shapeDirectionId,
-                        fallbackToCombined: false
-                    )
-                    : (isBus ? [] : shape.decodedPolylines)
+                let activeCandidates = Self.polylineCandidatesForSelectedDirection(
+                    shape: shape,
+                    index: dirIndex,
+                    name: dirName,
+                    shapeDirectionId: shapeDirectionId,
+                    hasDirectionData: shouldFilter,
+                    isBus: isBus
+                )
                 let activeRaw = Self.filterPolylinesToDirectionStops(
                     activeCandidates,
                     stops: directionStops,
@@ -1931,18 +1956,13 @@ final class HomeViewModel {
                         return removeSpikes(removePolylineBacktracks(cleaned))
                     }
                 } else {
-                    // Train pipeline: dedup → merge
-                    // → consolidate → heavy smooth → refine bends
+                    // Train pipeline: dedup → merge adjacent fragments, then
+                    // smooth each remaining branch independently. Do not
+                    // consolidate multiple train segments into one line: Y-shaped
+                    // routes need their branches to stay separate for opacity
+                    // splitting and to avoid straight connector artifacts.
                     let deduped = removeDuplicateSegments(activeRaw)
-                    let merged = mergeAdjacentPolylines(deduped)
-
-                    let unified: [[CLLocationCoordinate2D]]
-                    if merged.count > 1 {
-                        let single = consolidateIntoSinglePolyline(merged)
-                        unified = single.count >= 2 ? [single] : merged
-                    } else {
-                        unified = merged
-                    }
+                    let unified = mergeAdjacentPolylines(deduped)
 
                     routePolys = unified.filter { $0.count >= 2 }.map {
                         let cleaned = removeNearDuplicates($0)
@@ -2077,67 +2097,91 @@ final class HomeViewModel {
             latitude: splitStop.lat,
             longitude: splitStop.lon
         )
-        let segments = cachedRoutePolylines
-
-        var bestSegIdx = 0
-        var bestSnap: DirectionPolylineSnap?
-        var minDist: CLLocationDistance = .greatestFiniteMagnitude
-        for (segIdx, seg) in segments.enumerated() {
-            guard let snap = Self.snapPoint(splitCoord, to: seg) else { continue }
-            if snap.distance < minDist {
-                minDist = snap.distance
-                bestSegIdx = segIdx
-                bestSnap = snap
-            }
-        }
-
-        guard let splitSnap = bestSnap else {
+        guard let splitStopIndex = Self.indexOfStop(splitStop, in: directionStops) else {
             directionalSplit = nil
             return
         }
 
-        // Split the best segment at the split point
-        let splitSeg = segments[bestSegIdx]
-        let splitParts = Self.splitPolyline(splitSeg, at: splitSnap)
-        let beforePart = splitParts.before
-        let afterPart = splitParts.after
-
-        // The visual rule is rider-centric: stops before the walking-target
-        // stop are behind/faded, and stops after it are ahead/full color.
-        // Do not infer limited/skip-stop behavior from the line opacity;
-        // skipped stops are already dimmed as stop dots.  Most route-detail
-        // polylines are ordered with the stop list, but encoded bus geometry
-        // can occasionally be reversed, so use adjacent stop projections near
-        // the split as a local orientation check instead of a broad route-end
-        // heuristic that loops/branches can confuse.
-        let splitStopIndex = Self.indexOfStop(splitStop, in: directionStops) ?? 0
-        let polylineFlowsWithStops = Self.polylineFlowsWithStopOrder(
-            splitSegment: splitSeg,
-            splitSnap: splitSnap,
-            splitStopIndex: splitStopIndex,
+        let split = Self.splitRoutePolylinesByStopOrder(
+            cachedRoutePolylines,
             directionStops: directionStops,
-            maxSnapDistance: selectedGroupedRoute?.isBus == true ? 150 : 240
-        ) ?? true
+            splitStopIndex: splitStopIndex,
+            isBus: selectedGroupedRoute?.isBus == true
+        )
+        directionalSplit = (ahead: split.ahead, behind: split.behind)
+    }
 
-        // Classify: segments before bestSegIdx are fully "before",
-        // the split segment is divided, segments after are fully "after".
+    nonisolated static func splitRoutePolylinesByStopOrder(
+        _ segments: [[CLLocationCoordinate2D]],
+        directionStops: [BusStop],
+        splitStopIndex: Int,
+        isBus: Bool
+    ) -> (ahead: [[CLLocationCoordinate2D]], behind: [[CLLocationCoordinate2D]]) {
+        let maxSnapDistance: CLLocationDistance = isBus ? 150 : 240
         var beforeSegments: [[CLLocationCoordinate2D]] = []
         var afterSegments: [[CLLocationCoordinate2D]] = []
 
-        for i in 0..<bestSegIdx {
-            if segments[i].count >= 2 { beforeSegments.append(segments[i]) }
-        }
-        if beforePart.count >= 2 { beforeSegments.append(beforePart) }
-        if afterPart.count >= 2 { afterSegments.append(afterPart) }
-        for i in (bestSegIdx + 1)..<segments.count {
-            if segments[i].count >= 2 { afterSegments.append(segments[i]) }
+        for segment in segments where segment.count >= 2 {
+            let matches = directionStops.enumerated().compactMap { index, stop -> (Int, DirectionPolylineSnap)? in
+                let coord = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
+                guard let snap = snapPoint(coord, to: segment), snap.distance <= maxSnapDistance else {
+                    return nil
+                }
+                return (index, snap)
+            }
+
+            guard !matches.isEmpty else {
+                afterSegments.append(segment)
+                continue
+            }
+
+            let matchedIndices = matches.map(\.0)
+            let minIndex = matchedIndices.min() ?? splitStopIndex
+            let maxIndex = matchedIndices.max() ?? splitStopIndex
+
+            if maxIndex < splitStopIndex {
+                beforeSegments.append(segment)
+                continue
+            }
+            if minIndex > splitStopIndex {
+                afterSegments.append(segment)
+                continue
+            }
+
+            let splitCoordinate = CLLocationCoordinate2D(
+                latitude: directionStops[splitStopIndex].lat,
+                longitude: directionStops[splitStopIndex].lon
+            )
+            guard let splitSnap = snapPoint(splitCoordinate, to: segment),
+                  splitSnap.distance <= maxSnapDistance
+            else {
+                if maxIndex <= splitStopIndex {
+                    beforeSegments.append(segment)
+                } else {
+                    afterSegments.append(segment)
+                }
+                continue
+            }
+
+            let parts = splitPolyline(segment, at: splitSnap)
+            let flowsWithStops = polylineFlowsWithStopOrder(
+                splitSegment: segment,
+                splitSnap: splitSnap,
+                splitStopIndex: splitStopIndex,
+                directionStops: directionStops,
+                maxSnapDistance: maxSnapDistance
+            ) ?? true
+
+            if flowsWithStops {
+                if parts.before.count >= 2 { beforeSegments.append(parts.before) }
+                if parts.after.count >= 2 { afterSegments.append(parts.after) }
+            } else {
+                if parts.before.count >= 2 { afterSegments.append(parts.before) }
+                if parts.after.count >= 2 { beforeSegments.append(parts.after) }
+            }
         }
 
-        if polylineFlowsWithStops {
-            directionalSplit = (ahead: afterSegments, behind: beforeSegments)
-        } else {
-            directionalSplit = (ahead: beforeSegments, behind: afterSegments)
-        }
+        return (ahead: afterSegments, behind: beforeSegments)
     }
 
     private nonisolated static func indexOfStop(
@@ -3547,10 +3591,12 @@ final class HomeViewModel {
                 await self.fetchBusScheduleIfNeeded(expectedRouteId: loadingRouteId)
             }
 
-            // Shape was already applied above from cache if available.
-            // If we had a cache hit, the shape task becomes a non-blocking
-            // background refresh. If cache miss, it's the primary fetch.
-            let hadStaticShape = cachedShape != nil
+            // A local bus fallback can provide stops without true shape
+            // geometry. That is useful for instant stop dots, but it must
+            // not block fetching/persisting the real route polyline.
+            let hadRenderableStaticShape = cachedShape.map {
+                LocalRouteShapeProvider.hasRenderableGeometry($0)
+            } ?? false
 
             // Fetch shape + vehicles truly in parallel and process each
             // result the instant it arrives (no sequential bottleneck).
@@ -3596,7 +3642,7 @@ final class HomeViewModel {
                 // Static geometry is already local/cached. Do not refresh the
                 // route polyline from the backend; live tracking is handled by
                 // the vehicle task above.
-                if hadStaticShape {
+                if hadRenderableStaticShape {
                     return
                 }
 
@@ -3927,7 +3973,7 @@ final class HomeViewModel {
         for shapeDir in shape.directions.sorted(by: { $0.directionId < $1.directionId }) {
             let rawHeadsign = shapeDir.headsign
             let headsign =
-                group.isBus && isGenericBusShapeHeadsign(rawHeadsign)
+                isGenericBusShapeHeadsign(rawHeadsign)
                 ? ""
                 : rawHeadsign.lowercased()
 
@@ -4021,13 +4067,16 @@ final class HomeViewModel {
                         || (group.isCommuterRail
                             && hsLower.contains("bus"))
                     let directionString =
-                        shapeDir.headsign.isEmpty || isCrossMode
+                        shapeDir.headsign.isEmpty
+                        || isCrossMode
+                        || isGenericBusShapeHeadsign(shapeDir.headsign)
                         ? existing.direction
                         : shapeDir.headsign
                     orderedDirections.append(
                         DirectionArrivalsResponse(
                             direction: directionString,
                             directionLabel: shapeDir.headsign.isEmpty
+                                || isGenericBusShapeHeadsign(shapeDir.headsign)
                                 ? existing.directionLabel
                                 : "→ \(shapeDir.headsign)",
                             directionId: group.isBus
@@ -4041,12 +4090,14 @@ final class HomeViewModel {
                     // Create a placeholder for this missing direction
                     let directionString =
                         shapeDir.headsign.isEmpty
-                        ? "Direction \(shapeDir.directionId)"
+                            || isGenericBusShapeHeadsign(shapeDir.headsign)
+                        ? directionLabel("Direction \(shapeDir.directionId)")
                         : shapeDir.headsign
                     orderedDirections.append(
                         DirectionArrivalsResponse(
                             direction: directionString,
                             directionLabel: shapeDir.headsign.isEmpty
+                                || isGenericBusShapeHeadsign(shapeDir.headsign)
                                 ? nil
                                 : "→ \(shapeDir.headsign)",
                             directionId: group.isBus ? String(shapeDir.directionId) : nil,

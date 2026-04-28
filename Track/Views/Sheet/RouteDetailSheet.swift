@@ -409,7 +409,7 @@ struct RouteDetailSheet: View {
         let matchedDir = routeShape?.matchedDirection(
             index: index, name: dir.direction
         )
-        let useShapeTerminal = !group.isBus || !Self.isGenericShapeHeadsign(matchedDir?.headsign)
+        let useShapeTerminal = !Self.isGenericShapeHeadsign(matchedDir?.headsign)
         // Skip backend label only for subway — bus labels are already clean.
         let skipBackend = !group.isBus
         return ArrivalHelpers.resolveDirectionLabel(

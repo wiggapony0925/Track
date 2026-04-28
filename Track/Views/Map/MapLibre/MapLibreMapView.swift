@@ -120,9 +120,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         let selectedStopEq: Bool = lhs.selectedRouteStopID == rhs.selectedRouteStopID
         let rerouteEq: Bool = lhs.reroutedRouteIDs == rhs.reroutedRouteIDs
         let modeEq: Bool = lhs.selectedMode == rhs.selectedMode
+        let sheetInsetEq: Bool = lhs.freezeSheetInsetWhileDragSearching
+            == rhs.freezeSheetInsetWhileDragSearching
 
         guard camEq, stationsEq, darkEq, activeEq, flatEq, busEq, colorEq,
-              selectedStopEq, rerouteEq, modeEq else {
+              selectedStopEq, rerouteEq, modeEq, sheetInsetEq else {
             return false
         }
 
@@ -297,6 +299,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// Wired once in makeUIView; not included in Equatable check.
     var sheetHeightObserver: SheetHeightObserver?
 
+    /// During drag-search the pin represents a chosen map coordinate. Applying
+    /// sheet-height contentInset while the sheet is dragged changes MapLibre's
+    /// effective viewport center, which makes that chosen coordinate drift.
+    var freezeSheetInsetWhileDragSearching: Bool = false
+
     // MARK: - Trip Route Overlay (optional)
 
     /// When provided, renders multi-colored transit + walk polylines for a
@@ -385,6 +392,11 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // and sets contentInset directly in UIKit — zero SwiftUI re-renders.
         if let observer = sheetHeightObserver {
             observer.onHeightChanged = { [weak mapView, coordinator = context.coordinator] height in
+                if coordinator.parent.freezeSheetInsetWhileDragSearching {
+                    coordinator.pendingSheetInsetHeight = height
+                    return
+                }
+
                 // Use animated:false to prevent MapLibre from internally
                 // animating the camera center on every drag frame, which
                 // causes the sheet to visually shake during interactive drags.
@@ -424,6 +436,16 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     func updateUIView(_ mapView: MLNMapView, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self   // Keep coordinator in sync with latest struct
+
+        if !freezeSheetInsetWhileDragSearching,
+           let pending = coordinator.pendingSheetInsetHeight {
+            coordinator.pendingSheetInsetHeight = nil
+            mapView.setContentInset(
+                UIEdgeInsets(top: 0, left: 0, bottom: pending, right: 0),
+                animated: false,
+                completionHandler: nil
+            )
+        }
 
         mapView.isRotateEnabled = !locksCameraToFlatNorthUp
         mapView.isPitchEnabled = !locksCameraToFlatNorthUp
@@ -609,6 +631,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         /// those inset changes as region changes, but they are not user map pans.
         var suppressCameraSyncForSheetInset = false
         var sheetInsetSyncGeneration: UInt64 = 0
+        var pendingSheetInsetHeight: CGFloat?
         /// The last camera state THIS coordinator wrote to the binding.
         /// Used to detect echoes: if updateUIView sees a value matching
         /// this, the change came from us (not an external source) — skip.

@@ -205,7 +205,8 @@ struct MapLibreTrackMapView: View {
                 },
                 onBusStopTap: onBusStopTap,
                 onRouteStopTap: handleStopTap,
-                sheetHeightObserver: sheetHeightObserver
+                sheetHeightObserver: sheetHeightObserver,
+                freezeSheetInsetWhileDragSearching: isDragSearchActive
             )
             .equatable() // Bypass deep structural array equality check
 
@@ -397,11 +398,13 @@ struct MapLibreTrackMapView: View {
             shapeDirectionId: viewModel.selectedShapeDirectionId,
             fallbackToCombined: false
         )
-        let rawDirectionPolylines = shape.polylinesForDirection(
+        let rawDirectionPolylines = HomeViewModel.polylineCandidatesForSelectedDirection(
+            shape: shape,
             index: viewModel.selectedDirectionIndex,
             name: viewModel.selectedDirectionName,
             shapeDirectionId: viewModel.selectedShapeDirectionId,
-            fallbackToCombined: false
+            hasDirectionData: !shape.directions.isEmpty,
+            isBus: viewModel.selectedGroupedRoute?.isBus == true
         )
         let directionPolylines = HomeViewModel.filterPolylinesToDirectionStops(
             rawDirectionPolylines,
