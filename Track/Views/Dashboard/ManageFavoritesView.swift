@@ -417,17 +417,22 @@ struct ManageFavoritesView: View {
     /// Compact row for a favorite that isn't currently in the nearby radius.
     private func offlineFavoriteRow(fav: CloudFavorite) -> some View {
         let routeColor = favoriteRouteColor(for: fav)
+        let routeDisplayName = canonicalFavoriteRouteDisplayName(
+            routeId: fav.routeId,
+            savedDisplayName: fav.routeDisplayName,
+            mode: fav.mode
+        )
 
         return HStack(spacing: 12) {
             RouteBadge(
-                routeID: fav.routeDisplayName,
+                routeID: routeDisplayName,
                 size: .medium,
                 isBus: fav.mode == "bus",
                 hexColor: nil,
                 mode: fav.mode
             )
             VStack(alignment: .leading, spacing: 3) {
-                Text(fav.routeDisplayName)
+                Text(routeDisplayName)
                     .font(.custom("Helvetica-Bold", size: 15))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
@@ -526,7 +531,11 @@ struct ManageFavoritesView: View {
         case "bus":
             return AppTheme.BusColors.localBlue
         default:
-            return AppTheme.SubwayColors.color(for: favorite.routeDisplayName)
+            return AppTheme.SubwayColors.color(for: canonicalFavoriteRouteDisplayName(
+                routeId: favorite.routeId,
+                savedDisplayName: favorite.routeDisplayName,
+                mode: favorite.mode
+            ))
         }
     }
 

@@ -384,15 +384,23 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // This closure fires on every drag frame (via SheetHeightObserver)
         // and sets contentInset directly in UIKit — zero SwiftUI re-renders.
         if let observer = sheetHeightObserver {
-            observer.onHeightChanged = { [weak mapView] height in
+            observer.onHeightChanged = { [weak mapView, coordinator = context.coordinator] height in
                 // Use animated:false to prevent MapLibre from internally
                 // animating the camera center on every drag frame, which
                 // causes the sheet to visually shake during interactive drags.
+                coordinator.sheetInsetSyncGeneration &+= 1
+                let generation = coordinator.sheetInsetSyncGeneration
+                coordinator.suppressCameraSyncForSheetInset = true
                 mapView?.setContentInset(
                     UIEdgeInsets(top: 0, left: 0, bottom: height, right: 0),
                     animated: false,
                     completionHandler: nil
                 )
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    if coordinator.sheetInsetSyncGeneration == generation {
+                        coordinator.suppressCameraSyncForSheetInset = false
+                    }
+                }
             }
             // Apply current height immediately (sheet may already be visible)
             let initial = observer.currentHeight
@@ -597,6 +605,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         var currentStyleIsDark: Bool?
         /// True while the user's finger(s) are actively on the map (pan/pinch/rotate).
         var userGestureInProgress = false
+        /// True while the sheet is updating MapLibre contentInset. MapLibre reports
+        /// those inset changes as region changes, but they are not user map pans.
+        var suppressCameraSyncForSheetInset = false
+        var sheetInsetSyncGeneration: UInt64 = 0
         /// The last camera state THIS coordinator wrote to the binding.
         /// Used to detect echoes: if updateUIView sees a value matching
         /// this, the change came from us (not an external source) — skip.
@@ -781,7 +793,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         func mapView(_ mapView: MLNMapView, regionWillChangeAnimated animated: Bool) {
             // Detect user-initiated gestures (the map passes animated=false
             // when the change comes from a user gesture, true for programmatic).
-            if !animated {
+            if !animated && !suppressCameraSyncForSheetInset {
                 userGestureInProgress = true
             }
         }
@@ -809,6 +821,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         /// For `regionDidChangeAnimated` (final position), the throttle is
         /// bypassed to guarantee bindings always reflect the settled state.
         private func syncCameraToBinding(_ mapView: MLNMapView, force: Bool = false) {
+            guard !suppressCameraSyncForSheetInset else { return }
+
             shouldSyncCamera = false  // Prevent feedback loop
 
             // During continuous gestures, enforce a minimum interval between

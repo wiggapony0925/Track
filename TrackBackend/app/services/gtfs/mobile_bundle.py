@@ -68,15 +68,55 @@ _MODE_BY_ROUTE_TYPE: dict[int, str] = {
     4: "ferry",
 }
 
+_LIRR_BRANCH_NAMES = {
+    "babylon branch",
+    "hempstead branch",
+    "oyster bay branch",
+    "ronkonkoma branch",
+    "montauk branch",
+    "long beach branch",
+    "far rockaway branch",
+    "west hempstead branch",
+    "port washington branch",
+    "port jefferson branch",
+    "belmont park",
+    "city terminal zone",
+    "greenport service",
+}
 
-def _classify_mode(route_id: str, route_type: int | None) -> str:
+_MNR_LINE_NAMES = {
+    "hudson",
+    "hudson line",
+    "harlem",
+    "harlem line",
+    "new haven",
+    "new haven line",
+    "new canaan",
+    "new canaan line",
+    "danbury",
+    "danbury line",
+    "waterbury",
+    "waterbury line",
+}
+
+
+def _classify_mode(
+    route_id: str,
+    route_type: int | None,
+    route_long_name: str | None = None,
+) -> str:
     """Coalesce route_type + route_id heuristics into Track's modes."""
     rid = (route_id or "").upper()
+    long_name = (route_long_name or "").strip().lower()
     base = _MODE_BY_ROUTE_TYPE.get(route_type or -1, "bus")
     if base == "rail":
         if rid.startswith("LIRR") or rid.startswith("LI_"):
             return "lirr"
         if rid.startswith("MNR") or rid.startswith("MN_"):
+            return "mnr"
+        if long_name in _LIRR_BRANCH_NAMES:
+            return "lirr"
+        if long_name in _MNR_LINE_NAMES:
             return "mnr"
         return "rail"
     return base
@@ -182,7 +222,7 @@ def _copy_stops(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
     stop_route_modes: dict[str, str] = {}
     for row in src.execute(
         """
-        SELECT DISTINCT rs.stop_id, r.route_type, r.route_id
+        SELECT DISTINCT rs.stop_id, r.route_type, r.route_id, r.route_long_name
         FROM stop_times rs
         JOIN trips t  ON t.trip_id  = rs.trip_id
         JOIN routes r ON r.route_id = t.route_id
@@ -191,7 +231,11 @@ def _copy_stops(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
         stop_id = row["stop_id"]
         if stop_id in stop_route_modes:
             continue
-        stop_route_modes[stop_id] = _classify_mode(row["route_id"], row["route_type"])
+        stop_route_modes[stop_id] = _classify_mode(
+            row["route_id"],
+            row["route_type"],
+            row["route_long_name"],
+        )
 
     cur = dst.cursor()
     cur.execute("BEGIN")
@@ -252,7 +296,7 @@ def _copy_routes(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
                 row["route_short_name"],
                 row["route_long_name"],
                 row["route_color"],
-                _classify_mode(rid, row["route_type"]),
+                _classify_mode(rid, row["route_type"], row["route_long_name"]),
                 None,
             ),
         )

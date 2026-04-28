@@ -36,7 +36,9 @@ struct FavoritesSection: View {
     private var sortedFavorites: [CloudFavorite] {
         // Build a lookup: routeId → matched GroupedNearbyTransitResponse
         let groupLookup: [String: GroupedNearbyTransitResponse] = Dictionary(
-            uniqueKeysWithValues: groupedTransit.map { ($0.routeId, $0) }
+            uniqueKeysWithValues: groupedTransit.map {
+                (favoriteRouteLookupKey(routeId: $0.routeId, mode: $0.mode), $0)
+            }
         )
 
         let allFavorites = favoritesManager.favorites
@@ -45,8 +47,8 @@ struct FavoritesSection: View {
             : allFavorites.filter { $0.mode == selectedMode.rawValue }
 
         return filteredFavorites.sorted { a, b in
-            let aGroup = groupLookup[a.routeId]
-            let bGroup = groupLookup[b.routeId]
+            let aGroup = groupLookup[favoriteRouteLookupKey(for: a)]
+            let bGroup = groupLookup[favoriteRouteLookupKey(for: b)]
 
             switch (aGroup, bGroup) {
             case let (.some(ag), .some(bg)):
@@ -127,13 +129,15 @@ struct FavoritesSection: View {
                     } else {
                         // Build lookup once — O(n) — instead of O(n) per card.
                         let groupLookup = Dictionary(
-                            groupedTransit.map { ($0.routeId, $0) },
+                            groupedTransit.map {
+                                (favoriteRouteLookupKey(routeId: $0.routeId, mode: $0.mode), $0)
+                            },
                             uniquingKeysWith: { first, _ in first }
                         )
                         ForEach(sortedFavorites) { favorite in
                             FavoriteCard(
                                 favorite: favorite,
-                                matchedGroup: groupLookup[favorite.routeId],
+                                matchedGroup: groupLookup[favoriteRouteLookupKey(for: favorite)],
                                 onTap: onSelect,
                                 userLocation: userLocation,
                                 smartETAProvider: smartETAProvider,
@@ -146,6 +150,30 @@ struct FavoritesSection: View {
             }
             .padding(.bottom, 4)
         }
+    }
+}
+
+private func favoriteRouteLookupKey(for favorite: CloudFavorite) -> String {
+    favoriteRouteLookupKey(routeId: favorite.routeId, mode: favorite.mode)
+}
+
+private func favoriteRouteLookupKey(routeId: String, mode: String) -> String {
+    "\(mode.lowercased())|\(normalizeMTARouteToken(routeId).uppercased())"
+}
+
+func canonicalFavoriteRouteDisplayName(
+    routeId: String,
+    savedDisplayName: String,
+    mode: String,
+    matchedGroup: GroupedNearbyTransitResponse? = nil
+) -> String {
+    if let matchedGroup { return matchedGroup.displayName }
+    switch mode.lowercased() {
+    case "lirr", "mnr":
+        return BranchNames.resolveDisplayName(routeId: routeId, mode: mode)
+    default:
+        let trimmed = savedDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? BranchNames.resolveDisplayName(routeId: routeId, mode: mode) : trimmed
     }
 }
 
@@ -266,8 +294,17 @@ struct FavoriteCard: View {
         case "lirr": return AppTheme.CommuterRailColors.lirrBlue
         case "mnr":  return AppTheme.CommuterRailColors.mnrBlue
         case "bus":  return AppTheme.BusColors.color(forServiceType: matchedGroup?.busServiceType)
-        default:     return AppTheme.SubwayColors.color(for: favorite.routeDisplayName)
+        default:     return AppTheme.SubwayColors.color(for: routeDisplayName)
         }
+    }
+
+    private var routeDisplayName: String {
+        canonicalFavoriteRouteDisplayName(
+            routeId: favorite.routeId,
+            savedDisplayName: favorite.routeDisplayName,
+            mode: favorite.mode,
+            matchedGroup: matchedGroup
+        )
     }
 
     /// Route-level countdown — searches ALL directions for the soonest
@@ -317,7 +354,7 @@ struct FavoriteCard: View {
             return arrival.stopName
         }
         let saved = favorite.stopName
-        return saved.isEmpty ? favorite.routeDisplayName : saved
+        return saved.isEmpty ? routeDisplayName : saved
     }
 
     /// Dynamic direction label, falling back to saved.
@@ -363,7 +400,7 @@ struct FavoriteCard: View {
     var listRowContent: some View {
         HStack(spacing: 12) {
             RouteBadge(
-                routeID: favorite.routeDisplayName,
+                routeID: routeDisplayName,
                 size: .medium,
                 hexColor: matchedGroup?.colorHex,
                 mode: favorite.mode,
@@ -371,7 +408,7 @@ struct FavoriteCard: View {
             )
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(favorite.routeDisplayName)
+                Text(routeDisplayName)
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textPrimary)
                     .lineLimit(1)
@@ -460,7 +497,7 @@ struct FavoriteCard: View {
             // Top row: Badge + Countdown
             HStack(alignment: .top) {
                 RouteBadge(
-                    routeID: favorite.routeDisplayName,
+                    routeID: routeDisplayName,
                     size: .medium,
                     hexColor: matchedGroup?.colorHex,
                     mode: favorite.mode,

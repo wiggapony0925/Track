@@ -114,3 +114,38 @@ def test_validate_route_inventory_fails_when_active_route_is_not_served(tmp_path
     finally:
         dst.close()
         src.close()
+
+
+def test_numeric_commuter_rail_routes_keep_agency_mode(tmp_path):
+    source_db = tmp_path / "transit_schedule.db"
+    bundle_dir = tmp_path / "gtfs"
+    _make_source_db(source_db, routes=())
+
+    conn = sqlite3.connect(source_db)
+    conn.execute(
+        "INSERT INTO routes VALUES (?, ?, ?, ?, ?)",
+        ("7", None, "Far Rockaway Branch", "6E3219", 2),
+    )
+    conn.execute(
+        "INSERT INTO routes VALUES (?, ?, ?, ?, ?)",
+        ("1", None, "Hudson", "009B3A", 2),
+    )
+    for route_id in ("7", "1"):
+        trip_id = f"{route_id}-trip"
+        stop_id = f"{route_id}-stop"
+        conn.execute("INSERT INTO trips VALUES (?, ?, 'WKD', 0)", (trip_id, route_id))
+        conn.execute(
+            "INSERT OR IGNORE INTO stops VALUES (?, ?, ?, ?)",
+            (stop_id, f"{route_id} Stop", 40.0, -73.0),
+        )
+        conn.execute("INSERT INTO stop_times VALUES (?, ?, '08:00:00', 1)", (trip_id, stop_id))
+    conn.commit()
+    conn.close()
+
+    entry = mobile_bundle.build_bundle(source_db=source_db, bundle_dir=bundle_dir)
+
+    conn = sqlite3.connect(bundle_dir / entry["filename"])
+    modes = dict(conn.execute("SELECT route_id, mode FROM routes WHERE route_id IN ('1', '7')"))
+    conn.close()
+
+    assert modes == {"1": "mnr", "7": "lirr"}
