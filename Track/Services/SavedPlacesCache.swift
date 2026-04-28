@@ -21,6 +21,8 @@ final class SavedPlacesCache {
     private(set) var homePlace: SavedLocation? = nil
     /// The user's saved Work location (nil if not set).
     private(set) var workPlace: SavedLocation? = nil
+    /// All saved places from the most recent successful planner refresh.
+    private(set) var allPlaces: [SavedLocation] = []
     /// Saved places that should appear as tappable pins on the map.
     private(set) var visibleMapPlaces: [SavedLocation] = []
 
@@ -30,6 +32,7 @@ final class SavedPlacesCache {
     /// from the backend.  Thread-safe — must be called on the Main actor.
     @MainActor
     func update(all locations: [SavedLocation]) {
+        allPlaces = locations
         homePlace = locations.first { $0.resolvedCategory == .home }
         workPlace = locations.first { $0.resolvedCategory == .work }
         visibleMapPlaces = locations.filter(\.visibleOnMap)

@@ -297,3 +297,91 @@ def test_supabase_store_round_trips_engine_state() -> None:
     assert events[0].title == "Standup"
     listed_events = store.list_calendar_events("user-1", limit=5)
     assert listed_events[0].location_label == "Work"
+
+
+def test_supabase_store_handles_legacy_saved_places_without_map_visibility() -> None:
+    now_ts = 1_775_908_800
+    patch_attempts: list[dict[str, str | None]] = []
+    row = {
+        "id": 15,
+        "user_id": "user-1",
+        "label": "Home",
+        "kind": "home",
+        "lat": 40.7,
+        "lon": -73.9,
+        "address": "117-13 125th St",
+        "icon": "house.fill",
+        "created_at": _iso(now_ts),
+        "updated_at": _iso(now_ts),
+        "last_used_at": None,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.removeprefix("/rest/v1/")
+        if path != "engine_saved_places":
+            raise AssertionError(f"Unhandled request: {request.method} {request.url}")
+
+        if request.method == "GET":
+            if "visible_on_map" in request.url.params.get("select", ""):
+                return httpx.Response(
+                    400,
+                    json={
+                        "message": (
+                            "column engine_saved_places.visible_on_map does not exist"
+                        )
+                    },
+                    request=request,
+                )
+            return httpx.Response(200, json=[row], request=request)
+
+        if request.method == "PATCH":
+            payload = json.loads(request.content)
+            patch_attempts.append(
+                {
+                    "select": request.url.params.get("select"),
+                    "payload": json.dumps(payload, sort_keys=True),
+                }
+            )
+            if "visible_on_map" in request.url.params.get("select", ""):
+                return httpx.Response(
+                    400,
+                    json={
+                        "message": (
+                            "column engine_saved_places.visible_on_map does not exist"
+                        )
+                    },
+                    request=request,
+                )
+            assert "visible_on_map" not in payload
+            updated = {**row, **payload, "updated_at": _iso(now_ts + 60)}
+            return httpx.Response(200, json=[updated], request=request)
+
+        raise AssertionError(f"Unhandled request: {request.method} {request.url}")
+
+    client = httpx.Client(
+        base_url="https://octpebjxadbufiplgjqg.supabase.co/rest/v1",
+        transport=httpx.MockTransport(handler),
+    )
+    store = SupabaseEngineStore(
+        supabase_url="https://octpebjxadbufiplgjqg.supabase.co",
+        service_key="service-role",
+        client=client,
+    )
+
+    listed_place = store.list_saved_places("user-1")[0]
+    assert listed_place.visible_on_map is True
+
+    hidden_place = store.upsert_saved_place(
+        user_id="user-1",
+        label="Home",
+        kind="home",
+        lat=40.7,
+        lon=-73.9,
+        address="117-13 125th St",
+        icon="house.fill",
+        visible_on_map=False,
+        place_id=15,
+    )
+    assert hidden_place.visible_on_map is False
+    assert len(patch_attempts) == 1
+    assert "visible_on_map" not in (patch_attempts[0]["select"] or "")

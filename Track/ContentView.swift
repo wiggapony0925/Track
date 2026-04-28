@@ -10,6 +10,7 @@ struct ContentView: View {
     @ObservedObject private var onboarding = OnboardingTracker.shared
     @AppStorage("appTheme") private var appTheme = "system"
     @State private var locationManager = LocationManager()
+    @State private var isShowingInitialSplash = true
 
     /// Brief dimming overlay used for a smooth "lightbulb" transition
     /// when the color scheme changes instead of a hard flicker.
@@ -41,7 +42,9 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if !supabase.isAuthResolved {
+            if isShowingInitialSplash {
+                authLoadingView
+            } else if !supabase.isAuthResolved {
                 authLoadingView
             } else if !isAuth {
                 LoginView()
@@ -80,6 +83,13 @@ struct ContentView: View {
             }
         }
         .onAppear {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(850))
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isShowingInitialSplash = false
+                }
+            }
+
             if supabase.isAuthResolved && isAuth && onboarding.hasCompletedOnboarding {
                 // Fire the full sync AFTER the first transit fetch completes.
                 // HomeViewModel posts .transitDataLoaded when hasLoadedOnce

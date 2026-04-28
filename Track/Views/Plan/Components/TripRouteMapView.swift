@@ -606,7 +606,12 @@ private struct TripRouteMapKitView: UIViewRepresentable {
             visibleRect = visibleRect.union(rect(for: destinationCoordinate))
         }
 
-        if !visibleRect.isNull {
+        let fitSignature = cameraFitSignature
+        if !visibleRect.isNull,
+           !context.coordinator.userHasInteractedWithMap,
+           context.coordinator.fittedCameraSignature != fitSignature {
+            context.coordinator.isApplyingProgrammaticCamera = true
+            context.coordinator.fittedCameraSignature = fitSignature
             mapView.setVisibleMapRect(
                 visibleRect,
                 edgePadding: UIEdgeInsets(top: 140, left: 44, bottom: 280, right: 44),
@@ -638,7 +643,6 @@ private struct TripRouteMapKitView: UIViewRepresentable {
         combine(originCoordinate, into: &hasher)
         combine(destinationCoordinate, into: &hasher)
         for leg in legs {
-            hasher.combine(leg.id)
             hasher.combine(leg.isWalk)
             hasher.combine(leg.isBusRoute)
             hasher.combine(leg.color.description)
@@ -652,6 +656,22 @@ private struct TripRouteMapKitView: UIViewRepresentable {
                 hasher.combine(stop.name)
                 combine(stop.coordinate, into: &hasher)
             }
+        }
+        return hasher.finalize()
+    }
+
+    private var cameraFitSignature: Int {
+        var hasher = Hasher()
+        combine(originCoordinate, into: &hasher)
+        combine(destinationCoordinate, into: &hasher)
+        for leg in legs {
+            hasher.combine(leg.isWalk)
+            hasher.combine(leg.isBusRoute)
+            hasher.combine(leg.coordinates.count)
+            combine(leg.coordinates.first, into: &hasher)
+            combine(leg.coordinates.last, into: &hasher)
+            hasher.combine(leg.stops.first?.id)
+            hasher.combine(leg.stops.last?.id)
         }
         return hasher.finalize()
     }
@@ -672,6 +692,9 @@ private struct TripRouteMapKitView: UIViewRepresentable {
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         var renderSignature: Int?
+        var fittedCameraSignature: Int?
+        var userHasInteractedWithMap = false
+        var isApplyingProgrammaticCamera = false
         var onStopTap: (BusStop, CGPoint?) -> Void
 
         init(onStopTap: @escaping (BusStop, CGPoint?) -> Void) {
@@ -748,6 +771,25 @@ private struct TripRouteMapKitView: UIViewRepresentable {
             let anchor = CGPoint(x: view.center.x, y: view.center.y - max(0, view.bounds.height / 2))
             onStopTap(annotation.busStop, anchor)
             mapView.deselectAnnotation(annotation, animated: true)
+        }
+
+        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+            guard !isApplyingProgrammaticCamera,
+                  Self.isUserGestureDrivingCameraChange(mapView)
+            else { return }
+            userHasInteractedWithMap = true
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            isApplyingProgrammaticCamera = false
+        }
+
+        private static func isUserGestureDrivingCameraChange(_ mapView: MKMapView) -> Bool {
+            mapView.subviews.contains { subview in
+                subview.gestureRecognizers?.contains { recognizer in
+                    recognizer.state == .began || recognizer.state == .changed
+                } == true
+            }
         }
 
         private static func stopDotImage(color: UIColor) -> UIImage {

@@ -22,6 +22,15 @@ from .domain import (
 from .store import recent_route_tokens
 
 
+_SAVED_PLACE_COLUMNS = (
+    "id,user_id,label,kind,lat,lon,address,icon,visible_on_map,"
+    "created_at,updated_at,last_used_at"
+)
+_SAVED_PLACE_LEGACY_COLUMNS = (
+    "id,user_id,label,kind,lat,lon,address,icon,created_at,updated_at,last_used_at"
+)
+
+
 def _unix_to_iso(timestamp_s: int | None) -> str | None:
     if timestamp_s is None:
         return None
@@ -83,6 +92,7 @@ class SupabaseEngineStore:
             base_url=f"{base_url}/rest/v1",
             timeout=timeout_s,
         )
+        self._saved_places_has_visible_on_map = True
 
     def _headers(self, *, prefer: str | None = None) -> dict[str, str]:
         headers = {
@@ -143,6 +153,46 @@ class SupabaseEngineStore:
 
     def _rpc(self, function_name: str, payload: dict[str, Any]) -> Any:
         return self._request("POST", f"rpc/{function_name}", json_body=payload)
+
+    @staticmethod
+    def _is_missing_visible_on_map_error(error: httpx.HTTPStatusError) -> bool:
+        if error.response.status_code != 400:
+            return False
+        body = error.response.text.lower()
+        url = str(error.request.url).lower()
+        return "visible_on_map" in body or "visible_on_map" in url
+
+    def _saved_place_select_columns(self) -> str:
+        return (
+            _SAVED_PLACE_COLUMNS
+            if self._saved_places_has_visible_on_map
+            else _SAVED_PLACE_LEGACY_COLUMNS
+        )
+
+    def _saved_place_payload(
+        self,
+        *,
+        user_id: str,
+        label: str,
+        kind: str,
+        lat: float,
+        lon: float,
+        address: str | None,
+        icon: str | None,
+        visible_on_map: bool,
+    ) -> dict[str, Any]:
+        payload = {
+            "user_id": user_id,
+            "label": label,
+            "kind": kind,
+            "lat": lat,
+            "lon": lon,
+            "address": address,
+            "icon": icon,
+        }
+        if self._saved_places_has_visible_on_map:
+            payload["visible_on_map"] = visible_on_map
+        return payload
 
     def _saved_place_from_row(self, row: dict[str, Any]) -> SavedPlace:
         return SavedPlace(
@@ -205,18 +255,19 @@ class SupabaseEngineStore:
         )
 
     def list_saved_places(self, user_id: str) -> list[SavedPlace]:
-        rows = self._request(
-            "GET",
-            "engine_saved_places",
-            params={
-                "select": (
-                    "id,user_id,label,kind,lat,lon,address,icon,"
-                    "visible_on_map,created_at,updated_at,last_used_at"
-                ),
-                "user_id": f"eq.{user_id}",
-                "order": "kind.asc,updated_at.desc,label.asc",
-            },
-        )
+        params = {
+            "select": self._saved_place_select_columns(),
+            "user_id": f"eq.{user_id}",
+            "order": "kind.asc,updated_at.desc,label.asc",
+        }
+        try:
+            rows = self._request("GET", "engine_saved_places", params=params)
+        except httpx.HTTPStatusError as exc:
+            if not self._is_missing_visible_on_map_error(exc):
+                raise
+            self._saved_places_has_visible_on_map = False
+            params["select"] = self._saved_place_select_columns()
+            rows = self._request("GET", "engine_saved_places", params=params)
         return [self._saved_place_from_row(row) for row in rows or []]
 
     def upsert_saved_place(
@@ -232,38 +283,82 @@ class SupabaseEngineStore:
         visible_on_map: bool = True,
         place_id: int | None = None,
     ) -> SavedPlace:
-        payload = {
-            "user_id": user_id,
-            "label": label,
-            "kind": kind,
-            "lat": lat,
-            "lon": lon,
-            "address": address,
-            "icon": icon,
-            "visible_on_map": visible_on_map,
-        }
+        payload = self._saved_place_payload(
+            user_id=user_id,
+            label=label,
+            kind=kind,
+            lat=lat,
+            lon=lon,
+            address=address,
+            icon=icon,
+            visible_on_map=visible_on_map,
+        )
         if place_id is None:
-            row = self._select_one(
-                "POST",
-                "engine_saved_places",
-                json_body=payload,
-                prefer="return=representation",
-            )
+            try:
+                row = self._select_one(
+                    "POST",
+                    "engine_saved_places",
+                    json_body=payload,
+                    prefer="return=representation",
+                )
+            except httpx.HTTPStatusError as exc:
+                if not self._is_missing_visible_on_map_error(exc):
+                    raise
+                self._saved_places_has_visible_on_map = False
+                payload = self._saved_place_payload(
+                    user_id=user_id,
+                    label=label,
+                    kind=kind,
+                    lat=lat,
+                    lon=lon,
+                    address=address,
+                    icon=icon,
+                    visible_on_map=visible_on_map,
+                )
+                row = self._select_one(
+                    "POST",
+                    "engine_saved_places",
+                    json_body=payload,
+                    prefer="return=representation",
+                )
         else:
-            row = self._select_one(
-                "PATCH",
-                "engine_saved_places",
-                params={
-                    "select": (
-                        "id,user_id,label,kind,lat,lon,address,icon,"
-                        "visible_on_map,created_at,updated_at,last_used_at"
-                    ),
-                    "id": f"eq.{place_id}",
-                    "user_id": f"eq.{user_id}",
-                },
-                json_body=payload,
-                prefer="return=representation",
-            )
+            params = {
+                "select": self._saved_place_select_columns(),
+                "id": f"eq.{place_id}",
+                "user_id": f"eq.{user_id}",
+            }
+            try:
+                row = self._select_one(
+                    "PATCH",
+                    "engine_saved_places",
+                    params=params,
+                    json_body=payload,
+                    prefer="return=representation",
+                )
+            except httpx.HTTPStatusError as exc:
+                if not self._is_missing_visible_on_map_error(exc):
+                    raise
+                self._saved_places_has_visible_on_map = False
+                params["select"] = self._saved_place_select_columns()
+                payload = self._saved_place_payload(
+                    user_id=user_id,
+                    label=label,
+                    kind=kind,
+                    lat=lat,
+                    lon=lon,
+                    address=address,
+                    icon=icon,
+                    visible_on_map=visible_on_map,
+                )
+                row = self._select_one(
+                    "PATCH",
+                    "engine_saved_places",
+                    params=params,
+                    json_body=payload,
+                    prefer="return=representation",
+                )
+        if "visible_on_map" not in row:
+            row = {**row, "visible_on_map": visible_on_map}
         return self._saved_place_from_row(row)
 
     def delete_saved_place(self, user_id: str, place_id: int) -> None:

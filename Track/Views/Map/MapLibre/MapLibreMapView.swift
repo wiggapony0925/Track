@@ -844,6 +844,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             // when the change comes from a user gesture, true for programmatic).
             if !animated && !suppressCameraSyncForSheetInset {
                 userGestureInProgress = true
+                CameraHoverEngine.registerUserMapGesture()
             }
         }
 

@@ -98,10 +98,10 @@ enum CameraHoverEngine {
     /// both write.
     private static let coalesceWindow: CFAbsoluteTime = 0.18
     /// System writes are silenced for this many seconds after any
-    /// `.user` commit.  1.5 s covers the longest camera spring animation
-    /// (~0.9 s) plus GPS polling jitter so no background location tick
-    /// can interrupt or undo a user-initiated recenter.
-    private static let userCommitProtectionWindow: CFAbsoluteTime = 1.5
+    /// `.user` commit or direct map gesture. This must be long enough for
+    /// the user to pan/zoom, lift their finger, and keep inspecting the map
+    /// without the next GPS/route-fit tick yanking them back.
+    private static let userCommitProtectionWindow: CFAbsoluteTime = 6.0
 
     /// Posted on `NotificationCenter.default` immediately before the
     /// engine writes a new camera into the binding.  The MapLibre
@@ -111,6 +111,13 @@ enum CameraHoverEngine {
     /// `syncCameraToBinding` work item from echoing a stale value
     /// back during the SwiftUI animation window.
     static let cameraWriteWillCommit = Notification.Name("TrackCameraHoverEngine.willCommit")
+
+    /// Called by map renderers when the user directly pans, pinches, rotates,
+    /// or otherwise drives the camera. It gives manual exploration the same
+    /// protection as a button-triggered `.user` camera commit.
+    static func registerUserMapGesture() {
+        lastUserCommitAt = CFAbsoluteTimeGetCurrent()
+    }
 
     /// Single coalesced write into a `cameraPosition` binding.
     ///
