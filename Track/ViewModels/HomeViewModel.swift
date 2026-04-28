@@ -1070,6 +1070,15 @@ final class HomeViewModel {
             // Invalidate vehicle filter ID caches when direction changes
             _filteredBusVehicleIds = nil
             _filteredTrainVehicleIds = nil
+            if oldValue != selectedDirectionIndex,
+               selectedRouteId != nil {
+                _splitRebuildTask?.cancel()
+                isStopManuallySelected = false
+                selectedStopId = nil
+                nearestStopCoordinate = nil
+                directionalSplit = nil
+                goMode.cancelWalkingRoute()
+            }
             // Cancel any in-flight rebuild from a previous tap so rapid direction
             // switching doesn't cascade into multiple simultaneous MapPolyline
             // teardown/rebuild cycles on MapKit's render thread.
@@ -1077,10 +1086,6 @@ final class HomeViewModel {
             schedulePolylineRebuild()
             if oldValue != selectedDirectionIndex,
                selectedRouteId != nil {
-                isStopManuallySelected = false
-                selectedStopId = nil
-                nearestStopCoordinate = nil
-                goMode.cancelWalkingRoute()
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     await self.refreshWalkingState(userLocation: self.lastKnownUserLocation)
@@ -2041,11 +2046,21 @@ final class HomeViewModel {
             return
         }
 
-        let directionStops = shape.stopsForDirection(
+        let rawDirectionStops = shape.stopsForDirection(
             index: selectedDirectionIndex,
             name: selectedDirectionName,
             shapeDirectionId: selectedShapeDirectionId,
             fallbackToCombined: false)
+        let matchedDirection = shape.matchedDirection(
+            index: selectedDirectionIndex,
+            name: selectedDirectionName,
+            shapeDirectionId: selectedShapeDirectionId
+        )
+        let directionStops = Self.stopsOrderedForSelectedTerminal(
+            rawDirectionStops,
+            directionName: selectedDirectionName,
+            shapeHeadsign: matchedDirection?.headsign
+        )
         guard !directionStops.isEmpty else {
             directionalSplit = nil
             return
@@ -2093,10 +2108,6 @@ final class HomeViewModel {
             return
         }
 
-        let splitCoord = CLLocationCoordinate2D(
-            latitude: splitStop.lat,
-            longitude: splitStop.lon
-        )
         guard let splitStopIndex = Self.indexOfStop(splitStop, in: directionStops) else {
             directionalSplit = nil
             return
@@ -2109,6 +2120,58 @@ final class HomeViewModel {
             isBus: selectedGroupedRoute?.isBus == true
         )
         directionalSplit = (ahead: split.ahead, behind: split.behind)
+    }
+
+    nonisolated static func stopsOrderedForSelectedTerminal(
+        _ stops: [BusStop],
+        directionName: String?,
+        shapeHeadsign: String?
+    ) -> [BusStop] {
+        guard stops.count >= 2 else { return stops }
+        let target = normalizedTerminalText(preferredTerminalText(
+            directionName: directionName,
+            shapeHeadsign: shapeHeadsign
+        ))
+        guard !target.isEmpty else { return stops }
+
+        let first = normalizedTerminalText(stops[0].name)
+        let last = normalizedTerminalText(stops[stops.count - 1].name)
+        let firstMatches = !first.isEmpty && (target.contains(first) || first.contains(target))
+        let lastMatches = !last.isEmpty && (target.contains(last) || last.contains(target))
+
+        if firstMatches && !lastMatches {
+            return Array(stops.reversed())
+        }
+        return stops
+    }
+
+    private nonisolated static func preferredTerminalText(
+        directionName: String?,
+        shapeHeadsign: String?
+    ) -> String {
+        let headsign = normalizedTerminalText(shapeHeadsign ?? "")
+        if !headsign.isEmpty, !genericDirectionTexts.contains(headsign) {
+            return shapeHeadsign ?? ""
+        }
+        return directionName ?? shapeHeadsign ?? ""
+    }
+
+    private nonisolated static let genericDirectionTexts: Set<String> = [
+        "inbound", "outbound", "northbound", "southbound", "eastbound", "westbound",
+        "direction 0", "direction 1", "direction 2", "direction 3"
+    ]
+
+    private nonisolated static func normalizedTerminalText(_ value: String) -> String {
+        var normalized = value.lowercased()
+        if normalized.hasPrefix("to ") {
+            normalized.removeFirst(3)
+        }
+        let scalars = normalized.unicodeScalars.map { scalar -> Character in
+            CharacterSet.alphanumerics.contains(scalar) ? Character(scalar) : " "
+        }
+        return String(scalars)
+            .split(separator: " ")
+            .joined(separator: " ")
     }
 
     nonisolated static func splitRoutePolylinesByStopOrder(

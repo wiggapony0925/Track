@@ -173,21 +173,143 @@ enum LocalRouteShapeProvider {
         branches: [[CLLocationCoordinate2D]],
         polylines: [String]
     ) -> [DirectionShapeResponse] {
-        let firstBranch = branches.first ?? []
-        let outbound = firstBranch.last.flatMap { nearestStop(to: $0, in: stops) }?.name
-        let inbound = firstBranch.first.flatMap { nearestStop(to: $0, in: stops) }?.name
+        let orderedStops = orderedStopsAlongBranches(stops, branches: branches)
+        let reversedStops = Array(orderedStops.reversed())
+        let reversedPolylines = branches
+            .map { Array($0.reversed()) }
+            .filter { $0.count >= 2 }
+            .map(encodePolyline)
 
-        return [0, 1].map { directionID in
-            let terminal = directionID == 0 ? outbound : inbound
-            return DirectionShapeResponse(
-                directionId: directionID,
-                headsign: terminal.map { "To \($0)" }
-                    ?? (directionID == 0 ? "Outbound" : "Inbound"),
+        return [
+            DirectionShapeResponse(
+                directionId: 0,
+                headsign: orderedStops.last.map { "To \($0.name)" } ?? "Outbound",
                 polylines: polylines,
-                stops: stops,
+                stops: orderedStops,
+                serviceType: nil
+            ),
+            DirectionShapeResponse(
+                directionId: 1,
+                headsign: reversedStops.last.map { "To \($0.name)" } ?? "Inbound",
+                polylines: reversedPolylines,
+                stops: reversedStops,
                 serviceType: nil
             )
+        ]
+    }
+
+    private static func orderedStopsAlongBranches(
+        _ stops: [BusStop],
+        branches: [[CLLocationCoordinate2D]]
+    ) -> [BusStop] {
+        guard !stops.isEmpty, !branches.isEmpty else { return stops }
+
+        struct ScoredStop {
+            let stop: BusStop
+            let branchIndex: Int
+            let fraction: Double
+            let distance: CLLocationDistance
         }
+
+        let scored = stops.map { stop -> ScoredStop in
+            let coordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
+            var bestBranch = 0
+            var bestFraction = 0.0
+            var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+
+            for (branchIndex, branch) in branches.enumerated() where branch.count >= 2 {
+                guard let snap = snapFraction(coordinate, to: branch) else { continue }
+                if snap.distance < bestDistance {
+                    bestBranch = branchIndex
+                    bestFraction = snap.fraction
+                    bestDistance = snap.distance
+                }
+            }
+
+            return ScoredStop(
+                stop: stop,
+                branchIndex: bestBranch,
+                fraction: bestFraction,
+                distance: bestDistance
+            )
+        }
+
+        return scored.sorted { left, right in
+            if left.branchIndex != right.branchIndex {
+                return left.branchIndex < right.branchIndex
+            }
+            if abs(left.fraction - right.fraction) > 0.000001 {
+                return left.fraction < right.fraction
+            }
+            if abs(left.distance - right.distance) > 0.5 {
+                return left.distance < right.distance
+            }
+            return left.stop.name.localizedStandardCompare(right.stop.name) == .orderedAscending
+        }.map(\.stop)
+    }
+
+    private static func snapFraction(
+        _ coordinate: CLLocationCoordinate2D,
+        to polyline: [CLLocationCoordinate2D]
+    ) -> (fraction: Double, distance: CLLocationDistance)? {
+        guard polyline.count >= 2 else { return nil }
+
+        let source = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        var totalLength = CLLocationDistance(0)
+        var segmentLengths: [CLLocationDistance] = []
+        segmentLengths.reserveCapacity(polyline.count - 1)
+        for i in 0..<(polyline.count - 1) {
+            let length = CLLocation(
+                latitude: polyline[i].latitude,
+                longitude: polyline[i].longitude
+            ).distance(from: CLLocation(
+                latitude: polyline[i + 1].latitude,
+                longitude: polyline[i + 1].longitude
+            ))
+            segmentLengths.append(length)
+            totalLength += length
+        }
+        guard totalLength > 0 else { return nil }
+
+        var distanceBeforeSegment = CLLocationDistance(0)
+        var bestDistance = CLLocationDistance.greatestFiniteMagnitude
+        var bestDistanceAlong = CLLocationDistance(0)
+        for i in 0..<(polyline.count - 1) {
+            let projected = projectPoint(coordinate, ontoSegmentFrom: polyline[i], to: polyline[i + 1])
+            let projectedLocation = CLLocation(
+                latitude: projected.coordinate.latitude,
+                longitude: projected.coordinate.longitude
+            )
+            let distance = source.distance(from: projectedLocation)
+            if distance < bestDistance {
+                bestDistance = distance
+                bestDistanceAlong = distanceBeforeSegment + segmentLengths[i] * projected.fraction
+            }
+            distanceBeforeSegment += segmentLengths[i]
+        }
+
+        return (fraction: bestDistanceAlong / totalLength, distance: bestDistance)
+    }
+
+    private static func projectPoint(
+        _ point: CLLocationCoordinate2D,
+        ontoSegmentFrom a: CLLocationCoordinate2D,
+        to b: CLLocationCoordinate2D
+    ) -> (coordinate: CLLocationCoordinate2D, fraction: Double) {
+        let dx = b.longitude - a.longitude
+        let dy = b.latitude - a.latitude
+        let lenSq = dx * dx + dy * dy
+        guard lenSq >= 1e-18 else { return (a, 0) }
+
+        let raw = ((point.longitude - a.longitude) * dx + (point.latitude - a.latitude) * dy) / lenSq
+        let fraction = min(max(raw, 0), 1)
+        return (
+            CLLocationCoordinate2D(
+                latitude: a.latitude + fraction * dy,
+                longitude: a.longitude + fraction * dx
+            ),
+            fraction
+        )
     }
 
     private static func orderedStops(

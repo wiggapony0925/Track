@@ -273,4 +273,54 @@ struct StaticNearbyDisplayTests {
         #expect(split.behind.count == 1)
         #expect(split.ahead.count == 2)
     }
+
+    @Test func reversedTrainDirectionFlipsOpacitySplit() {
+        let forwardStops = [
+            BusStop(id: "0", name: "First", lat: 0.0, lon: 0.0, direction: nil),
+            BusStop(id: "1", name: "Middle", lat: 0.0, lon: 1.0, direction: nil),
+            BusStop(id: "2", name: "Last", lat: 0.0, lon: 2.0, direction: nil)
+        ]
+        let forwardLine = [
+            CLLocationCoordinate2D(latitude: 0.0, longitude: 0.0),
+            CLLocationCoordinate2D(latitude: 0.0, longitude: 1.0),
+            CLLocationCoordinate2D(latitude: 0.0, longitude: 2.0)
+        ]
+        let reversedStops = Array(forwardStops.reversed())
+        let reversedLine = Array(forwardLine.reversed())
+
+        let forward = HomeViewModel.splitRoutePolylinesByStopOrder(
+            [forwardLine],
+            directionStops: forwardStops,
+            splitStopIndex: 1,
+            isBus: false
+        )
+        let reversed = HomeViewModel.splitRoutePolylinesByStopOrder(
+            [reversedLine],
+            directionStops: reversedStops,
+            splitStopIndex: 1,
+            isBus: false
+        )
+
+        #expect(forward.behind.first?.first?.longitude == 0.0)
+        #expect(forward.ahead.first?.last?.longitude == 2.0)
+        #expect(reversed.behind.first?.first?.longitude == 2.0)
+        #expect(reversed.ahead.first?.last?.longitude == 0.0)
+    }
+
+    @Test func subwayStopsReverseWhenHeadsignMatchesFirstTerminal() {
+        let stops = [
+            BusStop(id: "Q", name: "Queens Plaza", lat: 40.748, lon: -73.937, direction: nil),
+            BusStop(id: "S", name: "Steinway St", lat: 40.756, lon: -73.920, direction: nil),
+            BusStop(id: "C", name: "Coney Island-Stillwell Av", lat: 40.577, lon: -73.981, direction: nil)
+        ]
+
+        let ordered = HomeViewModel.stopsOrderedForSelectedTerminal(
+            stops,
+            directionName: "To Queens Plaza",
+            shapeHeadsign: nil
+        )
+
+        #expect(ordered.first?.name == "Coney Island-Stillwell Av")
+        #expect(ordered.last?.name == "Queens Plaza")
+    }
 }

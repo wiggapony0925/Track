@@ -392,26 +392,41 @@ struct MapLibreTrackMapView: View {
         center: CLLocationCoordinate2D, distance: Double
     ) -> [DisplayedRouteStop] {
         guard let shape = viewModel.routeShape else { return [] }
-        let allStops = shape.stopsForDirection(
+        let rawStops = shape.stopsForDirection(
             index: viewModel.selectedDirectionIndex,
             name: viewModel.selectedDirectionName,
             shapeDirectionId: viewModel.selectedShapeDirectionId,
             fallbackToCombined: false
         )
-        let rawDirectionPolylines = HomeViewModel.polylineCandidatesForSelectedDirection(
-            shape: shape,
+        let matchedDirection = shape.matchedDirection(
             index: viewModel.selectedDirectionIndex,
             name: viewModel.selectedDirectionName,
-            shapeDirectionId: viewModel.selectedShapeDirectionId,
-            hasDirectionData: !shape.directions.isEmpty,
-            isBus: viewModel.selectedGroupedRoute?.isBus == true
-        )
-        let directionPolylines = HomeViewModel.filterPolylinesToDirectionStops(
-            rawDirectionPolylines,
-            stops: allStops,
-            isBus: viewModel.selectedGroupedRoute?.isBus == true
+            shapeDirectionId: viewModel.selectedShapeDirectionId
         )
         let isBusRoute = viewModel.selectedGroupedRoute?.isBus == true
+        let allStops = HomeViewModel.stopsOrderedForSelectedTerminal(
+            rawStops,
+            directionName: viewModel.selectedDirectionName,
+            shapeHeadsign: matchedDirection?.headsign
+        )
+        let directionPolylines: [[CLLocationCoordinate2D]]
+        if isBusRoute {
+            let rawDirectionPolylines = HomeViewModel.polylineCandidatesForSelectedDirection(
+                shape: shape,
+                index: viewModel.selectedDirectionIndex,
+                name: viewModel.selectedDirectionName,
+                shapeDirectionId: viewModel.selectedShapeDirectionId,
+                hasDirectionData: !shape.directions.isEmpty,
+                isBus: true
+            )
+            directionPolylines = HomeViewModel.filterPolylinesToDirectionStops(
+                rawDirectionPolylines,
+                stops: allStops,
+                isBus: true
+            )
+        } else {
+            directionPolylines = []
+        }
         let usesLocalCoverageOnlyShape = isBusRoute
             && LocalRouteShapeProvider.isStopDerivedShape(shape)
         let visibleStops = allStops
@@ -475,11 +490,13 @@ struct MapLibreTrackMapView: View {
             viewModel.selectedGroupedRoute?.isBus == true ? 100.0 : 160.0
         return visibleStops.compactMap { stop in
             let rawCoordinate = CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
-            let snapped = VehicleInterpolator.snap(
-                coordinate: rawCoordinate,
-                to: directionPolylines,
-                maxDistance: maxDisplaySnapDistance
-            )
+            let snapped = isBusRoute
+                ? VehicleInterpolator.snap(
+                    coordinate: rawCoordinate,
+                    to: directionPolylines,
+                    maxDistance: maxDisplaySnapDistance
+                )
+                : nil
             if isBusRoute, !usesLocalCoverageOnlyShape, snapped == nil {
                 return nil
             }
