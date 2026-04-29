@@ -372,9 +372,9 @@ enum MapLibreStyleConfig {
     /// display size so GL always scales *down* (crisp, no pixelation).
     /// `base: 1.0` (linear) gives visually uniform scaling across zooms.
     private static let transferPillIconScaleStops: [(zoom: Double, scale: Double)] = [
-        (10, 0.12), (11, 0.18), (12, 0.25),
-        (13, 0.32), (14, 0.38), (15, 0.45),
-        (16, 0.55), (17, 0.65), (18, 0.80),
+        (10, 0.46), (11, 0.54), (12, 0.64),
+        (13, 0.72), (14, 0.80), (15, 0.88),
+        (16, 0.98), (17, 1.08), (18, 1.18),
     ]
 
     static let transferPillIconSize = zoomInterpolate(
@@ -914,18 +914,21 @@ enum MapLibreStyleConfig {
         corridorSpan: CGFloat,
         zoom: Double
     ) -> CGFloat {
-        let _ = colorGroupCount
         let compactWidth = transferPillMinimumWidthPoints(at: zoom)
         guard corridorSpan > 0.01 else {
             return compactWidth
         }
 
+        let complexity = CGFloat(max(1, min(colorGroupCount, 6)))
+        let complexityCap = compactWidth + (complexity - 1) * subwayFillWidth(at: zoom) * 0.95
+        let corridorWidth = transferPillCorridorWidthPoints(
+            corridorSpan: corridorSpan,
+            zoom: zoom
+        )
+
         return max(
             compactWidth,
-            transferPillCorridorWidthPoints(
-                corridorSpan: corridorSpan,
-                zoom: zoom
-            )
+            min(corridorWidth, complexityCap)
         )
     }
 
@@ -968,20 +971,19 @@ enum MapLibreStyleConfig {
     ///   - isDark: Whether to render for dark mode.
     /// - Returns: A `UIImage` suitable for `style.setImage(_:forName:)`.
     static func transferPillImage(widthPoints: CGFloat, isDark: Bool) -> UIImage {
-        // Render at 3× the logical size so MapLibre always scales DOWN,
-        // producing crisp pills at every zoom level without pixelation.
-        let scale: CGFloat = 3.0
-        let w = widthPoints * scale
-        let h = transferPillHeight * scale
-        let sw = transferPillStroke * scale
-        // Extra padding for the subtle outer shadow
-        let padding: CGFloat = 3.0 * scale
+        // Render at retina density while keeping the UIImage's logical
+        // size in points. If we expose the 3x pixel dimensions as points,
+        // MapLibre treats normal transfer stops like giant hub markers.
+        let imageScale: CGFloat = 3.0
+        let w = widthPoints
+        let h = transferPillHeight
+        let sw = transferPillStroke
+        let padding: CGFloat = 3.0
         let totalW = w + padding * 2
         let totalH = h + padding * 2
 
-        // Force scale=1 so the renderer draws at exact pixel size
         let format = UIGraphicsImageRendererFormat()
-        format.scale = 1.0
+        format.scale = imageScale
         format.opaque = false
 
         let renderer = UIGraphicsImageRenderer(
@@ -1002,8 +1004,8 @@ enum MapLibreStyleConfig {
                 ? UIColor.black.withAlphaComponent(0.50)
                 : UIColor.black.withAlphaComponent(0.15)
             cgCtx.setShadow(
-                offset: CGSize(width: 0, height: 1.0 * scale),
-                blur: 2.0 * scale,
+                offset: CGSize(width: 0, height: 1.0),
+                blur: 2.0,
                 color: shadowColor.cgColor
             )
 

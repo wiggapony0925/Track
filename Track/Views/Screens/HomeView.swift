@@ -1311,20 +1311,19 @@ struct HomeView: View {
             let isCommuterRail = viewModel.selectedGroupedRoute?.isCommuterRail ?? false
             let startTime = Date()
             var consecutiveErrors = 0
-            // Run simulation every second for smoother marker glide.
-            // Keep network poll cadence unchanged via tick divisors below.
+            // Fetch live vehicle positions on the shared 25 s cadence.
             let tickInterval: TimeInterval = 1.0
+            let livePollInterval = Int(LiveTrackingClock.vehiclePollIntervalSeconds)
             let timer = Timer.scheduledTimer(withTimeInterval: tickInterval, repeats: true) { _ in
                 let tick = Int(Date().timeIntervalSince(startTime) / tickInterval)
                 
                 Task { @MainActor in
                     if isBus {
-                        // Buses: MTA SIRI updates GPS every ~30s.
-                        // Poll every 10s for fresh data, interpolate on other ticks.
+                        // Buses: MTA SIRI updates GPS roughly every feed cycle.
+                        // Poll every 25s for fresh data, interpolate on other ticks.
                         // Back off on errors: skip network calls after 3+ failures.
-                        // ticks (×1s = 10s / 30s)
                         let pollInterval = consecutiveErrors >= 3
-                            ? 30 : 10
+                            ? livePollInterval * 2 : livePollInterval
                         if tick % pollInterval == 0 {
                             await viewModel.refreshBusVehicles()
                             if viewModel.errorMessage != nil {
@@ -1337,15 +1336,15 @@ struct HomeView: View {
                         }
                     } else if isCommuterRail {
                         // LIRR / MNR: Same interpolation engine as subway —
-                        // simulate every tick, network refresh every 10s.
+                        // simulate every tick, network refresh every 25s.
                         viewModel.updateSimulation()
-                        if tick % 10 == 0 { // 10 ticks × 1s = 10s
+                        if tick % livePollInterval == 0 {
                             await viewModel.refreshCommuterRailVehicles()
                         }
                     } else {
-                        // Subway: Simulate every tick, network refresh every 6s
+                        // Subway: Simulate every tick, network refresh every 25s.
                         viewModel.updateSimulation()
-                        if tick % 6 == 0 { // 6 ticks × 1s = 6s
+                        if tick % livePollInterval == 0 {
                             await viewModel.refreshTrainVehicles()
                         }
                     }

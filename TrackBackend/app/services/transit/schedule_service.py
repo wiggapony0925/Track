@@ -224,7 +224,7 @@ class ScheduleService:
                 t.direction_id,
                 t.trip_id
             FROM stop_times st
-            JOIN trips t ON st.trip_id = t.trip_id
+            JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
             WHERE st.stop_id = ?
             AND t.service_id IN ({})
             {}
@@ -454,7 +454,7 @@ class ScheduleService:
                 t.direction_id,
                 t.trip_id
             FROM stop_times st
-            JOIN trips t ON st.trip_id = t.trip_id
+            JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
             WHERE t.service_id IN ({})
             {}
             AND st.arrival_time >= ?
@@ -677,7 +677,7 @@ class ScheduleService:
                 t.direction_id,
                 t.trip_id
             FROM stop_times st
-            JOIN trips t ON st.trip_id = t.trip_id
+            JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
             WHERE st.stop_id = ?
             AND t.service_id IN ({})
             {}
@@ -750,7 +750,7 @@ class ScheduleService:
                 t.direction_id,
                 t.trip_id
             FROM stop_times st
-            JOIN trips t ON st.trip_id = t.trip_id
+            JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
             WHERE t.service_id IN ({})
             {}
             AND st.arrival_time >= ?

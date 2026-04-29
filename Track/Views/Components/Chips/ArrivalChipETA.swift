@@ -89,7 +89,7 @@ struct ArrivalChipETA: View {
             : AppTheme.Colors.countdown(mins)
         return VStack(spacing: 1) {
             Text("\(mins)")
-                .font(.system(size: isFirst ? 40 : 33, weight: .heavy, design: .rounded))
+                .font(.system(size: isFirst ? 46 : 37, weight: .heavy, design: .rounded))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .foregroundStyle(
@@ -114,17 +114,16 @@ struct ArrivalChipETA: View {
                 )
                 .contentTransition(.numericText(countsDown: true))
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: mins)
-            Text("MIN")
-                .font(.system(size: isFirst ? 11 : 10, weight: .bold, design: .rounded))
+            Text("minutes")
+                .font(.system(size: isFirst ? 12 : 10.5, weight: .semibold, design: .rounded))
                 .lineLimit(1)
                 .foregroundStyle(
                     usesAccentCard
-                        ? .white.opacity(0.82)
+                        ? .white.opacity(0.78)
                         : isSched
                         ? AppTheme.Colors.textSecondary.opacity(0.3)
                         : AppTheme.Colors.textSecondary.opacity(0.5)
                 )
-                .tracking(1.2)
         }
         .dynamicTypeSize(...DynamicTypeSize.large)
     }

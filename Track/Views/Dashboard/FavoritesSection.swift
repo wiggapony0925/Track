@@ -473,7 +473,9 @@ struct FavoriteCard: View {
     private var countdownPill: some View {
         if let arrival = nextArrival {
             let eta = resolvedETA(for: arrival)
-            let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+            let isNow = arrival.isRealTime
+                && eta.source == .vehiclePosition
+                && eta.isAtStop
             let _ = dashboardNow
 
             HStack(spacing: 5) {
@@ -577,7 +579,9 @@ struct FavoriteCard: View {
     private var countdownChip: some View {
         if let arrival = nextArrival {
             let eta = resolvedETA(for: arrival)
-            let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+            let isNow = arrival.isRealTime
+                && eta.source == .vehiclePosition
+                && eta.isAtStop
             let _ = dashboardNow
 
             VStack(alignment: .trailing, spacing: -1) {

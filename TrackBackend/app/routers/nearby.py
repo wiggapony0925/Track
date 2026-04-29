@@ -538,9 +538,9 @@ def _load_static_bus_route_stop_index() -> (
                 s.stop_id, s.stop_lat, s.stop_lon, s.stop_name,
                 r.route_short_name
             FROM stop_times st
-            JOIN trips t  ON t.trip_id  = st.trip_id
-            JOIN routes r ON r.route_id = t.route_id AND r.route_type = 3
-            JOIN stops s  ON s.stop_id  = st.stop_id
+            JOIN trips t  ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
+            JOIN routes r ON r.feed_id = t.feed_id AND r.route_id = t.route_id AND r.route_type = 3
+            JOIN stops s  ON s.feed_id = st.feed_id AND s.stop_id = st.stop_id
             WHERE s.stop_lat IS NOT NULL AND s.stop_lon IS NOT NULL
         """)
 
@@ -1671,9 +1671,9 @@ async def _discover_routes_in_area(
                 SELECT DISTINCT
                     r.route_id, r.route_short_name, r.route_color, r.route_type
                 FROM stops s
-                JOIN stop_times st ON st.stop_id = s.stop_id
-                JOIN trips t ON t.trip_id = st.trip_id
-                JOIN routes r ON r.route_id = t.route_id
+                JOIN stop_times st ON st.feed_id = s.feed_id AND st.stop_id = s.stop_id
+                JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
+                JOIN routes r ON r.feed_id = t.feed_id AND r.route_id = t.route_id
                 WHERE s.stop_lat BETWEEN ? AND ?
                   AND s.stop_lon BETWEEN ? AND ?
                 """,
@@ -2796,10 +2796,9 @@ def _group_arrivals(
             )
         )
 
-    # Keep placeholder-only groups visible.  Phase E adds routes from the
-    # static GTFS index that have confirmed nearby stops but no live SIRI
-    # data.  Dropping them hides legitimate routes the user could walk to.
-    # Log for debugging but do NOT prune.
+    # Prune placeholder-only groups. Opposite-direction placeholders are useful
+    # inside a route that already has a live/scheduled arrival, but a route card
+    # with no real ETA or timestamp is empty UI noise.
     def _has_any_real(g: GroupedNearbyTransit) -> bool:
         return any(
             a.minutes_away < _PLACEHOLDER_MINUTES or a.arrival_ts is not None
@@ -2811,9 +2810,10 @@ def _group_arrivals(
     if placeholder_only:
         names = [g.display_name for g in placeholder_only]
         TrackLogger.debug(
-            f"{len(placeholder_only)} placeholder-only route(s) kept "
+            f"{len(placeholder_only)} placeholder-only route(s) pruned "
             f"(GTFS-backed, no live data): {names}"
         )
+        groups = [g for g in groups if _has_any_real(g)]
 
     # Sort groups by canonical MTA order, then by soonest arrival
     groups.sort(key=lambda g: (g.sorting_key, _soonest_minutes(g)))
@@ -3973,68 +3973,12 @@ async def _fetch_nearby_buses(
             f"for single-direction routes"
         )
 
-    # -----------------------------------------------------------------
-    # Phase C.5: GUARANTEED static-GTFS route visibility
-    # -----------------------------------------------------------------
-    # Hard contract: nearby must surface EVERY MTA route within the
-    # radius, even with no live or scheduled arrival data.  This block
-    # uses the local in-memory static-GTFS index (fast, no network) and
-    # injects a bare placeholder for any route not already in results.
-    #
-    # This runs UNCONDITIONALLY — before any quick-mode short-circuit
-    # or budget-deadline return — so a slow upstream cannot poison the
-    # response cache with a result that is missing routes (e.g. Q26).
-    # Phase E below will later upgrade these placeholders with real
-    # scheduled arrivals when time/budget permits.
-    # -----------------------------------------------------------------
-    try:
-        _ph_static_routes = await asyncio.to_thread(
-            _nearby_static_bus_routes, lat, lon, effective_radius
-        )
-    except Exception as exc:
-        TrackLogger.info(
-            f"Phase C.5 static index lookup failed: {_describe_exception(exc)}",
-            tag="NEARBY",
-        )
-        _ph_static_routes = {}
-
-    if _ph_static_routes:
-        _existing_route_ids = {r.route_id for r in results if r.mode == "bus"}
-        _phase_c5_count = 0
-        for _rid, (_sname, _slat, _slon, _sid) in _ph_static_routes.items():
-            if _rid in _existing_route_ids:
-                continue
-            results.append(
-                NearbyTransitArrival(
-                    route_id=_rid,
-                    stop_name=_sname,
-                    arrival_ts=None,
-                    direction=route_primary_direction.get(_rid) or "N/A",
-                    minutes_away=_PLACEHOLDER_MINUTES,
-                    status="Scheduled",
-                    mode="bus",
-                    stop_lat=_slat,
-                    stop_lon=_slon,
-                    stop_id=f"MTA_{_sid}",
-                    vehicle_id=None,
-                    destination=None,
-                    is_express=_is_express_service(_rid, "bus"),
-                )
-            )
-            _existing_route_ids.add(_rid)
-            _phase_c5_count += 1
-        if _phase_c5_count:
-            TrackLogger.bus(
-                f"Phase C.5: Injected {_phase_c5_count} guaranteed-visibility "
-                f"static-GTFS bus placeholders (radius={effective_radius}m)"
-            )
-
     # ── Quick mode: skip expensive Phases D/E/F ─────────────────────
     # During drag-search the user is panning the map — speed matters
-    # more than completeness.  Phases A-C.5 already cover route
-    # visibility (live SIRI + static-GTFS placeholders).  Phases D/E/F
-    # only enrich arrival data and can take 5-12 s.  Return early so
-    # drag-search responses are <1 s without dropping any routes.
+    # more than completeness.  Phases A-C cover live SIRI routes and
+    # opposite-direction placeholders for routes with at least one real
+    # arrival.  Static GTFS schedule enrichment waits for the full refresh
+    # so quick responses do not flood the UI with empty route cards.
     if quick:
         TrackLogger.bus(
             f"Quick mode — returning {len(results)} bus results "

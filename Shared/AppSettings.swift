@@ -246,8 +246,8 @@ struct AppSettings {
             #endif
             self.defaultSearchRadiusMeters = 8047
             self.nearestMetroFallbackRadiusMeters = 8047
-            self._refreshIntervalSeconds = 30
-            self._refreshCooldownSeconds = 20
+            self._refreshIntervalSeconds = 25
+            self._refreshCooldownSeconds = 25
             self.significantMovementMeters = 150
             self.prodBaseURL = "https://track-vkrr.onrender.com"
             self.localBaseURL = "http://127.0.0.1:8000"
@@ -308,8 +308,8 @@ struct AppSettings {
         self.defaultSearchRadiusMeters = api["default_search_radius_meters"] as? Int ?? 8047
         self.nearestMetroFallbackRadiusMeters =
             api["nearest_metro_fallback_radius_meters"] as? Int ?? 8047
-        self._refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 30
-        self._refreshCooldownSeconds = api["refresh_cooldown_seconds"] as? Int ?? 20
+        self._refreshIntervalSeconds = api["refresh_interval_seconds"] as? Int ?? 25
+        self._refreshCooldownSeconds = api["refresh_cooldown_seconds"] as? Int ?? 25
         self.significantMovementMeters = api["significant_movement_meters"] as? Double ?? 150
         self.prodBaseURL = api["prod_base_url"] as? String ?? "https://track-vkrr.onrender.com"
         self.localBaseURL = api["local_base_url"] as? String ?? "http://127.0.0.1:8000"

@@ -1,8 +1,8 @@
 {
   "app_settings": {
     "search_radius_meters": 8047,
-    "refresh_interval_seconds": 20,
-    "refresh_cooldown_seconds": 20,
+    "refresh_interval_seconds": 25,
+    "refresh_cooldown_seconds": 25,
     "nearest_metro_fallback_radius_meters": 5000,
     "max_nearby_results": 40,
     "max_arrivals_per_feed": 10,

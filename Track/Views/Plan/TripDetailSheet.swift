@@ -22,7 +22,7 @@ struct TripDetailSheet: View {
     @State private var calendarDraft: CalendarEventDraft?
     @State private var calendarError: String?
     @State private var calendarEventStore = EKEventStore()
-    @State private var sheetDetent: TrackSheetDetent = .height(300)
+    @State private var sheetDetent: TrackSheetDetent = .fraction(0.5)
     @State private var sheetDragStartHeight: CGFloat = 0
 
     var body: some View {
@@ -129,11 +129,7 @@ struct TripDetailSheet: View {
                             .contentShape(Rectangle())
                             .gesture(sheetDragGesture(in: proxy))
 
-                        actionButtons
-                            .opacity(bodyVisible ? 1 : 0)
-                            .offset(y: bodyVisible ? 0 : 8)
-
-                        statsRow
+                        keyFactsRow
                             .opacity(statsVisible ? 1 : 0)
 
                         routeSummary
@@ -163,12 +159,13 @@ struct TripDetailSheet: View {
                             .opacity(bodyVisible ? 1 : 0)
                             .offset(y: bodyVisible ? 0 : 12)
 
-                        fareEstimate
-                            .padding(.top, 8)
-                            .opacity(bodyVisible ? 1 : 0)
-
                         environmentalImpactView
                             .opacity(bodyVisible ? 1 : 0)
+
+                        actionButtons
+                            .padding(.top, 8)
+                            .opacity(bodyVisible ? 1 : 0)
+                            .offset(y: bodyVisible ? 0 : 8)
 
                         Spacer(minLength: proxy.safeAreaInsets.bottom + 36)
                     }
@@ -180,7 +177,7 @@ struct TripDetailSheet: View {
     }
 
     private var tripSheetDetents: [TrackSheetDetent] {
-        [.height(260), .height(360), .fraction(0.62), .large]
+        [.height(260), .fraction(0.5), .fraction(0.62), .large]
     }
 
     private var sheetHandle: some View {
@@ -265,23 +262,23 @@ struct TripDetailSheet: View {
         )
     }
 
-    // MARK: - Stats Row
+    // MARK: - Key Facts
 
-    private var statsRow: some View {
+    private var keyFactsRow: some View {
         HStack(spacing: 10) {
-            statCard(
-                icon: "arrow.right.circle.fill",
-                label: "DEPART",
-                value: timeString(trip.departureTime),
-                color: AppTheme.Colors.accent
-            )
-            statCard(
+            factCard(
                 icon: "flag.checkered",
                 label: "ARRIVE",
                 value: timeString(trip.arrivalTime),
                 color: AppTheme.Colors.successGreen
             )
-            statCard(
+            factCard(
+                icon: "creditcard.fill",
+                label: "FARE",
+                value: fareTotalText,
+                color: AppTheme.Colors.accent
+            )
+            factCard(
                 icon: "figure.walk",
                 label: "WALK",
                 value: walkDistanceString,
@@ -292,7 +289,7 @@ struct TripDetailSheet: View {
         .offset(y: statsVisible ? 0 : 15)
     }
 
-    private func statCard(icon: String, label: String, value: String, color: Color) -> some View {
+    private func factCard(icon: String, label: String, value: String, color: Color) -> some View {
         VStack(spacing: 7) {
             Image(systemName: icon)
                 .font(.system(size: 17, weight: .semibold))
@@ -464,23 +461,8 @@ struct TripDetailSheet: View {
         }
     }
 
-    // MARK: - Fare Estimate
-
-    private var fareEstimate: some View {
-        IconInfoRow(
-            icon: "creditcard.fill",
-            title: "Estimated Fare",
-            subtitle: fareSubtitle
-        )
-        .padding(14)
-        .trackGlassCard(cornerRadius: 14, hasHighlight: false)
-    }
-
-    private var fareSubtitle: String {
-        if let fare = trip.fare ?? TripFareEstimate.localEstimate(for: trip) {
-            return fare.description.isEmpty ? fare.formattedTotal : fare.description
-        }
-        return "Fare unavailable"
+    private var fareTotalText: String {
+        (trip.fare ?? TripFareEstimate.localEstimate(for: trip))?.formattedTotal ?? "--"
     }
 
     // MARK: - Environmental Impact

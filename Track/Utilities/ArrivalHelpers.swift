@@ -96,6 +96,7 @@ enum ArrivalHelpers {
         shapeHeadsign: String? = nil,
         shapeLastStopName: String? = nil,
         skipBackendLabel: Bool = false,
+        skipArrivalDestinations: Bool = false,
         useShortCompass: Bool = false
     ) -> String {
         // 1. GTFS headsign (most reliable when available)
@@ -130,20 +131,22 @@ enum ArrivalHelpers {
             // Pure compass label like "Eastbound" — skip to next fallback
         }
 
-        // 4. First live arrival's destination
-        if let dest = direction.liveArrivals.first?.destination, !dest.isEmpty {
-            return dest
-        }
+        if !skipArrivalDestinations {
+            // 4. First live arrival's destination
+            if let dest = direction.liveArrivals.first?.destination, !dest.isEmpty {
+                return dest
+            }
 
-        // 5. First non-placeholder arrival's destination
-        if let dest = direction.arrivals.first(where: { arrival in
-            guard !arrival.isPlaceholder,
-                  let d = arrival.destination,
-                  !d.isEmpty
-            else { return false }
-            return true
-        })?.destination {
-            return dest
+            // 5. First non-placeholder arrival's destination
+            if let dest = direction.arrivals.first(where: { arrival in
+                guard !arrival.isPlaceholder,
+                      let d = arrival.destination,
+                      !d.isEmpty
+                else { return false }
+                return true
+            })?.destination {
+                return dest
+            }
         }
 
         // 6. Compass or raw-direction fallback

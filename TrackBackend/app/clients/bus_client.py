@@ -734,8 +734,8 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
                         f"""
                         SELECT DISTINCT st.stop_id, st.stop_sequence, r.route_short_name
                         FROM stop_times st
-                        JOIN trips t ON t.trip_id = st.trip_id
-                        JOIN routes r ON r.route_id = t.route_id AND r.route_type = 3
+                        JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
+                        JOIN routes r ON r.feed_id = t.feed_id AND r.route_id = t.route_id AND r.route_type = 3
                         WHERE r.route_short_name IN ({placeholders})
                         ORDER BY r.route_short_name, st.stop_sequence
                     """,

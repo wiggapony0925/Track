@@ -24,6 +24,16 @@ from app.routers.nearby import _direction_label, _group_arrivals
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _clear_nearby_state_between_tests(monkeypatch):
+    nearby_router.clear_nearby_cache()
+    nearby_router.clear_sticky_route_memory()
+    monkeypatch.setattr(nearby_router, "_nearby_static_bus_routes", lambda *args, **kwargs: {})
+    yield
+    nearby_router.clear_nearby_cache()
+    nearby_router.clear_sticky_route_memory()
+
+
 def _cached_group(route_id: str = "A") -> GroupedNearbyTransit:
     return GroupedNearbyTransit(
         route_id=route_id,
@@ -477,7 +487,7 @@ class TestGroupingLogic:
             ),
         ]
         groups = _group_arrivals(flat)
-        assert groups[0].color_hex == "#0039A6"
+        assert groups[0].color_hex == "#0078C6"
         assert groups[0].display_name == "B63"
 
 

@@ -12,33 +12,37 @@ struct SeeMoreChip: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 6) {
+            VStack(spacing: 7) {
                 Spacer(minLength: 0)
-                Image(systemName: "calendar.badge.clock")
-                    .font(.system(size: 22, weight: .semibold))
+                Image(systemName: "calendar.badge.plus")
+                    .font(.system(size: 25, weight: .semibold))
                     .foregroundColor(routeColor)
                 Text("More")
-                    .font(.custom("Helvetica-Bold", fixedSize: 12))
+                    .font(.system(size: 15, weight: .heavy, design: .rounded))
                     .foregroundColor(routeColor)
                 Text("departures")
-                    .font(.custom("Helvetica-Bold", fixedSize: 12))
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(routeColor)
                 if remainingCount > 0 {
                     Text("+\(remainingCount)")
-                        .font(.custom("Helvetica", fixedSize: 11))
-                        .foregroundColor(routeColor.opacity(0.6))
+                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(routeColor.opacity(0.92)))
                 }
                 Spacer(minLength: 0)
             }
             .frame(width: 92, height: 138)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(routeColor.opacity(0.06))
+                    .fill(routeColor.opacity(0.08))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(routeColor.opacity(0.12), lineWidth: 0.5)
+                            .strokeBorder(routeColor.opacity(0.16), lineWidth: 0.75)
                     )
             )
+            .shadow(color: routeColor.opacity(0.08), radius: 10, y: 6)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("See more departures"))

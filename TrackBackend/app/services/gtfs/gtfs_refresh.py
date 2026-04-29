@@ -377,7 +377,7 @@ def _rebuild_schedule_db() -> bool:
         ]
 
         total_rows = 0
-        for feed_dir, _label in feed_dirs:
+        for feed_dir, feed_id in feed_dirs:
             if not feed_dir.exists():
                 continue
             for table_name, mapping in TABLE_MAPPINGS.items():
@@ -389,7 +389,7 @@ def _rebuild_schedule_db() -> bool:
                 else:
                     csv_path = feed_dir / f"{table_name}.txt"
 
-                rows = _ingest_csv(conn, csv_path, table_name, mapping)
+                rows = _ingest_csv(conn, csv_path, table_name, mapping, feed_id)
                 total_rows += rows
 
         # stop_modes powers fast mode-aware nearby-stop lookups in the
@@ -399,11 +399,11 @@ def _rebuild_schedule_db() -> bool:
         conn.execute("DELETE FROM stop_modes")
         conn.execute(
             """
-            INSERT INTO stop_modes (stop_id, route_type)
-            SELECT DISTINCT st.stop_id, r.route_type
+            INSERT INTO stop_modes (feed_id, stop_id, route_type)
+            SELECT DISTINCT st.feed_id, st.stop_id, r.route_type
             FROM stop_times st
-            JOIN trips t ON t.trip_id = st.trip_id
-            JOIN routes r ON r.route_id = t.route_id
+            JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
+            JOIN routes r ON r.feed_id = t.feed_id AND r.route_id = t.route_id
             WHERE r.route_type IS NOT NULL
             """
         )
@@ -441,7 +441,7 @@ def _rebuild_schedule_db() -> bool:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_stops_name ON stops(stop_name)")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_stop_modes_stop_type "
-            "ON stop_modes(stop_id, route_type)"
+            "ON stop_modes(feed_id, stop_id, route_type)"
         )
         conn.commit()
         conn.close()
@@ -547,36 +547,50 @@ def _create_db_schema(conn: sqlite3.Connection) -> None:
     c = conn.cursor()
     c.execute("DROP TABLE IF EXISTS stops")
     c.execute("""CREATE TABLE stops (
-        stop_id TEXT PRIMARY KEY, stop_name TEXT, stop_lat REAL, stop_lon REAL
+        feed_id TEXT NOT NULL,
+        stop_id TEXT NOT NULL,
+        stop_name TEXT, stop_lat REAL, stop_lon REAL,
+        PRIMARY KEY (feed_id, stop_id)
     )""")
     c.execute("DROP TABLE IF EXISTS routes")
     c.execute("""CREATE TABLE routes (
-        route_id TEXT PRIMARY KEY, route_short_name TEXT,
-        route_long_name TEXT, route_color TEXT, route_type INTEGER
+        feed_id TEXT NOT NULL,
+        route_id TEXT NOT NULL,
+        route_short_name TEXT,
+        route_long_name TEXT, route_color TEXT, route_type INTEGER,
+        PRIMARY KEY (feed_id, route_id)
     )""")
     c.execute("DROP TABLE IF EXISTS trips")
     c.execute("""CREATE TABLE trips (
-        trip_id TEXT PRIMARY KEY, route_id TEXT, service_id TEXT,
-        trip_headsign TEXT, direction_id INTEGER
+        feed_id TEXT NOT NULL,
+        trip_id TEXT NOT NULL,
+        route_id TEXT, service_id TEXT,
+        trip_headsign TEXT, direction_id INTEGER,
+        PRIMARY KEY (feed_id, trip_id)
     )""")
     c.execute("DROP TABLE IF EXISTS stop_times")
     c.execute("""CREATE TABLE stop_times (
+        feed_id TEXT NOT NULL,
         trip_id TEXT, arrival_time TEXT, departure_time TEXT,
         stop_id TEXT, stop_sequence INTEGER
     )""")
     c.execute("DROP TABLE IF EXISTS calendar_dates")
     c.execute("""CREATE TABLE calendar_dates (
+        feed_id TEXT NOT NULL,
         service_id TEXT, date TEXT, exception_type INTEGER
     )""")
     c.execute("DROP TABLE IF EXISTS calendar")
     c.execute("""CREATE TABLE calendar (
-        service_id TEXT PRIMARY KEY,
+        feed_id TEXT NOT NULL,
+        service_id TEXT,
         monday INTEGER, tuesday INTEGER, wednesday INTEGER,
         thursday INTEGER, friday INTEGER, saturday INTEGER, sunday INTEGER,
-        start_date TEXT, end_date TEXT
+        start_date TEXT, end_date TEXT,
+        PRIMARY KEY (feed_id, service_id)
     )""")
     c.execute("DROP TABLE IF EXISTS stop_modes")
     c.execute("""CREATE TABLE stop_modes (
+        feed_id TEXT NOT NULL,
         stop_id TEXT,
         route_type INTEGER
     )""")
@@ -588,13 +602,14 @@ def _ingest_csv(
     csv_path: Path,
     table_name: str,
     mapping: dict[str, str],
+    feed_id: str,
 ) -> int:
     """Ingest a single CSV file into a table.  Returns row count."""
     if not csv_path.exists():
         return 0
 
-    columns = ", ".join(mapping.keys())
-    placeholders = ", ".join(["?"] * len(mapping))
+    columns = ", ".join(["feed_id", *mapping.keys()])
+    placeholders = ", ".join(["?"] * (len(mapping) + 1))
     sql = f"INSERT OR REPLACE INTO {table_name} ({columns}) VALUES ({placeholders})"
 
     cursor = conn.cursor()
@@ -604,7 +619,7 @@ def _ingest_csv(
     with open(csv_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            vals = tuple(row.get(csv_col, "").strip() for csv_col in mapping.values())
+            vals = (feed_id, *(row.get(csv_col, "").strip() for csv_col in mapping.values()))
             batch.append(vals)
             if len(batch) >= 10_000:
                 cursor.executemany(sql, batch)

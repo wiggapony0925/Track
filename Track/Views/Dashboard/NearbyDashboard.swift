@@ -715,6 +715,7 @@ struct FlatTransitList: View {
                             }
                         } : nil,
                     userLocation: viewModel.referenceLocation,
+                    smartETAProvider: { viewModel.smartETA(for: $0) },
                     isExpanded: viewModel.selectedExpandedArrivalID == arrival.id,
                     onExpand: {
                         viewModel.toggleArrivalExpansion(arrival.id)

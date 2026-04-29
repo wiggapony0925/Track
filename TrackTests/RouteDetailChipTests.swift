@@ -4,7 +4,7 @@
 //
 //  Comprehensive tests for the route details page behavior:
 //  1. Three-tier chip status  (Live / Tracked / Scheduled)
-//  2. ArrivalChipData properties (isNow, tagLabel, tagIcon, accent)
+//  2. ArrivalChipData properties (isNow, tagLabel, accent)
 //  3. Chip tap gating — only .live chips tappable
 //  4. buildOrderedChips — sorting, past-arrival filter, NOW cap
 //  5. shouldRefreshStableArrivals — anti-flap debounce
@@ -125,6 +125,8 @@ private func chip(
     isCancelled: Bool = false,
     isScheduled: Bool = false,
     isTrackedOnly: Bool = false,
+    hasMapMarker: Bool = true,
+    etaSource: SmartETA.ETASource = .vehiclePosition,
     vehicleId: String? = "V-1",
     tripId: String? = "T-1",
     routeId: String? = "Q9",
@@ -139,6 +141,8 @@ private func chip(
         isCancelled: isCancelled,
         isScheduled: isScheduled,
         isTrackedOnly: isTrackedOnly,
+        hasMapMarker: hasMapMarker,
+        etaSource: etaSource,
         arrivalTimestamp: Int(Date.now.timeIntervalSince1970) + minutesRemaining * 60,
         vehicleId: vehicleId,
         tripId: tripId,
@@ -155,8 +159,8 @@ private func chip(
 struct ChipIsNowTests {
 
     @Test func liveVehicleAtStop_showsNow() {
-        let c = chip(isAtStop: true, vehicleId: "V-1")
-        #expect(c.isNow == true, "Vehicle at stop should always show NOW")
+        let c = chip(isAtStop: true, hasMapMarker: true, etaSource: .vehiclePosition, vehicleId: "V-1")
+        #expect(c.isNow == true, "Vehicle marker at tracked stop should show NOW")
     }
 
     @Test func liveVehicleNotAtStop_doesNotShowNow() {
@@ -164,14 +168,40 @@ struct ChipIsNowTests {
         #expect(c.isNow == false, "GPS vehicle > 50m away must NOT show NOW even with low countdown")
     }
 
-    @Test func noVehicleId_realTimeUnder15s_showsNow() {
-        let c = chip(secondsRemaining: 10, isRealTime: true, vehicleId: nil)
-        #expect(c.isNow == true, "No GPS vehicle + feed ≤ 15s → NOW")
+    @Test func feedOnlyArrivalUnder15s_doesNotShowNow() {
+        let c = chip(
+            secondsRemaining: 10,
+            isAtStop: true,
+            isRealTime: true,
+            hasMapMarker: false,
+            etaSource: .feedTimestamp,
+            vehicleId: nil
+        )
+        #expect(c.isNow == false, "Feed-only countdown must not show NOW without a marker at the stop")
     }
 
-    @Test func noVehicleId_realTimeOver15s_doesNotShowNow() {
-        let c = chip(secondsRemaining: 20, isRealTime: true, vehicleId: nil)
-        #expect(c.isNow == false, "No GPS vehicle + feed > 15s → not NOW")
+    @Test func markerElsewhereWithFeedZero_doesNotShowNow() {
+        let c = chip(
+            secondsRemaining: 0,
+            isAtStop: true,
+            isRealTime: true,
+            hasMapMarker: true,
+            etaSource: .feedTimestamp,
+            vehicleId: "V-1"
+        )
+        #expect(c.isNow == false, "A marker on the route is not enough; NOW needs marker-at-stop proof")
+    }
+
+    @Test func nonRealtimeArrivalAtStop_doesNotShowNow() {
+        let c = chip(
+            secondsRemaining: 0,
+            isAtStop: true,
+            isRealTime: false,
+            hasMapMarker: true,
+            etaSource: .vehiclePosition,
+            vehicleId: "V-1"
+        )
+        #expect(c.isNow == false, "Non-real-time chips must not show NOW even if a marker lookup appears to match")
     }
 
     @Test func scheduledChip_neverShowsNow() {
@@ -943,9 +973,15 @@ struct SmartETATests {
 @MainActor struct ChipEdgeCaseTests {
 
     @Test func nowChip_boundary_exactly15s() {
-        // Feed at exactly 15s with no vehicle GPS → should show NOW
-        let c = chip(secondsRemaining: 15, isRealTime: true, vehicleId: nil)
-        #expect(c.isNow == true, "Exactly 15s = boundary → NOW")
+        // Feed at exactly 15s with no vehicle GPS must not claim NOW.
+        let c = chip(
+            secondsRemaining: 15,
+            isRealTime: true,
+            hasMapMarker: false,
+            etaSource: .feedTimestamp,
+            vehicleId: nil
+        )
+        #expect(c.isNow == false, "Feed-only boundary must not show NOW")
     }
 
     @Test func nowChip_boundary_16s() {
@@ -954,8 +990,14 @@ struct SmartETATests {
     }
 
     @Test func nowChip_boundary_0s_noVehicle() {
-        let c = chip(secondsRemaining: 0, isRealTime: true, vehicleId: nil)
-        #expect(c.isNow == true, "0s with realTime and no vehicle → NOW")
+        let c = chip(
+            secondsRemaining: 0,
+            isRealTime: true,
+            hasMapMarker: false,
+            etaSource: .feedTimestamp,
+            vehicleId: nil
+        )
+        #expect(c.isNow == false, "0s with realTime and no vehicle must not show NOW")
     }
 
     @Test func scheduledArrival_highMinutes_notPlaceholder_ifHasTs() {

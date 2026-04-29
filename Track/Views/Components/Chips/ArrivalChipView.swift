@@ -5,15 +5,15 @@
 // chip looks.
 //
 // Sizing:
-//   - First chip: 116 × 168 (slightly larger primary card)
-//   - Other chips:  92 × 138 (room for two-row tag stack + ETA + footer)
+//   - First chip: 116 × 168 (Transit-style hero departure card)
+//   - Other chips:  92 × 138 (compact departure cards)
 //
 // Vertical stack (top → bottom):
-//   1. accent bar           (3-4 pt)
-//   2. tag row              (status pill + variant/express pill side by side)
-//   3. ETA counter          (the big number)
-//   4. secondary label      (clock time / "in N min")
-//   5. bus footer (optional) (#1234 for buses only)
+//   1. top grabber / shine
+//   2. live/scheduled state
+//   3. big departure time
+//   4. compact metadata tags
+//   5. clock and vehicle footer
 
 import SwiftUI
 
@@ -55,22 +55,25 @@ struct ArrivalChipView: View {
             : "En Route"
     }
 
-    private var tagIcon: String {
-        isCancelled ? "xmark.circle.fill"
-            : isSched ? "calendar.circle"
-            : chip.isRealTime ? "antenna.radiowaves.left.and.right"
-            : "location.circle"
+    private struct MetadataTag: Identifiable {
+        let id: String
+        let label: String
+        let color: Color
     }
 
     // MARK: Body
 
     var body: some View {
         VStack(spacing: 0) {
-            accentBar
-            if showsTagRow { tagRow }
-            Spacer(minLength: 4)
+            topGrabber
+            primaryStatusPill
+                .padding(.top, isFirst ? 10 : 8)
+            Spacer(minLength: isFirst ? 10 : 7)
             etaCounter
-            Spacer(minLength: 4)
+            Spacer(minLength: isFirst ? 6 : 4)
+            if !metadataTags.isEmpty {
+                metadataTray
+            }
             secondaryLabel
             if let busId = chip.busDisplayId {
                 busFooter(id: busId)
@@ -88,129 +91,145 @@ struct ArrivalChipView: View {
 
     // MARK: Subviews
 
-    private var accentBar: some View {
+    private var topGrabber: some View {
         Capsule()
             .fill(
                 usesSolidAccentCard
-                    ? AnyShapeStyle(.white.opacity(0.45))
+                    ? AnyShapeStyle(.white.opacity(0.34))
                     : (isSched || chip.isTrackedOnly)
-                    ? AnyShapeStyle(chipAccent.opacity(0.12))
+                    ? AnyShapeStyle(AppTheme.Colors.textSecondary.opacity(0.12))
                     : AnyShapeStyle(
                         LinearGradient(
                             colors: [
-                                chipAccent.opacity(isFirst ? 0.95 : 0.72),
-                                chipAccent.opacity(isFirst ? 0.42 : 0.26),
+                                chipAccent.opacity(0.30),
+                                chipAccent.opacity(0.12),
                             ],
                             startPoint: .leading,
                             endPoint: .trailing
                         )
                       )
             )
-            .frame(width: isFirst ? 50 : 36, height: isFirst ? 4 : 3)
-            .padding(.top, 11)
+            .frame(width: isFirst ? 42 : 30, height: isFirst ? 5 : 4)
+            .padding(.top, isFirst ? 11 : 10)
     }
 
-    /// Whether the secondary tag row has any content to show.
-    /// The "Tracked"-style pill (shown for real-time arrivals with no GPS
-    /// marker) was removed as redundant — the chip's grey color already
-    /// conveys that state.  All other status pills (Live / Sched /
-    /// Cancelled) are still rendered.
-    private var showsTagRow: Bool {
-        showsStatusPill
-            || chip.serviceVariant.showsPill
-            || chip.isExpress
-            || chip.isStalled
-            || chip.delayBadge != nil
+    private var primaryStatusPill: some View {
+        Text(tagLabel)
+            .font(.system(size: isFirst ? 9 : 8, weight: .heavy, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .foregroundStyle(statusForeground)
+            .padding(.horizontal, isFirst ? 7 : 5)
+            .padding(.vertical, isFirst ? 3 : 2.5)
+            .background(Capsule().fill(statusBackground))
+            .dynamicTypeSize(...DynamicTypeSize.large)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, 7)
     }
 
-    /// Suppress the status pill for tracked-only chips; show it for live,
-    /// scheduled, and cancelled arrivals.
-    private var showsStatusPill: Bool {
-        !chip.isTrackedOnly
-    }
+    private var metadataTags: [MetadataTag] {
+        var tags: [MetadataTag] = []
 
-    /// Status pill + service-variant / express pill row.  Hidden entirely
-    /// when neither has content so the ETA number gets the vertical space.
-    private var tagRow: some View {
-        HStack(spacing: 4) {
-            if showsStatusPill { statusTag }
-            variantOrExpressIndicator
-            liveStatusBadge
-        }
-        .padding(.top, 7)
-        .padding(.horizontal, 6)
-    }
-
-    /// Secondary live-status badge.  Priority:
-    ///   1. Stalled (red)  — bus flagged ProgressRate=noProgress
-    ///   2. Late Xm (orange) / Early Xm (blue)
-    /// Only one shows at a time so the chip stays readable.
-    @ViewBuilder
-    private var liveStatusBadge: some View {
-        if isCancelled {
-            EmptyView()  // cancelled pill already conveys the state
-        } else if chip.isStalled {
-            badgePill(
-                label: "Stalled",
-                icon: "exclamationmark.triangle.fill",
-                color: AppTheme.Colors.alertRed
-            )
-        } else if let delay = chip.delayBadge {
-            badgePill(
-                label: delay.label,
-                icon: delay.isLate ? "clock.badge.exclamationmark" : "clock.arrow.circlepath",
-                color: delay.isLate ? Color.orange : Color.blue
-            )
-        }
-    }
-
-    private func badgePill(label: String, icon: String, color: Color) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon)
-                .font(.system(size: 8, weight: .bold))
-            Text(label)
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .lineLimit(1)
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3.5)
-        .background(
-            Capsule().fill(color.opacity(0.16))
-        )
-        .dynamicTypeSize(...DynamicTypeSize.large)
-    }
-
-    private var statusTag: some View {
-        HStack(spacing: 3) {
-            Image(systemName: tagIcon)
-                .font(.system(size: 8, weight: .bold))
-            Text(tagLabel)
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .lineLimit(1)
-        }
-        .foregroundStyle(statusForeground)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3.5)
-        .background(
-            Capsule()
-                .fill(statusBackground)
-        )
-        .dynamicTypeSize(...DynamicTypeSize.large)
-    }
-
-    @ViewBuilder
-    private var variantOrExpressIndicator: some View {
         if chip.serviceVariant.showsPill {
-            ServiceVariantPill(
-                variant: chip.serviceVariant,
-                customLabel: chip.variantLabel,
-                routeColor: chipAccent,
-                isCompact: true
-            )
+            tags.append(MetadataTag(
+                id: "variant",
+                label: chip.variantLabel ?? chip.serviceVariant.displayLabel,
+                color: chip.serviceVariant.tintColor(routeColor: chipAccent)
+            ))
         } else if chip.isExpress {
-            expressIndicator
+            tags.append(MetadataTag(
+                id: "express",
+                label: "Exp",
+                color: chipAccent
+            ))
         }
+
+        if chip.isStalled {
+            tags.append(MetadataTag(
+                id: "stalled",
+                label: "Stalled",
+                color: AppTheme.Colors.alertRed
+            ))
+        } else if let delay = chip.delayBadge {
+            tags.append(MetadataTag(
+                id: "delay",
+                label: delay.label,
+                color: delay.isLate ? Color.orange : Color.blue
+            ))
+        }
+
+        if chip.isTrackedOnly {
+            tags.append(MetadataTag(
+                id: "tracked",
+                label: "Tracked",
+                color: AppTheme.Colors.textSecondary
+            ))
+        }
+
+        if let proximity = chip.arrivalProximityText, !proximity.isEmpty, !chip.isNow {
+            tags.append(MetadataTag(
+                id: "proximity",
+                label: proximity,
+                color: chipAccent
+            ))
+        }
+
+        return tags
+    }
+
+    private var metadataTray: some View {
+        let visibleCount = isFirst ? 4 : 3
+        let visibleTags = Array(metadataTags.prefix(visibleCount))
+        let hiddenCount = max(0, metadataTags.count - visibleTags.count)
+        return HStack(spacing: 4) {
+            ForEach(visibleTags) { tag in
+                metadataToken(tag)
+            }
+            if hiddenCount > 0 {
+                overflowToken(count: hiddenCount)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 7)
+        .padding(.bottom, 4)
+    }
+
+    private func metadataToken(_ tag: MetadataTag) -> some View {
+        Text(tag.label)
+            .font(.system(size: 8.5, weight: .heavy, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .foregroundStyle(usesSolidAccentCard ? .white.opacity(0.92) : tag.color)
+            .padding(.horizontal, isFirst ? 6 : 5)
+            .padding(.vertical, isFirst ? 3.5 : 3)
+            .background(
+                Capsule().fill(
+                    usesSolidAccentCard ? .white.opacity(0.18) : tag.color.opacity(0.12)
+                )
+            )
+            .accessibilityLabel(tag.label)
+            .dynamicTypeSize(...DynamicTypeSize.large)
+    }
+
+    private func overflowToken(count: Int) -> some View {
+        Text("+\(count)")
+            .font(.system(size: 8.5, weight: .heavy, design: .rounded))
+            .foregroundStyle(
+                usesSolidAccentCard
+                    ? .white.opacity(0.92)
+                    : AppTheme.Colors.textSecondary
+            )
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                Capsule().fill(
+                    usesSolidAccentCard
+                        ? .white.opacity(0.18)
+                        : AppTheme.Colors.textSecondary.opacity(0.12)
+                )
+            )
+            .accessibilityLabel("\(count) more tags")
+            .dynamicTypeSize(...DynamicTypeSize.large)
     }
 
     private var etaCounter: some View {
@@ -240,7 +259,7 @@ struct ArrivalChipView: View {
 
         Group {
             if chip.minutesRemaining > 75 {
-                Text("in \(chip.minutesRemaining) min")
+                Text(chip.departureDate, style: .time)
             } else if let ts = chip.arrivalTimestamp {
                 let date: Date = Date(timeIntervalSince1970: Double(ts))
                 Text(date, style: .time)
@@ -255,11 +274,11 @@ struct ArrivalChipView: View {
         .minimumScaleFactor(0.75)
         .foregroundStyle(foreColor)
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.vertical, 3.5)
         .background(
             Capsule().fill(bgColor)
         )
-        .padding(.bottom, chip.busDisplayId == nil ? 11 : 4)
+        .padding(.bottom, chip.busDisplayId == nil ? 10 : 4)
         .dynamicTypeSize(...DynamicTypeSize.large)
     }
 
@@ -280,7 +299,7 @@ struct ArrivalChipView: View {
                 ? .white.opacity(0.78)
                 : AppTheme.Colors.textSecondary.opacity(0.55)
         )
-        .padding(.bottom, 9)
+        .padding(.bottom, 8)
         .dynamicTypeSize(...DynamicTypeSize.large)
     }
 
@@ -310,9 +329,9 @@ struct ArrivalChipView: View {
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: chipAccent.opacity(0.96), location: 0.0),
-                                .init(color: chipAccent.opacity(0.88), location: 0.68),
-                                .init(color: chipAccent.opacity(0.80), location: 1.0),
+                                .init(color: chipAccent.opacity(0.98), location: 0.0),
+                                .init(color: chipAccent.opacity(0.92), location: 0.72),
+                                .init(color: chipAccent.opacity(0.84), location: 1.0),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -326,13 +345,13 @@ struct ArrivalChipView: View {
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: AppTheme.Colors.chipGlassHighlight.opacity(isSched ? 0.72 : 0.58), location: 0.0),
+                                .init(color: Color.white.opacity(isSched ? 0.82 : 0.88), location: 0.0),
                                 .init(
-                                    color: AppTheme.Colors.cardBackground.opacity(isSched ? 0.78 : 0.62),
+                                    color: AppTheme.Colors.cardBackground.opacity(isSched ? 0.88 : 0.82),
                                     location: 0.32
                                 ),
                                 .init(
-                                    color: AppTheme.Colors.cardFloating.opacity(isSched ? 0.85 : 0.72),
+                                    color: AppTheme.Colors.cardFloating.opacity(isSched ? 0.92 : 0.86),
                                     location: 1.0
                                 ),
                             ],
@@ -360,9 +379,9 @@ struct ArrivalChipView: View {
         }
         .shadow(
             color: isSched
-                ? .clear
-                : chipAccent.opacity(usesSolidAccentCard ? 0.24 : (isFirst ? 0.16 : 0.08)),
-            radius: usesSolidAccentCard ? 18 : (isFirst ? 14 : 8),
+                ? AppTheme.Colors.shadow.opacity(0.05)
+                : chipAccent.opacity(usesSolidAccentCard ? 0.28 : (isFirst ? 0.12 : 0.07)),
+            radius: usesSolidAccentCard ? 18 : (isFirst ? 12 : 8),
             x: 0,
             y: usesSolidAccentCard ? 10 : (isFirst ? 8 : 5)
         )

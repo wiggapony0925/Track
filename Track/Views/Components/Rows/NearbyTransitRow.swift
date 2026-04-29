@@ -91,7 +91,13 @@ struct NearbyTransitRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel({
             let eta = resolvedETA(for: arrival)
-            let timeText = eta.isAtStop ? "arriving now" : "\(eta.minutesRemaining) minutes away"
+            let isActuallyAtStop = arrival.isRealTime
+                && eta.source == .vehiclePosition
+                && eta.isAtStop
+                && isLiveOnMap
+            let timeText = isActuallyAtStop
+                ? "arriving now"
+                : "\(eta.minutesRemaining) minutes away"
             let mode = arrival.isBus ? "Bus" : "Train"
             return "\(mode) \(arrival.displayName), "
                 + "\(arrival.stopName), \(timeText)"
@@ -179,7 +185,10 @@ struct NearbyTransitRow: View {
                 // Smart ETA for expanded detail — consistent with main countdown
                 let eta: SmartETA = resolvedETA(for: arrival)
                 let mins: Int = eta.minutesRemaining
-                let isNow: Bool = eta.isAtStop || eta.secondsRemaining <= 30
+                let isNow: Bool = arrival.isRealTime
+                    && eta.source == .vehiclePosition
+                    && eta.isAtStop
+                    && isLiveOnMap
                 let timeStr: String = {
                     if let ts = arrival.arrivalTs {
                         return Date(timeIntervalSince1970: Double(ts))
@@ -189,7 +198,7 @@ struct NearbyTransitRow: View {
                 }()
                 let _ = dashboardNow
 
-                Text(isNow || mins <= 0
+                Text(isNow
                     ? "Arriving now"
                     : "In \(mins) min" + (timeStr.isEmpty ? "" : " - \(timeStr)"))
                     .font(.custom("Helvetica-Bold", size: 14))
@@ -292,7 +301,10 @@ struct NearbyTransitRow: View {
             let eta: SmartETA = resolvedETA(for: arrival)
             let mins: Int = eta.minutesRemaining
             let isNow: Bool = !arrival.isScheduledOnly
-                && (eta.isAtStop || eta.secondsRemaining <= 30)
+                && arrival.isRealTime
+                && eta.source == .vehiclePosition
+                && eta.isAtStop
+                && isLiveOnMap
             let countdownColor: Color = arrival.isScheduledOnly
                 ? AppTheme.Colors.textSecondary.opacity(0.55)
                 : AppTheme.Colors.countdown(mins)

@@ -1438,6 +1438,30 @@ final class HomeViewModel {
         persistShapeToDisk(shape, for: routeId)
     }
 
+    private func routeShape(
+        _ shape: RouteShapeResponse,
+        matches group: GroupedNearbyTransitResponse
+    ) -> Bool {
+        let shapeRoute = normalizeMTARouteToken(shape.routeId)
+        let groupRoute = normalizeMTARouteToken(group.routeId)
+        let groupDisplay = normalizeMTARouteToken(group.displayName)
+        guard shapeRoute == groupRoute || shapeRoute == groupDisplay else { return false }
+
+        let rawShapeRoute = shape.routeId.lowercased()
+        if group.mode == "subway" {
+            return !rawShapeRoute.hasPrefix("mnr_") && !rawShapeRoute.hasPrefix("lirr_")
+        }
+        if group.isMNR {
+            return rawShapeRoute.hasPrefix("mnr_")
+                || group.routeId.lowercased().hasPrefix("mnr_")
+        }
+        if group.isLIRR {
+            return rawShapeRoute.hasPrefix("lirr_")
+                || group.routeId.lowercased().hasPrefix("lirr_")
+        }
+        return true
+    }
+
     var routeShape: RouteShapeResponse? {
         didSet {
             schedulePolylineRebuild()
@@ -2821,7 +2845,8 @@ final class HomeViewModel {
     /// additional `delayFactor` on the client.
     func smartETA(for arrival: NearbyTransitResponse) -> SmartETA {
         // ── At-stop override (deterministic, view-independent) ──
-        if let stopLat = arrival.stopLat, let stopLon = arrival.stopLon,
+          if arrival.isRealTime,
+              let stopLat = arrival.stopLat, let stopLon = arrival.stopLon,
            let vCoord = liveVehicleCoordinate(for: arrival) {
             let stopLoc = CLLocation(latitude: stopLat, longitude: stopLon)
             let vehLoc = CLLocation(latitude: vCoord.latitude, longitude: vCoord.longitude)
@@ -3642,15 +3667,25 @@ final class HomeViewModel {
         // bus geometry when present; the current local GTFS bundle has bus stop
         // coverage but no true shape geometry/stop_sequence, so its bus polyline
         // is only an approximate last-resort fallback.
-        let shapeCacheKey = group.mode == "subway" ? group.displayName : group.routeId
         let localShape = LocalRouteShapeProvider.shape(for: group)
+        if let localShape, routeShape(localShape, matches: group) {
+            routeShape = localShape
+            enrichGroupWithShapeDirections(localShape)
+        } else if let currentShape = routeShape, !routeShape(currentShape, matches: group) {
+            routeShape = nil
+        }
+
+        let shapeCacheKey = group.mode == "subway" ? group.displayName : group.routeId
         let persistedShape = await getCachedRouteShapeAsync(for: shapeCacheKey)
+        let compatiblePersistedShape = persistedShape.flatMap {
+            routeShape($0, matches: group) ? $0 : nil
+        }
         let cachedShape: RouteShapeResponse?
         let shouldPersistInitialShape: Bool
         if group.isBus {
-            if let persistedShape,
-               !LocalRouteShapeProvider.isStopDerivedShape(persistedShape) {
-                cachedShape = persistedShape
+            if let compatiblePersistedShape,
+               !LocalRouteShapeProvider.isStopDerivedShape(compatiblePersistedShape) {
+                cachedShape = compatiblePersistedShape
                 shouldPersistInitialShape = false
             } else {
                 cachedShape = localShape
@@ -3660,7 +3695,7 @@ final class HomeViewModel {
             cachedShape = localShape
             shouldPersistInitialShape = true
         } else {
-            cachedShape = persistedShape
+            cachedShape = compatiblePersistedShape
             shouldPersistInitialShape = false
         }
         if let cached = cachedShape {

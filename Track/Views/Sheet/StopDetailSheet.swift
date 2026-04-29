@@ -49,7 +49,10 @@ struct StopDetailSheet: View {
         }
         .trackScreenBackground()
         .task(id: selection.id) {
-            await viewModel.loadIfNeeded()
+            while !Task.isCancelled {
+                await viewModel.refresh()
+                try? await Task.sleep(nanoseconds: LiveTrackingClock.vehiclePollSleepNanoseconds)
+            }
         }
     }
 
@@ -962,9 +965,8 @@ private struct StopDepartureTimeChip: View {
     /// is available (e.g. cancelled / status-only entries) we fall back
     /// to the static label produced by the view model.
     private static func liveLabel(from date: Date, now: Date) -> String {
-        let secs = date.timeIntervalSince(now)
-        if secs <= 30 { return "Now" }
-        let minutes = Int(ceil(secs / 60.0))
+        let minutes = TrackingTimeSync.remainingMinutes(until: date, now: now)
+        if minutes <= 0 { return "<1 min" }
         return "\(minutes) min"
     }
 
@@ -981,8 +983,8 @@ private struct StopDepartureTimeChip: View {
             // detail chip, fast enough for a smooth countdown but cheap.
             TimelineView(.periodic(from: .now, by: 15.0)) { ctx in
                 let label = Self.liveLabel(from: date, now: ctx.date)
-                let isNow = label == "Now"
-                chipBody(label: label, forceImminent: isNow)
+                let isImminent = label == "<1 min"
+                chipBody(label: label, forceImminent: isImminent)
             }
         } else {
             chipBody(label: time.label, forceImminent: time.isImminent)

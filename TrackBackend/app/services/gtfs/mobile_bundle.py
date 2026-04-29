@@ -224,8 +224,8 @@ def _copy_stops(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
         """
         SELECT DISTINCT rs.stop_id, r.route_type, r.route_id, r.route_long_name
         FROM stop_times rs
-        JOIN trips t  ON t.trip_id  = rs.trip_id
-        JOIN routes r ON r.route_id = t.route_id
+        JOIN trips t  ON t.feed_id = rs.feed_id AND t.trip_id = rs.trip_id
+        JOIN routes r ON r.feed_id = t.feed_id AND r.route_id = t.route_id
         """
     ):
         stop_id = row["stop_id"]
@@ -315,7 +315,7 @@ def _build_route_stops(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
         """
         SELECT DISTINCT t.route_id, st.stop_id, COALESCE(t.direction_id, 0) AS direction_id
         FROM stop_times st
-        JOIN trips t ON t.trip_id = st.trip_id
+        JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
         """
     ):
         cur.execute(
@@ -417,7 +417,7 @@ def _source_active_route_ids(src: sqlite3.Connection) -> set[str]:
             """
             SELECT DISTINCT t.route_id
               FROM trips t
-              JOIN stop_times st ON st.trip_id = t.trip_id
+              JOIN stop_times st ON st.feed_id = t.feed_id AND st.trip_id = t.trip_id
              WHERE t.route_id IS NOT NULL AND t.route_id != ''
             """
         )

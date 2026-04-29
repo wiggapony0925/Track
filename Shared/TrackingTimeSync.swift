@@ -52,3 +52,10 @@ enum TrackingTimeSync {
             .map { $0 }
     }
 }
+enum LiveTrackingClock {
+    static let vehiclePollIntervalSeconds: TimeInterval = 25
+
+    static var vehiclePollSleepNanoseconds: UInt64 {
+        UInt64(vehiclePollIntervalSeconds * 1_000_000_000)
+    }
+}

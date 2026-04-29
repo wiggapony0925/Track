@@ -421,6 +421,7 @@ struct RouteDetailSheet: View {
             shapeHeadsign: useShapeTerminal ? matchedDir?.headsign : nil,
             shapeLastStopName: useShapeTerminal ? matchedDir?.stops.last?.name : nil,
             skipBackendLabel: skipBackend,
+            skipArrivalDestinations: !group.isBus,
             useShortCompass: true
         )
     }
@@ -2418,7 +2419,7 @@ struct RouteDetailSheet: View {
         }
 
         // Find the vehicle's live coordinate
-        let vehicleCoord = vehicleCoordinate(for: arrival)
+        let vehicleCoord = arrival.isRealTime ? vehicleCoordinate(for: arrival) : nil
 
         let stopCoord: CLLocationCoordinate2D? = {
             if let lat = arrival.stopLat, let lon = arrival.stopLon {
@@ -2481,6 +2482,7 @@ struct RouteDetailSheet: View {
             isScheduled: isSched,
             isTrackedOnly: isTrackedOnly,
             hasMapMarker: hasMarker,
+            etaSource: eta.source,
             arrivalTimestamp: arrival.arrivalTs,
             vehicleId: arrival.vehicleId,
             tripId: arrival.tripId,
@@ -2632,14 +2634,16 @@ struct RouteDetailSheet: View {
         // simultaneously, only keep the first N.  The GTFS-RT feed occasionally
         // publishes duplicate trip entries for the same physical train with
         // slightly different trip IDs — this prevents 4-6 ghost NOWs.
-        let nowThreshold: Double = ArrivalChipLogic.nowSecondsWindow
         let maxNows = ArrivalChipLogic.maxNowChipsVisible
-        let nowCount = live.prefix(4).filter { $0.eta.secondsRemaining <= nowThreshold }.count
+        let nowCount = live.prefix(4).filter { pair in
+            makeChipData(arrival: pair.arrival, eta: pair.eta).isNow
+        }.count
         if nowCount > maxNows {
-            // Keep first N NOW chips, skip the rest that are also NOW
+            // Keep first N true NOW chips, skip the rest that are also NOW.
+            // Use the same contract as the renderer, not feed seconds alone.
             var keptNows = 0
             live = live.filter { pair in
-                if pair.eta.secondsRemaining <= nowThreshold {
+                if makeChipData(arrival: pair.arrival, eta: pair.eta).isNow {
                     keptNows += 1
                     return keptNows <= maxNows
                 }
@@ -3022,7 +3026,10 @@ struct RouteDetailSheet: View {
             let status = a.status
             let ts = a.arrivalTs.map { String($0) } ?? "nil"
             let dist = a.distanceM.map { String(Int($0)) + "m" } ?? "nil"
-            let isNow = eta.isAtStop || eta.secondsRemaining <= 15
+            let isNow = a.isRealTime
+                && eta.source == .vehiclePosition
+                && eta.isAtStop
+                && (isLiveOnMap?(a) ?? false)
             print(
                 "  [\(i)] \(type)"
                 + " | \(isNow ? "NOW" : "\(mins)min")"
@@ -3622,7 +3629,10 @@ struct RouteDetailSheet: View {
 
     private func arrivalAccessibilityLabel(for arrival: NearbyTransitResponse) -> String {
         let eta = smartETA(for: arrival)
-        let etaText = (eta.isAtStop || eta.secondsRemaining <= 30)
+        let etaText = (arrival.isRealTime
+            && eta.source == .vehiclePosition
+            && eta.isAtStop
+            && (isLiveOnMap?(arrival) ?? false))
             ? "Now" : "\(eta.minutesRemaining) minutes"
         return "\(arrival.stopName), \(etaText), \(arrival.status)"
     }
@@ -3823,7 +3833,13 @@ struct RouteDetailSheet: View {
                     : (nextArrival?.isScheduledOnly ?? true),
                 nextArrivalIsAtStop: tripOverrideTs != nil
                     ? false
-                    : (nextArrival.map { smartETA(for: $0).isAtStop } ?? false),
+                    : (nextArrival.map { arrival in
+                        let eta = smartETA(for: arrival)
+                        return arrival.isRealTime
+                            && eta.source == .vehiclePosition
+                            && eta.isAtStop
+                            && (isLiveOnMap?(arrival) ?? false)
+                    } ?? false),
                 nextArrivalTimestamp: tripOverrideTs ?? nextArrival?.arrivalTs,
                 estimatedTimestamp: estimatedTs,
                 isFirst: index == 0,

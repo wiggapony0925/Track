@@ -23,29 +23,20 @@ enum ArrivalChipLogic {
     ///   1. Never show NOW for cancelled, scheduled, or tracked-only
     ///      chips — those render in the grey bucket and a "NOW" word
     ///      next to a "Sched" tag is a contradiction.
-    ///   2. If the ArrivalETAEngine reports `isAtStop` (GPS within
-    ///      50 m), always show NOW — strongest signal we have.
-    ///   3. If the chip has a `vehicleId` but no map marker, the
-    ///      vehicle data is stale or filtered — never show NOW
-    ///      because the user would see "NOW" with no bus on the map.
-    ///   4. If the chip has a `vehicleId` and a marker, only show
-    ///      NOW when `isAtStop` is true — feed timer alone is
-    ///      unreliable in congested corridors.
-    ///   5. Otherwise (no vehicle ID, real-time feed, ≤15 s left):
-    ///      show NOW — the only signal available is the feed
-    ///      countdown.
+    ///   2. Require a live map marker. Feed countdowns can hit zero early;
+    ///      the user should only see NOW when there is something visible.
+    ///   3. Require the ETA source to be `.vehiclePosition`, which means
+    ///      the marker itself was checked against the tracked stop.
+    ///   4. Require `isAtStop`, so nearby-but-not-arrived vehicles still
+    ///      show a minute value instead of NOW.
     static func canShowNow(_ chip: ArrivalChipData) -> Bool {
         if chip.isCancelled || chip.isScheduled || chip.isTrackedOnly {
             return false
         }
-        if chip.isAtStop { return true }
-        if chip.vehicleId != nil {
-            // Has a vehicle but the GPS doesn't agree it is at the
-            // stop — and if there's no marker the chip would show
-            // "NOW" floating over an empty map.  Block it.
-            return false
-        }
-        return chip.isRealTime && chip.secondsRemaining <= nowSecondsWindow
+        return chip.isRealTime
+            && chip.hasMapMarker
+            && chip.etaSource == .vehiclePosition
+            && chip.isAtStop
     }
 
     // MARK: - Live / sched bucketing
@@ -68,5 +59,5 @@ enum ArrivalChipLogic {
     /// occasionally publishes duplicate trip entries for the same
     /// physical train with slightly different trip IDs — without
     /// this cap, four ghost NOWs can render side by side.
-    static let maxNowChipsVisible: Int = 2
+    static let maxNowChipsVisible: Int = 1
 }

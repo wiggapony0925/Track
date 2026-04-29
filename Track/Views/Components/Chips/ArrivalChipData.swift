@@ -34,6 +34,10 @@ struct ArrivalChipData: Identifiable, Equatable {
     /// Required for `isNow` to return true with `vehicleId` present —
     /// guards against "NOW with no bus" rendering.
     var hasMapMarker: Bool = false
+    /// Source used for the displayed ETA. A chip may have a live map marker
+    /// and still have a feed-timestamp ETA; only `.vehiclePosition` means
+    /// the marker itself proved the vehicle is at the tracked stop.
+    var etaSource: SmartETA.ETASource = .staticMinutes
     let arrivalTimestamp: Int?
     let vehicleId: String?
     let tripId: String?

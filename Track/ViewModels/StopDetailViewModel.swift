@@ -312,7 +312,7 @@ final class StopDetailViewModel {
     func refresh() async {
         guard !isLoading else { return }
 
-        isLoading = true
+        if !hasLoaded { isLoading = true }
         errorMessage = nil
         accessibilityOutages = Self.matchingAccessibilityOutages(
             for: selection,
@@ -569,8 +569,8 @@ final class StopDetailViewModel {
         let label: String
         let arrivalDate: Date?
         if let eta = arrival.expectedArrival {
-            let minutes = max(0, Int(ceil(eta.timeIntervalSinceNow / 60.0)))
-            label = minutes <= 0 ? "Now" : "\(minutes) min"
+            let minutes = TrackingTimeSync.remainingMinutes(until: eta)
+            label = minutes <= 0 ? "<1 min" : "\(minutes) min"
             arrivalDate = eta
         } else if !arrival.statusText.isEmpty {
             label = arrival.statusText
@@ -586,7 +586,7 @@ final class StopDetailViewModel {
             label: label,
             arrivalDate: arrivalDate,
             isRealtime: arrival.isRealtime,
-            isImminent: label == "Now",
+            isImminent: label == "<1 min",
             isAlert: false,
             isScheduledOnly: !arrival.isRealtime
         )
@@ -598,7 +598,7 @@ final class StopDetailViewModel {
         if isCancelled {
             label = "Skipped"
         } else if arrival.minutesAway <= 0 {
-            label = "Now"
+            label = "<1 min"
         } else {
             label = "\(arrival.minutesAway) min"
         }
@@ -619,7 +619,7 @@ final class StopDetailViewModel {
             label: label,
             arrivalDate: arrivalDate,
             isRealtime: !isScheduled,
-            isImminent: label == "Now",
+            isImminent: label == "<1 min",
             isAlert: isAlert,
             isScheduledOnly: isScheduled
         )
@@ -696,7 +696,7 @@ final class StopDetailViewModel {
 
     private nonisolated static func rowSortValue(_ time: DepartureTime?) -> Int {
         guard let time else { return Int.max }
-        if time.label == "Now" { return 0 }
+        if time.label == "<1 min" { return 0 }
         let digits = time.label
             .unicodeScalars
             .filter { CharacterSet.decimalDigits.contains($0) }

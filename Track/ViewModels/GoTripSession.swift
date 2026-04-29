@@ -126,7 +126,7 @@ final class GoTripSession {
 
     private func runGuidanceLoop() async {
         while !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            try? await Task.sleep(nanoseconds: LiveTrackingClock.vehiclePollSleepNanoseconds)
             guard !Task.isCancelled else { return }
             if let activeTrip {
                 await refreshLiveArrivalFromNearby(for: activeTrip)

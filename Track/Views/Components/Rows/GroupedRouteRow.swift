@@ -582,7 +582,9 @@ struct  GroupedRouteRow: View {
                         .foregroundColor(AppTheme.Colors.textTertiary.opacity(0.4))
                 } else {
                     let mins = eta.minutesRemaining
-                    let isNow = eta.isAtStop || eta.secondsRemaining <= 30
+                    let isNow = first.isRealTime
+                        && eta.source == .vehiclePosition
+                        && eta.isAtStop
 
                     HStack(alignment: .firstTextBaseline, spacing: 1) {
                         Text(isNow ? "Now" : "\(mins)")

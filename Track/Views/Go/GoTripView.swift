@@ -27,7 +27,7 @@ struct GoTripView: View {
     @State private var calendarError: String?
     @State private var calendarEventStore = EKEventStore()
     @State private var expandedLegIDs: Set<UUID> = []
-    @State private var sheetDetent: TrackSheetDetent = .height(300)
+    @State private var sheetDetent: TrackSheetDetent = .fraction(0.5)
     @State private var sheetDragStartHeight: CGFloat = 0
 
     var body: some View {
@@ -91,7 +91,7 @@ struct GoTripView: View {
         .task(id: trip.id) {
             while !Task.isCancelled {
                 await session.refreshLiveGuidance()
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                try? await Task.sleep(nanoseconds: LiveTrackingClock.vehiclePollSleepNanoseconds)
             }
         }
     }
@@ -180,9 +180,14 @@ struct GoTripView: View {
 
                 goStatusHeader
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 10)
                     .contentShape(Rectangle())
                     .gesture(sheetDragGesture(in: proxy))
+
+                goKeyFacts
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .opacity(bodyVisible ? 1 : 0)
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 12) {
@@ -204,9 +209,6 @@ struct GoTripView: View {
                             .padding(.top, 6)
                             .opacity(bodyVisible ? 1 : 0)
 
-                        arrivalSummary
-                            .padding(.top, 8)
-
                         Spacer(minLength: proxy.safeAreaInsets.bottom + 28)
                     }
                     .padding(.horizontal, 16)
@@ -217,7 +219,7 @@ struct GoTripView: View {
     }
 
     private var goSheetDetents: [TrackSheetDetent] {
-        [.height(260), .height(360), .fraction(0.62), .large]
+        [.height(260), .fraction(0.5), .fraction(0.62), .large]
     }
 
     private var sheetHandle: some View {
@@ -376,37 +378,67 @@ struct GoTripView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Arrival Summary
 
-    private var arrivalSummary: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Arrival time")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(timeString(session.liveArrivalTime ?? trip.arrivalTime))
-                        .font(.system(size: 26, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.successGreen)
-                    Circle()
-                        .fill(AppTheme.Colors.textTertiary.opacity(0.5))
-                        .frame(width: 4, height: 4)
-                    Text(trip.durationString)
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.successGreen)
-                }
-            }
-            Spacer()
+    private var goKeyFacts: some View {
+        HStack(spacing: 10) {
+            goFactCard(
+                icon: "flag.checkered",
+                label: "ARRIVE",
+                value: timeString(session.liveArrivalTime ?? trip.arrivalTime),
+                color: AppTheme.Colors.successGreen
+            )
+            goFactCard(
+                icon: "creditcard.fill",
+                label: "FARE",
+                value: fareTotalText,
+                color: AppTheme.Colors.accent
+            )
+            goFactCard(
+                icon: "timer",
+                label: "TRIP",
+                value: trip.durationString,
+                color: AppTheme.Colors.warningYellow
+            )
         }
-        .padding(16)
+    }
+
+    private func goFactCard(
+        icon: String,
+        label: String,
+        value: String,
+        color: Color
+    ) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(color)
+            Text(value)
+                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(label)
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textTertiary)
+                .tracking(0.5)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AppTheme.Colors.cardElevated)
-                .shadow(color: AppTheme.Colors.shadow.opacity(0.45), radius: 10, y: 4)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.Colors.cardElevated.opacity(0.9))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.22), lineWidth: 1)
         )
     }
 
     // MARK: - Helpers
+
+    private var fareTotalText: String {
+        (trip.fare ?? TripFareEstimate.localEstimate(for: trip))?.formattedTotal ?? "--"
+    }
 
     private var goInTitle: String {
         let now = Date()
@@ -905,7 +937,7 @@ private struct GoTransitLegCard: View {
 
     private func departureRow(_ departure: GoLiveDeparture) -> some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            let mins = max(0, Int((departure.date.timeIntervalSince(context.date) / 60).rounded()))
+            let mins = TrackingTimeSync.remainingMinutes(until: departure.date, now: context.date)
             HStack(spacing: 10) {
                 if !departure.routeId.isEmpty {
                     RouteBadge(routeID: departure.routeId, size: .small, mode: modeString)
@@ -921,7 +953,7 @@ private struct GoTransitLegCard: View {
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(AppTheme.Colors.successGreen)
                 }
-                Text(mins <= 0 ? "now" : "\(mins) min")
+                Text(mins <= 0 ? "<1 min" : "\(mins) min")
                     .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundStyle(
                         departure.isLive ? AppTheme.Colors.successGreen : AppTheme.Colors.textPrimary)

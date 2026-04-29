@@ -443,15 +443,15 @@ class ScheduleRepository:
                 cursor = await conn.execute(
                     f"""
                     WITH mode_service_ids AS (
-                        SELECT DISTINCT t.service_id
+                        SELECT DISTINCT t.feed_id, t.service_id
                         FROM trips t
-                        JOIN routes r ON r.route_id = t.route_id
+                        JOIN routes r ON r.feed_id = t.feed_id AND r.route_id = t.route_id
                         WHERE {route_filter}
                     ),
                     ranges AS (
                         SELECT c.start_date AS start_date, c.end_date AS end_date
                         FROM calendar c
-                        JOIN mode_service_ids ms ON ms.service_id = c.service_id
+                        JOIN mode_service_ids ms ON ms.feed_id = c.feed_id AND ms.service_id = c.service_id
                         UNION ALL
                         SELECT cd.date AS start_date, cd.date AS end_date
                         FROM calendar_dates cd
@@ -497,7 +497,7 @@ class ScheduleRepository:
                     f"""
                     SELECT s.stop_lat, s.stop_lon
                     FROM stops s
-                    JOIN stop_modes sm ON sm.stop_id = s.stop_id
+                    JOIN stop_modes sm ON sm.feed_id = s.feed_id AND sm.stop_id = s.stop_id
                     WHERE s.stop_lat BETWEEN ? AND ?
                       AND s.stop_lon BETWEEN ? AND ?
                       AND {route_filter}
@@ -519,9 +519,9 @@ class ScheduleRepository:
                     f"""
                     SELECT DISTINCT s.stop_lat, s.stop_lon
                     FROM stops s
-                    JOIN stop_times st ON st.stop_id = s.stop_id
-                    JOIN trips t ON t.trip_id = st.trip_id
-                    JOIN routes r ON r.route_id = t.route_id
+                    JOIN stop_times st ON st.feed_id = s.feed_id AND st.stop_id = s.stop_id
+                    JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
+                    JOIN routes r ON r.feed_id = t.feed_id AND r.route_id = t.route_id
                     WHERE s.stop_lat BETWEEN ? AND ?
                       AND s.stop_lon BETWEEN ? AND ?
                       AND {route_join_filter}
@@ -566,9 +566,9 @@ class ScheduleRepository:
                     f"""
                     SELECT DISTINCT s.stop_id, s.stop_lat, s.stop_lon, t.route_id
                     FROM stops s
-                    JOIN stop_times st ON st.stop_id = s.stop_id
-                    JOIN trips t ON t.trip_id = st.trip_id
-                    JOIN routes r ON r.route_id = t.route_id
+                    JOIN stop_times st ON st.feed_id = s.feed_id AND st.stop_id = s.stop_id
+                    JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
+                    JOIN routes r ON r.feed_id = t.feed_id AND r.route_id = t.route_id
                     WHERE s.stop_lat BETWEEN ? AND ?
                       AND s.stop_lon BETWEEN ? AND ?
                       AND {route_filter}
@@ -615,17 +615,17 @@ class ScheduleRepository:
                 cursor = await conn.execute(
                     f"""
                     WITH route_services AS (
-                        SELECT DISTINCT service_id
+                        SELECT DISTINCT feed_id, service_id
                         FROM trips
                         WHERE route_id = ?
                     ),
                     removed AS (
-                        SELECT service_id
+                        SELECT feed_id, service_id
                         FROM calendar_dates
                         WHERE date = ? AND exception_type = 2
                     ),
                     added AS (
-                        SELECT service_id
+                        SELECT feed_id, service_id
                         FROM calendar_dates
                         WHERE date = ? AND exception_type = 1
                     )
@@ -633,15 +633,19 @@ class ScheduleRepository:
                     FROM (
                         SELECT a.service_id
                         FROM added a
-                        JOIN route_services rs ON rs.service_id = a.service_id
+                        JOIN route_services rs ON rs.feed_id = a.feed_id AND rs.service_id = a.service_id
                         UNION
                         SELECT c.service_id
                         FROM calendar c
-                        JOIN route_services rs ON rs.service_id = c.service_id
+                        JOIN route_services rs ON rs.feed_id = c.feed_id AND rs.service_id = c.service_id
                         WHERE c.{weekday_column} = 1
                           AND c.start_date <= ?
                           AND c.end_date >= ?
-                          AND c.service_id NOT IN (SELECT service_id FROM removed)
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM removed r
+                              WHERE r.feed_id = c.feed_id AND r.service_id = c.service_id
+                          )
                     )
                     LIMIT 1
                     """,

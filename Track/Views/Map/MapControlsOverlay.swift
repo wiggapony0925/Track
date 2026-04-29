@@ -342,7 +342,8 @@ struct MapControlsOverlay: View {
 
     /// Terminal pair from direction headsigns (or first/last stops fallback).
     private var bannerTerminalPair: (String, String)? {
-        if let shape = viewModel.routeShape, shape.directions.count >= 2 {
+        guard let shape = compatibleRouteShape else { return nil }
+        if shape.directions.count >= 2 {
             let a = shape.directions[0].headsign
             let b = shape.directions[1].headsign
             if !a.isEmpty && !b.isEmpty && a != b,
@@ -351,8 +352,8 @@ struct MapControlsOverlay: View {
                 return (a, b)
             }
         }
-        if let first = viewModel.routeShape?.stops.first?.name,
-           let last = viewModel.routeShape?.stops.last?.name,
+        if let first = shape.stops.first?.name,
+           let last = shape.stops.last?.name,
            first != last {
             return (first, last)
         }
@@ -364,7 +365,7 @@ struct MapControlsOverlay: View {
     /// full terminal pair).  Falls back to the second terminal of the pair,
     /// then the last stop name.
     private var bannerDestinationHeadsign: String? {
-        if let shape = viewModel.routeShape {
+        if let shape = compatibleRouteShape {
             let idx = viewModel.selectedDirectionIndex
             if idx >= 0, idx < shape.directions.count {
                 let h = shape.directions[idx].headsign
@@ -376,7 +377,30 @@ struct MapControlsOverlay: View {
         if let pair = bannerTerminalPair {
             return pair.1
         }
-        return viewModel.routeShape?.stops.last?.name
+        return compatibleRouteShape?.stops.last?.name
+    }
+
+    private var compatibleRouteShape: RouteShapeResponse? {
+        guard let group = viewModel.selectedGroupedRoute,
+              let shape = viewModel.routeShape
+        else { return nil }
+        let shapeRoute = normalizeMTARouteToken(shape.routeId)
+        let groupRoute = normalizeMTARouteToken(group.routeId)
+        let groupDisplay = normalizeMTARouteToken(group.displayName)
+        guard shapeRoute == groupRoute || shapeRoute == groupDisplay else { return nil }
+
+        let rawShapeRoute = shape.routeId.lowercased()
+        if group.mode == "subway",
+           rawShapeRoute.hasPrefix("mnr_") || rawShapeRoute.hasPrefix("lirr_") {
+            return nil
+        }
+        if group.isMNR, !rawShapeRoute.hasPrefix("mnr_") {
+            return nil
+        }
+        if group.isLIRR, !rawShapeRoute.hasPrefix("lirr_") {
+            return nil
+        }
+        return shape
     }
 
     /// Optional service-variant badge for the route header (Express,
