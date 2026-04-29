@@ -168,6 +168,8 @@ def test_supabase_store_round_trips_engine_state() -> None:
     )
     assert isinstance(place, SavedPlace)
     assert place.visible_on_map is True
+    assert "visible" in rows["engine_saved_places"][0]
+    assert "visible_on_map" not in rows["engine_saved_places"][0]
 
     hidden_place = store.upsert_saved_place(
         user_id="user-1",
@@ -180,6 +182,7 @@ def test_supabase_store_round_trips_engine_state() -> None:
         place_id=place.place_id,
     )
     assert hidden_place.visible_on_map is False
+    assert rows["engine_saved_places"][0]["visible"] is False
     listed_place = store.list_saved_places("user-1")[0]
     assert listed_place.label == "Home"
     assert listed_place.visible_on_map is False
@@ -316,18 +319,21 @@ def test_supabase_store_handles_legacy_saved_places_without_map_visibility() -> 
         "last_used_at": None,
     }
 
+    def has_visibility_column(value: str | None) -> bool:
+        return value is not None and ("visible" in value or "visible_on_map" in value)
+
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/rest/v1/")
         if path != "engine_saved_places":
             raise AssertionError(f"Unhandled request: {request.method} {request.url}")
 
         if request.method == "GET":
-            if "visible_on_map" in request.url.params.get("select", ""):
+            if has_visibility_column(request.url.params.get("select")):
                 return httpx.Response(
                     400,
                     json={
                         "message": (
-                            "column engine_saved_places.visible_on_map does not exist"
+                            "column engine_saved_places.visible does not exist"
                         )
                     },
                     request=request,
@@ -342,16 +348,17 @@ def test_supabase_store_handles_legacy_saved_places_without_map_visibility() -> 
                     "payload": json.dumps(payload, sort_keys=True),
                 }
             )
-            if "visible_on_map" in request.url.params.get("select", ""):
+            if has_visibility_column(request.url.params.get("select")):
                 return httpx.Response(
                     400,
                     json={
                         "message": (
-                            "column engine_saved_places.visible_on_map does not exist"
+                            "column engine_saved_places.visible does not exist"
                         )
                     },
                     request=request,
                 )
+            assert "visible" not in payload
             assert "visible_on_map" not in payload
             updated = {**row, **payload, "updated_at": _iso(now_ts + 60)}
             return httpx.Response(200, json=[updated], request=request)
@@ -384,4 +391,5 @@ def test_supabase_store_handles_legacy_saved_places_without_map_visibility() -> 
     )
     assert hidden_place.visible_on_map is False
     assert len(patch_attempts) == 1
+    assert "visible" not in (patch_attempts[0]["select"] or "")
     assert "visible_on_map" not in (patch_attempts[0]["select"] or "")

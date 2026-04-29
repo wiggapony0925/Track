@@ -522,6 +522,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             if needsFlatten {
                 flatCamera.pitch = 0
                 mapView.direction = 0
+                coordinator.programmaticCameraInFlight = true
                 mapView.setCamera(flatCamera, animated: false)
             }
         }
@@ -891,6 +892,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             if !animated,
                !suppressCameraSyncForSheetInset,
                isUserGestureActive(on: mapView) {
+                programmaticCameraInFlight = false
+                pendingCameraSync?.cancel()
+                pendingCameraSync = nil
                 userGestureInProgress = true
                 CameraHoverEngine.registerUserMapGesture()
                 parent.onUserCameraGesture?()

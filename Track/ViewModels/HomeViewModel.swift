@@ -3274,12 +3274,13 @@ final class HomeViewModel {
                 // During drag-search, the user may pan faster than the
                 // backend can respond. Mark a pending re-fetch so the
                 // defer block fires a follow-up with the latest pin.
-                if force && isSearchPinActive {
+                if force {
                     _dragSearchRefreshPending = true
                     AppLogger.shared.log(
                         "REFRESH",
-                        message: "⏭️ Skipped (drag-search)"
-                            + " — queued pending re-fetch")
+                        message: isSearchPinActive
+                            ? "⏭️ Skipped (drag-search) — queued pending re-fetch"
+                            : "⏭️ Skipped — queued pending forced re-fetch")
                 } else {
                     AppLogger.shared.log(
                         "REFRESH",
@@ -3313,7 +3314,7 @@ final class HomeViewModel {
             // If a drag-search refresh was blocked while this one ran,
             // re-trigger now with the latest pin coordinates. The flag
             // is cleared first so only one retry fires per cycle.
-            if _dragSearchRefreshPending && isSearchPinActive {
+            if _dragSearchRefreshPending {
                 _dragSearchRefreshPending = false
                 Task { @MainActor [weak self] in
                     guard let self else { return }

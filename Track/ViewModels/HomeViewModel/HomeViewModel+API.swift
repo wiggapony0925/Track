@@ -1603,6 +1603,7 @@ extension HomeViewModel {
 
         let lat = location.coordinate.latitude
         let lon = location.coordinate.longitude
+        let requestWasSearchPin = isSearchPinActive
 
         AppLogger.shared.log(
             "TIMING",
@@ -1798,6 +1799,17 @@ extension HomeViewModel {
                     + "\(AppLogger.formatDuration(groupedElapsed))"
             )
 
+            if shouldDiscardStaleNearbyRefresh(
+                requestLocation: location,
+                requestWasSearchPin: requestWasSearchPin
+            ) {
+                AppLogger.shared.log(
+                    "REFRESH",
+                    message: "⏭️ Discarded stale nearby response for "
+                        + "(\(lat), \(lon))"
+                )
+                return
+            }
             // Flat arrivals — exclude placeholder-only arrivals from ghost routes
             // so the flat arrival list doesn't show "99 min" stubs.
             let rawTransit = newGrouped
@@ -2035,6 +2047,22 @@ extension HomeViewModel {
         ArrivalETAEngine.evictStaleEntries()
 
         isLoading = false
+    }
+
+    private func shouldDiscardStaleNearbyRefresh(
+        requestLocation: CLLocation,
+        requestWasSearchPin: Bool
+    ) -> Bool {
+        guard let currentLocation = effectiveLocation(userLocation: lastKnownUserLocation) else {
+            return false
+        }
+
+        let movedMeters = currentLocation.distance(from: requestLocation)
+        if requestWasSearchPin {
+            return !isSearchPinActive || movedMeters > 75
+        }
+
+        return isSearchPinActive
     }
 
     // MARK: - Shape Prefetch

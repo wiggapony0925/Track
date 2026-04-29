@@ -93,6 +93,7 @@ struct MapLibreTrackMapView: View {
     /// not on every body re-evaluation (which fires 60x/sec during gestures).
     @State private var cachedWalkingCoords: [CLLocationCoordinate2D]?
     @State private var savedPlacesCache = SavedPlacesCache.shared
+    @State private var savedPlacesRefreshToken: UInt64 = 0
 
     // MARK: - Computed Properties
 
@@ -159,6 +160,7 @@ struct MapLibreTrackMapView: View {
 
     var body: some View {
         let isSelectedBusRoute = viewModel.selectedGroupedRoute?.isBus == true
+        let visibleSavedPlaces = savedPlacesCache.visibleMapPlaces
 
         ZStack {
             // Base map (MapLibre GL with OSM tiles)
@@ -182,7 +184,7 @@ struct MapLibreTrackMapView: View {
                 walkingRouteCoords: cachedWalkingCoords,
                 busVehicles: viewModel.filteredBusVehicles,
                 trainVehicles: viewModel.filteredTrainVehicles,
-                savedPlaces: savedPlacesCache.visibleMapPlaces,
+                savedPlaces: visibleSavedPlaces,
                 transferConnectors: _cachedTransferConnectors,
                 crossings: viewModel.mapSystem.cachedCrossings,
                 bakedTileSet: viewModel.mapSystem.bakedTileSet,
@@ -236,6 +238,9 @@ struct MapLibreTrackMapView: View {
         }
         .onAppear {
             cachedWalkingCoords = Self.decodeWalkingRoute(viewModel.walkingRoute)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .savedPlacesDidChange)) { _ in
+            savedPlacesRefreshToken &+= 1
         }
         .ignoresSafeArea()
     }

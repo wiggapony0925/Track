@@ -17,6 +17,7 @@ struct ManageSavedAddressesView: View {
     @State private var appleSearch = LocationSearchService()
     @State private var isResolvingSearch = false
     @State private var showMapPicker = false
+    @State private var visibilityUpdates: Set<Int> = []
 
     private var userID: String? {
         supabase.currentUser?.id.uuidString.lowercased()
@@ -42,33 +43,81 @@ struct ManageSavedAddressesView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppTheme.Colors.background.ignoresSafeArea()
-                AppTheme.Gradients.screenSheen.ignoresSafeArea()
+            List {
+                Section {
+                    HStack(spacing: 0) {
+                        statBlock(value: "\(places.count)", label: "Saved")
+                        Divider().padding(.horizontal, 8)
+                        statBlock(value: "\(visiblePlacesCount)", label: "On Map")
+                        Divider().padding(.horizontal, 8)
+                        statBlock(value: "\(customCount)", label: "Custom")
+                    }
+                    .padding(.vertical, 6)
+                }
 
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        titleBlock
-                        actionPanel
-
-                        if let errorMessage {
-                            errorBanner(errorMessage)
-                        }
-
-                        if isLoading && places.isEmpty {
-                            loadingState
-                        } else if places.isEmpty {
-                            emptyState
-                        } else {
-                            placesSection
+                if let errorMessage {
+                    Section {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(AppTheme.Colors.alertRed)
+                            Text(errorMessage)
+                                .font(.subheadline)
+                            Spacer()
+                            Button { self.errorMessage = nil } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 28)
+                }
+
+                Section {
+                    Button(action: startNewAddress) {
+                        Label("Add Place via Search", systemImage: "magnifyingglass")
+                            .foregroundColor(AppTheme.Colors.accent)
+                    }
+                    Button(action: startNewAddressFromMap) {
+                        Label("Pick from Map", systemImage: "map.fill")
+                            .foregroundColor(AppTheme.Colors.accent)
+                    }
+                }
+
+                if isLoading && places.isEmpty {
+                    Section {
+                        HStack {
+                            Spacer()
+                            ProgressView("Loading places...")
+                                .padding(.vertical, 12)
+                            Spacer()
+                        }
+                    }
+                } else if places.isEmpty {
+                    Section {
+                        VStack(alignment: .center, spacing: 12) {
+                            Image(systemName: "mappin.slash.circle.fill")
+                                .font(.system(size: 40))
+                                .foregroundStyle(AppTheme.Colors.accent, AppTheme.Colors.accent.opacity(0.2))
+                            Text("No saved places yet")
+                                .font(.headline)
+                            Text("Add home, work, school, or any custom stop once and reuse it everywhere.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                    }
+                } else {
+                    Section(header: Text("Saved Locations")) {
+                        ForEach(sortedPlaces) { place in
+                            savedAddressRow(place)
+                        }
+                    }
                 }
             }
-            .navigationTitle("Saved Addresses")
+            .listStyle(.insetGrouped)
+            .navigationTitle("Places")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
         }
@@ -103,313 +152,105 @@ struct ManageSavedAddressesView: View {
         } else {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Done") { dismiss() }
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .fontWeight(.semibold)
             }
         }
 
         ToolbarItem(placement: .topBarTrailing) {
             Button { startNewAddress() } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(AppTheme.Colors.accent))
+                    .fontWeight(.bold)
             }
-            .buttonStyle(.plain)
             .accessibilityLabel("Add saved address")
         }
     }
 
-    private var titleBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Image(systemName: "bookmark.fill")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.accent)
-                    .frame(width: 32, height: 32)
-                    .background(Circle().fill(AppTheme.Colors.accentTint.opacity(0.55)))
-
-                Text("Places")
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-            }
-
-            Text("Manage the saved locations Track uses in Trips, shortcuts, and map pins.")
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.top, 4)
-    }
-
-    private var actionPanel: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 10) {
-                statBlock(value: "\(places.count)", label: "Saved")
-                statBlock(value: "\(visiblePlacesCount)", label: "On Map")
-                statBlock(value: "\(customCount)", label: "Custom")
-            }
-
-            HStack(spacing: 10) {
-                primaryActionButton(
-                    title: "Add Place",
-                    subtitle: "Apple search",
-                    icon: "magnifyingglass",
-                    action: startNewAddress
-                )
-
-                primaryActionButton(
-                    title: "Pick on Map",
-                    subtitle: "Drop a pin",
-                    icon: "map.fill",
-                    action: startNewAddressFromMap
-                )
-            }
-        }
-        .padding(14)
-        .managementPanel()
-    }
-
     private func statBlock(value: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 20, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textPrimary)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
             Text(label)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textTertiary)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(.secondary)
                 .textCase(.uppercase)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(AppTheme.Colors.cardInset.opacity(0.86))
-        )
-    }
-
-    private func primaryActionButton(
-        title: String,
-        subtitle: String,
-        icon: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(AppTheme.Colors.accent))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 14, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textTertiary)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(AppTheme.Colors.cardElevated)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.18), lineWidth: 1)
-            )
-        }
-        .buttonStyle(ManagementPressStyle())
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(AppTheme.Colors.alertRed)
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(AppTheme.Colors.alertRed.opacity(0.12)))
-
-            Text(message)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textPrimary)
-                .lineLimit(2)
-
-            Spacer(minLength: 0)
-
-            Button { errorMessage = nil } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.Colors.alertRed.opacity(0.07))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(AppTheme.Colors.alertRed.opacity(0.16), lineWidth: 1)
-        )
-    }
-
-    private var loadingState: some View {
-        VStack(spacing: 12) {
-            ProgressView()
-                .tint(AppTheme.Colors.accent)
-            Text("Loading saved places")
-                .font(AppTheme.Typography.captionBold)
-                .foregroundStyle(AppTheme.Colors.textSecondary)
-        }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
-        .managementPanel()
-    }
-
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 14) {
-                Image(systemName: "mappin.slash")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.accent)
-                    .frame(width: 50, height: 50)
-                    .background(Circle().fill(AppTheme.Colors.accentTint.opacity(0.55)))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("No saved places yet")
-                        .font(.system(size: 18, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
-                    Text("Add home, work, school, or any custom stop once and reuse it everywhere.")
-                        .font(AppTheme.Typography.caption)
-                        .foregroundStyle(AppTheme.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            HStack(spacing: 10) {
-                primaryActionButton(
-                    title: "Search",
-                    subtitle: "Apple places",
-                    icon: "magnifyingglass",
-                    action: startNewAddress
-                )
-                primaryActionButton(
-                    title: "Map",
-                    subtitle: "Pick pin",
-                    icon: "map.fill",
-                    action: startNewAddressFromMap
-                )
-            }
-        }
-        .padding(16)
-        .managementPanel()
-    }
-
-    private var placesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Saved Locations")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
-                    .textCase(.uppercase)
-                Spacer()
-                Text("Tap a row to edit")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
-            }
-            .padding(.horizontal, 4)
-
-            VStack(spacing: 10) {
-                ForEach(sortedPlaces) { place in
-                    savedAddressRow(place)
-                }
-            }
-        }
     }
 
     private func savedAddressRow(_ place: SavedLocation) -> some View {
-        Button {
-            edit(place)
-        } label: {
-            HStack(spacing: 12) {
-                placeBadge(place)
+        let isUpdating = place.enginePlaceID.map { visibilityUpdates.contains($0) } ?? false
 
-                VStack(alignment: .leading, spacing: 5) {
+        return HStack(spacing: 14) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.Colors.accent.opacity(0.15))
+                        .frame(width: 44, height: 44)
+
+                    Image(systemName: place.iconName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(AppTheme.Colors.accent)
+
+                    if place.visibleOnMap {
+                        Circle()
+                            .fill(AppTheme.Colors.successGreen)
+                            .frame(width: 12, height: 12)
+                            .overlay(Circle().stroke(.background, lineWidth: 2))
+                            .offset(x: 14, y: 14)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(place.name)
-                            .font(.system(size: 16, weight: .heavy, design: .rounded))
-                            .foregroundStyle(AppTheme.Colors.textPrimary)
+                            .font(.body)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
                             .lineLimit(1)
 
-                        categoryTag(place.resolvedCategory.label)
+                        Text(place.resolvedCategory.label)
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(UIColor.tertiarySystemFill))
+                            .clipShape(Capsule())
                     }
 
                     Text(place.address.isEmpty ? coordinateText(place) : place.address)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
-
-                Spacer(minLength: 0)
-
-                Button {
-                    Task { await toggleVisibility(place) }
-                } label: {
-                    Image(systemName: place.visibleOnMap ? "eye.fill" : "eye.slash.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(place.visibleOnMap ? AppTheme.Colors.accent : AppTheme.Colors.textTertiary)
-                        .frame(width: 34, height: 34)
-                        .background(Circle().fill(AppTheme.Colors.cardInset))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(place.visibleOnMap ? "Hide on map" : "Show on map")
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.textTertiary.opacity(0.7))
             }
-            .padding(12)
-            .managementPanel(cornerRadius: 18, shadowRadius: 10, shadowY: 4)
+            .contentShape(Rectangle())
+            .onTapGesture { edit(place) }
+
+            Spacer(minLength: 0)
+
+            Button {
+                Task { await toggleVisibility(place) }
+            } label: {
+                ZStack {
+                    Image(systemName: place.visibleOnMap ? "eye.fill" : "eye.slash")
+                        .font(.system(size: 18))
+                        .foregroundColor(place.visibleOnMap ? AppTheme.Colors.accent : AppTheme.Colors.textTertiary)
+                        .opacity(isUpdating ? 0 : 1)
+                    if isUpdating {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+                .frame(width: 34, height: 34)
+            }
+            .buttonStyle(.plain)
+            .disabled(isUpdating)
+            .accessibilityLabel(place.visibleOnMap ? "Hide on map" : "Show on map")
         }
-        .buttonStyle(ManagementPressStyle())
-    }
-
-    private func placeBadge(_ place: SavedLocation) -> some View {
-        ZStack(alignment: .bottomTrailing) {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.Colors.accentTint.opacity(0.62))
-                .frame(width: 50, height: 50)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(AppTheme.Colors.accent.opacity(0.18), lineWidth: 1)
-                )
-
-            Image(systemName: place.iconName)
-                .font(.system(size: 20, weight: .black, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.accent)
-
-            Circle()
-                .fill(place.visibleOnMap ? AppTheme.Colors.successGreen : AppTheme.Colors.textTertiary)
-                .frame(width: 12, height: 12)
-                .overlay(Circle().strokeBorder(AppTheme.Colors.cardBackground, lineWidth: 2))
-                .offset(x: 3, y: 3)
-        }
-        .frame(width: 52, height: 52)
-    }
-
-    private func categoryTag(_ label: String) -> some View {
-        Text(label)
-            .font(.system(size: 10, weight: .heavy, design: .rounded))
-            .foregroundStyle(AppTheme.Colors.textTertiary)
-            .lineLimit(1)
+        .padding(.vertical, 4)
+        .foregroundColor(.primary)
     }
 
     private func coordinateText(_ place: SavedLocation) -> String {
@@ -418,23 +259,165 @@ struct ManageSavedAddressesView: View {
 
     private func savedAddressEditor(_ currentDraft: SavedAddressDraft) -> some View {
         NavigationStack {
-            ZStack {
-                AppTheme.Colors.background.ignoresSafeArea()
-                AppTheme.Gradients.screenSheen.ignoresSafeArea()
-
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        editorSummary(currentDraft)
-                        editorFields(currentDraft)
-                        locationPickerSection(currentDraft)
-                        iconPicker
-                        visibilityToggle
-                        if currentDraft.placeID != nil {
-                            deleteButton
+            Form {
+                Section {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(AppTheme.Colors.accent)
+                                .frame(width: 60, height: 60)
+                            
+                            Image(systemName: draft?.icon ?? currentDraft.icon)
+                                .font(.system(size: 26, weight: .semibold))
+                                .foregroundColor(.white)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text((draft?.label ?? currentDraft.label).isEmpty ? "New saved place" : (draft?.label ?? currentDraft.label))
+                                .font(.headline)
+                                .lineLimit(1)
+                            Text((draft?.address ?? currentDraft.address).isEmpty ? "Choose a location with Apple search or the map." : (draft?.address ?? currentDraft.address))
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
                         }
                     }
-                    .padding(16)
-                    .padding(.bottom, 28)
+                    .padding(.vertical, 6)
+                }
+
+                Section(header: Text("Details")) {
+                    TextField("Name (e.g., Home, Work, Gym)", text: Binding(
+                        get: { draft?.label ?? currentDraft.label },
+                        set: { draft?.label = $0 }
+                    ))
+                    
+                    Picker("Type", selection: Binding(
+                        get: { draft?.category ?? currentDraft.category },
+                        set: { newValue in
+                            let oldCategory = draft?.category ?? currentDraft.category
+                            draft?.category = newValue
+                            if draft?.icon == oldCategory.defaultIcon || draft?.icon.isEmpty == true {
+                                draft?.icon = newValue.defaultIcon
+                            }
+                        }
+                    )) {
+                        ForEach(SavedAddressDraft.categories, id: \.self) { category in
+                            Text(category.label).tag(category)
+                        }
+                    }
+                }
+
+                Section(header: Text("Location")) {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundColor(.secondary)
+                        TextField("Search Apple Maps", text: $searchQuery)
+                            .onChange(of: searchQuery) { _, value in
+                                appleSearch.updateQuery(value)
+                            }
+                            
+                        if isResolvingSearch || appleSearch.isSearching {
+                            ProgressView().scaleEffect(0.8)
+                        } else if !searchQuery.isEmpty {
+                            Button {
+                                searchQuery = ""
+                                appleSearch.cancel()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    if !appleSearch.completions.isEmpty {
+                        ForEach(appleSearch.completions.prefix(5)) { completion in
+                            Button {
+                                Task { await selectAppleCompletion(completion) }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: completion.iconName)
+                                        .foregroundColor(AppTheme.Colors.accent)
+                                        
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(completion.title)
+                                            .foregroundColor(.primary)
+                                        if !completion.subtitle.isEmpty {
+                                            Text(completion.subtitle)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+
+                    Button {
+                        showMapPicker = true
+                    } label: {
+                        Label("Choose with Map", systemImage: "map.fill")
+                            .foregroundColor(AppTheme.Colors.accent)
+                    }
+
+                    if (draft ?? currentDraft).hasCoordinate {
+                        HStack(spacing: 12) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(AppTheme.Colors.successGreen)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text((draft ?? currentDraft).address.isEmpty ? "Location selected" : (draft ?? currentDraft).address)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                Text(String(format: "%.4f, %.4f", (draft ?? currentDraft).latitude, (draft ?? currentDraft).longitude))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
+                Section(header: Text("Icon")) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
+                        ForEach(PlanViewModel.customPlaceIcons, id: \.icon) { option in
+                            let isSelected = draft?.icon == option.icon
+                            Button { draft?.icon = option.icon } label: {
+                                Image(systemName: option.icon)
+                                    .font(.system(size: 20))
+                                    .foregroundColor(isSelected ? .white : .primary)
+                                    .frame(height: 44)
+                                    .frame(maxWidth: .infinity)
+                                    .background(isSelected ? AppTheme.Colors.accent : Color(UIColor.secondarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+
+                Section {
+                    Toggle("Show as a map pin", isOn: Binding(
+                        get: { draft?.visibleOnMap ?? true },
+                        set: { draft?.visibleOnMap = $0 }
+                    ))
+                }
+
+                if currentDraft.placeID != nil {
+                    Section {
+                        Button(role: .destructive) {
+                            Task { await deleteDraft() }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("Delete Place")
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle(currentDraft.placeID == nil ? "Add Place" : "Edit Place")
@@ -447,299 +430,10 @@ struct ManageSavedAddressesView: View {
                     Button(isSaving ? "Saving" : "Save") {
                         Task { await saveDraft() }
                     }
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .fontWeight(.bold)
                     .disabled(isSaving || draft?.hasCoordinate != true)
                 }
             }
-        }
-    }
-
-    private func editorSummary(_ currentDraft: SavedAddressDraft) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: draft?.icon ?? currentDraft.icon)
-                .font(.system(size: 21, weight: .black, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.accent)
-                .frame(width: 52, height: 52)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(AppTheme.Colors.accentTint.opacity(0.65))
-                )
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text((draft?.label ?? currentDraft.label).isEmpty ? "New saved place" : (draft?.label ?? currentDraft.label))
-                    .font(.system(size: 19, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-                Text((draft?.address ?? currentDraft.address).isEmpty ? "Choose a location with Apple search or the map." : (draft?.address ?? currentDraft.address))
-                    .font(AppTheme.Typography.caption)
-                    .foregroundStyle(AppTheme.Colors.textSecondary)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(14)
-        .managementPanel()
-    }
-
-    private func editorFields(_ currentDraft: SavedAddressDraft) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            panelHeader(title: "Details", icon: "slider.horizontal.3")
-
-            VStack(spacing: 10) {
-                managementTextField(
-                    title: "Name",
-                    placeholder: "Home, Work, Gym...",
-                    text: Binding(
-                        get: { draft?.label ?? currentDraft.label },
-                        set: { draft?.label = $0 }
-                    )
-                )
-
-                Picker("Type", selection: Binding(
-                    get: { draft?.category ?? currentDraft.category },
-                    set: { newValue in
-                        let oldCategory = draft?.category ?? currentDraft.category
-                        draft?.category = newValue
-                        if draft?.icon == oldCategory.defaultIcon || draft?.icon.isEmpty == true {
-                            draft?.icon = newValue.defaultIcon
-                        }
-                    }
-                )) {
-                    ForEach(SavedAddressDraft.categories, id: \.self) { category in
-                        Text(category.label).tag(category)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-        }
-        .padding(14)
-        .managementPanel()
-    }
-
-    private func managementTextField(
-        title: String,
-        placeholder: String,
-        text: Binding<String>
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textTertiary)
-                .textCase(.uppercase)
-            TextField(placeholder, text: text)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textPrimary)
-                .textInputAutocapitalization(.words)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 11)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(AppTheme.Colors.cardInset)
-                )
-        }
-    }
-
-    private func locationPickerSection(_ currentDraft: SavedAddressDraft) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                panelHeader(title: "Location", icon: "location.magnifyingglass")
-                Spacer()
-                if isResolvingSearch || appleSearch.isSearching {
-                    ProgressView()
-                        .tint(AppTheme.Colors.accent)
-                }
-            }
-
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
-                TextField("Search Apple Maps", text: $searchQuery)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .textInputAutocapitalization(.words)
-                    .onChange(of: searchQuery) { _, value in
-                        appleSearch.updateQuery(value)
-                    }
-                if !searchQuery.isEmpty {
-                    Button {
-                        searchQuery = ""
-                        appleSearch.cancel()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(AppTheme.Colors.textTertiary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AppTheme.Colors.cardInset)
-            )
-
-            if !appleSearch.completions.isEmpty {
-                VStack(spacing: 8) {
-                    ForEach(appleSearch.completions.prefix(5)) { completion in
-                        Button {
-                            Task { await selectAppleCompletion(completion) }
-                        } label: {
-                            appleCompletionRow(completion)
-                        }
-                        .buttonStyle(ManagementPressStyle())
-                    }
-                }
-            }
-
-            Button {
-                showMapPicker = true
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "map.fill")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Choose with Map")
-                        .font(.system(size: 15, weight: .heavy, design: .rounded))
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                }
-                .foregroundStyle(AppTheme.Colors.accent)
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(AppTheme.Colors.accentTint.opacity(0.42))
-                )
-            }
-            .buttonStyle(ManagementPressStyle())
-
-            if (draft ?? currentDraft).hasCoordinate {
-                selectedLocationSummary(currentDraft)
-            }
-        }
-        .padding(14)
-        .managementPanel()
-    }
-
-    private func appleCompletionRow(_ completion: MKLocalSearchCompletion) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: completion.iconName)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(AppTheme.Colors.accent)
-                .frame(width: 32, height: 32)
-                .background(Circle().fill(AppTheme.Colors.accentTint.opacity(0.45)))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(completion.title)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-                    .lineLimit(1)
-                if !completion.subtitle.isEmpty {
-                    Text(completion.subtitle)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textSecondary)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(AppTheme.Colors.cardInset.opacity(0.75))
-        )
-    }
-
-    private func selectedLocationSummary(_ currentDraft: SavedAddressDraft) -> some View {
-        let activeDraft = draft ?? currentDraft
-        return HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(AppTheme.Colors.successGreen)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(activeDraft.address.isEmpty ? "Location selected" : activeDraft.address)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
-                    .lineLimit(2)
-                Text(String(format: "%.4f, %.4f", activeDraft.latitude, activeDraft.longitude))
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(AppTheme.Colors.textTertiary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(AppTheme.Colors.successGreen.opacity(0.08))
-        )
-    }
-
-    private var iconPicker: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            panelHeader(title: "Icon", icon: "square.grid.2x2.fill")
-
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
-                ForEach(PlanViewModel.customPlaceIcons, id: \.icon) { option in
-                    let isSelected = draft?.icon == option.icon
-                    Button { draft?.icon = option.icon } label: {
-                        Image(systemName: option.icon)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(isSelected ? .white : AppTheme.Colors.textSecondary)
-                            .frame(height: 40)
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(isSelected ? AppTheme.Colors.accent : AppTheme.Colors.cardInset)
-                            )
-                    }
-                    .buttonStyle(ManagementPressStyle())
-                }
-            }
-        }
-        .padding(14)
-        .managementPanel()
-    }
-
-    private var visibilityToggle: some View {
-        Toggle(isOn: Binding(
-            get: { draft?.visibleOnMap ?? true },
-            set: { draft?.visibleOnMap = $0 }
-        )) {
-            Label("Show as a map pin", systemImage: "eye.fill")
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textPrimary)
-        }
-        .padding(14)
-        .managementPanel()
-    }
-
-    private var deleteButton: some View {
-        Button(role: .destructive) {
-            Task { await deleteDraft() }
-        } label: {
-            Label("Delete Place", systemImage: "trash")
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.alertRed)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(AppTheme.Colors.alertRed.opacity(0.08))
-                )
-        }
-        .buttonStyle(ManagementPressStyle())
-    }
-
-    private func panelHeader(title: String, icon: String) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(AppTheme.Colors.accent)
-            Text(title)
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textSecondary)
-                .textCase(.uppercase)
         }
     }
 
@@ -898,6 +592,14 @@ struct ManageSavedAddressesView: View {
     @MainActor
     private func toggleVisibility(_ place: SavedLocation) async {
         guard let userID else { return }
+        if let placeID = place.enginePlaceID {
+            visibilityUpdates.insert(placeID)
+        }
+        defer {
+            if let placeID = place.enginePlaceID {
+                visibilityUpdates.remove(placeID)
+            }
+        }
         do {
             let record = try await TrackAPI.upsertEngineSavedPlace(
                 request: EngineSavedPlaceUpsertRequest(
@@ -1030,17 +732,17 @@ private struct SavedAddressMapPickerView: View {
             Button { dismiss() } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                    .foregroundStyle(.primary)
                     .frame(width: 42, height: 42)
                     .background(Circle().fill(.ultraThinMaterial))
             }
-            .buttonStyle(ManagementPressStyle())
 
             Spacer()
 
             Text("Choose Location")
-                .font(.system(size: 14, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textPrimary)
+                .font(.subheadline)
+                .fontWeight(.bold)
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(Capsule().fill(.ultraThinMaterial))
@@ -1078,7 +780,7 @@ private struct SavedAddressMapPickerView: View {
     private var pickerBottomCard: some View {
         VStack(spacing: 14) {
             Capsule()
-                .fill(AppTheme.Colors.textTertiary.opacity(0.35))
+                .fill(Color.secondary.opacity(0.35))
                 .frame(width: 38, height: 4)
 
             HStack(spacing: 12) {
@@ -1094,16 +796,17 @@ private struct SavedAddressMapPickerView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     if isGeocoding {
                         Text("Finding address")
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppTheme.Colors.textSecondary)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
                     } else {
                         Text(resolvedName.isEmpty ? "Selected pin" : resolvedName)
-                            .font(.system(size: 16, weight: .heavy, design: .rounded))
-                            .foregroundStyle(AppTheme.Colors.textPrimary)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
                             .lineLimit(1)
                         Text(resolvedAddress.isEmpty ? String(format: "%.4f, %.4f", centerCoordinate.latitude, centerCoordinate.longitude) : resolvedAddress)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(AppTheme.Colors.textSecondary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
                 }
@@ -1114,7 +817,7 @@ private struct SavedAddressMapPickerView: View {
                 onConfirm(centerCoordinate, resolvedName, resolvedAddress)
             } label: {
                 Label("Use This Location", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .font(.headline)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 15)
@@ -1123,7 +826,6 @@ private struct SavedAddressMapPickerView: View {
                             .fill(AppTheme.Gradients.accent)
                     )
             }
-            .buttonStyle(ManagementPressStyle())
             .disabled(isDragging || isGeocoding)
             .opacity((isDragging || isGeocoding) ? 0.55 : 1)
         }
@@ -1200,44 +902,6 @@ private struct SavedAddressDraft: Identifiable, Equatable {
         if icon.isEmpty {
             icon = category.defaultIcon
         }
-    }
-}
-
-private struct ManagementPanelModifier: ViewModifier {
-    var cornerRadius: CGFloat = 18
-    var shadowRadius: CGFloat = 12
-    var shadowY: CGFloat = 5
-
-    func body(content: Content) -> some View {
-        content
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(AppTheme.Colors.cardBackground.opacity(0.92))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(AppTheme.Colors.borderSubtle.opacity(0.16), lineWidth: 1)
-            )
-            .shadow(color: AppTheme.Colors.shadow.opacity(0.14), radius: shadowRadius, y: shadowY)
-    }
-}
-
-private extension View {
-    func managementPanel(
-        cornerRadius: CGFloat = 18,
-        shadowRadius: CGFloat = 12,
-        shadowY: CGFloat = 5
-    ) -> some View {
-        modifier(ManagementPanelModifier(cornerRadius: cornerRadius, shadowRadius: shadowRadius, shadowY: shadowY))
-    }
-}
-
-private struct ManagementPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .opacity(configuration.isPressed ? 0.75 : 1.0)
-            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }
 

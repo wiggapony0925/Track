@@ -921,6 +921,7 @@ struct PlannerSavedPlaceRecord: Codable, Equatable {
         case address
         case icon
         case visibleOnMap = "visible_on_map"
+        case visible
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case lastUsedAt = "last_used_at"
@@ -964,10 +965,28 @@ struct PlannerSavedPlaceRecord: Codable, Equatable {
         lon = try container.decode(Double.self, forKey: .lon)
         address = try container.decodeIfPresent(String.self, forKey: .address)
         icon = try container.decodeIfPresent(String.self, forKey: .icon)
-        visibleOnMap = try container.decodeIfPresent(Bool.self, forKey: .visibleOnMap) ?? true
+        visibleOnMap = try container.decodeIfPresent(Bool.self, forKey: .visibleOnMap)
+            ?? container.decodeIfPresent(Bool.self, forKey: .visible)
+            ?? true
         createdAt = try container.decode(Int.self, forKey: .createdAt)
         updatedAt = try container.decode(Int.self, forKey: .updatedAt)
         lastUsedAt = try container.decodeIfPresent(Int.self, forKey: .lastUsedAt)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(placeID, forKey: .placeID)
+        try container.encode(userID, forKey: .userID)
+        try container.encode(label, forKey: .label)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(lat, forKey: .lat)
+        try container.encode(lon, forKey: .lon)
+        try container.encodeIfPresent(address, forKey: .address)
+        try container.encodeIfPresent(icon, forKey: .icon)
+        try container.encode(visibleOnMap, forKey: .visibleOnMap)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encodeIfPresent(lastUsedAt, forKey: .lastUsedAt)
     }
 }
 

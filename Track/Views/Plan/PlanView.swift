@@ -23,6 +23,10 @@ struct PlanView: View {
     @State private var headerParallax: CGFloat = 0
     @State private var cardShakeOffset: CGFloat = 0
     @State private var showSameLocationToast = false
+    @State private var heroCameraPosition: TrackCameraPosition = .userLocation
+    @State private var heroShowStations: Bool = true
+    @State private var heroMapCenter: CLLocationCoordinate2D?
+    @State private var heroMapDistance: Double?
 
     /// Static, professional hero headline. Replaces the previous
     /// rotating list of casual prompts ("Where we droppin'?",
@@ -77,6 +81,11 @@ struct PlanView: View {
                 withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
                     animatePulse = true
                 }
+                syncHeroMapSnapshotFromHome()
+            }
+            .onChange(of: selectedTab) { _, newValue in
+                guard newValue == .trips else { return }
+                syncHeroMapSnapshotFromHome()
             }
             .onChange(of: viewModel.sameLocationMessage) { _, newValue in
                 guard newValue != nil else { return }
@@ -143,17 +152,17 @@ struct PlanView: View {
         VStack(spacing: 0) {
             // ── Map banner with polylines + purple fade ──
             ZStack(alignment: .bottom) {
-                // Real interactive MapLibre map — same instance data as
-                // the Home tab. Camera + polylines stay perfectly in sync.
+                // Real MapLibre preview with isolated camera bindings. It
+                // mirrors Home on tab entry without writing back to Home.
                 MapLibreTrackMapView(
-                    cameraPosition: $cameraPosition,
+                    cameraPosition: $heroCameraPosition,
                     viewModel: homeViewModel,
                     locationManager: locationManager,
-                    showStations: $showStations,
-                    currentMapCenter: $currentMapCenter,
-                    currentMapDistance: $currentMapDistance
+                    showStations: $heroShowStations,
+                    currentMapCenter: $heroMapCenter,
+                    currentMapDistance: $heroMapDistance
                 )
-                .allowsHitTesting(true)
+                .allowsHitTesting(false)
 
                 // Purple fade overlay with subtle noise texture
                 LinearGradient(
@@ -518,6 +527,13 @@ struct PlanView: View {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // MARK: - Same-Location Shake
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    private func syncHeroMapSnapshotFromHome() {
+        heroCameraPosition = cameraPosition
+        heroShowStations = showStations
+        heroMapCenter = currentMapCenter
+        heroMapDistance = currentMapDistance
+    }
 
     /// Checks whether the ViewModel flagged same-location, and fires
     /// the card shake + toast if so.
