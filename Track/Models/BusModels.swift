@@ -435,6 +435,52 @@ struct RouteShapeResponse: Codable, Sendable {
         polylines.map { decodePolyline($0) }
     }
 
+    nonisolated private var hasSubwayStopIdentity: Bool {
+        let allStops = stops + directions.flatMap(\.stops)
+        return allStops.contains { stop in
+            guard let suffix = stop.id.uppercased().last else { return false }
+            return suffix == "N" || suffix == "S"
+        }
+    }
+
+    /// Route IDs are only unique within a feed.  Numeric IDs such as `7`
+    /// exist in subway and commuter feeds, so route-id equality alone is not
+    /// enough to decide whether a cached/fetched shape belongs to the selected
+    /// route.
+    nonisolated func isCompatible(
+        withMode mode: String,
+        routeId: String,
+        displayName: String
+    ) -> Bool {
+        let shapeRoute = normalizeMTARouteToken(self.routeId).uppercased()
+        let groupRoute = normalizeMTARouteToken(routeId).uppercased()
+        let groupDisplay = normalizeMTARouteToken(displayName).uppercased()
+        guard shapeRoute == groupRoute || shapeRoute == groupDisplay else { return false }
+
+        let rawShapeRoute = self.routeId.lowercased()
+        let lowerMode = mode.lowercased()
+
+        if lowerMode == "subway" {
+            if rawShapeRoute.hasPrefix("mnr_") || rawShapeRoute.hasPrefix("lirr_") {
+                return false
+            }
+            return hasSubwayStopIdentity
+        }
+
+        if lowerMode == "mnr" {
+            if rawShapeRoute.hasPrefix("lirr_") { return false }
+            return rawShapeRoute.hasPrefix("mnr_") || !hasSubwayStopIdentity
+        }
+
+        if lowerMode == "lirr" {
+            if rawShapeRoute.hasPrefix("mnr_") { return false }
+            return rawShapeRoute.hasPrefix("lirr_") || !hasSubwayStopIdentity
+        }
+
+        return !rawShapeRoute.hasPrefix("mnr_")
+            && !rawShapeRoute.hasPrefix("lirr_")
+    }
+
     /// Returns decoded polylines for a specific direction index.
     /// Matches by `name` against `headsign` first, then
     /// `directionId` (falling back to array position).

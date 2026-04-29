@@ -151,6 +151,65 @@ private func chip(
     )
 }
 
+private func shapeStop(_ id: String, name: String = "Stop") -> BusStop {
+    BusStop(
+        id: id,
+        name: name,
+        lat: 40.0,
+        lon: -73.0,
+        direction: nil,
+        routeIds: ["7"]
+    )
+}
+
+private func routeShape(routeId: String, stops: [BusStop]) -> RouteShapeResponse {
+    RouteShapeResponse(
+        routeId: routeId,
+        polylines: [],
+        stops: stops,
+        directions: [
+            DirectionShapeResponse(
+                directionId: 0,
+                headsign: stops.last?.name ?? "Outbound",
+                polylines: [],
+                stops: stops
+            )
+        ],
+        serviceType: nil
+    )
+}
+
+// ============================================================================
+// MARK: - Route Shape Compatibility
+// ============================================================================
+
+@Suite("RouteShapeResponse — mode compatibility")
+struct RouteShapeCompatibilityTests {
+
+    @Test func subway7RejectsCommuterRailShapeWithSameNumericRouteId() {
+        let commuterShape = routeShape(
+            routeId: "7",
+            stops: [shapeStop("1", name: "Grand Central"), shapeStop("90", name: "Dover Plains")]
+        )
+
+        #expect(
+            commuterShape.isCompatible(withMode: "subway", routeId: "7", displayName: "7") == false,
+            "Subway 7 must not accept a commuter-rail shape just because both use route_id 7"
+        )
+    }
+
+    @Test func subway7AcceptsShapeWithSubwayDirectionalStopIds() {
+        let subwayShape = routeShape(
+            routeId: "7",
+            stops: [shapeStop("726N", name: "34 St-Hudson Yards"), shapeStop("701N", name: "Flushing-Main St")]
+        )
+
+        #expect(
+            subwayShape.isCompatible(withMode: "subway", routeId: "7", displayName: "7") == true
+        )
+    }
+}
+
 // ============================================================================
 // MARK: - 1. ArrivalChipData — isNow
 // ============================================================================

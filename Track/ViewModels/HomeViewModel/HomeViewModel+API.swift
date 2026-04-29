@@ -2262,6 +2262,10 @@ extension HomeViewModel {
         from prior: GroupedNearbyTransitResponse,
         in fresh: GroupedNearbyTransitResponse
     ) -> GroupedNearbyTransitResponse {
+        guard fresh.mode.lowercased() == "bus" else {
+            return fresh
+        }
+
         var merged = fresh
         merged.directions = fresh.directions.map { freshDirection in
             guard let priorDirection = matchingDirection(for: freshDirection, in: prior) else {

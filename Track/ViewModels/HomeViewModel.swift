@@ -1442,24 +1442,11 @@ final class HomeViewModel {
         _ shape: RouteShapeResponse,
         matches group: GroupedNearbyTransitResponse
     ) -> Bool {
-        let shapeRoute = normalizeMTARouteToken(shape.routeId)
-        let groupRoute = normalizeMTARouteToken(group.routeId)
-        let groupDisplay = normalizeMTARouteToken(group.displayName)
-        guard shapeRoute == groupRoute || shapeRoute == groupDisplay else { return false }
-
-        let rawShapeRoute = shape.routeId.lowercased()
-        if group.mode == "subway" {
-            return !rawShapeRoute.hasPrefix("mnr_") && !rawShapeRoute.hasPrefix("lirr_")
-        }
-        if group.isMNR {
-            return rawShapeRoute.hasPrefix("mnr_")
-                || group.routeId.lowercased().hasPrefix("mnr_")
-        }
-        if group.isLIRR {
-            return rawShapeRoute.hasPrefix("lirr_")
-                || group.routeId.lowercased().hasPrefix("lirr_")
-        }
-        return true
+        shape.isCompatible(
+            withMode: group.mode,
+            routeId: group.routeId,
+            displayName: group.displayName
+        )
     }
 
     var routeShape: RouteShapeResponse? {

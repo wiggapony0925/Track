@@ -490,6 +490,47 @@ class TestGroupingLogic:
         assert groups[0].color_hex == "#0078C6"
         assert groups[0].display_name == "B63"
 
+    def test_same_numeric_route_directions_stay_mode_scoped(self):
+        flat = [
+            NearbyTransitArrival(
+                route_id="7",
+                stop_name="Times Sq-42 St",
+                direction="Flushing-Main St",
+                destination="Flushing-Main St",
+                minutes_away=2,
+                mode="subway",
+                trip_id="080350_7..N",
+                stop_id="726N",
+            ),
+            NearbyTransitArrival(
+                route_id="MNR_7",
+                stop_name="Grand Central",
+                direction="Outbound",
+                destination="Dover Plains",
+                minutes_away=12,
+                mode="mnr",
+                trip_id="mnr-trip-7",
+                stop_id="GCT",
+            ),
+        ]
+
+        groups = _group_arrivals(flat)
+        subway = next(g for g in groups if g.mode == "subway" and g.display_name == "7")
+        mnr = next(g for g in groups if g.mode == "mnr")
+
+        subway_labels = {d.direction_label for d in subway.directions}
+        subway_destinations = {
+            a.destination for d in subway.directions for a in d.arrivals
+        }
+        assert "Dover Plains" not in subway_labels
+        assert "Dover Plains" not in subway_destinations
+        assert any("Flushing" in (label or "") for label in subway_labels)
+        assert any(
+            a.destination == "Dover Plains"
+            for d in mnr.directions
+            for a in d.arrivals
+        )
+
 
 class TestExpressMerge:
     """Tests for express subway variant merging (6X, 7X, FX)."""

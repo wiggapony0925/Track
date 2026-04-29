@@ -271,6 +271,69 @@ struct StaticNearbyDisplayTests {
         #expect(merged.directions.flatMap(\.arrivals).allSatisfy { !$0.isPlaceholder })
     }
 
+    @Test func liveTrainRefreshDoesNotPreserveOfflineDirectionTabs() {
+        let offlineSubway = GroupedNearbyTransitResponse(
+            routeId: "7",
+            displayName: "7",
+            mode: "subway",
+            colorHex: nil,
+            directions: [
+                DirectionArrivalsResponse(
+                    direction: "To 34 St-Hudson Yards",
+                    directionLabel: "To 34 St-Hudson Yards",
+                    directionId: "1",
+                    arrivals: [placeholderArrival(routeId: "7", mode: "subway")]
+                ),
+                DirectionArrivalsResponse(
+                    direction: "To Dover Plains",
+                    directionLabel: "To Dover Plains",
+                    directionId: "0",
+                    arrivals: [placeholderArrival(routeId: "7", mode: "subway")]
+                )
+            ]
+        )
+        let liveSubway = GroupedNearbyTransitResponse(
+            routeId: "7",
+            displayName: "7",
+            mode: "subway",
+            colorHex: nil,
+            directions: [
+                DirectionArrivalsResponse(
+                    direction: "Flushing-Main St",
+                    directionLabel: "Northbound → Flushing-Main St",
+                    directionId: "N",
+                    arrivals: [
+                        NearbyTransitResponse(
+                            routeId: "7",
+                            stopName: "Times Sq-42 St",
+                            direction: "Flushing-Main St",
+                            destination: "Flushing-Main St",
+                            minutesAway: 2,
+                            status: "On Time",
+                            mode: "subway",
+                            stopLat: 40.7553,
+                            stopLon: -73.9870,
+                            arrivalTs: Int(Date.now.timeIntervalSince1970) + 120,
+                            vehicleId: nil,
+                            tripId: "080350_7..N",
+                            stopId: "726N",
+                            distanceM: 94.6,
+                            isRealTime: true
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let merged = HomeViewModel.preservingMissingDirections(
+            from: offlineSubway,
+            in: liveSubway
+        )
+
+        #expect(merged.directions.map(\.direction) == ["Flushing-Main St"])
+        #expect(!merged.directions.map(\.direction).contains("To Dover Plains"))
+    }
+
     @Test func expiredCachedGroupsStayVisibleDuringRefresh() {
         let viewModel = HomeViewModel()
         viewModel.groupedTransit = [expiredLiveGroup()]

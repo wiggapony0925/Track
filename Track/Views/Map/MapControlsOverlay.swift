@@ -365,14 +365,23 @@ struct MapControlsOverlay: View {
     /// full terminal pair).  Falls back to the second terminal of the pair,
     /// then the last stop name.
     private var bannerDestinationHeadsign: String? {
-        if let shape = compatibleRouteShape {
+        if let group = viewModel.selectedGroupedRoute,
+           group.directions.indices.contains(viewModel.selectedDirectionIndex) {
             let idx = viewModel.selectedDirectionIndex
-            if idx >= 0, idx < shape.directions.count {
-                let h = shape.directions[idx].headsign
-                if !h.isEmpty, !DirectionConstants.isFallbackDirection(h) {
-                    return h
-                }
-            }
+            let dir = group.directions[idx]
+            let matchedDir = compatibleRouteShape?.matchedDirection(
+                index: idx,
+                name: dir.direction
+            )
+            let useShapeTerminal = !DirectionConstants.isFallbackDirection(matchedDir?.headsign ?? "")
+            return ArrivalHelpers.resolveDirectionLabel(
+                for: dir,
+                shapeHeadsign: useShapeTerminal ? matchedDir?.headsign : nil,
+                shapeLastStopName: useShapeTerminal ? matchedDir?.stops.last?.name : nil,
+                skipBackendLabel: !group.isBus,
+                skipArrivalDestinations: !group.isBus,
+                useShortCompass: false
+            )
         }
         if let pair = bannerTerminalPair {
             return pair.1
@@ -384,23 +393,11 @@ struct MapControlsOverlay: View {
         guard let group = viewModel.selectedGroupedRoute,
               let shape = viewModel.routeShape
         else { return nil }
-        let shapeRoute = normalizeMTARouteToken(shape.routeId)
-        let groupRoute = normalizeMTARouteToken(group.routeId)
-        let groupDisplay = normalizeMTARouteToken(group.displayName)
-        guard shapeRoute == groupRoute || shapeRoute == groupDisplay else { return nil }
-
-        let rawShapeRoute = shape.routeId.lowercased()
-        if group.mode == "subway",
-           rawShapeRoute.hasPrefix("mnr_") || rawShapeRoute.hasPrefix("lirr_") {
-            return nil
-        }
-        if group.isMNR, !rawShapeRoute.hasPrefix("mnr_") {
-            return nil
-        }
-        if group.isLIRR, !rawShapeRoute.hasPrefix("lirr_") {
-            return nil
-        }
-        return shape
+        return shape.isCompatible(
+            withMode: group.mode,
+            routeId: group.routeId,
+            displayName: group.displayName
+        ) ? shape : nil
     }
 
     /// Optional service-variant badge for the route header (Express,

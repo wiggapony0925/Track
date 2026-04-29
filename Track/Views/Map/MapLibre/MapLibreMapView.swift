@@ -2976,6 +2976,18 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             NSNumber(value: 0.8 * (isBus ? 0.6 : 1.0))
         }
 
+        private static func opaqueColorAndOpacity(_ color: UIColor) -> (UIColor, NSNumber) {
+            var red: CGFloat = 0
+            var green: CGFloat = 0
+            var blue: CGFloat = 0
+            var alpha: CGFloat = 1
+            color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+            return (
+                UIColor(red: red, green: green, blue: blue, alpha: 1),
+                NSNumber(value: Double(alpha))
+            )
+        }
+
         // MARK: - Route Layers (selected route)
 
         func updateRouteLayers(style: MLNStyle, representable: MapLibreMapView) {
@@ -3592,6 +3604,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             fillWidth: NSExpression,
             casingWidth: NSExpression
         ) {
+            let (opaqueColor, fillOpacity) = Self.opaqueColorAndOpacity(color)
+            let (opaqueCasingColor, casingOpacity) = Self.opaqueColorAndOpacity(casingColor)
+
             var features: [MLNPolylineFeature] = []
             for coords in coordinates {
                 guard coords.count >= 2 else { continue }
@@ -3610,7 +3625,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 sourcesCreated.insert(sourceID)
 
                 let casing = MLNLineStyleLayer(identifier: casingLayerID, source: source)
-                casing.lineColor = NSExpression(forConstantValue: casingColor)
+                casing.lineColor = NSExpression(forConstantValue: opaqueCasingColor)
+                casing.lineOpacity = NSExpression(forConstantValue: casingOpacity)
                 casing.lineWidth = casingWidth
                 casing.lineCap = NSExpression(forConstantValue: "round")
                 casing.lineJoin = NSExpression(forConstantValue: "round")
@@ -3623,7 +3639,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 }
 
                 let fill = MLNLineStyleLayer(identifier: fillLayerID, source: source)
-                fill.lineColor = NSExpression(forConstantValue: color)
+                fill.lineColor = NSExpression(forConstantValue: opaqueColor)
+                fill.lineOpacity = NSExpression(forConstantValue: fillOpacity)
                 fill.lineWidth = fillWidth
                 fill.lineCap = NSExpression(forConstantValue: "round")
                 fill.lineJoin = NSExpression(forConstantValue: "round")
@@ -3639,10 +3656,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
             // Update colors (for route switches)
             if let casing = style.layer(withIdentifier: casingLayerID) as? MLNLineStyleLayer {
-                casing.lineColor = NSExpression(forConstantValue: casingColor)
+                casing.lineColor = NSExpression(forConstantValue: opaqueCasingColor)
+                casing.lineOpacity = NSExpression(forConstantValue: casingOpacity)
             }
             if let fill = style.layer(withIdentifier: fillLayerID) as? MLNLineStyleLayer {
-                fill.lineColor = NSExpression(forConstantValue: color)
+                fill.lineColor = NSExpression(forConstantValue: opaqueColor)
+                fill.lineOpacity = NSExpression(forConstantValue: fillOpacity)
             }
         }
 
