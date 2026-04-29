@@ -16,6 +16,7 @@
 //    4. laneOffsetPixels helper
 
 import CoreGraphics
+import CoreLocation
 import Foundation
 import Testing
 @testable import Track
@@ -81,14 +82,14 @@ struct LaneOffsetMultiplierTests {
         }
     }
 
-    @Test("Multiplier floor is at least 0.8 (laneOffsetMinMultiplier)")
-    func multiplierRespectsFloor() {
-        let minMultiplier = 0.8
-        for zoom in [8.0, 9.0, 10.0, 11.0] {
-            let m = MapLibreStyleConfig.laneOffsetMultiplier(at: zoom)
+    @Test("Multiplier has no forced low-zoom floor")
+    func multiplierHasNoForcedFloor() {
+        for stop in MapLibreStyleConfig.subwayFillWidthStops {
+            let expected = stop.width * MapLibreStyleConfig.laneOffsetTouchRatio
+            let actual = MapLibreStyleConfig.laneOffsetMultiplier(at: stop.zoom)
             #expect(
-                m >= minMultiplier - 1e-9,
-                "Multiplier below floor at z\(Int(zoom)): \(m)"
+                abs(actual - expected) < 1e-9,
+                "z\(Int(stop.zoom)): expected compact multiplier \(expected), got \(actual)"
             )
         }
     }
@@ -104,18 +105,53 @@ struct FillWidthStopTests {
         (13, 3.6), (14, 4.2), (15, 5.0), (16, 5.8), (17, 6.8), (18, 7.8),
     ]
 
-    @Test("laneOffsetMultiplier at fill-width stops = width × 0.98 (floor 0.8)")
+    @Test("laneOffsetMultiplier at fill-width stops = compact width ratio")
     func multiplierMatchesTouchRatioAtStops() {
-        let touchRatio = 0.98
-        let minMult = 0.8
         for stop in fillWidthStops {
-            let expected = max(stop.width * touchRatio, minMult)
+            let expected = stop.width * MapLibreStyleConfig.laneOffsetTouchRatio
             let actual = MapLibreStyleConfig.laneOffsetMultiplier(at: stop.zoom)
             #expect(
                 abs(actual - expected) < 1e-9,
                 "z\(Int(stop.zoom)): expected \(expected) got \(actual)"
             )
         }
+    }
+}
+
+// MARK: - 5. Continuous casing
+
+@Suite("System map casing continuity")
+struct SystemMapCasingContinuityTests {
+    @Test("Casing bake keeps full polylines through crossings")
+    func casingBakeDoesNotSplitAtCrossings() {
+        let polyline = TransitTileBaker.PolylineData(
+            coordinates: [
+                CLLocationCoordinate2D(latitude: 40.0, longitude: -74.0),
+                CLLocationCoordinate2D(latitude: 40.001, longitude: -73.999),
+                CLLocationCoordinate2D(latitude: 40.002, longitude: -73.998),
+                CLLocationCoordinate2D(latitude: 40.003, longitude: -73.997),
+                CLLocationCoordinate2D(latitude: 40.004, longitude: -73.996),
+            ],
+            colorHex: "#FF6319",
+            trunkIndex: 4,
+            laneOffset: 0.5,
+            routeIds: ["B", "D", "F", "M"],
+            isElevated: false
+        )
+        let crossing = TransitTileBaker.CrossingData(
+            lat: 40.002,
+            lng: -73.998,
+            trunkIndices: [4, 8]
+        )
+
+        let result = TransitTileBaker.buildCasingPolylines(
+            from: [polyline],
+            crossings: [crossing]
+        )
+
+        #expect(result.count == 1)
+        #expect(result.first?.coordinates.count == polyline.coordinates.count)
+        #expect(result.first?.laneOffset == polyline.laneOffset)
     }
 }
 

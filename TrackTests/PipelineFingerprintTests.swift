@@ -176,6 +176,10 @@ final class PipelineFingerprintTests: XCTestCase {
 
         // Lane offset
         XCTAssertEqual(lookup["lane.interpolationBase"], 1.6)
-        XCTAssertEqual(lookup["lane.touchRatio"], 0.98)
+        XCTAssertEqual(lookup["lane.touchRatio"], 0.58)
+        XCTAssertEqual(lookup["lane.minMultiplier"], 0.0)
+        XCTAssertEqual(lookup["lane.serverLocalOffsets"], 0.0)
+        XCTAssertEqual(lookup["station.serverLocalOffsets"], 0.0)
+        XCTAssertEqual(lookup["subway.casingCrossingGaps"], 0.0)
     }
 }

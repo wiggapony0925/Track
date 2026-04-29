@@ -1364,16 +1364,15 @@ struct CorridorDriftTests {
 // MARK: - Zoom-Level Parallel Spacing Tests
 
 /// Verifies that the lane-offset multiplier tracks the subway fill width
-/// at every zoom level so parallel corridor lines maintain a consistent
-/// visual ratio — staying side-by-side without visible gaps.
+/// at every zoom level so default-map corridors stay compact and close to
+/// true GTFS geometry.
 ///
 /// The core invariant:
 ///
-///     offsetMultiplier / subwayFillWidth ≈ 1.0
+///     offsetMultiplier / subwayFillWidth ≈ compact target ratio
 ///
-/// when this holds at every zoom level, adjacent polylines (lane_offset
-/// delta = 1.0) remain essentially one fill-width apart, producing a
-/// constant "parallel and touching" look regardless of zoom.
+/// when this holds at every zoom level, adjacent polylines separate enough
+/// to be readable without ballooning into fake-looking parallel tracks.
 @Suite("Parallel lane-offset spacing")
 struct LaneOffsetSpacingTests {
 
@@ -1391,7 +1390,7 @@ struct LaneOffsetSpacingTests {
 
     // ── Tests ──
 
-    @Test("Offset multiplier never opens a visible gap between adjacent fills")
+    @Test("Offset multiplier stays below fill width")
     func offsetNeverExceedsFillWidthByVisibleAmount() {
         for i in 0..<Self.fillWidthStops.count {
             let zoom = Self.fillWidthStops[i].zoom
@@ -1402,14 +1401,16 @@ struct LaneOffsetSpacingTests {
         }
     }
 
-    @Test("Offset multiplier stays close enough to fill width to avoid collapse")
-    func offsetNeverFallsTooFarBelowFillWidth() {
+    @Test("Offset multiplier stays compact but visible")
+    func offsetStaysCompactButVisible() {
         for i in 0..<Self.fillWidthStops.count {
             let zoom = Self.fillWidthStops[i].zoom
             let fill = Self.fillWidthStops[i].width
             let mult = Self.offsetMultiplierStops[i].multiplier
-            #expect(mult >= fill * 0.92,
-                    "z\(Int(zoom)): offset multiplier \(mult) << fill width \(fill) — lanes would visibly collapse")
+            #expect(mult >= fill * 0.45,
+                "z\(Int(zoom)): offset multiplier \(mult) too small for readable separation")
+            #expect(mult <= fill * 0.70,
+                "z\(Int(zoom)): offset multiplier \(mult) too large for compact default map")
         }
     }
 
@@ -1445,8 +1446,9 @@ struct LaneOffsetSpacingTests {
         // Worst case: 4 parallel lines with offsets -1.5, -0.5, +0.5, +1.5
         // Total center-to-center span = 3.0 × multiplier
         // Total visual width = span + fillWidth (half-width on each side)
-        let z10Fill = Self.fillWidthStops[0].width   // 1.2
-        let z10Mult = Self.offsetMultiplierStops[0].multiplier
+        let z10Index = Self.fillWidthStops.firstIndex { $0.zoom == 10 } ?? 0
+        let z10Fill = Self.fillWidthStops[z10Index].width
+        let z10Mult = Self.offsetMultiplierStops[z10Index].multiplier
         let span = 3.0 * z10Mult + z10Fill  // center-to-center + line edges
         // At z10 a phone screen is ~350-400 pt → corridor should be << 50 pt
         #expect(span < 30.0,
@@ -1463,16 +1465,12 @@ struct LaneOffsetSpacingTests {
         }
     }
 
-    @Test("Offset multiplier at z18 keeps adjacent fills visually touching")
-    func visuallyTouchingAtMaxZoom() {
-        let z18Fill = Self.fillWidthStops.last!.width   // 7.0
+    @Test("Offset multiplier at z18 keeps adjacent fills compact")
+    func compactAtMaxZoom() {
+        let z18Fill = Self.fillWidthStops.last!.width
         let z18Mult = Self.offsetMultiplierStops.last!.multiplier
-        // Pixel gap between adjacent fill edges = mult - fillWidth.
-        // A tiny negative value is okay here because it removes hairline gutters.
-        let gap = z18Mult - z18Fill
-        #expect(gap <= 0.05,
-                "z18: adjacent fills have a visible gap of \(String(format: "%.2f", gap))pt")
-        #expect(gap >= -0.5,
-                "z18: adjacent fills overlap too much (\(String(format: "%.2f", -gap))pt)")
+        let ratio = z18Mult / z18Fill
+        #expect(abs(ratio - Self.targetRatio) <= Self.tolerance,
+                "z18: compact ratio \(String(format: "%.3f", ratio)) does not match target \(Self.targetRatio)")
     }
 }

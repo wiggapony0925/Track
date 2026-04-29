@@ -251,9 +251,9 @@ enum MapLibreStyleConfig {
     static let subwayCasingWidth = zoomInterpolate(
         base: subwayLineInterpolationBase,
         stops: [
-            8: 1.8, 9: 2.4, 10: 3.4, 11: 4.2,
-            12: 5.2, 13: 6.2, 14: 7.2, 15: 8.4,
-            16: 10.0, 17: 11.5, 18: 13.5
+            8: 1.5, 9: 2.0, 10: 2.8, 11: 3.6,
+            12: 4.5, 13: 5.4, 14: 6.3, 15: 7.4,
+            16: 8.8, 17: 10.2, 18: 12.0
         ]
     )
 
@@ -262,7 +262,7 @@ enum MapLibreStyleConfig {
     /// at overview zooms and becomes a visible soft glow when zoomed in.
     static let subwayCasingBlur = zoomInterpolate(
         base: 1.4,
-        stops: [8: 0.4, 10: 0.6, 12: 0.8, 14: 1.0, 16: 1.2, 18: 1.5]
+        stops: [8: 0.2, 10: 0.35, 12: 0.5, 14: 0.65, 16: 0.8, 18: 1.0]
     )
 
     /// Elevated casing blur — slightly stronger than subway for depth.
@@ -436,18 +436,15 @@ enum MapLibreStyleConfig {
     // visual aid to keep parallel trunks readable when a shared corridor
     // collapses toward a single screen-space path.
     //
-    // To keep adjacent lanes visually touching, the centerline spacing
-    // should be almost exactly one fill-width. We stay 2% under the fill
-    // width to avoid hairline gaps from fractional-pixel antialiasing.
-    static let laneOffsetTouchRatio: Double = 0.98
+    // Keep default-map corridors close to the actual GTFS geometry. Full
+    // fill-width offsets made the system map read like invented parallel
+    // tracks at branches and curves; a compact offset still separates shared
+    // trunks without pulling lines away from their real paths.
+    static let laneOffsetTouchRatio: Double = 0.58
 
-    /// Minimum lane-offset multiplier at very low zoom levels.
-    /// Even when fill width shrinks to sub-pixel, parallel corridors need
-    /// at least this much pixel separation to remain distinguishable.
-    /// Without this floor, parallel lines collapse into a single line
-    /// at zoom 8-9 because 0.6 × 0.98 ≈ 0.59 px of separation is
-    /// invisible. The 0.8 px floor keeps corridors visually separate.
-    private static let laneOffsetMinMultiplier: Double = 0.8
+    /// No low-zoom floor: when zoomed out, true geometry matters more than
+    /// forcing every shared corridor into visibly separate lanes.
+    private static let laneOffsetMinMultiplier: Double = 0.0
 
     static let laneOffsetStops: [(zoom: Double, multiplier: Double)] =
         subwayFillWidthStops.map { stop in

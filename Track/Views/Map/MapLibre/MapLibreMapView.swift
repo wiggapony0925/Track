@@ -1410,7 +1410,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             let isDark = representable.isDarkMode
             var subwayOpacity: NSExpression = NSExpression(forConstantValue: dimmed ? 0.10 : 1.0)
             var subwayCasingOpacity: NSExpression =
-                NSExpression(forConstantValue: dimmed ? 0.05 : (isDark ? 0.45 : 0.55))
+                NSExpression(forConstantValue: dimmed ? 0.05 : (isDark ? 0.34 : 0.38))
             
             var elevatedShadowOpacity: NSExpression = NSExpression(
                 forConstantValue: dimmed ? 0.02 : (isDark ? 0.20 : 0.12)
@@ -3445,114 +3445,13 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             return features
         }
 
-        /// Builds casing features with gaps at crossing points.
-        ///
-        /// For each polyline, if it passes near a crossing point where a
-        /// HIGHER trunk_index crosses, the casing is split into two segments
-        /// with a small gap.  This creates an over/under visual effect.
+        /// Builds continuous casing features for system-map polylines.
         private func buildCasingFeatures(
             _ polylines: [MapSystemViewModel.FlattenedMapPolyline],
             crossings: [CrossingPoint]
         ) -> [MLNPolylineFeature] {
-            guard !crossings.isEmpty else {
-                return buildPolylineFeatures(polylines)
-            }
-
-            var features: [MLNPolylineFeature] = []
-
-            for polyline in polylines {
-                guard polyline.coordinates.count >= 2 else { continue }
-
-                let isLIRR = polyline.routeIds.contains(
-                    where: { $0.uppercased().hasPrefix("LIRR") }
-                )
-                let isMNR = polyline.routeIds.contains(where: { $0.uppercased().hasPrefix("MNR") })
-                let attrs: [String: Any] = [
-                    "color": polyline.color.toHex(),
-                    "trunk_index": NSNumber(value: polyline.trunkIndex),
-                    "lane_offset": NSNumber(value: Double(polyline.laneOffset)),
-                    "isLIRR": NSNumber(value: isLIRR),
-                    "isMNR": NSNumber(value: isMNR)
-                ]
-
-                // Find crossing indices where this trunk is the LOWER one
-                var breakIndices: [Int] = []
-                let coords = polyline.coordinates
-
-                for crossing in crossings {
-                    guard crossing.trunkIndices.count >= 2 else { continue }
-                    let myTrunk = polyline.trunkIndex
-                    guard crossing.trunkIndices.contains(myTrunk) else { continue }
-                    let otherTrunk = crossing.trunkIndices
-                        .first(where: { $0 != myTrunk }) ?? myTrunk
-                    // Only break the LOWER trunk's casing
-                    guard myTrunk < otherTrunk else { continue }
-
-                    // Find nearest vertex to crossing
-                    let cLat = crossing.lat
-                    let cLng = crossing.lng
-                    var bestDist = Double.infinity
-                    var bestIdx = -1
-
-                    for i in coords.indices {
-                        let dLat = coords[i].latitude - cLat
-                        let dLng = coords[i].longitude - cLng
-                        let dist = dLat * dLat + dLng * dLng
-                        if dist < bestDist {
-                            bestDist = dist
-                            bestIdx = i
-                        }
-                    }
-
-                    // ~50m threshold (in degrees²: 0.00045² ≈ 2e-7)
-                    if bestDist < 2.0e-7 && bestIdx > 1 && bestIdx < coords.count - 2 {
-                        breakIndices.append(bestIdx)
-                    }
-                }
-
-                if breakIndices.isEmpty {
-                    // No breaks — emit full polyline
-                    var mutableCoords = coords
-                    let feature = MLNPolylineFeature(
-                        coordinates: &mutableCoords,
-                        count: UInt(mutableCoords.count)
-                    )
-                    feature.attributes = attrs
-                    features.append(feature)
-                } else {
-                    // Split polyline at break points with small gaps
-                    let sorted = breakIndices.sorted()
-                    let gapSize = 2  // skip 2 vertices each side of crossing
-                    var segStart = 0
-
-                    for breakIdx in sorted {
-                        let segEnd = max(segStart, breakIdx - gapSize)
-                        if segEnd > segStart + 1 {
-                            var segment = Array(coords[segStart...segEnd])
-                            let feature = MLNPolylineFeature(
-                                coordinates: &segment,
-                                count: UInt(segment.count)
-                            )
-                            feature.attributes = attrs
-                            features.append(feature)
-                        }
-                        segStart = min(coords.count - 1, breakIdx + gapSize)
-                    }
-
-                    // Emit trailing segment
-                    if segStart < coords.count - 1 {
-                        var segment = Array(coords[segStart...])
-                        let feature = MLNPolylineFeature(
-                            coordinates: &segment,
-                            count: UInt(segment.count)
-                        )
-                        feature.attributes = attrs
-                        features.append(feature)
-                    }
-                }
-            }
-
-            return features
+            let _ = crossings
+            return buildPolylineFeatures(polylines)
         }
 
         // MARK: - Helpers: Layer Creation

@@ -73,8 +73,13 @@ nonisolated enum PipelineFingerprint {
 
         // ── Lane offset rendering ──────────────────────────
         params.append(("lane.interpolationBase", 1.6))
-        params.append(("lane.touchRatio", 0.98))
-        params.append(("lane.minMultiplier", 0.8))
+        params.append(("lane.touchRatio", 0.58))
+        params.append(("lane.minMultiplier", 0.0))
+        params.append(("lane.serverLocalOffsets", 0.0))
+        params.append(("station.serverLocalOffsets", 0.0))
+        params.append(("subway.casingProfile", 2.0))
+        params.append(("subway.casingOpacity", 0.38))
+        params.append(("subway.casingCrossingGaps", 0.0))
 
         // ── Server trunk geometry contract ─────────────────
         params.append(("server.branchStemLengthM", 90.0))

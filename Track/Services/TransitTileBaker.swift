@@ -380,99 +380,17 @@ nonisolated enum TransitTileBaker {
         ]
     }
 
-    // MARK: - Casing with Crossing Gaps
+    // MARK: - Continuous Casing
 
-    /// Splits polylines at crossing points to create the over/under effect.
-    ///
-    /// This is the baked equivalent of `buildCasingFeatures()` in
-    /// `MapLibreMapView` — the gaps are pre-computed and written into
-    /// the GeoJSON so MapLibre never needs to compute them at render time.
+    /// Returns casing polylines without crossing gaps.
+    /// Keeping the default system map continuous avoids broken-looking cuts
+    /// where dense subway corridors cross at shallow angles.
     static func buildCasingPolylines(
         from polylines: [PolylineData],
         crossings: [CrossingData]
     ) -> [PolylineData] {
-        guard !crossings.isEmpty else { return polylines }
-
-        var result: [PolylineData] = []
-
-        for polyline in polylines {
-            guard polyline.coordinates.count >= 2 else { continue }
-
-            // Find crossing indices where this trunk is the LOWER one
-            var breakIndices: [Int] = []
-            let coords = polyline.coordinates
-
-            for crossing in crossings {
-                guard crossing.trunkIndices.count >= 2 else { continue }
-                let myTrunk = polyline.trunkIndex
-                guard crossing.trunkIndices.contains(myTrunk) else { continue }
-                let otherTrunk = crossing.trunkIndices
-                    .first(where: { $0 != myTrunk }) ?? myTrunk
-                // Only break the LOWER trunk's casing
-                guard myTrunk < otherTrunk else { continue }
-
-                // Find nearest vertex to crossing
-                let cLat = crossing.lat
-                let cLng = crossing.lng
-                var bestDist = Double.infinity
-                var bestIdx = -1
-
-                for i in coords.indices {
-                    let dLat = coords[i].latitude - cLat
-                    let dLng = coords[i].longitude - cLng
-                    let dist = dLat * dLat + dLng * dLng
-                    if dist < bestDist {
-                        bestDist = dist
-                        bestIdx = i
-                    }
-                }
-
-                // ~50m threshold (in degrees²: 0.00045² ≈ 2e-7)
-                if bestDist < 2.0e-7 && bestIdx > 1 && bestIdx < coords.count - 2 {
-                    breakIndices.append(bestIdx)
-                }
-            }
-
-            if breakIndices.isEmpty {
-                result.append(polyline)
-            } else {
-                // Split polyline at break points with small gaps
-                let sorted = breakIndices.sorted()
-                let gapSize = 2  // skip 2 vertices each side of crossing
-                var segStart = 0
-
-                for breakIdx in sorted {
-                    let segEnd = max(segStart, breakIdx - gapSize)
-                    if segEnd > segStart + 1 {
-                        let segment = Array(coords[segStart...segEnd])
-                        result.append(PolylineData(
-                            coordinates: segment,
-                            colorHex: polyline.colorHex,
-                            trunkIndex: polyline.trunkIndex,
-                            laneOffset: polyline.laneOffset,
-                            routeIds: polyline.routeIds,
-                            isElevated: polyline.isElevated
-                        ))
-                    }
-                    segStart = min(coords.count - 1, breakIdx + gapSize)
-                }
-
-                // Emit trailing segment
-                if segStart < coords.count - 1 {
-                    let segment = Array(coords[segStart...])
-                    result.append(PolylineData(
-                        coordinates: segment,
-                        colorHex: polyline.colorHex,
-                        trunkIndex: polyline.trunkIndex,
-                        laneOffset: polyline.laneOffset,
-                        routeIds: polyline.routeIds,
-                        isElevated: polyline.isElevated
-                    ))
-                }
-            }
-        }
-
-        return result
+        let _ = crossings
+        return polylines
     }
 
     /// Minimal crossing point data for baking (avoids importing SubwayModels).

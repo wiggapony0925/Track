@@ -158,6 +158,46 @@ private func metersPerPixel(zoom: Double, lat: Double = 40.7) -> Double {
     return c * cos(lat * .pi / 180) / (256 * pow(2, zoom))
 }
 
+/// Mirrors the MapLibre line-offset displacement used by subway lines and
+/// station-dot micro segments.
+private func visuallyOffsetCoordinate(
+    _ coordinate: CLLocationCoordinate2D,
+    headingDegrees: Double,
+    laneOffset: CGFloat,
+    zoom: Double
+) -> CLLocationCoordinate2D {
+    let offsetPixels = Double(MapLibreStyleConfig.laneOffsetPixels(
+        for: laneOffset,
+        at: zoom
+    ))
+    guard abs(offsetPixels) > 1e-6 else { return coordinate }
+
+    let offsetMeters = abs(offsetPixels) * metersPerPixel(
+        zoom: zoom,
+        lat: coordinate.latitude
+    )
+    let perpendicularBearing = headingDegrees + (offsetPixels >= 0 ? -90.0 : 90.0)
+    let bearing = perpendicularBearing * .pi / 180.0
+    let metersPerDegreeLat: Double = 111_132.0
+    let metersPerDegreeLon: Double = max(
+        cos(coordinate.latitude * .pi / 180.0) * 111_320.0,
+        1.0
+    )
+
+    return CLLocationCoordinate2D(
+        latitude: coordinate.latitude + cos(bearing) * offsetMeters / metersPerDegreeLat,
+        longitude: coordinate.longitude + sin(bearing) * offsetMeters / metersPerDegreeLon
+    )
+}
+
+private func pixelDistance(
+    _ a: CLLocationCoordinate2D,
+    _ b: CLLocationCoordinate2D,
+    zoom: Double
+) -> Double {
+    haversineMetres(a, b) / metersPerPixel(zoom: zoom, lat: a.latitude)
+}
+
 /// Convert cos-corrected degree distance to metres at NYC latitude.
 private func degToMetres(_ deg: Double) -> Double {
     deg * 111_320 * cos(40.76 * .pi / 180)
@@ -371,6 +411,85 @@ struct SubPixelAccuracyTests {
         #expect(
             errorPx > 1.0,
             "z15: without re-snap, station was only \(String(format: "%.2f", errorPx))px off — expected > 1px"
+        )
+    }
+}
+
+// MARK: - 4b. Rendered lane alignment
+
+@Suite("Station dots stay on rendered subway lanes")
+struct RenderedLaneAlignmentTests {
+
+    @Test("Re-snapped station and polyline share the same visual lane offset",
+          arguments: [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0])
+    func resnappedStationStaysOnRenderedLane(zoom: Double) {
+        let rawSnapped = nearestPointOnBranches(
+            near: kStationMidBend,
+            branches: [kSharpBendRaw]
+        )!
+        let resnapped = nearestPointOnBranches(
+            near: rawSnapped,
+            branches: [kSharpBendSmoothed]
+        )!
+        let heading = nearestSegmentHeading(
+            near: resnapped,
+            branches: [kSharpBendSmoothed]
+        )!
+        let sharedLaneOffset: CGFloat = 1.5
+
+        let renderedLinePoint = visuallyOffsetCoordinate(
+            resnapped,
+            headingDegrees: heading,
+            laneOffset: sharedLaneOffset,
+            zoom: zoom
+        )
+        let stationDotPoint = visuallyOffsetCoordinate(
+            resnapped,
+            headingDegrees: heading,
+            laneOffset: sharedLaneOffset,
+            zoom: zoom
+        )
+        let errorPx = pixelDistance(renderedLinePoint, stationDotPoint, zoom: zoom)
+
+        #expect(
+            errorPx < 0.01,
+            "z\(Int(zoom)): station dot is \(String(format: "%.3f", errorPx))px from its rendered line"
+        )
+    }
+
+    @Test("A mismatched station lane offset would visibly detach from the line")
+    func mismatchedLaneOffsetWouldDetachStationDot() {
+        let rawSnapped = nearestPointOnBranches(
+            near: kStationMidBend,
+            branches: [kSharpBendRaw]
+        )!
+        let resnapped = nearestPointOnBranches(
+            near: rawSnapped,
+            branches: [kSharpBendSmoothed]
+        )!
+        let heading = nearestSegmentHeading(
+            near: resnapped,
+            branches: [kSharpBendSmoothed]
+        )!
+        let zoom = 18.0
+
+        let renderedLinePoint = visuallyOffsetCoordinate(
+            resnapped,
+            headingDegrees: heading,
+            laneOffset: 0.5,
+            zoom: zoom
+        )
+        let stationDotPoint = visuallyOffsetCoordinate(
+            resnapped,
+            headingDegrees: heading,
+            laneOffset: 1.5,
+            zoom: zoom
+        )
+        let errorPx = pixelDistance(renderedLinePoint, stationDotPoint, zoom: zoom)
+
+        #expect(
+            errorPx > 4.0,
+            "z18: mismatched offsets should produce visible drift, got only \(String(format: "%.2f", errorPx))px"
         )
     }
 }

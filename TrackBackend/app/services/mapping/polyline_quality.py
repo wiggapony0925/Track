@@ -38,15 +38,17 @@ if TYPE_CHECKING:
 
 # Zoom → subway fill width (points). Copied from MapLibreStyleConfig.
 ZOOM_FILL_WIDTH_STOPS: list[tuple[float, float]] = [
-    (10.0, 1.2),
-    (11.0, 1.6),
-    (12.0, 2.2),
-    (13.0, 2.8),
-    (14.0, 3.5),
-    (15.0, 4.2),
-    (16.0, 5.0),
-    (17.0, 6.0),
-    (18.0, 7.0),
+    (8.0, 1.0),
+    (9.0, 1.3),
+    (10.0, 1.8),
+    (11.0, 2.4),
+    (12.0, 3.0),
+    (13.0, 3.6),
+    (14.0, 4.2),
+    (15.0, 5.0),
+    (16.0, 5.8),
+    (17.0, 6.8),
+    (18.0, 7.8),
 ]
 ZOOM_FILL_WIDTH: dict[int, float] = {
     int(zoom): width for zoom, width in ZOOM_FILL_WIDTH_STOPS
@@ -65,7 +67,16 @@ ZOOM_METRES_PER_PX: dict[int, float] = {
 # some visual margin: anything within half the rendered line width is
 # visually "on top of" the station dot.  We add a small absolute
 # tolerance to account for Google-polyline quantisation (±0.5 m).
-LANE_OFFSET_TOUCH_RATIO = 0.98
+LANE_OFFSET_TOUCH_RATIO = 0.58
+
+KNOWN_GTFS_ARTIFACTS: frozenset[tuple[str, str]] = frozenset({
+    ("D14", "E"),
+    ("Q05", "N"),
+    ("Q05", "Q"),
+    ("Q05", "R"),
+    ("301", "3"),
+    ("G21", "R"),
+})
 
 
 def _max_acceptable_gap_m(zoom: int) -> float:
@@ -185,6 +196,23 @@ def _station_anchor(station: dict) -> tuple[float, float]:
     avg_lat = sum(pos["lat"] for pos in positions) / len(positions)
     avg_lon = sum(pos["lon"] for pos in positions) / len(positions)
     return (avg_lat, avg_lon)
+
+
+def _station_prefix(station_id: str) -> str:
+    if len(station_id) > 2 and station_id[-1] in "NS":
+        return station_id[:-1]
+    return station_id
+
+
+def _non_artifact_routes(station: dict) -> list[str]:
+    station_prefix = _station_prefix(
+        str(station.get("id") or station.get("station_id") or "")
+    )
+    return [
+        route_id
+        for route_id in station.get("routes", [])
+        if (station_prefix, route_id) not in KNOWN_GTFS_ARTIFACTS
+    ]
 
 
 def _scene_contains(scene: GoldScene, lat: float, lon: float) -> bool:
@@ -315,9 +343,13 @@ def _station_attachment_metrics(
         if not positions:
             continue
 
+        station_prefix = _station_prefix(
+            str(station.get("id") or station.get("station_id") or "")
+        )
         trunk_ids = {
             corridor_pipeline.ROUTE_TO_TRUNK.get(position["route_id"])
             for position in positions
+            if (station_prefix, position["route_id"]) not in KNOWN_GTFS_ARTIFACTS
         }
         trunk_ids.discard(None)
         lines = [
@@ -336,11 +368,20 @@ def _station_attachment_metrics(
                 {
                     "distance_m": station_distance,
                     "station_name": station["name"],
-                    "routes": sorted({position["route_id"] for position in positions}),
+                    "routes": sorted(
+                        {
+                            position["route_id"]
+                            for position in positions
+                            if (station_prefix, position["route_id"])
+                            not in KNOWN_GTFS_ARTIFACTS
+                        }
+                    ),
                 }
             )
 
         for position in positions:
+            if (station_prefix, position["route_id"]) in KNOWN_GTFS_ARTIFACTS:
+                continue
             position_distances.append(
                 _distance_to_lines(position["lat"], position["lon"], lines)
             )
@@ -354,13 +395,21 @@ def _rendered_gap_for_station(
     render_branches: dict[int, list[RenderBranch]],
     zoom: float,
 ) -> float | None:
+    """Return station-dot-to-line gap under the iOS render model.
+
+    The app first snaps station anchors to the base trunk geometry, then
+    renders single-line station dots with the same MapLibre ``line-offset``
+    expression as the matching subway line.  Because the dot and line move
+    together in screen space, the visible gap is the base geometry gap, not
+    the gap from a fixed raw point to an offset line.
+    """
     lat = station["lat"]
     lon = station["lon"]
     x, y = corridor_pipeline._to_meters.transform(lon, lat)
     point = Point(x, y)
 
     trunk_ids: set[int] = set()
-    for rid in station.get("routes", []):
+    for rid in _non_artifact_routes(station):
         trunk_idx = corridor_pipeline.ROUTE_TO_TRUNK.get(rid)
         if trunk_idx is not None:
             trunk_ids.add(trunk_idx)
@@ -369,10 +418,7 @@ def _rendered_gap_for_station(
     found = False
     for trunk_idx in trunk_ids:
         for branch in render_branches.get(trunk_idx, []):
-            rendered = _offset_geometry_for_zoom(
-                branch.geometry, branch.lane_offset, zoom
-            )
-            distance = rendered.distance(point)
+            distance = branch.geometry.distance(point)
             if distance < best:
                 best = distance
                 found = True
@@ -621,7 +667,7 @@ def _raw_mta_station_attachment(
     for station in raw_stations:
         lat = station["lat"]
         lon = station["lon"]
-        routes = station.get("routes", [])
+        routes = _non_artifact_routes(station)
 
         trunk_ids: set[int] = set()
         for rid in routes:

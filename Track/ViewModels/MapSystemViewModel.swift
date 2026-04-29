@@ -1436,6 +1436,9 @@ final class MapSystemViewModel {
             for groupResult: ColorGroupResult,
             branchIndex: Int
         ) -> CGFloat {
+            if useTrunkPolylines {
+                return groupResult.laneOffset
+            }
             guard branchIndex < groupResult.polylineLaneOffsets.count else {
                 return groupResult.laneOffset
             }
@@ -2894,15 +2897,12 @@ final class MapSystemViewModel {
         if let trunkPolylines = cachedTrunkPolylines, !trunkPolylines.isEmpty {
             var result: [Int: [StationReferenceBranch]] = [:]
             for trunk in trunkPolylines {
-                for (index, coords) in trunk.decodedPolylines.enumerated() {
+                for coords in trunk.decodedPolylines {
                     guard coords.count >= 2 else { continue }
-                    let laneOffset = index < trunk.polylineLaneOffsets.count
-                        ? trunk.polylineLaneOffsets[index]
-                        : trunk.laneOffset
                     result[trunk.trunkIndex, default: []].append(
                         StationReferenceBranch(
                             coordinates: coords,
-                            laneOffset: laneOffset
+                            laneOffset: trunk.laneOffset
                         )
                     )
                 }
