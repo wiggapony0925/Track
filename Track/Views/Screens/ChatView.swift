@@ -1585,29 +1585,228 @@ private struct MarkdownText: View {
         }
     }
 
-    private func inlineMarkdown(_ text: String) -> Text {
+    private func inlineMarkdown(_ text: String) -> InlineTransitMarkdownText {
+        InlineTransitMarkdownText(text: text)
+    }
+}
+
+/// Inline markdown renderer that swaps transit route mentions for the
+/// same badge artwork used throughout the app. It recognizes backend
+/// wording like `**7 TRAIN**`, natural text like `M15 bus`, and route
+/// tokens like `[A]`.
+private struct InlineTransitMarkdownText: View {
+    let text: String
+
+    private let badgeDiameter: CGFloat = 20
+
+    var body: some View {
+        buildText()
+    }
+
+    private enum Segment {
+        case plain(String)
+        case route(routeID: String, mode: String)
+    }
+
+    private struct Candidate {
+        let range: NSRange
+        let routeID: String
+        let mode: String
+        let priority: Int
+    }
+
+    private func buildText() -> Text {
+        var result = Text("")
+        for segment in Self.parse(text) {
+            switch segment {
+            case .plain(let value):
+                result = Text("\(result)\(markdownText(value))")
+            case .route(let routeID, let mode):
+                if let image = badgeImage(for: routeID, mode: mode) {
+                    let badge = Text(Image(uiImage: image)).baselineOffset(-4)
+                    result = Text("\(result)\(badge)")
+                } else {
+                    result = Text("\(result)\(markdownText(routeID))")
+                }
+            }
+        }
+        return result
+    }
+
+    private func markdownText(_ value: String) -> Text {
         if let attributed = try? AttributedString(
-            markdown: text,
+            markdown: value,
             options: .init(
                 allowsExtendedAttributes: false,
                 interpretedSyntax: .inlineOnlyPreservingWhitespace,
                 failurePolicy: .returnPartiallyParsedIfPossible
             )
         ) {
-            return Text(styled(attributed))
+            return Text(Self.styled(attributed))
         }
-        return Text(text)
+        return Text(value)
     }
 
-    private func styled(_ input: AttributedString) -> AttributedString {
-        var s = input
-        for run in s.runs {
+    private static func styled(_ input: AttributedString) -> AttributedString {
+        var styled = input
+        for run in styled.runs {
             if run.inlinePresentationIntent?.contains(.code) == true {
-                s[run.range].font = .system(size: 14, weight: .medium, design: .monospaced)
+                styled[run.range].font = .system(size: 14, weight: .medium, design: .monospaced)
             }
         }
-        return s
+        return styled
     }
+
+    @MainActor
+    private func badgeImage(for routeID: String, mode: String) -> UIImage? {
+        let key = "\(mode):\(routeID)"
+        if let cached = Self.imageCache[key] { return cached }
+
+        let badge = RouteBadge(
+            routeID: routeID,
+            size: .custom(badgeDiameter, badgeDiameter * 0.6),
+            isBus: mode == "bus",
+            mode: mode
+        )
+        let renderer = ImageRenderer(content: badge)
+        renderer.scale = 3.0
+        guard let image = renderer.uiImage else { return nil }
+        Self.imageCache[key] = image
+        return image
+    }
+
+    private static var imageCache: [String: UIImage] = [:]
+
+    private static func parse(_ value: String) -> [Segment] {
+        let nsValue = value as NSString
+        let candidates = routeCandidates(in: value)
+        guard !candidates.isEmpty else { return [.plain(value)] }
+
+        let accepted = nonOverlapping(candidates)
+        var segments: [Segment] = []
+        var cursor = 0
+
+        for candidate in accepted {
+            if candidate.range.location > cursor {
+                let plainRange = NSRange(location: cursor, length: candidate.range.location - cursor)
+                segments.append(.plain(nsValue.substring(with: plainRange)))
+            }
+            segments.append(.route(routeID: candidate.routeID, mode: candidate.mode))
+            cursor = candidate.range.location + candidate.range.length
+        }
+
+        if cursor < nsValue.length {
+            segments.append(.plain(nsValue.substring(from: cursor)))
+        }
+        return segments
+    }
+
+    private static func routeCandidates(in value: String) -> [Candidate] {
+        var candidates: [Candidate] = []
+        candidates.append(contentsOf: matches(
+            pattern: #"(?:\*\*|__|\*|_)?\[([A-Za-z0-9+ -]+)\](?:\*\*|__|\*|_)?"#,
+            in: value,
+            group: 1,
+            priority: 0
+        ) { token in
+            guard isRouteToken(token) else { return nil }
+            return (normalizedRouteID(token), resolvedMode(for: token))
+        })
+        candidates.append(contentsOf: matches(
+            pattern: #"(?i)(?:\*\*|__|\*|_)?\b(6X|7X|FX|SIR|[1-7ABCDEFGJLMNQRSWZ])\s+(?:train|line)\b(?:\*\*|__|\*|_)?"#,
+            in: value,
+            group: 1,
+            priority: 1
+        ) { token in
+            let routeID = normalizedRouteID(token)
+            guard subwayRoutes.contains(routeID) else { return nil }
+            return (routeID, "subway")
+        })
+        candidates.append(contentsOf: matches(
+            pattern: #"(?i)(?:\*\*|__|\*|_)?\b((?:Bx|SIM|BXM|BM|QM|M|B|Q|S|X)\d+[A-Z]?(?:[- ]?SBS|\+)?)\s+(?:bus|route)\b(?:\*\*|__|\*|_)?"#,
+            in: value,
+            group: 1,
+            priority: 2
+        ) { token in
+            let routeID = normalizedRouteID(token)
+            guard isBusRoute(routeID) else { return nil }
+            return (routeID, "bus")
+        })
+        return candidates
+    }
+
+    private static func matches(
+        pattern: String,
+        in value: String,
+        group: Int,
+        priority: Int,
+        transform: (String) -> (String, String)?
+    ) -> [Candidate] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let nsValue = value as NSString
+        let range = NSRange(location: 0, length: nsValue.length)
+        return regex.matches(in: value, range: range).compactMap { match in
+            guard group < match.numberOfRanges else { return nil }
+            let groupRange = match.range(at: group)
+            guard groupRange.location != NSNotFound else { return nil }
+            let token = nsValue.substring(with: groupRange)
+            guard let (routeID, mode) = transform(token) else { return nil }
+            return Candidate(range: match.range, routeID: routeID, mode: mode, priority: priority)
+        }
+    }
+
+    private static func nonOverlapping(_ candidates: [Candidate]) -> [Candidate] {
+        var accepted: [Candidate] = []
+        let sorted = candidates.sorted {
+            if $0.range.location != $1.range.location { return $0.range.location < $1.range.location }
+            if $0.range.length != $1.range.length { return $0.range.length > $1.range.length }
+            return $0.priority < $1.priority
+        }
+
+        for candidate in sorted {
+            let end = candidate.range.location + candidate.range.length
+            let overlaps = accepted.contains { existing in
+                let existingEnd = existing.range.location + existing.range.length
+                return candidate.range.location < existingEnd && end > existing.range.location
+            }
+            if !overlaps { accepted.append(candidate) }
+        }
+        return accepted.sorted { $0.range.location < $1.range.location }
+    }
+
+    private static func normalizedRouteID(_ token: String) -> String {
+        var routeID = token
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: " ", with: "")
+            .uppercased()
+        if routeID.hasSuffix("SBS"), !routeID.contains("-") {
+            routeID = String(routeID.dropLast(3)) + "-SBS"
+        }
+        return routeID
+    }
+
+    private static func resolvedMode(for token: String) -> String {
+        let routeID = normalizedRouteID(token)
+        if subwayRoutes.contains(routeID) { return "subway" }
+        if isBusRoute(routeID) { return "bus" }
+        return "subway"
+    }
+
+    private static func isRouteToken(_ token: String) -> Bool {
+        let routeID = normalizedRouteID(token)
+        return subwayRoutes.contains(routeID) || isBusRoute(routeID)
+    }
+
+    private static func isBusRoute(_ routeID: String) -> Bool {
+        routeID.firstMatch(of: /^(M|B|BX|Q|S|X|SIM|BXM|BM|QM)\d/) != nil
+    }
+
+    private static let subwayRoutes: Set<String> = [
+        "1", "2", "3", "4", "5", "6", "6X", "7", "7X",
+        "A", "B", "C", "D", "E", "F", "FX", "G",
+        "J", "Z", "L", "M", "N", "Q", "R", "W",
+        "S", "SF", "SR", "SIR", "T",
+    ]
 }
 
 // MARK: - Tool Status Pill

@@ -76,6 +76,12 @@ nonisolated enum PipelineFingerprint {
         params.append(("lane.touchRatio", 0.98))
         params.append(("lane.minMultiplier", 0.8))
 
+        // ── Server trunk geometry contract ─────────────────
+        params.append(("server.branchStemLengthM", 90.0))
+        params.append(("server.branchStemSnapDistM", 110.0))
+        params.append(("server.endpointStitchThresholdM", 60.0))
+        params.append(("server.endpointStitchExplicit", 1.0))
+
         // ── Polyline merge/unification ─────────────────────
         params.append(("merge.gapThreshold", 0.002))
         params.append(("merge.postGapThreshold", 0.003))

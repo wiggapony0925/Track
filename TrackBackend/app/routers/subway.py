@@ -100,7 +100,7 @@ def _get_shapes_all_lock() -> asyncio.Lock:
 # Bump this whenever corridor_pipeline.py changes affect polyline output.
 # The persistent Render disk survives deploys, so without a version tag
 # the stale cached pipeline result would be served forever.
-_SHAPES_DISK_CACHE_VERSION = 5  # v5: guard against empty-build poison
+_SHAPES_DISK_CACHE_VERSION = 7  # v7: preserve true branch loops; stricter stitching
 _SHAPES_DISK_CACHE_PATH = (
     _Path(__file__).resolve().parent.parent
     / "data"

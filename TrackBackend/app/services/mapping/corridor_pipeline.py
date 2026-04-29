@@ -309,22 +309,23 @@ _BRANCH_EXTEND_MAX: int = 2000
 _MAX_STUB_GAP_M: float = 6000.0
 
 # ── Branch stem injection ──
-# Length (meters) of trunk baseline to prepend/append at branch junctions
-# so that branch stubs visually overlap the trunk and appear connected.
-_STEM_LENGTH_M: float = 1500.0
+# Length (meters) of trunk baseline to prepend/append at branch junctions.
+# Keep this intentionally short: long artificial stems made branch stubs
+# look connected, but they also created false track segments that do not
+# exist in GTFS geometry. The system map should prefer a tiny visible gap
+# over drawing a made-up line.
+_STEM_LENGTH_M: float = 90.0
 
-# Maximum distance (meters) from a branch endpoint to the trunk baseline
-# for stem injection to activate.  If the branch end is farther than this,
-# it's not a junction — it's the branch's free terminal.
-# Raised from 500 → 800 to catch stubs (like Lefferts Blvd) that are
-# 395-800m from the baseline after distance-based extension.
-_STEM_SNAP_DIST_M: float = 800.0
+# Maximum distance (meters) from a branch endpoint to an already-connected
+# line for stem injection to activate. If an endpoint is farther than this,
+# treat it as real disconnected/branch geometry instead of fabricating a
+# connector back to the trunk.
+_STEM_SNAP_DIST_M: float = 110.0
 
 # Fallback: if raw Euclidean distance exceeds _STEM_SNAP_DIST_M but the
-# *projected* distance along the baseline is within this threshold, still
-# inject a stem.  Handles curved baselines where geometric distance is
-# large but the actual track proximity is small.
-_STEM_PROJ_FALLBACK_M: float = 200.0
+# projected distance to the baseline is still essentially touching, allow
+# a tiny stem. This catches rounding noise without bridging city blocks.
+_STEM_PROJ_FALLBACK_M: float = 35.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -886,9 +887,10 @@ def _remove_self_intersections(
                     dx = coords[j + 1][0] - coords[j][0]
                     dy = coords[j + 1][1] - coords[j][1]
                     arc += math.sqrt(dx * dx + dy * dy)
-                # A genuine loop has net displacement < 30% of arc length
-                # Also cap at 5 km — anything longer is real track geometry
-                if arc > 0 and net / arc < 0.30 and arc < 5000.0:
+                # A genuine cleanup candidate has net displacement < 30%
+                # of arc length and is very short. Longer loops often carry
+                # real branch geometry, such as the E train's 53 St segment.
+                if arc > 0 and net / arc < 0.30 and arc < 800.0:
                     best_gap = gap
                     loop_start = fi
                     loop_end = li
@@ -1895,9 +1897,13 @@ def _junction_fillet_wgs84(
 
 def _stitch_nearby_segment_endpoints_wgs84(
     segments: list[list[tuple[float, float]]],
-    threshold_m: float = 250.0,
+    threshold_m: float = 60.0,
 ) -> None:
-    """Snap mutually-nearest opposite endpoints to a shared midpoint."""
+    """Snap tiny mutually-nearest endpoint gaps to a shared midpoint.
+
+    This is only for numerical cracks left by segmentation. Larger gaps may
+    represent real branch separation, so they must remain untouched.
+    """
     if len(segments) < 2:
         return
 
@@ -2437,6 +2443,7 @@ _EXPORT_TRANSITION_MAX_POINTS: int = 20
 _EXPORT_TRANSITION_MAX_LENGTH_M: float = 700.0  # EPSG:3857 units (~530m real)
 _EXPORT_Y_TRANSITION_MIN_POINTS: int = 5
 _EXPORT_RUN_LENDER_MIN_POINTS: int = 2
+_EXPORT_ENDPOINT_STITCH_THRESHOLD_M: float = 60.0
 
 
 class _VisualOffsetRun(NamedTuple):
@@ -3204,7 +3211,8 @@ def get_trunk_polylines() -> list[dict]:
                 continue
 
         _stitch_nearby_segment_endpoints_wgs84(
-            [coords for coords, _ in wgs_segments]
+            [coords for coords, _ in wgs_segments],
+            threshold_m=_EXPORT_ENDPOINT_STITCH_THRESHOLD_M,
         )
 
         for coords_wgs, local_lane_offset in wgs_segments:
