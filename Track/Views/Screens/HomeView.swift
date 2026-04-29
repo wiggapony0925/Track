@@ -77,6 +77,9 @@ struct HomeView: View {
     /// 1 s covers any camera spring animation; drag-search can only re-engage
     /// after this cooldown has elapsed.
     @State private var dragSearchDismissedAt: Date?
+    /// True after the user manually pans/zooms the map. While set, GPS
+    /// refreshes may update data but must not pull the camera back home.
+    @State private var userCameraOverrideActive = false
 
     /// External tab-selection trigger for the route detail sheet.
     /// Set to `.alerts` when the user taps the alert pill on the map's
@@ -255,6 +258,7 @@ struct HomeView: View {
                     onSystemStationTap: presentTrainStopDetail,
                     onBusStopTap: presentBusStopDetail,
                     onSavedPlaceTap: presentSavedPlaceActionPopup,
+                    onUserCameraGesture: { userCameraOverrideActive = true },
                     isDragSearchActive: isDragSearchActive,
                     dragSearchSettledCenter: dragSearchSettledCenter,
                     sheetHeightObserver: sheetHeightObserver
@@ -269,6 +273,7 @@ struct HomeView: View {
                         currentMapCenter: currentMapCenter,
                         currentMapDistance: currentMapDistance,
                         onRecenter: {
+                            userCameraOverrideActive = false
                             // Dismiss drag-to-search state without camera snap —
                             // MapControlsOverlay.centerMap() handles camera positioning
                             // so we avoid competing animations.
@@ -686,7 +691,9 @@ struct HomeView: View {
                     }
                 }
             } else {
-                recenterOnUser()
+                if !userCameraOverrideActive {
+                    recenterOnUser()
+                }
                 // Prefer the live GPS fix over the stale cached reference
                 // location.  CLLocation.timestamp tells us how old the fix
                 // is — if it was acquired before the app was suspended it
@@ -789,6 +796,8 @@ struct HomeView: View {
     }
     
     private func handleNearestStopChanged() {
+        guard !userCameraOverrideActive else { return }
+
         // Pass the sheet fraction directly so
         // cameraPositionFittingRoute computes zoom AND center
         // together — guaranteeing both the user and the stop
@@ -1104,7 +1113,7 @@ struct HomeView: View {
                         to: $cameraPosition,
                         source: .system
                     )
-                } else {
+                } else if !userCameraOverrideActive {
                     recenterOnUser()
                 }
             },
@@ -1159,6 +1168,8 @@ struct HomeView: View {
                 }
             },
             onRecenter: {
+                userCameraOverrideActive = false
+
                 // Re-invoke the route-fitting camera that shows both user
                 // location and the nearest stop — same logic as the initial
                 // route-open zoom.
@@ -1294,6 +1305,8 @@ struct HomeView: View {
         }
         
         if viewModel.selectedRouteId != nil {
+            userCameraOverrideActive = false
+
             let isBus = viewModel.selectedGroupedRoute?.isBus ?? false
             let isCommuterRail = viewModel.selectedGroupedRoute?.isCommuterRail ?? false
             let startTime = Date()
@@ -1405,7 +1418,7 @@ struct HomeView: View {
                 to: $cameraPosition,
                 source: .system
             )
-        } else {
+        } else if !userCameraOverrideActive {
             recenterOnUser()
         }
     }
@@ -1417,7 +1430,9 @@ struct HomeView: View {
             hasLoadedInitialData = true
             
             // Center the map on the user as soon as we get the first fix
-            recenterOnUser()
+            if !userCameraOverrideActive {
+                recenterOnUser()
+            }
             
             Task {
                 await viewModel.refresh(location: loc, force: true)
@@ -1434,7 +1449,9 @@ struct HomeView: View {
             // the engine; the previous unanimated `cameraPosition = ...`
             // write here was a redundant second commit that produced a
             // visible double-pan on first GPS arrival.
-            recenterOnUser()
+            if !userCameraOverrideActive {
+                recenterOnUser()
+            }
             AppLogger.shared.log(
                 "SPECULATIVE",
                 message: "Real GPS fix arrived"
@@ -1450,7 +1467,7 @@ struct HomeView: View {
             // the next GPS fix would yank the camera back to their real
             // location, undoing the drag. Also guard against panning even if 
             // the threshold hasn't been crossed yet.
-            if !isPositioningDragSearchPin {
+            if !isPositioningDragSearchPin && !userCameraOverrideActive {
                 // Skip the system recenter when the map is already close to
                 // the GPS dot — avoids a redundant write that can make the
                 // recenter button's first tap appear to do nothing (the engine
@@ -1699,6 +1716,7 @@ struct HomeView: View {
     private func handleSheetDetentChanged() {
         // Don't fight with drag-to-search camera positioning
         guard !isDragSearchActive else { return }
+        guard !userCameraOverrideActive else { return }
 
         // When sheet goes full-screen, map is barely visible — skip
         guard sheetDetent != .large else { return }
@@ -1772,6 +1790,8 @@ struct HomeView: View {
     }
     
     private func centerMap(on target: CLLocationCoordinate2D? = nil) {
+        userCameraOverrideActive = false
+
         // Collapse sheet and animate camera. Sheet detent change runs in
         // its own transaction so handleSheetDetentChanged's reactive
         // camera write is dropped by the engine's dedupe (same target

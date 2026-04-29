@@ -18,7 +18,7 @@ def quality_snapshot() -> dict:
 
 
 def test_quality_snapshot_covers_full_system(quality_snapshot: dict):
-    assert quality_snapshot["trunk_count"] == 10
+    assert quality_snapshot["trunk_count"] == 11
     assert quality_snapshot["polyline_count"] >= 30
     assert quality_snapshot["station_count"] >= 490
 

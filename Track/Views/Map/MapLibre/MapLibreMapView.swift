@@ -329,6 +329,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// their data inputs change, causing markers to "stick" to the screen.
     var onCameraMove: (() -> Void)?
 
+    /// Called once when MapLibre reports that a camera change began from
+    /// a direct user gesture rather than a programmatic camera animation.
+    var onUserCameraGesture: (() -> Void)?
+
     /// Called when a baked bus stop dot is tapped on the map.
     /// Carries a lightweight `BusStop` built from the GeoJSON feature.
     var onBusStopTap: ((BusStop) -> Void)?
@@ -884,10 +888,19 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         func mapView(_ mapView: MLNMapView, regionWillChangeAnimated animated: Bool) {
             // Detect user-initiated gestures (the map passes animated=false
             // when the change comes from a user gesture, true for programmatic).
-            if !animated && !suppressCameraSyncForSheetInset {
+            if !animated,
+               !suppressCameraSyncForSheetInset,
+               isUserGestureActive(on: mapView) {
                 userGestureInProgress = true
                 CameraHoverEngine.registerUserMapGesture()
+                parent.onUserCameraGesture?()
             }
+        }
+
+        private func isUserGestureActive(on mapView: MLNMapView) -> Bool {
+            mapView.gestureRecognizers?.contains { recognizer in
+                recognizer.state == .began || recognizer.state == .changed
+            } ?? false
         }
 
         func mapViewRegionIsChanging(_ mapView: MLNMapView) {

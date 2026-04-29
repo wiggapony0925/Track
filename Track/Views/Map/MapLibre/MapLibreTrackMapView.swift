@@ -40,6 +40,9 @@ struct MapLibreTrackMapView: View {
     var onBusStopTap: ((BusStop) -> Void)? = nil
     var onSavedPlaceTap: ((SavedLocation) -> Void)? = nil
 
+    /// Notifies the parent that the user manually moved the map camera.
+    var onUserCameraGesture: (() -> Void)? = nil
+
     /// Whether drag-to-search is currently active.
     var isDragSearchActive: Bool = false
 
@@ -206,6 +209,7 @@ struct MapLibreTrackMapView: View {
                         cameraChangeToken &+= 1
                     }
                 },
+                onUserCameraGesture: onUserCameraGesture,
                 onBusStopTap: onBusStopTap,
                 onRouteStopTap: handleStopTap,
                 onSavedPlaceTap: handleSavedPlaceTap,

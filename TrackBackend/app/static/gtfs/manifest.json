@@ -1,21 +1,21 @@
 {
-  "catalog_version": 4,
+  "catalog_version": 5,
   "regions": [
     {
       "region_id": "nyc",
       "schema_version": 2,
-      "sha256": "a53420c2f2865b3cbad5411f75146179f6d3548ac64e82dfad0eabd65cb9ddb2",
-      "filename": "nyc-a53420c2.sqlite",
-      "url": "/static/gtfs/nyc-a53420c2.sqlite",
+      "sha256": "7df800700e603d104edd182642c3ff384ca9c994de230573c390afbb74c7a56b",
+      "filename": "nyc-7df80070.sqlite",
+      "url": "/static/gtfs/nyc-7df80070.sqlite",
       "size_bytes": 4251648,
       "stops_count": 15092,
       "routes_count": 421,
       "active_routes_count": 379,
       "route_inventory_sha256": "c52964ac5bef0e5a0d057d090c369c36f49a8a628529b3c5ab54319d7192c37f",
-      "route_stops_count": 25298,
+      "route_stops_count": 25297,
       "route_headways_count": 19799,
-      "generated_at": 1777335179
+      "generated_at": 1777438851
     }
   ],
-  "updated_at": 1777335205
+  "updated_at": 1777438871
 }

@@ -148,6 +148,8 @@ final class PrefetchService {
             return SavedLocation(
                 enginePlaceID: record.placeID,
                 name: record.label,
+                
+                
                 address: record.address ?? "",
                 latitude: record.lat,
                 longitude: record.lon,

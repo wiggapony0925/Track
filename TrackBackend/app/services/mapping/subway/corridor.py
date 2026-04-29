@@ -1976,6 +1976,82 @@ def _stitch_nearby_segment_endpoints_wgs84(
         )
 
 
+def _bridge_nearby_segment_endpoint_gaps_wgs84(
+    segments: list[tuple[list[tuple[float, float]], float]],
+    min_gap_m: float = 60.0,
+    max_gap_m: float = 420.0,
+) -> list[tuple[list[tuple[float, float]], float]]:
+    """Add short connector segments for mutually-nearest export gaps.
+
+    Segmentation by lane offset can leave two pieces of the same trunk close
+    enough to read as one continuous line but too far apart for midpoint
+    stitching. A tiny connector preserves the missing path while keeping the
+    original branch pieces and their local offsets intact.
+    """
+    if len(segments) < 2:
+        return []
+
+    endpoints: list[tuple[int, str, tuple[float, float]]] = []
+    for idx, (coords, _) in enumerate(segments):
+        if len(coords) < 2:
+            continue
+        endpoints.append((idx, "start", coords[0]))
+        endpoints.append((idx, "end", coords[-1]))
+
+    def _endpoint_distance_m(
+        a: tuple[float, float],
+        b: tuple[float, float],
+    ) -> float:
+        ax, ay = _to_meters.transform(a[1], a[0])
+        bx, by = _to_meters.transform(b[1], b[0])
+        return math.hypot(ax - bx, ay - by)
+
+    def _nearest_opposite_endpoint(
+        seg_idx: int,
+        tag: str,
+        point: tuple[float, float],
+    ) -> tuple[int, str, tuple[float, float], float] | None:
+        target_tag = "end" if tag == "start" else "start"
+        best: tuple[int, str, tuple[float, float], float] | None = None
+        for other_idx, other_tag, other_point in endpoints:
+            if other_idx == seg_idx or other_tag != target_tag:
+                continue
+            dist_m = _endpoint_distance_m(point, other_point)
+            if best is None or dist_m < best[3]:
+                best = (other_idx, other_tag, other_point, dist_m)
+        return best
+
+    bridged_pairs: set[frozenset[tuple[int, str]]] = set()
+    bridges: list[tuple[list[tuple[float, float]], float]] = []
+
+    for seg_idx, tag, point in endpoints:
+        nearest = _nearest_opposite_endpoint(seg_idx, tag, point)
+        if nearest is None:
+            continue
+
+        other_idx, other_tag, other_point, dist_m = nearest
+        if not (min_gap_m < dist_m <= max_gap_m):
+            continue
+
+        pair_key = frozenset({(seg_idx, tag), (other_idx, other_tag)})
+        if pair_key in bridged_pairs:
+            continue
+        bridged_pairs.add(pair_key)
+
+        coords = [point, other_point]
+        if tag == "start" and other_tag == "end":
+            coords = [other_point, point]
+
+        lane_offset = (segments[seg_idx][1] + segments[other_idx][1]) / 2.0
+        bridges.append((coords, lane_offset))
+        TrackLogger.info(
+            f"[TrunkExport] Bridged endpoint gap {dist_m:.0f} m "
+            f"between segment {seg_idx}.{tag} and {other_idx}.{other_tag}"
+        )
+
+    return bridges
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Trunk Crossing Detection
 #
@@ -3213,6 +3289,9 @@ def get_trunk_polylines() -> list[dict]:
         _stitch_nearby_segment_endpoints_wgs84(
             [coords for coords, _ in wgs_segments],
             threshold_m=_EXPORT_ENDPOINT_STITCH_THRESHOLD_M,
+        )
+        wgs_segments.extend(
+            _bridge_nearby_segment_endpoint_gaps_wgs84(wgs_segments)
         )
 
         for coords_wgs, local_lane_offset in wgs_segments:
