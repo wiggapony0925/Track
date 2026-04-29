@@ -188,7 +188,7 @@ private struct LoadingRouteMesh: View {
 
     var body: some View {
         GeometryReader { proxy in
-            TimelineView(.animation) { context in
+            TimelineView(.periodic(from: Date(), by: SplashMotion.frameInterval)) { context in
                 Canvas { canvas, size in
                     drawLocalStreets(in: &canvas, size: size)
                     drawExpressRoutes(in: &canvas, size: size, date: context.date)
@@ -258,12 +258,11 @@ private struct LoadingRouteMesh: View {
                 endY: route.3,
                 sway: route.5
             )
-            let glowWidth = 8.5 + CGFloat(sin(phase * 1.1 + Double(index)) * 1.1)
 
             canvas.stroke(
                 path,
                 with: .color(route.0.opacity(route.4 * 0.42)),
-                style: StrokeStyle(lineWidth: glowWidth, lineCap: .round, lineJoin: .round)
+                style: StrokeStyle(lineWidth: 8.5, lineCap: .round, lineJoin: .round)
             )
             canvas.stroke(
                 path,
@@ -271,9 +270,10 @@ private struct LoadingRouteMesh: View {
                 style: StrokeStyle(lineWidth: 3.4, lineCap: .round, lineJoin: .round)
             )
 
-            let trainT = (phase * 0.065 + Double(index) * 0.17).truncatingRemainder(dividingBy: 1)
+            let trainProgress = (phase * SplashMotion.trainSpeed + Double(index) * 0.17)
+                .truncatingRemainder(dividingBy: 1)
             let trainPoint = pointOnCurve(
-                t: trainT,
+                progress: trainProgress,
                 p0: CGPoint(x: -42, y: size.height * route.1),
                 p1: CGPoint(x: size.width * 0.28, y: size.height * route.2),
                 p2: CGPoint(x: size.width * 0.70, y: size.height * (route.2 + route.5)),
@@ -302,7 +302,7 @@ private struct LoadingRouteMesh: View {
         ]
 
         for (index, station) in stations.enumerated() {
-            let wave = max(0, sin(phase * 1.8 + Double(index) * 0.75))
+            let wave = max(0, sin(phase * SplashMotion.stationPulseSpeed + Double(index) * 0.75))
             let center = CGPoint(x: size.width * station.0, y: size.height * station.1)
             let ring = CGRect(
                 x: center.x - 9 - wave * 7,
@@ -344,26 +344,26 @@ private struct LoadingRouteMesh: View {
     }
 
     private func pointOnCurve(
-        t: Double,
+        progress: Double,
         p0: CGPoint,
         p1: CGPoint,
         p2: CGPoint,
         p3: CGPoint
     ) -> CGPoint {
-        let u = 1 - t
-        let tt = t * t
-        let uu = u * u
-        let uuu = uu * u
-        let ttt = tt * t
+        let inverseProgress = 1 - progress
+        let progressSquared = progress * progress
+        let inverseSquared = inverseProgress * inverseProgress
+        let inverseCubed = inverseSquared * inverseProgress
+        let progressCubed = progressSquared * progress
 
-        let x = uuu * p0.x
-            + 3 * uu * t * p1.x
-            + 3 * u * tt * p2.x
-            + ttt * p3.x
-        let y = uuu * p0.y
-            + 3 * uu * t * p1.y
-            + 3 * u * tt * p2.y
-            + ttt * p3.y
+        let x = inverseCubed * p0.x
+            + 3 * inverseSquared * progress * p1.x
+            + 3 * inverseProgress * progressSquared * p2.x
+            + progressCubed * p3.x
+        let y = inverseCubed * p0.y
+            + 3 * inverseSquared * progress * p1.y
+            + 3 * inverseProgress * progressSquared * p2.y
+            + progressCubed * p3.y
         return CGPoint(x: x, y: y)
     }
 }
@@ -373,7 +373,7 @@ private struct LoadingProgressRail: View {
     let palette: SplashPalette
 
     var body: some View {
-        TimelineView(.animation) { context in
+        TimelineView(.periodic(from: Date(), by: SplashMotion.frameInterval)) { context in
             let phase = context.date.timeIntervalSinceReferenceDate
             Canvas { canvas, size in
                 let midY = size.height / 2
@@ -389,10 +389,10 @@ private struct LoadingProgressRail: View {
                 )
 
                 for (index, color) in colors.enumerated() {
-                    let progress = (phase * 0.36 + Double(index) * 0.18)
+                    let progress = (phase * SplashMotion.loaderSpeed + Double(index) * 0.18)
                         .truncatingRemainder(dividingBy: 1)
                     let x = 8 + (size.width - 16) * progress
-                    let pulse = 0.74 + max(0, sin(phase * 4.2 + Double(index))) * 0.26
+                    let pulse = 0.74 + max(0, sin(phase * SplashMotion.loaderPulseSpeed + Double(index))) * 0.26
                     let dot = CGRect(x: x - 4.5, y: midY - 4.5, width: 9, height: 9)
 
                     canvas.fill(
@@ -406,6 +406,14 @@ private struct LoadingProgressRail: View {
         }
         .accessibilityHidden(true)
     }
+}
+
+private enum SplashMotion {
+    static let frameInterval = 1.0 / 30.0
+    static let trainSpeed = 0.42
+    static let stationPulseSpeed = 3.4
+    static let loaderSpeed = 1.24
+    static let loaderPulseSpeed = 6.0
 }
 
 #Preview("Splash Dark") {
