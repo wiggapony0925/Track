@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import math
 import os
@@ -96,25 +97,37 @@ def _get_shapes_all_lock() -> asyncio.Lock:
         _shapes_all_lock = asyncio.Lock()
     return _shapes_all_lock
 
+def _shape_cache_fingerprint() -> str:
+    """Fingerprint source files that define the /subway/shapes/all geometry."""
+    hasher = hashlib.sha256()
+    for source in (
+        _Path(__file__).resolve(),
+        _Path(__file__).resolve().parent.parent
+        / "services"
+        / "mapping"
+        / "subway"
+        / "corridor.py",
+    ):
+        try:
+            hasher.update(source.read_bytes())
+        except OSError:
+            hasher.update(str(source).encode("utf-8"))
+    return hasher.hexdigest()[:12]
+
+
 # ── Disk cache versioning ──
-# Bump this whenever corridor_pipeline.py changes affect polyline output.
-# The persistent Render disk survives deploys, so without a version tag
-# the stale cached pipeline result would be served forever.
-_SHAPES_DISK_CACHE_VERSION = 7  # v7: preserve true branch loops; stricter stitching
+# Render's persistent disk survives deploys, so the shapes/all cache key is
+# derived from the source that builds the geometry. This avoids manual version
+# bumps whenever corridor rules or router assembly code changes.
+_SHAPES_DISK_CACHE_FINGERPRINT = _shape_cache_fingerprint()
 _SHAPES_DISK_CACHE_PATH = (
     _Path(__file__).resolve().parent.parent
     / "data"
-    / f"_cache_shapes_all_v{_SHAPES_DISK_CACHE_VERSION}.json"
+    / f"_cache_shapes_all_{_SHAPES_DISK_CACHE_FINGERPRINT}.json"
 )
-# Clean up caches from previous versions on import
-for _old in (
-    _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all.json",
-    _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v1.json",
-    _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v2.json",
-    _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v3.json",
-    _Path(__file__).resolve().parent.parent / "data" / "_cache_shapes_all_v4.json",
-):
-    if _old.exists():
+# Clean up caches from previous source fingerprints on import.
+for _old in _SHAPES_DISK_CACHE_PATH.parent.glob("_cache_shapes_all*.json"):
+    if _old != _SHAPES_DISK_CACHE_PATH:
         _old.unlink(missing_ok=True)
 
 

@@ -41,8 +41,8 @@ final class OfflineCacheManager: ObservableObject {
         static let lirrShapesCachedAt = "cached_lirr_shapes_timestamp"
         static let mnrShapes = "cached_mnr_shapes"
         static let mnrShapesCachedAt = "cached_mnr_shapes_timestamp"
-        static let subwayShapes = "cached_subway_shapes_v4"
-        static let subwayShapesCachedAt = "cached_subway_shapes_timestamp_v4"
+        static let subwayShapes = "cached_subway_shapes_\(PipelineFingerprint.shortHash)"
+        static let subwayShapesCachedAt = "cached_subway_shapes_timestamp_\(PipelineFingerprint.shortHash)"
         static let flattenedPolylines = "cached_flattened_polylines"
         static let flattenedPolylinesCachedAt = "cached_flattened_polylines_timestamp"
         static let flattenedPipelineHash = "cached_flattened_pipeline_hash"
@@ -90,6 +90,8 @@ final class OfflineCacheManager: ObservableObject {
             "cached_subway_shapes_timestamp_v2",
             "cached_subway_shapes_v3",
             "cached_subway_shapes_timestamp_v3",
+            "cached_subway_shapes_v4",
+            "cached_subway_shapes_timestamp_v4",
         ]
         // Legacy per-version timestamp keys (v10–v14)
         let legacyTimestamps = (10...14).map {
@@ -98,6 +100,7 @@ final class OfflineCacheManager: ObservableObject {
         for key in legacyKeys + legacyTimestamps {
             userDefaults.removeObject(forKey: key)
         }
+        cleanLegacySubwayShapeKeys()
         
         startNetworkMonitoring()
     }
@@ -375,6 +378,16 @@ final class OfflineCacheManager: ObservableObject {
             try? FileManager.default.removeItem(
                 at: dir.appendingPathComponent(file)
             )
+        }
+    }
+
+    private func cleanLegacySubwayShapeKeys() {
+        for key in userDefaults.dictionaryRepresentation().keys {
+            guard key.hasPrefix("cached_subway_shapes") else { continue }
+            if key == CacheKey.subwayShapes || key == CacheKey.subwayShapesCachedAt {
+                continue
+            }
+            userDefaults.removeObject(forKey: key)
         }
     }
 
