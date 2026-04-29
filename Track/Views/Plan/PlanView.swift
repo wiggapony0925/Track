@@ -418,24 +418,9 @@ struct PlanView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 13)
             .background(
-                ZStack {
-                    Capsule().fill(
-                        LinearGradient(
-                            colors: [AppTheme.Colors.accent, AppTheme.Colors.accentDeep],
-                            startPoint: .leading, endPoint: .trailing
-                        )
-                    )
-                    Capsule().fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white.opacity(0.15), location: 0),
-                                .init(color: .clear, location: 0.45),
-                            ],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                    )
-                }
-                .shadow(color: AppTheme.Colors.accent.opacity(0.45), radius: 18, y: 6)
+                Capsule()
+                    .fill(AppTheme.Colors.accent)
+                    .shadow(color: AppTheme.Colors.accent.opacity(0.34), radius: 14, y: 5)
             )
         }
         .disabled(viewModel.isLoading)

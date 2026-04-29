@@ -174,7 +174,7 @@ struct TripRouteMapView: View {
         let fallback = CGPoint(x: size.width / 2, y: 118)
         let anchor = selectedStopAnchor ?? fallback
         let x = min(max(anchor.x, 96), max(96, size.width - 96))
-        let y = min(max(anchor.y - 46, 52), max(52, size.height - 52))
+        let y = min(max(118, 72), max(72, size.height - 72))
         return CGPoint(x: x, y: y)
     }
 
@@ -889,42 +889,45 @@ private struct TripStopNameBubble: View {
     let stopName: String
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "mappin.circle.fill")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(AppTheme.Colors.accent)
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.Colors.accent.opacity(0.16))
+                    .frame(width: 28, height: 28)
 
-            Text(stopName)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textPrimary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
+                Image(systemName: "tram.fill")
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundStyle(AppTheme.Colors.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Stop")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+                    .textCase(.uppercase)
+
+                Text(stopName)
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.Colors.textPrimary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(.horizontal, 14)
+        .padding(.leading, 10)
+        .padding(.trailing, 14)
         .padding(.vertical, 10)
+        .frame(width: 228, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AppTheme.Colors.cardElevated.opacity(0.96))
-                .shadow(color: AppTheme.Colors.shadow.opacity(0.38), radius: 14, y: 6)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AppTheme.Colors.cardElevated.opacity(0.97))
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.28), radius: 18, y: 8)
         )
-        .overlay(alignment: .bottom) {
-            TrianglePointer()
-                .fill(AppTheme.Colors.cardElevated.opacity(0.96))
-                .frame(width: 16, height: 8)
-                .offset(y: 7)
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(AppTheme.Colors.accent.opacity(0.16), lineWidth: 1)
         }
         .padding(.horizontal, 22)
-    }
-}
-
-private struct TrianglePointer: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.closeSubpath()
-        return path
     }
 }
 

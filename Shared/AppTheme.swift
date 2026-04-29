@@ -180,12 +180,13 @@ enum AppTheme {
             endPoint: .bottomTrailing
         )
 
-        /// Vibrant accent gradient for hero elements — slightly wider color range.
+        /// App-purple gradient for hero elements. Keep this centered on
+        /// `Colors.accent` so purple surfaces match the main search bar.
         static let accentVibrant = LinearGradient(
             stops: [
-                .init(color: Colors.accentSecondary, location: 0.00),
-                .init(color: Colors.accent, location: 0.50),
-                .init(color: Colors.accentDeep, location: 1.00),
+                .init(color: Colors.accent.opacity(0.96), location: 0.00),
+                .init(color: Colors.accent, location: 0.52),
+                .init(color: Colors.accentDeep.opacity(0.92), location: 1.00),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing

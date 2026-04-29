@@ -106,6 +106,8 @@ struct HomeView: View {
     /// tap inside the route detail sheet — the sheet should collapse (not expand)
     /// so the user can see the focused vehicle on the map.
     @State private var focusFromChip = false
+    @State private var activeMapActionPopup: MapActionPopupItem?
+    @State private var mapActionPopupDismissTask: Task<Void, Never>?
 
     private static let dragSearchActivationDistanceMeters: CLLocationDistance = 60
     private static let dragSearchGPSSnapRadiusMeters: CLLocationDistance = 45
@@ -252,6 +254,7 @@ struct HomeView: View {
                     onRouteStopTap: presentRouteStopDetail,
                     onSystemStationTap: presentTrainStopDetail,
                     onBusStopTap: presentBusStopDetail,
+                    onSavedPlaceTap: presentSavedPlaceActionPopup,
                     isDragSearchActive: isDragSearchActive,
                     dragSearchSettledCenter: dragSearchSettledCenter,
                     sheetHeightObserver: sheetHeightObserver
@@ -317,6 +320,22 @@ struct HomeView: View {
             // they're back online.
             .overlay(alignment: .top) {
                 OfflineBanner()
+            }
+            .overlay(alignment: .top) {
+                if let activeMapActionPopup {
+                    MapActionTopPopup(
+                        item: activeMapActionPopup,
+                        goNow: { goNow(to: activeMapActionPopup.planLocation) },
+                        details: activeMapActionPopup.detailsSelection.map { selection in
+                            { presentStopDetail(selection) }
+                        },
+                        dismiss: dismissMapActionPopup
+                    )
+                    .padding(.horizontal, 18)
+                    .padding(.top, activeMapActionPopup.showsActions ? 8 : 6)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(40)
+                }
             }
             // MARK: - Universal Bottom Sheet
             // Custom drag-controlled overlay (no `.sheet`) — see TrackBottomSheet.
@@ -531,6 +550,40 @@ struct HomeView: View {
             // .onReceive(.quickDestination) subscription before we post.
             try? await Task.sleep(for: .milliseconds(150))
             NotificationCenter.default.post(name: .quickDestination, object: dest)
+        }
+    }
+
+    private func presentMapActionPopup(_ item: MapActionPopupItem) {
+        mapActionPopupDismissTask?.cancel()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+            activeMapActionPopup = item
+        }
+        mapActionPopupDismissTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled else { return }
+            dismissMapActionPopup()
+        }
+        HapticManager.impact(.light)
+    }
+
+    private func dismissMapActionPopup() {
+        mapActionPopupDismissTask?.cancel()
+        mapActionPopupDismissTask = nil
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
+            activeMapActionPopup = nil
+        }
+    }
+
+    private func goNow(to destination: PlanLocation) {
+        handoffMapDestinationToPlan(destination)
+    }
+
+    private func handoffMapDestinationToPlan(_ destination: PlanLocation) {
+        dismissMapActionPopup()
+        NotificationCenter.default.post(name: .switchToTab, object: AppTab.trips)
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            NotificationCenter.default.post(name: .quickDestination, object: destination)
         }
     }
 
@@ -1144,20 +1197,26 @@ struct HomeView: View {
     private func presentRouteStopDetail(_ stop: BusStop) {
         let mode = viewModel.selectedGroupedRoute?.mode ?? "bus"
         let fallbackRouteID = viewModel.selectedGroupedRoute?.routeId
-        presentStopDetail(.routeStop(stop, mode: mode, fallbackRouteID: fallbackRouteID))
+        presentMapActionPopup(.routeStop(stop, mode: mode, fallbackRouteID: fallbackRouteID))
     }
 
     private func presentTrainStopDetail(
         _ station: MapSystemViewModel.ConsolidatedStation
     ) {
-        presentStopDetail(.station(station))
+        presentMapActionPopup(.station(station))
     }
 
     private func presentBusStopDetail(_ stop: BusStop) {
-        presentStopDetail(.bus(stop))
+        presentMapActionPopup(.bus(stop))
+    }
+
+    private func presentSavedPlaceActionPopup(_ place: SavedLocation) {
+        presentMapActionPopup(.savedPlace(place))
     }
 
     private func presentStopDetail(_ selection: StopDetailSelection) {
+        dismissMapActionPopup()
+
         if case .stopDetail(let currentSelection) = sheetNavigator.currentPage,
            currentSelection == selection {
             return
@@ -1782,6 +1841,192 @@ struct HomeView: View {
                 userLocation: locationManager.currentLocation
             )
         }
+    }
+}
+
+private struct MapActionPopupItem: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let iconName: String
+    let accent: Color
+    let planLocation: PlanLocation
+    let detailsSelection: StopDetailSelection?
+    let showsActions: Bool
+
+    static func savedPlace(_ place: SavedLocation) -> MapActionPopupItem {
+        MapActionPopupItem(
+            id: "saved-\(place.id.uuidString)",
+            title: place.name,
+            subtitle: place.address.isEmpty ? place.resolvedCategory.label : place.address,
+            iconName: place.iconName,
+            accent: AppTheme.Colors.accent,
+            planLocation: .saved(place),
+            detailsSelection: nil,
+            showsActions: true
+        )
+    }
+
+    static func bus(_ stop: BusStop) -> MapActionPopupItem {
+        routeStop(stop, mode: "bus", fallbackRouteID: nil, showsActions: true)
+    }
+
+    static func routeStop(
+        _ stop: BusStop,
+        mode: String,
+        fallbackRouteID: String?,
+        showsActions: Bool = false
+    ) -> MapActionPopupItem {
+        let selection = StopDetailSelection.routeStop(
+            stop,
+            mode: mode,
+            fallbackRouteID: fallbackRouteID
+        )
+        return MapActionPopupItem(
+            id: selection.id,
+            title: stop.name,
+            subtitle: selection.kind.title,
+            iconName: selection.kind.iconName,
+            accent: accentColor(for: selection),
+            planLocation: .custom(
+                name: stop.name,
+                address: selection.kind.title,
+                lat: stop.lat,
+                lon: stop.lon
+            ),
+            detailsSelection: selection,
+            showsActions: showsActions
+        )
+    }
+
+    static func station(_ station: MapSystemViewModel.ConsolidatedStation) -> MapActionPopupItem {
+        let selection = StopDetailSelection.station(station)
+        return MapActionPopupItem(
+            id: selection.id,
+            title: station.name,
+            subtitle: selection.kind.title,
+            iconName: selection.kind.iconName,
+            accent: accentColor(for: selection),
+            planLocation: .custom(
+                name: station.name,
+                address: selection.kind.title,
+                lat: station.coordinate.latitude,
+                lon: station.coordinate.longitude
+            ),
+            detailsSelection: selection,
+            showsActions: true
+        )
+    }
+
+    private static func accentColor(for selection: StopDetailSelection) -> Color {
+        switch selection.kind {
+        case .bus: return AppTheme.Colors.accent
+        case .subway:
+            if let route = selection.routeIDs.first {
+                return AppTheme.SubwayColors.color(for: route)
+            }
+            return AppTheme.Colors.accent
+        case .lirr: return AppTheme.CommuterRailColors.lirrBlue
+        case .mnr: return AppTheme.CommuterRailColors.mnrBlue
+        }
+    }
+}
+
+private struct MapActionTopPopup: View {
+    let item: MapActionPopupItem
+    let goNow: () -> Void
+    let details: (() -> Void)?
+    let dismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(item.accent.opacity(0.16))
+                        .frame(width: 38, height: 38)
+
+                    Image(systemName: item.iconName)
+                        .font(.system(size: 16, weight: .heavy))
+                        .foregroundStyle(item.accent)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(item.subtitle)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                        .lineLimit(2)
+                }
+
+                if item.showsActions {
+                    Spacer(minLength: 8)
+
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundStyle(AppTheme.Colors.textSecondary)
+                            .frame(width: 28, height: 28)
+                            .background(Circle().fill(AppTheme.Colors.cardInset))
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+
+            if item.showsActions {
+                HStack(spacing: 9) {
+                    popupButton(title: "Go", icon: "arrow.up.circle.fill", fill: item.accent, text: .white, action: goNow)
+                    if let details {
+                        popupButton(title: "Details", icon: "info.circle.fill", fill: AppTheme.Colors.cardInset, text: AppTheme.Colors.textPrimary, action: details)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: 390)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(AppTheme.Colors.cardElevated.opacity(0.98))
+                .shadow(color: AppTheme.Colors.shadow.opacity(0.30), radius: 22, y: 10)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(AppTheme.Colors.borderSubtle.opacity(0.7), lineWidth: 1)
+        }
+    }
+
+    private func popupButton(
+        title: String,
+        icon: String,
+        fill: Color,
+        text: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .heavy))
+                Text(title)
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+            .foregroundStyle(text)
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
+            .background(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(fill)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

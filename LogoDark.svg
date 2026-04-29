@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Solid Dark Background -->
+  <rect width="1024" height="1024" fill="#02040C"/>
+  
+  <!-- Continuous Route Line -->
+  <path d="M 256 768 L 384 768 A 128 128 0 0 0 512 640 L 512 384 A 128 128 0 0 1 640 256 L 768 256" 
+        fill="none" stroke="#C878FF" stroke-width="88" stroke-linecap="round" />
+        
+  <!-- Start Station (Bottom Left) -->
+  <circle cx="256" cy="768" r="80" fill="#C878FF" />
+  <circle cx="256" cy="768" r="32" fill="#02040C" />
+
+  <!-- End Station (Top Right) -->
+  <circle cx="768" cy="256" r="80" fill="#C878FF" />
+  <circle cx="768" cy="256" r="32" fill="#02040C" />
+</svg>

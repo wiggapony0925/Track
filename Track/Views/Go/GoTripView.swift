@@ -41,8 +41,27 @@ struct GoTripView: View {
 
                 // Floating top controls layered above the map
                 floatingTopControls(topInset: proxy.safeAreaInsets.top)
+
+                if showExitConfirmation {
+                    GoExitConfirmationOverlay(
+                        keepTracking: {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                                showExitConfirmation = false
+                            }
+                        },
+                        exitTrip: {
+                            withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
+                                showExitConfirmation = false
+                            }
+                            session.stop()
+                        }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .zIndex(20)
+                }
             }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: showExitConfirmation)
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(items: shareItems.isEmpty ? [shareText] : shareItems)
                 .presentationDetents([.medium])
@@ -55,18 +74,6 @@ struct GoTripView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(calendarError ?? "Track could not open Calendar.")
-        }
-        .confirmationDialog(
-            "Exit this trip?",
-            isPresented: $showExitConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Exit Trip", role: .destructive) {
-                session.stop()
-            }
-            Button("Keep Tracking", role: .cancel) {}
-        } message: {
-            Text("Track is using this trip to power live guidance, notifications, widgets, and Live Activities.")
         }
         .onAppear {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
@@ -146,7 +153,9 @@ struct GoTripView: View {
             Spacer()
 
             FloatingCircleButton(icon: "xmark") {
-                showExitConfirmation = true
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                    showExitConfirmation = true
+                }
             }
         }
         .padding(.horizontal, 18)
@@ -448,6 +457,84 @@ struct GoTripView: View {
                 startDate: trip.departureTime,
                 endDate: trip.arrivalTime
             )
+        }
+    }
+}
+
+private struct GoExitConfirmationOverlay: View {
+    let keepTracking: () -> Void
+    let exitTrip: () -> Void
+
+    var body: some View {
+        ZStack {
+            AppTheme.Colors.background.opacity(0.48)
+                .ignoresSafeArea()
+                .onTapGesture(perform: keepTracking)
+
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.Colors.warningYellow.opacity(0.14))
+                        .frame(width: 48, height: 48)
+
+                    Image(systemName: "location.slash.fill")
+                        .font(.system(size: 20, weight: .heavy))
+                        .foregroundStyle(AppTheme.Colors.warningYellow)
+                }
+
+                VStack(spacing: 8) {
+                    Text("Exit this trip?")
+                        .font(.system(size: 22, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+
+                    Text("Live guidance, widgets, and arrival alerts will stop.")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(spacing: 10) {
+                    Button(action: keepTracking) {
+                        Text("Keep Tracking")
+                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(AppTheme.Colors.accent)
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: exitTrip) {
+                        Text("Exit Trip")
+                            .font(.system(size: 16, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(AppTheme.Colors.alertRed)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: 336)
+            .background(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(AppTheme.Colors.cardElevated.opacity(0.98))
+                    .shadow(color: AppTheme.Colors.shadow.opacity(0.34), radius: 28, y: 16)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(AppTheme.Colors.borderSubtle.opacity(0.9), lineWidth: 1)
+            }
+            .padding(.horizontal, 24)
         }
     }
 }

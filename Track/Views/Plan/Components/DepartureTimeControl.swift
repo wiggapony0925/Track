@@ -1,5 +1,5 @@
 // Premium departure time control — "Leave now" capsule
-// with gradient fill, and a refined ±15 min stepper.
+// with the app accent fill and a refined ±15 min stepper.
 
 import SwiftUI
 
@@ -61,12 +61,7 @@ struct DepartureTimeControl: View {
                 Capsule()
                     .fill(
                         isLeaveNow
-                            ? AnyShapeStyle(
-                                LinearGradient(
-                                    colors: [AppTheme.Colors.accent, AppTheme.Colors.accentDeep],
-                                    startPoint: .leading, endPoint: .trailing
-                                )
-                            )
+                            ? AnyShapeStyle(AppTheme.Colors.accent)
                             : AnyShapeStyle(AppTheme.Colors.cardBackground)
                     )
                     .overlay(

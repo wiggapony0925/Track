@@ -2,8 +2,8 @@ import MapLibre
 import SwiftUI
 
 struct MapLibreSavedPlacesOverlay: View {
-    private static let pinWidth: CGFloat = 46
-    private static let pinHeight: CGFloat = 58
+    private static let pinWidth: CGFloat = 28
+    private static let pinHeight: CGFloat = 34
 
     let mapView: MLNMapView?
     let places: [SavedLocation]
@@ -26,7 +26,6 @@ struct MapLibreSavedPlacesOverlay: View {
                 }
             }
         }
-        .id(cameraChangeToken)
     }
 }
 
@@ -45,32 +44,27 @@ private struct SavedPlaceMapPin: View {
     var body: some View {
         ZStack(alignment: .top) {
             SavedPlacePinShape()
-                .fill(AppTheme.Gradients.accentVibrant)
-                .shadow(color: AppTheme.Colors.accent.opacity(0.38), radius: 10, x: 0, y: 7)
-                .shadow(color: .black.opacity(0.24), radius: 4, x: 0, y: 2)
+                .fill(AppTheme.Colors.accent)
+                .shadow(color: AppTheme.Colors.accent.opacity(0.26), radius: 6, x: 0, y: 3)
+                .shadow(color: .black.opacity(0.16), radius: 2, x: 0, y: 1)
 
             SavedPlacePinShape()
-                .strokeBorder(.white.opacity(0.82), lineWidth: 2)
+                .strokeBorder(.white.opacity(0.86), lineWidth: 1.1)
 
             Circle()
-                .fill(.white.opacity(0.22))
-                .frame(width: 30, height: 30)
-                .overlay(
-                    Circle()
-                        .strokeBorder(.white.opacity(0.34), lineWidth: 1)
-                )
+                .fill(.white.opacity(0.18))
+                .frame(width: 18, height: 18)
                 .overlay(
                     Image(systemName: iconName)
-                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .font(.system(size: 9.5, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.18), radius: 1, y: 1)
                 )
-                .padding(.top, 7)
+                .padding(.top, 5)
 
             Circle()
                 .fill(.white)
-                .frame(width: 5, height: 5)
-                .position(x: 23, y: 56)
+                .frame(width: 3, height: 3)
+                .position(x: 14, y: 32.6)
         }
         .contentShape(SavedPlacePinShape())
     }

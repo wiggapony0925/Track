@@ -27,26 +27,44 @@ struct ManageSavedAddressesView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    header
+            ZStack(alignment: .top) {
+                AppTheme.Gradients.screen
+                    .ignoresSafeArea()
 
-                    if let errorMessage {
-                        errorBanner(errorMessage)
-                    }
+                RadialGradient(
+                    colors: [
+                        AppTheme.Colors.accent.opacity(0.20),
+                        AppTheme.Colors.accent.opacity(0.05),
+                        .clear,
+                    ],
+                    center: .topTrailing,
+                    startRadius: 24,
+                    endRadius: 360
+                )
+                .ignoresSafeArea()
 
-                    if isLoading {
-                        loadingState
-                    } else if places.isEmpty {
-                        emptyState
-                    } else {
-                        savedAddressesList
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        titleBlock
+                        header
+
+                        if let errorMessage {
+                            errorBanner(errorMessage)
+                        }
+
+                        if isLoading {
+                            loadingState
+                        } else if places.isEmpty {
+                            emptyState
+                        } else {
+                            savedAddressesList
+                        }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 28)
                 }
-                .padding(20)
-                .padding(.bottom, 24)
             }
-            .background(AppTheme.Colors.background.ignoresSafeArea())
             .navigationTitle("Saved Addresses")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -87,64 +105,76 @@ struct ManageSavedAddressesView: View {
         }
     }
 
+    private var titleBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Saved Places")
+                .font(.system(size: 34, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textPrimary)
+            Text("Manage your shortcuts and map pins")
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.Colors.textTertiary)
+        }
+        .padding(.top, 4)
+    }
+
     private var header: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 14) {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(AppTheme.Gradients.accentVibrant)
-                        .frame(width: 52, height: 52)
-                        .shadow(color: AppTheme.Colors.accent.opacity(0.34), radius: 14, y: 7)
+                    Circle()
+                        .fill(.white.opacity(0.18))
+                        .frame(width: 58, height: 58)
+                    Circle()
+                        .stroke(.white.opacity(0.38), lineWidth: 1.2)
+                        .frame(width: 58, height: 58)
                     Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 21, weight: .black, design: .rounded))
+                        .font(.system(size: 24, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                 }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Your Saved Places")
-                        .font(.system(size: 19, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.Colors.textPrimary)
-                    Text("Control shortcuts, map pins, and address details.")
-                        .font(AppTheme.Typography.caption)
-                        .foregroundStyle(AppTheme.Colors.textSecondary)
-                        .lineLimit(2)
+                HStack(spacing: 8) {
+                    summaryChip(value: "\(places.count)", label: "Saved")
+                    summaryChip(value: "\(visiblePlacesCount)", label: "Map")
                 }
-
-                Spacer(minLength: 0)
             }
 
-            HStack(spacing: 10) {
-                statPill(
-                    value: "\(places.count)",
-                    label: "saved",
-                    icon: "bookmark.fill"
-                )
-                statPill(
-                    value: "\(visiblePlacesCount)",
-                    label: "on map",
-                    icon: "eye.fill"
-                )
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Places You Use")
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("Edit names, addresses, and whether each place appears on the map.")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.78))
+                    .lineLimit(3)
             }
+
+            Spacer(minLength: 0)
         }
-        .padding(16)
-        .savedAddressCard(cornerRadius: 24, shadowRadius: 14, shadowY: 5)
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(AppTheme.Colors.accent)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+        )
+        .shadow(color: AppTheme.Colors.accent.opacity(0.34), radius: 18, y: 8)
     }
 
-    private func statPill(value: String, label: String, icon: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(AppTheme.Colors.accent)
+    private func summaryChip(value: String, label: String) -> some View {
+        HStack(spacing: 5) {
             Text(value)
                 .font(.system(size: 14, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textPrimary)
+                .foregroundStyle(.white)
             Text(label)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(AppTheme.Colors.textSecondary)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white.opacity(0.78))
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 8)
-        .background(Capsule().fill(AppTheme.Colors.accentTint.opacity(0.55)))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(.white.opacity(0.18)))
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -239,7 +269,7 @@ struct ManageSavedAddressesView: View {
                     .foregroundStyle(AppTheme.Colors.textSecondary)
                     .textCase(.uppercase)
                 Spacer()
-                Text("Tap eye to show on map")
+                Text("Eye toggles map pins")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(AppTheme.Colors.textTertiary)
             }
@@ -264,7 +294,7 @@ struct ManageSavedAddressesView: View {
                         .foregroundStyle(AppTheme.Colors.textPrimary)
                         .lineLimit(1)
 
-                    categoryChip(place.resolvedCategory.label)
+                    categoryDot(place.resolvedCategory.label)
                 }
                 Text(place.address.isEmpty ? place.resolvedCategory.label : place.address)
                     .font(AppTheme.Typography.caption)
@@ -291,19 +321,19 @@ struct ManageSavedAddressesView: View {
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(AppTheme.Colors.accent)
                     .frame(width: 32, height: 32)
-                    .background(Circle().fill(AppTheme.Colors.accentTint.opacity(0.45)))
+                    .background(Circle().fill(AppTheme.Colors.cardInset))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Edit saved address")
         }
         .padding(12)
-        .savedAddressCard(cornerRadius: 20, shadowRadius: 10, shadowY: 3)
+        .savedAddressCard(cornerRadius: 20, shadowRadius: 12, shadowY: 4)
     }
 
     private func placeBadge(_ place: SavedLocation) -> some View {
         ZStack(alignment: .bottomTrailing) {
             Circle()
-                .fill(AppTheme.Gradients.accentSurface)
+                .fill(AppTheme.Colors.accentTint.opacity(0.78))
                 .frame(width: 48, height: 48)
                 .overlay(
                     Circle()
@@ -321,14 +351,11 @@ struct ManageSavedAddressesView: View {
         .frame(width: 50, height: 50)
     }
 
-    private func categoryChip(_ label: String) -> some View {
+    private func categoryDot(_ label: String) -> some View {
         Text(label)
-            .font(.system(size: 10, weight: .bold, design: .rounded))
-            .foregroundStyle(AppTheme.Colors.accent)
+            .font(.system(size: 10, weight: .heavy, design: .rounded))
+            .foregroundStyle(AppTheme.Colors.textTertiary)
             .lineLimit(1)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(Capsule().fill(AppTheme.Colors.accentTint.opacity(0.55)))
     }
 
     private func visibilityPill(_ isVisible: Bool) -> some View {
@@ -338,15 +365,18 @@ struct ManageSavedAddressesView: View {
             Text(isVisible ? "Map" : "Off")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))
         }
-        .foregroundStyle(isVisible ? AppTheme.Colors.textOnColor : AppTheme.Colors.textTertiary)
-        .frame(width: 68, height: 32)
+        .foregroundStyle(isVisible ? AppTheme.Colors.accent : AppTheme.Colors.textTertiary)
+        .frame(width: 60, height: 32)
         .background(
             Capsule()
-                .fill(isVisible ? AnyShapeStyle(AppTheme.Gradients.accent) : AnyShapeStyle(AppTheme.Colors.cardInset))
+                .fill(AppTheme.Colors.cardInset)
         )
         .overlay(
             Capsule()
-                .strokeBorder(isVisible ? .white.opacity(0.22) : AppTheme.Colors.borderSubtle.opacity(0.25), lineWidth: 1)
+                .strokeBorder(
+                    isVisible ? AppTheme.Colors.accent.opacity(0.24) : AppTheme.Colors.borderSubtle.opacity(0.25),
+                    lineWidth: 1
+                )
         )
     }
 

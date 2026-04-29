@@ -56,7 +56,8 @@ final class PrefetchService {
     // MARK: - Private
 
     private func runPrefetch(force: Bool) async {
-        guard let userID = SupabaseManager.shared.currentUser?.id.uuidString.lowercased() else {
+        guard let userID = SupabaseManager.shared.currentUser?.id.uuidString.lowercased()
+            ?? SupabaseManager.shared.storedUserIdString?.lowercased() else {
             return
         }
         guard OfflineCacheManager.shared.isOnline else {
@@ -65,6 +66,10 @@ final class PrefetchService {
 
         lastRunAt = Date()
         let cache = PlannerDataCache.shared
+        let snapshot = cache.snapshot(for: userID)
+        if !snapshot.savedPlaces.isEmpty, SavedPlacesCache.shared.allPlaces.isEmpty {
+            SavedPlacesCache.shared.update(all: Self.savedLocations(from: snapshot.savedPlaces))
+        }
 
         // Decide which buckets to refresh based on per-bucket TTL.
         let needsSavedPlaces = force || cache.isStale(
@@ -84,6 +89,9 @@ final class PrefetchService {
                     do {
                         let places = try await TrackAPI.fetchEngineSavedPlaces(userID: userID)
                         await cache.updateSavedPlaces(places, for: userID)
+                        await MainActor.run {
+                            SavedPlacesCache.shared.update(all: Self.savedLocations(from: places))
+                        }
                     } catch {
                         // Silent — cached data remains usable.
                     }
@@ -129,6 +137,28 @@ final class PrefetchService {
                 }
             }
             await group.waitForAll()
+        }
+    }
+
+    private static func savedLocations(
+        from records: [PlannerSavedPlaceRecord]
+    ) -> [SavedLocation] {
+        records.map { record in
+            let category = SavedLocationCategory(engineKind: record.kind)
+            return SavedLocation(
+                enginePlaceID: record.placeID,
+                name: record.label,
+                address: record.address ?? "",
+                latitude: record.lat,
+                longitude: record.lon,
+                category: category,
+                iconName: record.icon ?? category.defaultIcon,
+                visibleOnMap: record.visibleOnMap,
+                createdAt: Date(timeIntervalSince1970: TimeInterval(record.createdAt)),
+                lastUsedAt: record.lastUsedAt.map {
+                    Date(timeIntervalSince1970: TimeInterval($0))
+                }
+            )
         }
     }
 }

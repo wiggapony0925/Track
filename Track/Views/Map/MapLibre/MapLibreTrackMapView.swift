@@ -38,6 +38,7 @@ struct MapLibreTrackMapView: View {
     var onRouteStopTap: ((BusStop) -> Void)? = nil
     var onSystemStationTap: ((MapSystemViewModel.ConsolidatedStation) -> Void)? = nil
     var onBusStopTap: ((BusStop) -> Void)? = nil
+    var onSavedPlaceTap: ((SavedLocation) -> Void)? = nil
 
     /// Whether drag-to-search is currently active.
     var isDragSearchActive: Bool = false
@@ -178,6 +179,7 @@ struct MapLibreTrackMapView: View {
                 walkingRouteCoords: cachedWalkingCoords,
                 busVehicles: viewModel.filteredBusVehicles,
                 trainVehicles: viewModel.filteredTrainVehicles,
+                savedPlaces: savedPlacesCache.visibleMapPlaces,
                 transferConnectors: _cachedTransferConnectors,
                 crossings: viewModel.mapSystem.cachedCrossings,
                 bakedTileSet: viewModel.mapSystem.bakedTileSet,
@@ -206,6 +208,7 @@ struct MapLibreTrackMapView: View {
                 },
                 onBusStopTap: onBusStopTap,
                 onRouteStopTap: handleStopTap,
+                onSavedPlaceTap: handleSavedPlaceTap,
                 sheetHeightObserver: sheetHeightObserver,
                 freezeSheetInsetWhileDragSearching: isDragSearchActive
             )
@@ -268,20 +271,20 @@ struct MapLibreTrackMapView: View {
             hasSelectedRoute: viewModel.selectedRouteId != nil,
             cameraChangeToken: cameraChangeToken
         )
+    }
 
-        MapLibreSavedPlacesOverlay(
-            mapView: mapViewRef,
-            places: savedPlacesCache.visibleMapPlaces,
-            cameraChangeToken: cameraChangeToken,
-            onTap: { place in
-                NotificationCenter.default.post(
-                    name: .quickDestination,
-                    object: PlanLocation.saved(place)
-                )
-                NotificationCenter.default.post(name: .switchToTab, object: AppTab.trips)
-                HapticManager.impact(.medium)
-            }
+    private func handleSavedPlaceTap(_ place: SavedLocation) {
+        if let onSavedPlaceTap {
+            onSavedPlaceTap(place)
+            return
+        }
+
+        NotificationCenter.default.post(
+            name: .quickDestination,
+            object: PlanLocation.saved(place)
         )
+        NotificationCenter.default.post(name: .switchToTab, object: AppTab.trips)
+        HapticManager.impact(.medium)
     }
 
     // MARK: - Viewport Cache (same logic as TrackMapView)

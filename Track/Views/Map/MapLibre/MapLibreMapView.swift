@@ -104,6 +104,19 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         return signature
     }
 
+    private static func savedPlaceSignature(_ places: [SavedLocation]) -> Int {
+        var signature = places.count &* 16_777_619
+        for place in places {
+            signature ^= place.id.hashValue
+            signature ^= place.enginePlaceID ?? 0
+            signature ^= place.name.hashValue
+            signature ^= place.iconName.hashValue
+            signature ^= Self.coordinateSignature(place.coordinate)
+            signature = signature &* 16_777_619
+        }
+        return signature
+    }
+
     private static func stationsRenderSignature(
         _ stations: [MapSystemViewModel.ConsolidatedStation]
     ) -> Int {
@@ -191,6 +204,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 == Self.coordinateSignature(rhs.tripDestinationCoordinate ?? CLLocationCoordinate2D())
         guard tripEq else { return false }
 
+        let savedPlacesEq: Bool = Self.savedPlaceSignature(lhs.savedPlaces)
+            == Self.savedPlaceSignature(rhs.savedPlaces)
+        guard savedPlacesEq else { return false }
+
         return true
     }
 
@@ -260,6 +277,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// Train vehicle positions.
     var trainVehicles: [TrainVehicle]
 
+    /// Visible saved places rendered directly inside MapLibre style layers.
+    var savedPlaces: [SavedLocation] = []
+
     /// Transfer connectors between station complexes.
     var transferConnectors: [TransferConnector]
 
@@ -318,6 +338,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
 
     /// Called when a trip route stop dot is tapped on the map.
     var onTripStopTap: ((BusStop) -> Void)?
+
+    /// Called when a saved place marker is tapped on the map.
+    var onSavedPlaceTap: ((SavedLocation) -> Void)?
 
     /// Bridges real-time sheet height → contentInset.bottom (bypasses SwiftUI).
     /// Wired once in makeUIView; not included in Equatable check.
@@ -427,11 +450,27 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 coordinator.sheetInsetSyncGeneration &+= 1
                 let generation = coordinator.sheetInsetSyncGeneration
                 coordinator.suppressCameraSyncForSheetInset = true
+                let preservedCenter = mapView?.centerCoordinate
+                let preservedZoom = mapView?.zoomLevel
+                let preservedDirection = mapView?.direction ?? 0
+                let preservedPitch = mapView?.camera.pitch ?? 0
                 mapView?.setContentInset(
                     UIEdgeInsets(top: 0, left: 0, bottom: height, right: 0),
                     animated: false,
                     completionHandler: nil
                 )
+                if let preservedCenter, let preservedZoom {
+                    mapView?.setCenter(
+                        preservedCenter,
+                        zoomLevel: preservedZoom,
+                        direction: preservedDirection,
+                        animated: false
+                    )
+                    if let camera = mapView?.camera {
+                        camera.pitch = preservedPitch
+                        mapView?.camera = camera
+                    }
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     if coordinator.sheetInsetSyncGeneration == generation {
                         coordinator.suppressCameraSyncForSheetInset = false
@@ -499,7 +538,8 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 // and wastes GPU time when the map view isn't in a window).
                 let snapshot: UIImage?
                 if mapView.window != nil {
-                    let renderer = UIGraphicsImageRenderer(bounds: mapView.bounds)
+                    let format = UIGraphicsImageRendererFormat(for: mapView.traitCollection)
+                    let renderer = UIGraphicsImageRenderer(bounds: mapView.bounds, format: format)
                     snapshot = renderer.image { _ in
                         mapView.drawHierarchy(in: mapView.bounds, afterScreenUpdates: false)
                     }
@@ -701,6 +741,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private var lastTransferHash: Int = -1
         private var lastRadiusHash: Int = -1
         private var lastBusHash: Int = -1
+        private var lastSavedPlacesHash: Int = -1
         private var lastTripRouteHash: Int = -1
         private var lastTripFitCameraSignature: Int = -1
         private var lastDarkMode: Bool?
@@ -827,6 +868,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             lastWalkingHash = -1
             lastTransferHash = -1
             lastRadiusHash = -1
+            lastSavedPlacesHash = -1
             lastTripRouteHash = -1
             lastTripFitCameraSignature = -1
             lastDarkMode = nil
@@ -1015,6 +1057,17 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 width: 44, height: 44
             )
 
+            let savedPlaceFeatures = mapView.visibleFeatures(
+                in: rect,
+                styleLayerIdentifiers: [Self.savedPlaceLayerID]
+            )
+            if let hit = savedPlaceFeatures.first,
+               let placeID = hit.attributes["place_id"] as? String,
+               let place = parent.savedPlaces.first(where: { $0.id.uuidString == placeID }) {
+                parent.onSavedPlaceTap?(place)
+                return
+            }
+
             if parent.hasActiveRoute {
                 let features = mapView.visibleFeatures(
                     in: rect,
@@ -1149,6 +1202,7 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 style: style,
                 representable: representable
             )
+            updateSavedPlacesIfNeeded(style: style, representable: representable)
         }
 
         // MARK: - Hash-gated layer update helpers
@@ -1321,6 +1375,17 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             guard busHash != lastBusHash else { return }
             lastBusHash = busHash
             updateBusMapLayers(style: style, representable: representable)
+        }
+
+        private func updateSavedPlacesIfNeeded(
+            style: MLNStyle,
+            representable: MapLibreMapView
+        ) {
+            let savedPlacesHash = MapLibreMapView.savedPlaceSignature(representable.savedPlaces)
+                ^ (representable.isDarkMode ? 0xD4A : 0)
+            guard savedPlacesHash != lastSavedPlacesHash else { return }
+            lastSavedPlacesHash = savedPlacesHash
+            updateSavedPlaceLayers(style: style, representable: representable)
         }
 
         // MARK: - System Map Layers (Subway + Commuter + Elevated)
@@ -2236,6 +2301,139 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 layer.lineDashPattern = NSExpression(forConstantValue: [2.0, 1.5])
                 style.addLayer(layer)
             }
+        }
+
+        // MARK: - Saved Places
+
+        private static let savedPlaceSourceID = "saved-places-src"
+        private static let savedPlaceLayerID = "saved-places-symbols"
+
+        private func updateSavedPlaceLayers(style: MLNStyle, representable: MapLibreMapView) {
+            registerSavedPlaceImages(style: style, places: representable.savedPlaces)
+
+            let features: [MLNPointFeature] = representable.savedPlaces.map { place in
+                let feature = MLNPointFeature()
+                feature.coordinate = place.coordinate
+                feature.attributes = [
+                    "place_id": place.id.uuidString,
+                    "name": place.name,
+                    "address": place.address,
+                    "icon_image": Self.savedPlaceImageName(for: place.iconName),
+                ]
+                return feature
+            }
+            let shape = MLNShapeCollectionFeature(shapes: features)
+
+            if let existing = style.source(withIdentifier: Self.savedPlaceSourceID) as? MLNShapeSource {
+                existing.shape = shape
+            } else {
+                let source = MLNShapeSource(
+                    identifier: Self.savedPlaceSourceID,
+                    shape: shape,
+                    options: nil
+                )
+                style.addSource(source)
+                sourcesCreated.insert(Self.savedPlaceSourceID)
+
+                let layer = MLNSymbolStyleLayer(
+                    identifier: Self.savedPlaceLayerID,
+                    source: source
+                )
+                layer.iconImageName = NSExpression(forKeyPath: "icon_image")
+                layer.iconAnchor = NSExpression(forConstantValue: "center")
+                layer.iconAllowsOverlap = NSExpression(forConstantValue: true)
+                layer.iconIgnoresPlacement = NSExpression(forConstantValue: true)
+                layer.iconOpacity = NSExpression(forConstantValue: 0.95)
+                layer.iconScale = Self.savedPlaceIconScaleExpression
+
+                if let tripStopLayer = style.layer(withIdentifier: Self.tripStopCasingID) {
+                    style.insertLayer(layer, above: tripStopLayer)
+                } else if let routeStopLayer = style.layer(withIdentifier: Self.routeStopCenterLayerID) {
+                    style.insertLayer(layer, above: routeStopLayer)
+                } else {
+                    style.addLayer(layer)
+                }
+            }
+
+            if let layer = style.layer(withIdentifier: Self.savedPlaceLayerID) as? MLNSymbolStyleLayer {
+                layer.iconImageName = NSExpression(forKeyPath: "icon_image")
+                layer.iconAnchor = NSExpression(forConstantValue: "center")
+                layer.iconAllowsOverlap = NSExpression(forConstantValue: true)
+                layer.iconIgnoresPlacement = NSExpression(forConstantValue: true)
+                layer.iconOpacity = NSExpression(forConstantValue: 0.95)
+                layer.iconScale = Self.savedPlaceIconScaleExpression
+            }
+        }
+
+        private func registerSavedPlaceImages(style: MLNStyle, places: [SavedLocation]) {
+            let iconNames = Set(places.map(\.iconName))
+            for iconName in iconNames {
+                let imageName = Self.savedPlaceImageName(for: iconName)
+                style.setImage(Self.savedPlacePinImage(systemName: iconName), forName: imageName)
+            }
+        }
+
+        private static func savedPlaceImageName(for iconName: String) -> String {
+            let safeName = iconName.replacingOccurrences(of: ".", with: "-")
+            return "saved-place-\(safeName)"
+        }
+
+        private static var savedPlaceIconScaleExpression: NSExpression {
+            NSExpression(
+                forMLNInterpolating: .zoomLevelVariable,
+                curveType: .linear,
+                parameters: nil,
+                stops: NSExpression(forConstantValue: [
+                    10: 0.78,
+                    13: 0.88,
+                    16: 1.00,
+                ])
+            )
+        }
+
+        private static func savedPlacePinImage(systemName _: String) -> UIImage {
+            let pointSize: CGFloat = 24
+            let scale: CGFloat = 2
+            let pixelSize = Int(pointSize * scale)
+            let colorSpace = CGColorSpaceCreateDeviceRGB()
+            let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
+
+            guard let context = CGContext(
+                data: nil,
+                width: pixelSize,
+                height: pixelSize,
+                bitsPerComponent: 8,
+                bytesPerRow: 0,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo
+            ) else {
+                return UIImage()
+            }
+
+            context.scaleBy(x: scale, y: scale)
+            let outerRect = CGRect(x: 1.5, y: 1.5, width: 21, height: 21)
+            let innerRect = outerRect.insetBy(dx: 6.2, dy: 6.2)
+
+            context.setShadow(
+                offset: CGSize(width: 0, height: 1),
+                blur: 2.5,
+                color: UIColor.black.withAlphaComponent(0.16).cgColor
+            )
+            context.setFillColor(UIColor(AppTheme.Colors.accent).cgColor)
+            context.fillEllipse(in: outerRect)
+
+            context.setShadow(offset: .zero, blur: 0, color: nil)
+            context.setStrokeColor(UIColor.white.withAlphaComponent(0.90).cgColor)
+            context.setLineWidth(1.2)
+            context.strokeEllipse(in: outerRect)
+
+            context.setFillColor(UIColor.white.withAlphaComponent(0.92).cgColor)
+            context.fillEllipse(in: innerRect)
+
+            guard let cgImage = context.makeImage() else {
+                return UIImage()
+            }
+            return UIImage(cgImage: cgImage, scale: scale, orientation: .up)
         }
 
         // MARK: - Trip Route Overlay (planned trip polylines)

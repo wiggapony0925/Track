@@ -3,8 +3,20 @@
 import SwiftUI
 
 struct SplashLoadingView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("appTheme") private var appTheme = "system"
     @State private var appeared = true
     @State private var pulse = false
+
+    private var resolvedColorScheme: ColorScheme {
+        switch appTheme {
+        case "light": return .light
+        case "dark": return .dark
+        default: return colorScheme
+        }
+    }
+
+    private var palette: SplashPalette { .resolve(resolvedColorScheme) }
 
     private let routeColors: [Color] = [
         AppTheme.SubwayColors.color(for: "1"),
@@ -16,9 +28,8 @@ struct SplashLoadingView: View {
     var body: some View {
         ZStack {
             AuthBackground(haloOffset: CGSize(width: -36, height: -250))
-                .environment(\.colorScheme, .dark)
 
-            LoadingRouteMesh()
+            LoadingRouteMesh(palette: palette)
                 .opacity(appeared ? 1 : 0.72)
                 .scaleEffect(appeared ? 1 : 0.98)
 
@@ -36,8 +47,7 @@ struct SplashLoadingView: View {
             }
             .padding(.horizontal, 28)
         }
-        .background(SplashColors.background.ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .background(palette.background.ignoresSafeArea())
         .onAppear(perform: animateIn)
     }
 
@@ -45,25 +55,29 @@ struct SplashLoadingView: View {
         VStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(SplashColors.accent.opacity(pulse ? 0.30 : 0.18))
+                    .fill(
+                        palette.accent.opacity(
+                            pulse ? palette.pulseHighOpacity : palette.pulseLowOpacity
+                        )
+                    )
                     .frame(width: 168, height: 168)
                     .blur(radius: pulse ? 34 : 24)
 
                 RoundedRectangle(cornerRadius: 30, style: .continuous)
-                    .fill(SplashColors.card.opacity(0.82))
+                    .fill(palette.card.opacity(palette.cardOpacity))
                     .frame(width: 106, height: 106)
                     .overlay(
                         RoundedRectangle(cornerRadius: 30, style: .continuous)
                             .strokeBorder(
                                 LinearGradient(
-                                    colors: [.white.opacity(0.34), .white.opacity(0.06)],
+                                    colors: [palette.cardHighlight, palette.cardBorder],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
                                 lineWidth: 0.9
                             )
                     )
-                    .shadow(color: Color.black.opacity(0.42), radius: 22, y: 12)
+                            .shadow(color: palette.cardShadow, radius: 22, y: 12)
 
                 Image("AppIconImage")
                     .resizable()
@@ -77,47 +91,29 @@ struct SplashLoadingView: View {
             VStack(spacing: 4) {
                 Text("Track")
                     .font(.system(size: 36, weight: .black, design: .rounded))
-                    .foregroundStyle(SplashColors.textPrimary)
+                    .foregroundStyle(palette.textPrimary)
                     .kerning(-0.5)
 
                 Text("Getting live transit ready")
                     .font(.system(size: 13.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(SplashColors.textSecondary)
+                    .foregroundStyle(palette.textSecondary)
                     .multilineTextAlignment(.center)
             }
         }
     }
 
     private var loadingIndicator: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 8) {
-                ForEach(routeColors.indices, id: \.self) { index in
-                    TimelineView(.animation) { context in
-                        let phase = context.date.timeIntervalSinceReferenceDate
-                        let scale = dotScale(phase: phase, index: index)
-
-                        Circle()
-                            .fill(routeColors[index])
-                            .frame(width: 8, height: 8)
-                            .scaleEffect(scale)
-                            .opacity(scale > 1.08 ? 1 : 0.46)
-                    }
-                    .frame(width: 14, height: 14)
-                }
-            }
+        VStack(spacing: 10) {
+            LoadingProgressRail(colors: routeColors, palette: palette)
+                .frame(width: 148, height: 24)
 
             Text("Loading")
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundStyle(SplashColors.textTertiary)
+                .foregroundStyle(palette.textTertiary)
                 .textCase(.uppercase)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Loading Track")
-    }
-
-    private func dotScale(phase: TimeInterval, index: Int) -> CGFloat {
-        let wave = sin((phase * 3.2) + Double(index) * 0.72)
-        return 1 + max(0, wave) * 0.58
     }
 
     private func animateIn() {
@@ -131,16 +127,65 @@ struct SplashLoadingView: View {
     }
 }
 
-private enum SplashColors {
-    static let background = Color(red: 0.008, green: 0.016, blue: 0.047)
-    static let card = Color(red: 0.078, green: 0.106, blue: 0.173)
-    static let accent = Color(red: 0.784, green: 0.471, blue: 1.0)
-    static let textPrimary = Color(red: 0.972, green: 0.972, blue: 1.0)
-    static let textSecondary = Color(red: 0.608, green: 0.643, blue: 0.761)
-    static let textTertiary = Color(red: 0.392, green: 0.439, blue: 0.557)
+private struct SplashPalette {
+    let background: Color
+    let card: Color
+    let accent: Color
+    let textPrimary: Color
+    let textSecondary: Color
+    let textTertiary: Color
+    let streetLine: Color
+    let stationDot: Color
+    let cardHighlight: Color
+    let cardBorder: Color
+    let cardShadow: Color
+    let cardOpacity: Double
+    let pulseLowOpacity: Double
+    let pulseHighOpacity: Double
+
+    static func resolve(_ scheme: ColorScheme) -> SplashPalette {
+        switch scheme {
+        case .light:
+            SplashPalette(
+                background: Color(red: 0.948, green: 0.944, blue: 0.984),
+                card: Color.white,
+                accent: AppTheme.Colors.accent,
+                textPrimary: Color(red: 0.070, green: 0.078, blue: 0.145),
+                textSecondary: Color(red: 0.384, green: 0.408, blue: 0.502),
+                textTertiary: Color(red: 0.520, green: 0.545, blue: 0.650),
+                streetLine: Color(red: 0.070, green: 0.078, blue: 0.145).opacity(0.075),
+                stationDot: Color.white.opacity(0.92),
+                cardHighlight: Color.white.opacity(0.96),
+                cardBorder: AppTheme.Colors.accent.opacity(0.14),
+                cardShadow: Color(red: 0.070, green: 0.078, blue: 0.145).opacity(0.16),
+                cardOpacity: 0.90,
+                pulseLowOpacity: 0.12,
+                pulseHighOpacity: 0.22
+            )
+        default:
+            SplashPalette(
+                background: Color(red: 0.008, green: 0.016, blue: 0.047),
+                card: Color(red: 0.078, green: 0.106, blue: 0.173),
+                accent: AppTheme.Colors.accent,
+                textPrimary: Color(red: 0.972, green: 0.972, blue: 1.0),
+                textSecondary: Color(red: 0.608, green: 0.643, blue: 0.761),
+                textTertiary: Color(red: 0.392, green: 0.439, blue: 0.557),
+                streetLine: Color(red: 0.972, green: 0.972, blue: 1.0).opacity(0.06),
+                stationDot: Color.white.opacity(0.70),
+                cardHighlight: Color.white.opacity(0.34),
+                cardBorder: Color.white.opacity(0.06),
+                cardShadow: Color.black.opacity(0.42),
+                cardOpacity: 0.82,
+                pulseLowOpacity: 0.18,
+                pulseHighOpacity: 0.30
+            )
+        }
+    }
 }
 
 private struct LoadingRouteMesh: View {
+    let palette: SplashPalette
+
     var body: some View {
         GeometryReader { proxy in
             TimelineView(.animation) { context in
@@ -157,8 +202,8 @@ private struct LoadingRouteMesh: View {
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0.00),
-                    .init(color: .black, location: 0.16),
-                    .init(color: .black, location: 0.82),
+                    .init(color: .black, location: 0.10),
+                    .init(color: .black, location: 0.88),
                     .init(color: .clear, location: 1.00),
                 ],
                 startPoint: .top,
@@ -168,16 +213,15 @@ private struct LoadingRouteMesh: View {
     }
 
     private func drawLocalStreets(in canvas: inout GraphicsContext, size: CGSize) {
-        let stroke = StrokeStyle(lineWidth: 0.7, lineCap: .round)
-        let color = SplashColors.textPrimary.opacity(0.06)
-        let spacing: CGFloat = 38
+        let stroke = StrokeStyle(lineWidth: 0.55, lineCap: .round)
+        let spacing: CGFloat = 34
 
-        var y: CGFloat = -20
-        while y < size.height + 20 {
+        var y: CGFloat = -40
+        while y < size.height + 40 {
             var path = Path()
-            path.move(to: CGPoint(x: -30, y: y))
-            path.addLine(to: CGPoint(x: size.width + 30, y: y + size.width * 0.22))
-            canvas.stroke(path, with: .color(color), style: stroke)
+            path.move(to: CGPoint(x: -36, y: y))
+            path.addLine(to: CGPoint(x: size.width + 36, y: y + size.width * 0.17))
+            canvas.stroke(path, with: .color(palette.streetLine), style: stroke)
             y += spacing
         }
 
@@ -185,9 +229,9 @@ private struct LoadingRouteMesh: View {
         while x < size.width + 60 {
             var path = Path()
             path.move(to: CGPoint(x: x, y: -20))
-            path.addLine(to: CGPoint(x: x + size.height * 0.18, y: size.height + 20))
-            canvas.stroke(path, with: .color(color.opacity(0.8)), style: stroke)
-            x += spacing + 18
+            path.addLine(to: CGPoint(x: x + size.height * 0.12, y: size.height + 20))
+            canvas.stroke(path, with: .color(palette.streetLine.opacity(0.72)), style: stroke)
+            x += spacing + 14
         }
     }
 
@@ -197,17 +241,24 @@ private struct LoadingRouteMesh: View {
         date: Date
     ) {
         let phase = date.timeIntervalSinceReferenceDate
-        let routes: [(Color, CGFloat, CGFloat, CGFloat, Double)] = [
-            (AppTheme.SubwayColors.color(for: "1"), 0.08, 0.40, 0.76, 0.42),
-            (AppTheme.SubwayColors.color(for: "4"), 0.16, 0.62, 0.88, 0.36),
-            (AppTheme.SubwayColors.color(for: "A"), 0.33, 0.20, 0.67, 0.38),
-            (AppTheme.SubwayColors.color(for: "B"), 0.48, 0.78, 1.04, 0.34),
-            (AppTheme.SubwayColors.color(for: "N"), 0.62, 0.30, 1.15, 0.30),
+        let routes: [(Color, CGFloat, CGFloat, CGFloat, Double, CGFloat)] = [
+            (AppTheme.SubwayColors.color(for: "1"), -0.02, 0.30, 0.70, 0.44, -0.18),
+            (AppTheme.SubwayColors.color(for: "4"), 0.12, 0.52, 0.86, 0.38, 0.10),
+            (AppTheme.SubwayColors.color(for: "A"), 0.28, 0.18, 0.62, 0.42, 0.26),
+            (AppTheme.SubwayColors.color(for: "B"), 0.40, 0.72, 1.02, 0.36, -0.06),
+            (AppTheme.SubwayColors.color(for: "N"), 0.54, 0.34, 1.12, 0.34, 0.18),
+            (AppTheme.SubwayColors.color(for: "7"), 0.78, 0.56, 0.12, 0.26, -0.24),
         ]
 
         for (index, route) in routes.enumerated() {
-            let path = routePath(size: size, startY: route.1, bend: route.2, endY: route.3)
-            let glowWidth = 10 + CGFloat(sin(phase * 1.15 + Double(index)) * 1.4)
+            let path = routePath(
+                size: size,
+                startY: route.1,
+                bend: route.2,
+                endY: route.3,
+                sway: route.5
+            )
+            let glowWidth = 8.5 + CGFloat(sin(phase * 1.1 + Double(index)) * 1.1)
 
             canvas.stroke(
                 path,
@@ -217,8 +268,21 @@ private struct LoadingRouteMesh: View {
             canvas.stroke(
                 path,
                 with: .color(route.0.opacity(route.4)),
-                style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round)
+                style: StrokeStyle(lineWidth: 3.4, lineCap: .round, lineJoin: .round)
             )
+
+            let trainT = (phase * 0.065 + Double(index) * 0.17).truncatingRemainder(dividingBy: 1)
+            let trainPoint = pointOnCurve(
+                t: trainT,
+                p0: CGPoint(x: -42, y: size.height * route.1),
+                p1: CGPoint(x: size.width * 0.28, y: size.height * route.2),
+                p2: CGPoint(x: size.width * 0.70, y: size.height * (route.2 + route.5)),
+                p3: CGPoint(x: size.width + 42, y: size.height * route.3)
+            )
+            let glint = CGRect(x: trainPoint.x - 3, y: trainPoint.y - 3, width: 6, height: 6)
+            canvas.fill(Path(ellipseIn: glint.insetBy(dx: -5, dy: -5)), with: .color(route.0.opacity(0.16)))
+            canvas.fill(Path(ellipseIn: glint), with: .color(Color.white.opacity(0.90)))
+            canvas.stroke(Path(ellipseIn: glint), with: .color(route.0.opacity(0.82)), lineWidth: 1.1)
         }
     }
 
@@ -229,11 +293,12 @@ private struct LoadingRouteMesh: View {
     ) {
         let phase = date.timeIntervalSinceReferenceDate
         let stations: [(CGFloat, CGFloat, Color)] = [
-            (0.23, 0.31, AppTheme.SubwayColors.color(for: "1")),
-            (0.44, 0.43, AppTheme.SubwayColors.color(for: "4")),
-            (0.62, 0.52, AppTheme.SubwayColors.color(for: "A")),
-            (0.74, 0.66, AppTheme.SubwayColors.color(for: "B")),
-            (0.36, 0.72, AppTheme.SubwayColors.color(for: "N")),
+            (0.18, 0.26, AppTheme.SubwayColors.color(for: "1")),
+            (0.34, 0.41, AppTheme.SubwayColors.color(for: "4")),
+            (0.52, 0.50, AppTheme.SubwayColors.color(for: "A")),
+            (0.70, 0.63, AppTheme.SubwayColors.color(for: "B")),
+            (0.82, 0.75, AppTheme.SubwayColors.color(for: "N")),
+            (0.28, 0.78, AppTheme.SubwayColors.color(for: "7")),
         ]
 
         for (index, station) in stations.enumerated() {
@@ -252,23 +317,103 @@ private struct LoadingRouteMesh: View {
                 with: .color(station.2.opacity(0.16 * (1 - wave))),
                 lineWidth: 1.1
             )
-            canvas.fill(Path(ellipseIn: dot), with: .color(Color.white.opacity(0.70)))
-            canvas.stroke(Path(ellipseIn: dot), with: .color(station.2.opacity(0.75)), lineWidth: 1)
+            canvas.fill(Path(ellipseIn: dot), with: .color(palette.stationDot))
+            canvas.stroke(
+                Path(ellipseIn: dot),
+                with: .color(station.2.opacity(0.75)),
+                lineWidth: 1
+            )
         }
     }
 
-    private func routePath(size: CGSize, startY: CGFloat, bend: CGFloat, endY: CGFloat) -> Path {
+    private func routePath(
+        size: CGSize,
+        startY: CGFloat,
+        bend: CGFloat,
+        endY: CGFloat,
+        sway: CGFloat
+    ) -> Path {
         var path = Path()
-        path.move(to: CGPoint(x: -28, y: size.height * startY))
+        path.move(to: CGPoint(x: -42, y: size.height * startY))
         path.addCurve(
-            to: CGPoint(x: size.width + 28, y: size.height * endY),
-            control1: CGPoint(x: size.width * 0.22, y: size.height * bend),
-            control2: CGPoint(x: size.width * 0.78, y: size.height * (bend + 0.16))
+            to: CGPoint(x: size.width + 42, y: size.height * endY),
+            control1: CGPoint(x: size.width * 0.28, y: size.height * bend),
+            control2: CGPoint(x: size.width * 0.70, y: size.height * (bend + sway))
         )
         return path
     }
+
+    private func pointOnCurve(
+        t: Double,
+        p0: CGPoint,
+        p1: CGPoint,
+        p2: CGPoint,
+        p3: CGPoint
+    ) -> CGPoint {
+        let u = 1 - t
+        let tt = t * t
+        let uu = u * u
+        let uuu = uu * u
+        let ttt = tt * t
+
+        let x = uuu * p0.x
+            + 3 * uu * t * p1.x
+            + 3 * u * tt * p2.x
+            + ttt * p3.x
+        let y = uuu * p0.y
+            + 3 * uu * t * p1.y
+            + 3 * u * tt * p2.y
+            + ttt * p3.y
+        return CGPoint(x: x, y: y)
+    }
 }
 
-#Preview {
+private struct LoadingProgressRail: View {
+    let colors: [Color]
+    let palette: SplashPalette
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate
+            Canvas { canvas, size in
+                let midY = size.height / 2
+                let rail = Path { path in
+                    path.move(to: CGPoint(x: 5, y: midY))
+                    path.addLine(to: CGPoint(x: size.width - 5, y: midY))
+                }
+
+                canvas.stroke(
+                    rail,
+                    with: .color(palette.textTertiary.opacity(0.20)),
+                    style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                )
+
+                for (index, color) in colors.enumerated() {
+                    let progress = (phase * 0.36 + Double(index) * 0.18)
+                        .truncatingRemainder(dividingBy: 1)
+                    let x = 8 + (size.width - 16) * progress
+                    let pulse = 0.74 + max(0, sin(phase * 4.2 + Double(index))) * 0.26
+                    let dot = CGRect(x: x - 4.5, y: midY - 4.5, width: 9, height: 9)
+
+                    canvas.fill(
+                        Path(ellipseIn: dot.insetBy(dx: -5, dy: -5)),
+                        with: .color(color.opacity(0.10 * pulse))
+                    )
+                    canvas.fill(Path(ellipseIn: dot), with: .color(color.opacity(0.96)))
+                    canvas.stroke(Path(ellipseIn: dot), with: .color(.white.opacity(0.45)), lineWidth: 1)
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+#Preview("Splash Dark") {
     SplashLoadingView()
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Splash Light") {
+    SplashLoadingView()
+        .preferredColorScheme(.light)
 }
