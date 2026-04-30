@@ -1987,18 +1987,36 @@ struct RouteDetailSheet: View {
             ?? baseChips.first?.stopName
             ?? autoNearestShapeStopName()
 
-        func schedItemMatchesAnchor(_ itemStop: String) -> Bool {
+        func normalizedStopText(_ value: String) -> String {
+            value.lowercased()
+                .replacingOccurrences(of: "avenue", with: "av")
+                .replacingOccurrences(of: "street", with: "st")
+                .replacingOccurrences(of: "road", with: "rd")
+                .replacingOccurrences(of: "drive", with: "dr")
+                .replacingOccurrences(of: " /", with: "/")
+                .replacingOccurrences(of: "/ ", with: "/")
+                .replacingOccurrences(of: "w ", with: "w")
+                .replacingOccurrences(of: "e ", with: "e")
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .joined()
+        }
+
+        func schedItemMatchesAnchor(_ item: ScheduledItem) -> Bool {
+            if let selected = inSheetSelectedStopId ?? selectedStopId,
+               let itemStopId = item.stopId,
+               !selected.isEmpty,
+               !itemStopId.isEmpty {
+                let selectedNorm = normalizeStopId(selected)
+                let itemNorm = normalizeStopId(itemStopId)
+                if selected == itemStopId
+                    || stripMTAStopPrefix(selected) == stripMTAStopPrefix(itemStopId)
+                    || selectedNorm == itemNorm {
+                    return true
+                }
+            }
             guard let anchor = anchorStopName else { return true }
-            let a = anchor.lowercased()
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let b = itemStop.lowercased()
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            // Normalize common punctuation differences ("130 ST /135 AV"
-            // vs "130 ST/135 AV") before comparing.
-            let aNorm = a.replacingOccurrences(of: " /", with: "/")
-                         .replacingOccurrences(of: "/ ", with: "/")
-            let bNorm = b.replacingOccurrences(of: " /", with: "/")
-                         .replacingOccurrences(of: "/ ", with: "/")
+            let aNorm = normalizedStopText(anchor)
+            let bNorm = normalizedStopText(item.stopName)
             return aNorm == bNorm
                 || aNorm.contains(bNorm) || bNorm.contains(aNorm)
         }
@@ -2018,7 +2036,7 @@ struct RouteDetailSheet: View {
             // But if we have no trip ID, timestamp collision check is useful.
             if existingTimestamps.contains(ts) { continue }
             // Drop schedule chips from a different stop than the user's nearest stop.
-            if !schedItemMatchesAnchor(item.stopName) { continue }
+            if !schedItemMatchesAnchor(item) { continue }
 
             schedChips.append(NearbyTransitResponse(
                 routeId: group.routeId,
@@ -2033,7 +2051,7 @@ struct RouteDetailSheet: View {
                 arrivalTs: ts,
                 vehicleId: nil,
                 tripId: item.id,
-                stopId: nil,
+                stopId: item.stopId,
                 isRealTime: false,
                 isCancelled: false,
                 colorHex: group.colorHex,
@@ -2752,7 +2770,7 @@ struct RouteDetailSheet: View {
                     arrivalTs: ts,
                     vehicleId: nil,
                     tripId: item.id,
-                    stopId: nil,
+                    stopId: item.stopId,
                     isRealTime: false,
                     isCancelled: false,
                     colorHex: group.colorHex,
@@ -2855,6 +2873,8 @@ struct RouteDetailSheet: View {
             // "vehicles en route" placeholder — actual departure times are
             // more useful than a vehicle count.
             scheduledDeparturesView
+        } else if group.isBus && (stableBusSchedule ?? busSchedule) == nil {
+            CountdownChipSkeleton(count: 3)
         } else if liveVehicleCount > 0 {
             countdownVehiclesEnRouteState
         } else {
@@ -2948,7 +2968,8 @@ struct RouteDetailSheet: View {
     private func countdownChipRow(
         chips: [(arrival: NearbyTransitResponse, eta: SmartETA)]
     ) -> some View {
-        let visibleChips = Array(chips.prefix(6))
+        let visibleChipLimit = 6
+        let visibleChips = Array(chips.prefix(visibleChipLimit))
         // "More" total = anything in the schedule beyond the chips we just rendered.
         // Transit shows the chip whenever the Departures board is reachable —
         // we mirror that by checking the cached departure count (populated by
@@ -2965,7 +2986,8 @@ struct RouteDetailSheet: View {
         let hasMore = true
         // When chips overflow but the schedule depth is unknown, fall back
         // to the chip overflow count for the badge.
-        let badgeCount = max(extraBeyondChips, chips.count - visibleChips.count)
+        let hiddenChipCount = max(0, chips.count - visibleChipLimit)
+        let badgeCount = max(extraBeyondChips, hiddenChipCount)
 
         return ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: 10) {
@@ -3045,6 +3067,7 @@ struct RouteDetailSheet: View {
         selectedChipId = firstLive.arrival.id
         selectedChipRouteId = firstLive.arrival.routeId
         isSelectedArrivalExpress = firstLive.arrival.isExpress
+        onFocusVehicle?(firstLive.arrival.vehicleId ?? firstLive.arrival.tripId)
     }
 
     /// Resolve a stop_id to its `CLLocationCoordinate2D` using the route
@@ -3430,8 +3453,12 @@ struct RouteDetailSheet: View {
         }
         #endif
 
-        guard let matched else { return [] }
-        return matched.departures
+        let departures = matched?.departures ?? []
+        let effectiveDepartures = departures.isEmpty
+            ? schedule.directions.flatMap(\.departures)
+            : departures
+
+        return effectiveDepartures
             .filter { $0.minutesAway >= 0 }
             .sorted { $0.departureTime < $1.departureTime }
             .map { ScheduledItem.from($0) }

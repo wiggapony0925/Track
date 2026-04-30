@@ -562,6 +562,7 @@ extension HomeViewModel {
             await MainActor.run {
                 guard self.selectedRouteId == routeId else { return }
                 self.replaceLiveVehicleDetails(liveDetails)
+                self.cachedLiveTrainVehicles = realVehicles
                 updateTrainPositions(arrivals: arrivals, realVehicles: realVehicles)
                 if let updatedGroup,
                    self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
@@ -611,6 +612,7 @@ extension HomeViewModel {
             // NOTE: No outer withAnimation — updateTrainPositions() handles it.
             await MainActor.run {
                 guard self.selectedRouteId == capturedRouteId else { return }
+                self.cachedLiveTrainVehicles = []
                 updateTrainPositions(arrivals: routeArrivals)
                 if let updatedGroup,
                    self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
@@ -1039,6 +1041,7 @@ extension HomeViewModel {
         if !trainVehicles.isEmpty { trainVehicles = [] }
         if !liveVehicleDetailsByKey.isEmpty { liveVehicleDetailsByKey = [:] }
         if !cachedTrainArrivals.isEmpty { cachedTrainArrivals = [] }
+        if !cachedLiveTrainVehicles.isEmpty { cachedLiveTrainVehicles = [] }
         if !previousBusPositions.isEmpty { previousBusPositions = [:] }
         if !_targetBusGPS.isEmpty { _targetBusGPS = [:] }
         if !_previousTrainPositions.isEmpty { _previousTrainPositions = [:] }
@@ -1150,7 +1153,7 @@ extension HomeViewModel {
     /// Call this frequently (e.g. every 1s) to animate trains smoothly.
     func updateSimulation() {
         guard !cachedTrainArrivals.isEmpty else { return }
-        updateTrainPositions(arrivals: cachedTrainArrivals)
+        updateTrainPositions(arrivals: cachedTrainArrivals, realVehicles: cachedLiveTrainVehicles)
     }
 
     /// Interpolates bus positions along the route polyline between GPS fetches.

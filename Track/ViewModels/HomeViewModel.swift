@@ -129,6 +129,9 @@ final class HomeViewModel {
     var busScheduleByRoute: [String: BusScheduleResponse] = [:]
     /// Cached train arrivals for interpolation between refresh cycles.
     var cachedTrainArrivals: [TrainArrival] = []
+    /// Latest real train vehicle positions from GTFS-RT, reused between
+    /// network polls so simulation ticks do not bounce back to interpolation.
+    var cachedLiveTrainVehicles: [TrainVehicle] = []
 
     /// The currently tracked route for the widget, loaded from UserDefaults.
     var currentTrackedRoute: TrackedRoute? = nil
@@ -3693,6 +3696,7 @@ final class HomeViewModel {
         isStopManuallySelected = false
         busVehicles = []
         trainVehicles = []
+        cachedLiveTrainVehicles = []
         busSchedule = busScheduleByRoute[group.routeId]
 
         // Use static shape data immediately. Prefer the persisted backend/open-data

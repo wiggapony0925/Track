@@ -27,6 +27,9 @@ struct MapLibreVehicleOverlay: View {
     /// Train vehicles to display.
     let trainVehicles: [TrainVehicle]
 
+    /// Backend-owned live detail metadata keyed by vehicle id and trip id.
+    let liveVehicleDetailsByKey: [String: LiveVehicleDetailResponse]
+
     /// Currently tapped vehicle ID (for highlight state).
     let tappedVehicleId: String?
 
@@ -41,10 +44,12 @@ struct MapLibreVehicleOverlay: View {
     var busColorLookup: ((String) -> Color)? = nil
 
     var body: some View {
-        GeometryReader { _ in
-            ZStack {
-                busVehicleMarkers
-                trainVehicleMarkers
+        TimelineView(.periodic(from: .now, by: 1.0)) { timeline in
+            GeometryReader { _ in
+                ZStack {
+                    busVehicleMarkers(now: timeline.date)
+                    trainVehicleMarkers(now: timeline.date)
+                }
             }
         }
         .allowsHitTesting(true)
@@ -52,38 +57,27 @@ struct MapLibreVehicleOverlay: View {
 
     // MARK: - Bus Markers (extracted to reduce body type-check)
 
-    private var busVehicleMarkers: some View {
+    private func busVehicleMarkers(now: Date) -> some View {
         ForEach(busVehicles) { vehicle in
             let coord = CLLocationCoordinate2D(
                 latitude: vehicle.lat,
                 longitude: vehicle.lon
             )
             let isHighlighted: Bool = tappedVehicleId == vehicle.vehicleId
-            let isStale: Bool = {
-                guard let recorded = vehicle.positionRecordedAt else { return false }
-                return Date().timeIntervalSince(recorded) > 120 // >2 min = stale GPS
-            }()
+            let updateAge = liveVehicleDetailsByKey[vehicle.vehicleId]?.effectivePositionAgeSeconds(now: now)
+                ?? vehicle.positionRecordedAt.map { now.timeIntervalSince($0) }
             let markerColor: Color = busColorLookup?(vehicle.routeId) ?? AppTheme.Colors.mtaBlue
             if let point: CGPoint = projectToScreen(coord, mapView: mapView) {
                 VehicleMarkerContent(
                     icon: TransportMode.bus.icon,
                     color: markerColor,
                     isHighlighted: isHighlighted,
-                    occupancy: vehicle.occupancy
+                    occupancy: vehicle.occupancy,
+                    updateAgeSeconds: updateAge
                 ) {
                     toggleVehicle(vehicle.vehicleId)
                 }
-                .opacity(isStale ? 0.45 : 1.0)
                 .position(point)
-                // Smooth position changes between polls so vehicles glide
-                // instead of teleporting.  Camera-driven re-projections
-                // (cameraChangeToken) bypass the spring by using the
-                // token in the value so SwiftUI treats those as a
-                // distinct animation context.
-                .animation(
-                    .easeInOut(duration: 0.85),
-                    value: AnimatedCoord(lat: vehicle.lat, lon: vehicle.lon)
-                )
                 .id(vehicle.vehicleId)
             }
         }
@@ -91,25 +85,24 @@ struct MapLibreVehicleOverlay: View {
 
     // MARK: - Train Markers (extracted to reduce body type-check)
 
-    private var trainVehicleMarkers: some View {
+    private func trainVehicleMarkers(now: Date) -> some View {
         ForEach(trainVehicles) { train in
             let coord = CLLocationCoordinate2D(latitude: train.lat, longitude: train.lon)
             if let point = projectToScreen(coord, mapView: mapView) {
-                trainMarkerContent(for: train)
+                trainMarkerContent(for: train, now: now)
                     .position(point)
-                    .animation(
-                        .easeInOut(duration: 0.85),
-                        value: AnimatedCoord(lat: train.lat, lon: train.lon)
-                    )
                     .id(train.id)
             }
         }
     }
 
-    private func trainMarkerContent(for train: TrainVehicle) -> some View {
+    private func trainMarkerContent(for train: TrainVehicle, now: Date) -> some View {
         let rid: String = train.routeId.lowercased()
         let vehicleKey: String = train.tripId ?? train.id
         let isHighlighted: Bool = tappedVehicleId == vehicleKey
+        let detail = liveVehicleDetailsByKey[vehicleKey] ?? liveVehicleDetailsByKey[train.id]
+        let updateAge = detail?.effectivePositionAgeSeconds(now: now)
+            ?? train.timestamp.map { now.timeIntervalSince1970 - Double($0) }
 
         return Group {
             if rid.contains("lirr") || rid.contains("lir") {
@@ -117,14 +110,16 @@ struct MapLibreVehicleOverlay: View {
                     icon: TransportMode.lirr.icon,
                     color: UIColor(AppTheme.CommuterRailColors.lirrBlue),
                     isHighlighted: isHighlighted,
-                    occupancy: train.occupancy
+                    occupancy: train.occupancy,
+                    updateAgeSeconds: updateAge
                 ) { toggleVehicle(vehicleKey) }
             } else if rid.contains("mnr") || rid.contains("metro") {
                 VehicleMarkerContent(
                     icon: TransportMode.mnr.icon,
                     color: UIColor(AppTheme.CommuterRailColors.mnrBlue),
                     isHighlighted: isHighlighted,
-                    occupancy: train.occupancy
+                    occupancy: train.occupancy,
+                    updateAgeSeconds: updateAge
                 ) { toggleVehicle(vehicleKey) }
             } else {
                 let expressVariants: Set<String> = ["6X", "7X", "FX"]
@@ -134,7 +129,8 @@ struct MapLibreVehicleOverlay: View {
                     color: AppTheme.SubwayColors.color(for: train.routeId),
                     isHighlighted: isHighlighted,
                     isExpress: isExpress,
-                    occupancy: train.occupancy
+                    occupancy: train.occupancy,
+                    updateAgeSeconds: updateAge
                 ) { toggleVehicle(vehicleKey) }
             }
         }
@@ -143,18 +139,6 @@ struct MapLibreVehicleOverlay: View {
     private func toggleVehicle(_ id: String) {
         onVehicleTap(id)
     }
-}
-
-// MARK: - Position Animation Key
-
-/// Equatable wrapper used as the `value:` for `.animation` on marker
-/// position.  Comparing the raw `CGPoint` would also re-fire on every
-/// camera pan (because `projectToScreen` recomputes), so we key the
-/// animation on the underlying lat/lon — those only change when the
-/// vehicle itself moves, which is the case we actually want to smooth.
-private struct AnimatedCoord: Equatable {
-    let lat: Double
-    let lon: Double
 }
 
 // MARK: - VehicleMarkerContent Extension (UIColor init)
@@ -167,6 +151,7 @@ extension VehicleMarkerContent {
         isHighlighted: Bool,
         isExpress: Bool = false,
         occupancy: Int? = nil,
+        updateAgeSeconds: TimeInterval? = nil,
         onTap: (() -> Void)? = nil
     ) {
         self.init(
@@ -175,6 +160,7 @@ extension VehicleMarkerContent {
             isHighlighted: isHighlighted,
             isExpress: isExpress,
             occupancy: occupancy,
+            updateAgeSeconds: updateAgeSeconds,
             onTap: onTap
         )
     }

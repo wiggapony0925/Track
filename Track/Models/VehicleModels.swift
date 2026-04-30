@@ -204,6 +204,37 @@ struct LiveVehicleDetailResponse: Decodable, Identifiable, Equatable {
     let status: String?
     let busVehicle: BusVehicleResponse?
     let trainVehicle: TrainVehicle?
+    let receivedAt: Date
+
+    func effectivePositionAgeSeconds(now: Date = .now) -> TimeInterval? {
+        guard let positionAgeSeconds, positionAgeSeconds >= 0 else { return nil }
+        return max(0, positionAgeSeconds + now.timeIntervalSince(receivedAt))
+    }
+
+    static func == (lhs: LiveVehicleDetailResponse, rhs: LiveVehicleDetailResponse) -> Bool {
+        lhs.vehicleId == rhs.vehicleId
+            && lhs.routeId == rhs.routeId
+            && lhs.mode == rhs.mode
+            && lhs.tripId == rhs.tripId
+            && lhs.patternId == rhs.patternId
+            && lhs.directionId == rhs.directionId
+            && lhs.headsign == rhs.headsign
+            && lhs.lat == rhs.lat
+            && lhs.lon == rhs.lon
+            && lhs.bearing == rhs.bearing
+            && lhs.nextStopId == rhs.nextStopId
+            && lhs.nextStopName == rhs.nextStopName
+            && lhs.downstreamStopCount == rhs.downstreamStopCount
+            && lhs.downstreamStopIds == rhs.downstreamStopIds
+            && lhs.positionSource == rhs.positionSource
+            && lhs.positionAgeSeconds == rhs.positionAgeSeconds
+            && lhs.isStale == rhs.isStale
+            && lhs.isRealtime == rhs.isRealtime
+            && lhs.positionConfidence == rhs.positionConfidence
+            && lhs.status == rhs.status
+            && lhs.busVehicle == rhs.busVehicle
+            && lhs.trainVehicle == rhs.trainVehicle
+    }
 
     enum CodingKeys: String, CodingKey {
         case vehicleId = "vehicle_id"
@@ -255,6 +286,7 @@ struct LiveVehicleDetailResponse: Decodable, Identifiable, Equatable {
         isRealtime = try c.decodeIfPresent(Bool.self, forKey: .isRealtime) ?? true
         positionConfidence = try c.decodeIfPresent(Double.self, forKey: .positionConfidence) ?? 1.0
         status = try c.decodeIfPresent(String.self, forKey: .status)
+        receivedAt = Date()
 
         if mode.lowercased() == "bus" {
             busVehicle = try? c.decodeIfPresent(BusVehicleResponse.self, forKey: .vehicle)

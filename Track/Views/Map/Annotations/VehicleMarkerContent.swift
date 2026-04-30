@@ -17,37 +17,57 @@ struct VehicleMarkerContent: View {
     /// When present, a small colored dot appears at the marker's top-right
     /// to telegraph crowding without cluttering the icon.
     var occupancy: Int? = nil
+    /// Seconds since the upstream vehicle position was recorded. Rendered
+    /// as a tiny freshness badge so riders can see whether the marker is live.
+    var updateAgeSeconds: TimeInterval? = nil
     var onTap: (() -> Void)? = nil
 
     var body: some View {
-        Image(systemName: icon)
-            .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: 28, height: 28)
-            .background(color)
-            .clipShape(AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle())))
-            .overlay(
-                AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle()))
-                    .stroke(isHighlighted ? Color.white : Color.clear, lineWidth: 3)
-            )
-            .overlay(alignment: .topTrailing) {
-                if let dotColor = occupancyDotColor {
-                    Circle()
-                        .fill(dotColor)
-                        .overlay(Circle().stroke(.white, lineWidth: 1.2))
-                        .frame(width: 9, height: 9)
-                        .offset(x: 2, y: -2)
-                        .accessibilityHidden(true)
+        ZStack {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(color)
+                .clipShape(AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle())))
+                .overlay(
+                    AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle()))
+                        .stroke(markerStrokeColor, lineWidth: markerStrokeWidth)
+                )
+                .overlay(alignment: .topTrailing) {
+                    if let dotColor = occupancyDotColor {
+                        Circle()
+                            .fill(dotColor)
+                            .overlay(Circle().stroke(.white, lineWidth: 1.2))
+                            .frame(width: 9, height: 9)
+                            .offset(x: 2, y: -2)
+                            .accessibilityHidden(true)
+                    }
                 }
+                .shadow(
+                    color: isHighlighted ? color.opacity(0.6) : AppTheme.Colors.shadow.opacity(0.22),
+                    radius: isHighlighted ? 6 : 2,
+                    y: isHighlighted ? 0 : 1
+                )
+
+            if let freshnessLabel {
+                Text(freshnessLabel)
+                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().fill(freshnessColor))
+                    .overlay(Capsule().stroke(.white.opacity(0.9), lineWidth: 0.6))
+                    .offset(y: 25)
+                    .accessibilityLabel("Updated \(freshnessLabel) ago")
             }
-            .shadow(
-                color: isHighlighted ? color.opacity(0.6) : AppTheme.Colors.shadow.opacity(0.22),
-                radius: isHighlighted ? 6 : 2,
-                y: isHighlighted ? 0 : 1
-            )
+        }
+            .frame(width: 48, height: 68)
+            .contentShape(Rectangle())
             .scaleEffect(isHighlighted ? 1.3 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHighlighted)
-            .drawingGroup()
             .onTapGesture { onTap?() }
     }
 
@@ -61,6 +81,33 @@ struct VehicleMarkerContent: View {
         case 4, 5, 6: return .red      // crushed / full / not accepting
         default: return nil            // 0/1/nil \u2192 plenty of room or unknown
         }
+    }
+
+    private var freshnessLabel: String? {
+        guard let updateAgeSeconds, updateAgeSeconds >= 0 else { return nil }
+        if updateAgeSeconds < 60 { return "\(Int(updateAgeSeconds))s" }
+        return "\(Int(updateAgeSeconds / 60))m"
+    }
+
+    private var freshnessColor: Color {
+        guard let updateAgeSeconds else { return color }
+        if updateAgeSeconds > 180 { return AppTheme.Colors.alertRed }
+        if updateAgeSeconds > 90 { return Color.orange }
+        return color
+    }
+
+    private var markerStrokeColor: Color {
+        if isHighlighted { return .white }
+        guard let updateAgeSeconds else { return .clear }
+        if updateAgeSeconds > 180 { return AppTheme.Colors.alertRed }
+        if updateAgeSeconds > 90 { return Color.orange }
+        return .clear
+    }
+
+    private var markerStrokeWidth: CGFloat {
+        if isHighlighted { return 3 }
+        guard let updateAgeSeconds else { return 0 }
+        return updateAgeSeconds > 90 ? 2 : 0
     }
 }
 
@@ -81,4 +128,5 @@ struct RotatedDiamondShape: Shape {
         path.closeSubpath()
         return path
     }
+
 }

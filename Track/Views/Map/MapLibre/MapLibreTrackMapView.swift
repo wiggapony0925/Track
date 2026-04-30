@@ -266,6 +266,7 @@ struct MapLibreTrackMapView: View {
             mapView: mapViewRef,
             busVehicles: viewModel.filteredBusVehicles,
             trainVehicles: viewModel.filteredTrainVehicles,
+            liveVehicleDetailsByKey: viewModel.liveVehicleDetailsByKey,
             tappedVehicleId: viewModel.tappedVehicleId,
             onVehicleTap: handleVehicleTap,
             cameraChangeToken: cameraChangeToken,

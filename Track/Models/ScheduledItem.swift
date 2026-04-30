@@ -9,6 +9,7 @@ struct ScheduledItem: Identifiable {
     let minutesAway: Int
     let departureDate: Date
     let stopName: String
+    let stopId: String?
     let headsign: String
 
     /// Cached DateFormatter to avoid repeated allocation.
@@ -31,6 +32,7 @@ struct ScheduledItem: Identifiable {
             minutesAway: departure.minutesAway,
             departureDate: departure.departureDate,
             stopName: departure.stopName,
+            stopId: departure.stopId,
             headsign: departure.headsign
         )
     }
@@ -44,6 +46,7 @@ struct ScheduledItem: Identifiable {
             minutesAway: max(0, Int(arrival.estimatedTime.timeIntervalSinceNow / 60)),
             departureDate: arrival.estimatedTime,
             stopName: arrival.stationName,
+            stopId: arrival.stationID,
             headsign: arrival.destination ?? arrival.direction
         )
     }

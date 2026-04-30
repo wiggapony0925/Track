@@ -1309,6 +1309,17 @@ struct HomeView: View {
             let isCommuterRail = viewModel.selectedGroupedRoute?.isCommuterRail ?? false
             let startTime = Date()
             var consecutiveErrors = 0
+            Task { @MainActor in
+                if isBus {
+                    await viewModel.refreshBusVehicles()
+                } else if isCommuterRail {
+                    viewModel.updateSimulation()
+                    await viewModel.refreshCommuterRailVehicles()
+                } else {
+                    viewModel.updateSimulation()
+                    await viewModel.refreshTrainVehicles()
+                }
+            }
             // Fetch live vehicle positions on the shared 25 s cadence.
             let tickInterval: TimeInterval = 1.0
             let livePollInterval = Int(LiveTrackingClock.vehiclePollIntervalSeconds)
