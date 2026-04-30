@@ -1050,6 +1050,64 @@ class TransitVehicle(BaseModel):
     )
 
 
+class LiveVehicleDetail(BaseModel):
+    """Backend-owned live vehicle/trip object for map rendering."""
+
+    vehicle_id: str = Field(..., description="Stable vehicle marker identity.")
+    route_id: str = Field(..., description="Route ID for badge/color/filtering.")
+    mode: str = Field(..., description="Transit mode: bus, subway, lirr, or mnr.")
+    trip_id: str | None = Field(None, description="GTFS trip ID when available.")
+    pattern_id: str | None = Field(
+        None,
+        description="Backend pattern identity when available for exact trip geometry.",
+    )
+    direction_id: int | str | None = Field(
+        None,
+        description="Upstream direction identifier, if published.",
+    )
+    headsign: str | None = Field(None, description="Trip destination/headsign.")
+    lat: float = Field(..., description="Vehicle latitude (WGS 84).")
+    lon: float = Field(..., description="Vehicle longitude (WGS 84).")
+    bearing: float | None = Field(None, description="Vehicle heading in degrees.")
+    next_stop_id: str | None = Field(None, description="Current or next stop ID.")
+    next_stop_name: str | None = Field(None, description="Current or next stop name.")
+    downstream_stop_count: int = Field(
+        0,
+        description="Number of downstream stops/predictions attached to this vehicle.",
+    )
+    downstream_stop_ids: list[str] = Field(
+        default_factory=list,
+        description="Ordered downstream stop IDs when available.",
+    )
+    position_source: str = Field(
+        "unknown",
+        description="gps, stop_anchor, interpolated, or unknown.",
+    )
+    position_age_seconds: float | None = Field(
+        None,
+        description="Age of the reported position at response build time.",
+    )
+    is_stale: bool = Field(
+        False,
+        description="True when the position should not override client interpolation.",
+    )
+    is_realtime: bool = Field(
+        True,
+        description="False when upstream says this position is schedule-derived.",
+    )
+    position_confidence: float = Field(
+        1.0,
+        ge=0.0,
+        le=1.0,
+        description="0-1 confidence score for using this position as the map marker.",
+    )
+    status: str | None = Field(None, description="Upstream vehicle status text.")
+    vehicle: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Original mode-specific vehicle payload for backward-compatible clients.",
+    )
+
+
 class DirectionShape(BaseModel):
     """Polylines and stops for one direction of a route."""
 

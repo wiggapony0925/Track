@@ -37,12 +37,14 @@ from app.models import (
     BusTileRoute,
     BusTileStop,
     BusVehicle,
+    LiveVehicleDetail,
     RouteDetail,
     RouteShape,
 )
 from app.routers.nearby import _bus_color_for_service_type, _classify_bus_service_type
 from app.services.mapping.bus.routes import get_bus_open_data_shapes
 from app.services.mapping.bus.stops import get_bus_route_stops, get_bus_stop_index
+from app.services.live_vehicle_detail import build_bus_live_vehicle_details
 from app.services.route_detail import build_route_detail
 from app.services.transit.schedule_service import schedule_service
 from app.utils.logger import TrackLogger
@@ -763,6 +765,49 @@ async def bus_vehicles(
             tag="BUS",
         )
         response.headers["X-Track-Degraded"] = "vehicles-fallback"
+        return []
+
+
+@router.get(
+    "/live-vehicles/{route_id:path}",
+    response_model=list[LiveVehicleDetail],
+    summary="Get backend-authored live bus vehicle details",
+    description=(
+        "Returns one backend-owned live detail object per bus. The response "
+        "adds freshness, confidence, downstream-stop, and direction metadata "
+        "around the existing vehicle payload so clients can render markers in O(n)."
+    ),
+    responses={**RESP_502},
+)
+async def bus_live_vehicles(
+    route_id: str = Path(
+        ...,
+        description="Fully-qualified OBA route ID.",
+        examples=["MTA NYCT_B63", "MTA NYCT_M34-SBS"],
+    ),
+    response: Response = None,
+) -> list[LiveVehicleDetail]:
+    response.headers["Cache-Control"] = (
+        "public, max-age=5, stale-while-revalidate=30, stale-if-error=120"
+    )
+    try:
+        return build_bus_live_vehicle_details(await get_vehicle_positions(route_id))
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code if exc.response is not None else 502
+        if status in (401, 403, 404, 429, 500, 502, 503, 504):
+            TrackLogger.warning(
+                f"[BUS] /live-vehicles/{route_id}: upstream HTTP {status} — returning empty fallback",
+                tag="BUS",
+            )
+            response.headers["X-Track-Degraded"] = "live-vehicles-fallback"
+            return []
+        _raise_bus_upstream_http_error(exc)
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[BUS] /live-vehicles/{route_id}: upstream error ({exc}) — returning empty fallback",
+            tag="BUS",
+        )
+        response.headers["X-Track-Degraded"] = "live-vehicles-fallback"
         return []
 
 

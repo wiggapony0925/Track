@@ -76,6 +76,18 @@ struct TrainVehicle: Codable, Identifiable, Equatable {
     /// Useful for status pills ("At platform" badge).
     var isStoppedAtStation: Bool { currentStatusCode == 1 }
 
+    /// True when a backend GTFS-RT VehiclePosition is fresh enough to trust.
+    /// Some NYCT feeds can retain old vehicle entities; when that happens the
+    /// map should fall back to arrival-based interpolation instead of pinning
+    /// a marker to stale stop coordinates.
+    func isFreshRealtimePosition(
+        now: Date = .now,
+        maxAge: TimeInterval = 180
+    ) -> Bool {
+        guard let timestamp else { return true }
+        return now.timeIntervalSince1970 - Double(timestamp) <= maxAge
+    }
+
     enum CodingKeys: String, CodingKey {
         case id = "vehicle_id"
         case tripId = "trip_id"
@@ -161,6 +173,96 @@ struct TrainVehicle: Codable, Identifiable, Equatable {
         colorHex = try c.decodeIfPresent(String.self, forKey: .colorHex)
         congestionLevel = try c.decodeIfPresent(Int.self, forKey: .congestionLevel)
         currentStatusCode = try c.decodeIfPresent(Int.self, forKey: .currentStatusCode)
+    }
+}
+
+/// Backend-owned live vehicle detail object. This wraps the old mode-specific
+/// vehicle payload with freshness/confidence metadata so map rendering stays
+/// O(n): decode details, filter stale/low-confidence entries, then project.
+struct LiveVehicleDetailResponse: Decodable, Identifiable, Equatable {
+    var id: String { vehicleId }
+
+    let vehicleId: String
+    let routeId: String
+    let mode: String
+    let tripId: String?
+    let patternId: String?
+    let directionId: String?
+    let headsign: String?
+    let lat: Double
+    let lon: Double
+    let bearing: Double?
+    let nextStopId: String?
+    let nextStopName: String?
+    let downstreamStopCount: Int
+    let downstreamStopIds: [String]
+    let positionSource: String
+    let positionAgeSeconds: Double?
+    let isStale: Bool
+    let isRealtime: Bool
+    let positionConfidence: Double
+    let status: String?
+    let busVehicle: BusVehicleResponse?
+    let trainVehicle: TrainVehicle?
+
+    enum CodingKeys: String, CodingKey {
+        case vehicleId = "vehicle_id"
+        case routeId = "route_id"
+        case mode
+        case tripId = "trip_id"
+        case patternId = "pattern_id"
+        case directionId = "direction_id"
+        case headsign
+        case lat, lon, bearing
+        case nextStopId = "next_stop_id"
+        case nextStopName = "next_stop_name"
+        case downstreamStopCount = "downstream_stop_count"
+        case downstreamStopIds = "downstream_stop_ids"
+        case positionSource = "position_source"
+        case positionAgeSeconds = "position_age_seconds"
+        case isStale = "is_stale"
+        case isRealtime = "is_realtime"
+        case positionConfidence = "position_confidence"
+        case status
+        case vehicle
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        vehicleId = try c.decode(String.self, forKey: .vehicleId)
+        routeId = try c.decode(String.self, forKey: .routeId)
+        mode = try c.decode(String.self, forKey: .mode)
+        tripId = try c.decodeIfPresent(String.self, forKey: .tripId)
+        patternId = try c.decodeIfPresent(String.self, forKey: .patternId)
+        if let stringDirection = try? c.decodeIfPresent(String.self, forKey: .directionId) {
+            directionId = stringDirection
+        } else if let intDirection = try? c.decode(Int.self, forKey: .directionId) {
+            directionId = String(intDirection)
+        } else {
+            directionId = nil
+        }
+        headsign = try c.decodeIfPresent(String.self, forKey: .headsign)
+        lat = try c.decode(Double.self, forKey: .lat)
+        lon = try c.decode(Double.self, forKey: .lon)
+        bearing = try c.decodeIfPresent(Double.self, forKey: .bearing)
+        nextStopId = try c.decodeIfPresent(String.self, forKey: .nextStopId)
+        nextStopName = try c.decodeIfPresent(String.self, forKey: .nextStopName)
+        downstreamStopCount = try c.decodeIfPresent(Int.self, forKey: .downstreamStopCount) ?? 0
+        downstreamStopIds = try c.decodeIfPresent([String].self, forKey: .downstreamStopIds) ?? []
+        positionSource = try c.decodeIfPresent(String.self, forKey: .positionSource) ?? "unknown"
+        positionAgeSeconds = try c.decodeIfPresent(Double.self, forKey: .positionAgeSeconds)
+        isStale = try c.decodeIfPresent(Bool.self, forKey: .isStale) ?? false
+        isRealtime = try c.decodeIfPresent(Bool.self, forKey: .isRealtime) ?? true
+        positionConfidence = try c.decodeIfPresent(Double.self, forKey: .positionConfidence) ?? 1.0
+        status = try c.decodeIfPresent(String.self, forKey: .status)
+
+        if mode.lowercased() == "bus" {
+            busVehicle = try? c.decodeIfPresent(BusVehicleResponse.self, forKey: .vehicle)
+            trainVehicle = nil
+        } else {
+            busVehicle = nil
+            trainVehicle = try? c.decodeIfPresent(TrainVehicle.self, forKey: .vehicle)
+        }
     }
 }
 

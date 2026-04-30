@@ -22,6 +22,7 @@ from app.models import (
     AllSubwayStationsResponse,
     BusStop,
     DirectionShape,
+    LiveVehicleDetail,
     ProcessedStationsResponse,
     RouteDetail,
     RouteShape,
@@ -47,6 +48,7 @@ from app.services.mapping.subway.shapes import (
     get_subway_route_shape,
     get_subway_service_type,
 )
+from app.services.live_vehicle_detail import build_train_live_vehicle_details
 from app.services.route_detail import build_route_detail
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import (
@@ -959,6 +961,42 @@ async def subway_vehicles(
     except Exception as exc:
         TrackLogger.warning(
             f"[SUBWAY] /vehicles/{line_id}: {exc}", tag="SUBWAY"
+        )
+        return []
+
+
+@router.get(
+    "/subway/live-vehicles/{line_id}",
+    response_model=list[LiveVehicleDetail],
+    summary="Backend-authored live subway vehicle details",
+    description=(
+        "Returns one live detail object per train with freshness/confidence "
+        "metadata around the GTFS-RT vehicle payload. Stale positions are "
+        "flagged so clients can fall back to interpolation."
+    ),
+)
+async def subway_live_vehicles(
+    line_id: str,
+    response: Response,
+) -> list[LiveVehicleDetail]:
+    clean_id = clean_route_id(line_id)
+    if resolve_subway_feed_key(clean_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown subway line: {line_id}",
+        )
+    try:
+        vehicles = await get_vehicle_positions_for_line(
+            clean_id,
+            mode="subway",
+            color_fn=get_subway_color,
+        )
+        filtered = [v for v in vehicles if v.route_id.upper() == clean_id.upper()]
+        response.headers["Cache-Control"] = "public, max-age=15"
+        return build_train_live_vehicle_details(filtered)
+    except Exception as exc:
+        TrackLogger.warning(
+            f"[SUBWAY] /live-vehicles/{line_id}: {exc}", tag="SUBWAY"
         )
         return []
 

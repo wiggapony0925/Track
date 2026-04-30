@@ -1279,6 +1279,11 @@ final class HomeViewModel {
     /// O(1) lookup by id — rebuilt automatically when trainVehicles is set.
     @ObservationIgnored private var _trainVehicleById: [String: TrainVehicle] = [:]
 
+    /// Backend-owned live vehicle details keyed by vehicleId and tripId.
+    /// Route detail, chips, and tracking use this O(1) side table instead
+    /// of re-scanning live vehicle arrays during SwiftUI render passes.
+    var liveVehicleDetailsByKey: [String: LiveVehicleDetailResponse] = [:]
+
     // Smooth bus interpolation state — stores the previous GPS snapshot
     // so we can glide between updates along the route polyline.
     /// Previous GPS positions keyed by vehicle ID for smooth interpolation.
@@ -2703,6 +2708,34 @@ final class HomeViewModel {
                 filteredTrainVehicles.contains(where: { $0.id == vid })
             {
                 return vid
+            }
+        }
+        return nil
+    }
+
+    func replaceLiveVehicleDetails(_ details: [LiveVehicleDetailResponse]) {
+        var index: [String: LiveVehicleDetailResponse] = [:]
+        index.reserveCapacity(details.count * 2)
+        for detail in details where !detail.isStale && detail.positionConfidence >= 0.5 {
+            index[detail.vehicleId] = detail
+            if let tripId = detail.tripId, !tripId.isEmpty {
+                index[tripId] = detail
+            }
+        }
+        liveVehicleDetailsByKey = index
+    }
+
+    func liveVehicleDetail(for arrival: NearbyTransitResponse) -> LiveVehicleDetailResponse? {
+        if arrival.isBus, let vehicleId = arrival.vehicleId, !vehicleId.isEmpty {
+            return liveVehicleDetailsByKey[vehicleId]
+        }
+        if !arrival.isBus {
+            if let tripId = arrival.tripId, !tripId.isEmpty,
+               let detail = liveVehicleDetailsByKey[tripId] {
+                return detail
+            }
+            if let vehicleId = arrival.vehicleId, !vehicleId.isEmpty {
+                return liveVehicleDetailsByKey[vehicleId]
             }
         }
         return nil

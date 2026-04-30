@@ -758,10 +758,31 @@ struct TrackAPI {
     /// - Parameter routeID: Fully-qualified route ID (e.g. "MTA NYCT_B63").
     /// - Returns: Array of `BusVehicleResponse` with GPS positions.
     static func fetchBusVehicles(routeID: String) async throws -> [BusVehicleResponse] {
+        do {
+            let details = try await fetchBusLiveVehicleDetails(routeID: routeID)
+            return visibleBusVehicles(from: details)
+        } catch {
+            let encoded =
+                routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+            let data = try await get(path: "/bus/vehicles/\(encoded)")
+            return try decoder.decode([BusVehicleResponse].self, from: data)
+        }
+    }
+
+    /// Fetches backend-owned live vehicle detail metadata for a bus route.
+    static func fetchBusLiveVehicleDetails(routeID: String) async throws -> [LiveVehicleDetailResponse] {
         let encoded =
             routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
-        let data = try await get(path: "/bus/vehicles/\(encoded)")
-        return try decoder.decode([BusVehicleResponse].self, from: data)
+        let data = try await get(path: "/bus/live-vehicles/\(encoded)")
+        return try decoder.decode([LiveVehicleDetailResponse].self, from: data)
+    }
+
+    static func visibleBusVehicles(
+        from details: [LiveVehicleDetailResponse]
+    ) -> [BusVehicleResponse] {
+        details
+            .filter { !$0.isStale && $0.positionConfidence >= 0.5 }
+            .compactMap(\.busVehicle)
     }
 
     /// Fetches the route shape (polylines + stops) for a bus route.
@@ -849,18 +870,40 @@ struct TrackAPI {
     ///
     /// - Parameter line: Subway line letter/number (e.g. "A", "7", "L").
     static func fetchSubwayVehicles(line: String) async -> [TrainVehicle] {
+        do {
+            let details = try await fetchSubwayLiveVehicleDetails(line: line)
+            return visibleTrainVehicles(from: details)
+        } catch {
+            do {
+                let encoded =
+                    line.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? line
+                let data = try await get(path: "/subway/vehicles/\(encoded)")
+                return try decoder.decode([TrainVehicle].self, from: data)
+                    .filter { $0.isFreshRealtimePosition() }
+            } catch {
+                AppLogger.shared.logError(
+                    "fetchSubwayVehicles(\(line)) — falling back to interpolation",
+                    error: error
+                )
+                return []
+            }
+        }
+    }
+
+    /// Fetches backend-owned live vehicle detail metadata for a subway line.
+    static func fetchSubwayLiveVehicleDetails(line: String) async throws -> [LiveVehicleDetailResponse] {
         let encoded =
             line.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? line
-        do {
-            let data = try await get(path: "/subway/vehicles/\(encoded)")
-            return try decoder.decode([TrainVehicle].self, from: data)
-        } catch {
-            AppLogger.shared.logError(
-                "fetchSubwayVehicles(\(line)) — falling back to interpolation",
-                error: error
-            )
-            return []
-        }
+        let data = try await get(path: "/subway/live-vehicles/\(encoded)")
+        return try decoder.decode([LiveVehicleDetailResponse].self, from: data)
+    }
+
+    static func visibleTrainVehicles(
+        from details: [LiveVehicleDetailResponse]
+    ) -> [TrainVehicle] {
+        details
+            .filter { !$0.isStale && $0.positionConfidence >= 0.5 }
+            .compactMap(\.trainVehicle)
     }
 
     /// Fetches the full route geometry for a single LIRR branch.

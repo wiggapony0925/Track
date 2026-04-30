@@ -80,6 +80,28 @@ struct ArrivalChipData: Identifiable, Equatable {
     /// human-friendly proximity hint.
     var arrivalProximityText: String? = nil
 
+    /// Backend-owned live vehicle detail metadata. These fields are optional
+    /// so legacy endpoints and tests can keep constructing chips directly.
+    var livePositionSource: String? = nil
+    var livePositionAgeSeconds: Double? = nil
+    var livePositionConfidence: Double? = nil
+    var nextStopName: String? = nil
+    var downstreamStopCount: Int = 0
+
+    var liveQualityBadge: String? {
+        guard !isScheduled, !isCancelled else { return nil }
+        if let age = livePositionAgeSeconds, age >= 120 {
+            return "Age \(Int(age / 60))m"
+        }
+        if let confidence = livePositionConfidence, confidence < 0.75 {
+            return "Est"
+        }
+        if livePositionSource == "stop_anchor" {
+            return "At stop"
+        }
+        return nil
+    }
+
     /// Shorthand for the late/early badge.  Returns nil when:
     ///   - no `delaySeconds` is provided,
     ///   - deviation is < 60 s in either direction (within "On Time" band),

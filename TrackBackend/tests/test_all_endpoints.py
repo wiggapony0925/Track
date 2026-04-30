@@ -24,6 +24,7 @@ from app.models import (
     RouteShape,
     TrackArrival,
     TransitAlert,
+    TransitVehicle,
 )
 from app.routers.nearby import _display_name, _group_arrivals, _soonest_minutes
 from app.services.mapping.commuter_rail_shapes import (
@@ -397,6 +398,72 @@ class TestBusVehicles:
         response = client.get("/bus/vehicles/MTA%20NYCT_X99")
         assert response.status_code == 200
         assert response.json() == []
+
+    @patch("app.routers.bus.get_vehicle_positions", new_callable=AsyncMock)
+    def test_live_vehicles_returns_backend_detail(self, mock_vehicles):
+        mock_vehicles.return_value = [
+            BusVehicle(
+                vehicle_id="V1",
+                route_id="B63",
+                lat=40.67,
+                lon=-73.99,
+                bearing=180.0,
+                next_stop="S1",
+                direction_ref=0,
+                position_recorded_at=datetime.now(UTC),
+                onward_calls=[
+                    BusArrival(
+                        route_id="B63",
+                        vehicle_id="V1",
+                        stop_id="S1",
+                        stop_name="5 Av",
+                        status_text="Approaching",
+                        destination_name="Cobble Hill",
+                    )
+                ],
+            ),
+        ]
+        response = client.get("/bus/live-vehicles/MTA%20NYCT_B63")
+        assert response.status_code == 200
+        data = response.json()
+        assert data[0]["vehicle_id"] == "V1"
+        assert data[0]["mode"] == "bus"
+        assert data[0]["direction_id"] == 0
+        assert data[0]["downstream_stop_count"] == 1
+        assert data[0]["downstream_stop_ids"] == ["S1"]
+        assert data[0]["position_confidence"] == 1.0
+        assert data[0]["is_stale"] is False
+
+
+class TestSubwayVehicles:
+    """GET /subway/live-vehicles/{line_id} — backend-owned train details."""
+
+    @patch("app.routers.subway.resolve_subway_feed_key", return_value="ace")
+    @patch("app.routers.subway.get_vehicle_positions_for_line", new_callable=AsyncMock)
+    def test_live_vehicles_flags_stale_positions(self, mock_vehicles, mock_feed_key):
+        mock_vehicles.return_value = [
+            TransitVehicle(
+                vehicle_id="T1",
+                route_id="E",
+                trip_id="T1",
+                lat=40.75,
+                lon=-73.99,
+                current_stop_id="A27N",
+                current_stop_name="42 St-Port Authority",
+                timestamp=int(datetime.now(UTC).timestamp()) - 600,
+            )
+        ]
+
+        response = client.get("/subway/live-vehicles/E")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data[0]["vehicle_id"] == "T1"
+        assert data[0]["mode"] == "subway"
+        assert data[0]["trip_id"] == "T1"
+        assert data[0]["next_stop_id"] == "A27N"
+        assert data[0]["is_stale"] is True
+        assert data[0]["position_confidence"] == 0.15
 
 
 class TestBusRouteShape:

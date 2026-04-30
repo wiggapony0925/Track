@@ -355,6 +355,28 @@ struct ChipThreeTierTests {
         // Cancelled should not show NOW regardless
         #expect(c.isNow == false)
     }
+
+    @Test func liveQualityBadgeSummarizesAgedPositions() {
+        var c = chip(isRealTime: true, isScheduled: false)
+        c.livePositionAgeSeconds = 185
+
+        #expect(c.liveQualityBadge == "Age 3m")
+    }
+
+    @Test func liveQualityBadgeSummarizesEstimatedPositions() {
+        var c = chip(isRealTime: true, isScheduled: false)
+        c.livePositionConfidence = 0.55
+
+        #expect(c.liveQualityBadge == "Est")
+    }
+
+    @Test func scheduledChipSuppressesLiveQualityBadge() {
+        var c = chip(isRealTime: false, isScheduled: true, hasMapMarker: false)
+        c.livePositionAgeSeconds = 185
+        c.livePositionConfidence = 0.55
+
+        #expect(c.liveQualityBadge == nil)
+    }
 }
 
 // ============================================================================

@@ -108,7 +108,15 @@ extension HomeViewModel {
             return
         }
         do {
-            let vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
+            let liveDetails: [LiveVehicleDetailResponse]
+            let vehicles: [BusVehicleResponse]
+            do {
+                liveDetails = try await TrackAPI.fetchBusLiveVehicleDetails(routeID: routeId)
+                vehicles = TrackAPI.visibleBusVehicles(from: liveDetails)
+            } catch {
+                liveDetails = []
+                vehicles = try await TrackAPI.fetchBusVehicles(routeID: routeId)
+            }
 
             // Staleness check: user may have dismissed the route while the
             // network request was in-flight.  Discard the result so we don't
@@ -125,6 +133,7 @@ extension HomeViewModel {
             await MainActor.run {
                 // Final staleness check inside the MainActor block.
                 guard self.selectedRouteId == routeId else { return }
+                self.replaceLiveVehicleDetails(liveDetails)
                 let isFirstLoad = self.busVehicles.isEmpty
 
                 // 1) Snapshot current DISPLAY positions as interpolation origins.
@@ -526,9 +535,17 @@ extension HomeViewModel {
             // interpolated markers; arrivals remain the source of truth
             // for `nextStationName` / `estimatedArrival` / dwell metadata.
             async let arrivalsTask = TrackAPI.fetchSubwayArrivals(lineID: routeId)
-            async let vehiclesTask = TrackAPI.fetchSubwayVehicles(line: routeId)
+            async let liveDetailsTask = TrackAPI.fetchSubwayLiveVehicleDetails(line: routeId)
             let arrivals = try await arrivalsTask
-            let realVehicles = await vehiclesTask
+            let liveDetails: [LiveVehicleDetailResponse]
+            let realVehicles: [TrainVehicle]
+            do {
+                liveDetails = try await liveDetailsTask
+                realVehicles = TrackAPI.visibleTrainVehicles(from: liveDetails)
+            } catch {
+                liveDetails = []
+                realVehicles = await TrackAPI.fetchSubwayVehicles(line: routeId)
+            }
 
             // Staleness check: user may have dismissed while the fetch ran.
             guard selectedRouteId == routeId else { return }
@@ -544,6 +561,7 @@ extension HomeViewModel {
             // its own .linear(duration: 1.0). Double-wrapping caused stuttering.
             await MainActor.run {
                 guard self.selectedRouteId == routeId else { return }
+                self.replaceLiveVehicleDetails(liveDetails)
                 updateTrainPositions(arrivals: arrivals, realVehicles: realVehicles)
                 if let updatedGroup,
                    self.selectedGroupedRoute?.routeId == updatedGroup.routeId {
@@ -1019,6 +1037,7 @@ extension HomeViewModel {
         if selectedDirectionIndex != 0 { selectedDirectionIndex = 0 }
         if !busVehicles.isEmpty { busVehicles = [] }
         if !trainVehicles.isEmpty { trainVehicles = [] }
+        if !liveVehicleDetailsByKey.isEmpty { liveVehicleDetailsByKey = [:] }
         if !cachedTrainArrivals.isEmpty { cachedTrainArrivals = [] }
         if !previousBusPositions.isEmpty { previousBusPositions = [:] }
         if !_targetBusGPS.isEmpty { _targetBusGPS = [:] }
@@ -1230,6 +1249,7 @@ extension HomeViewModel {
     ) {
         guard let shape = routeShape else { return }
         self.cachedTrainArrivals = arrivals
+        let freshRealVehicles = realVehicles.filter { $0.isFreshRealtimePosition() }
 
         // Hybrid lookup: prefer real GTFS-RT vehicle positions when the
         // backend feed publishes them. NYCT subway feeds are inconsistent
@@ -1239,7 +1259,7 @@ extension HomeViewModel {
         // both NYCT-style (vehicle_id == trip_id) and feeds where they
         // diverge.
         var realByTrip: [String: TrainVehicle] = [:]
-        for v in realVehicles {
+        for v in freshRealVehicles {
             if let tid = v.tripId, !tid.isEmpty { realByTrip[tid] = v }
             realByTrip[v.id] = v
         }
@@ -1481,7 +1501,7 @@ extension HomeViewModel {
         // entity was published).  These come straight from the feed —
         // no interpolation needed.  Skip if direction is empty AND we have
         // no next-stop name, to avoid drawing markers with no context.
-        for real in realVehicles {
+        for real in freshRealVehicles {
             let key = real.tripId ?? real.id
             if newIds.contains(key) { continue }
             if real.lat == 0 && real.lon == 0 { continue }

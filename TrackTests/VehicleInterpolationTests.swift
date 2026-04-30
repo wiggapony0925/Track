@@ -1223,6 +1223,75 @@ struct EdgeCaseTests {
         #expect(noEta.minutesAway == nil)
     }
 
+    @Test func trainVehicleRealtimeFreshnessRejectsStaleFeedPositions() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let fresh = TrainVehicle(
+            id: "T1", tripId: "T1", routeId: "7", direction: "N",
+            lat: 40.75, lon: -73.99,
+            timestamp: Int(now.timeIntervalSince1970) - 90
+        )
+        let stale = TrainVehicle(
+            id: "T2", tripId: "T2", routeId: "7", direction: "S",
+            lat: 40.75, lon: -73.99,
+            timestamp: Int(now.timeIntervalSince1970) - 600
+        )
+        let noTimestamp = TrainVehicle(
+            id: "T3", tripId: "T3", routeId: "7", direction: "N",
+            lat: 40.75, lon: -73.99,
+            timestamp: nil
+        )
+
+        #expect(fresh.isFreshRealtimePosition(now: now))
+        #expect(!stale.isFreshRealtimePosition(now: now))
+        #expect(noTimestamp.isFreshRealtimePosition(now: now))
+    }
+
+    @Test func liveVehicleDetailDecodesNestedTrainPayload() throws {
+        let json = """
+        {
+            "vehicle_id": "T1",
+            "route_id": "7",
+            "mode": "subway",
+            "trip_id": "T1",
+            "pattern_id": null,
+            "direction_id": null,
+            "headsign": null,
+            "lat": 40.75,
+            "lon": -73.99,
+            "bearing": null,
+            "next_stop_id": "726N",
+            "next_stop_name": "Times Sq-42 St",
+            "downstream_stop_count": 1,
+            "downstream_stop_ids": ["726N"],
+            "position_source": "stop_anchor",
+            "position_age_seconds": 42,
+            "is_stale": false,
+            "is_realtime": true,
+            "position_confidence": 1.0,
+            "status": "IN_TRANSIT_TO",
+            "vehicle": {
+                "vehicle_id": "T1",
+                "route_id": "7",
+                "trip_id": "T1",
+                "lat": 40.75,
+                "lon": -73.99,
+                "current_stop_name": "Times Sq-42 St",
+                "status": "IN_TRANSIT_TO",
+                "mode": "subway",
+                "timestamp": 1800000000
+            }
+        }
+        """
+
+        let detail = try JSONDecoder().decode(LiveVehicleDetailResponse.self, from: Data(json.utf8))
+
+        #expect(detail.vehicleId == "T1")
+        #expect(detail.positionSource == "stop_anchor")
+        #expect(detail.trainVehicle?.routeId == "7")
+        #expect(detail.busVehicle == nil)
+    }
+
     @Test func busVehicleStableId() {
         let bus = BusVehicleResponse(
             vehicleId: "MTA-1234",

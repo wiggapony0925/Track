@@ -12,6 +12,8 @@ struct RouteDetailSheet: View {
     /// Replaces the old `@Binding var busVehicles` to avoid 1 Hz full-body
     /// re-evaluations from bus interpolation ticks.
     var vehicleCoordinateLookup: ((String) -> CLLocationCoordinate2D?)?
+    /// O(1) lookup for backend-owned live vehicle metadata keyed by an arrival.
+    var liveVehicleDetailLookup: ((NearbyTransitResponse) -> LiveVehicleDetailResponse?)?
     var trainVehicles: [TrainVehicle] = []
     @Binding var routeShape: RouteShapeResponse?
     var serviceAlerts: [TransitAlert] = []
@@ -253,6 +255,9 @@ struct RouteDetailSheet: View {
     private func chipStatus(for arrival: NearbyTransitResponse) -> ChipStatus {
         // Vehicle has a visible marker on the map → full Live
         if isLiveOnMap?(arrival) == true { return .live }
+        if let detail = liveVehicleDetailLookup?(arrival), !detail.isStale {
+            return detail.isRealtime ? .tracked : .scheduled
+        }
         // Backend says real-time (SIRI/GTFS-RT tracking) but no marker → Tracked
         if arrival.isRealTime { return .tracked }
         return .scheduled
@@ -268,6 +273,7 @@ struct RouteDetailSheet: View {
     init(
         group: GroupedNearbyTransitResponse,
         vehicleCoordinateLookup: ((String) -> CLLocationCoordinate2D?)? = nil,
+        liveVehicleDetailLookup: ((NearbyTransitResponse) -> LiveVehicleDetailResponse?)? = nil,
         trainVehicles: [TrainVehicle] = [],
         routeShape: Binding<RouteShapeResponse?>,
         selectedDirectionIndex: Binding<Int>,
@@ -302,6 +308,7 @@ struct RouteDetailSheet: View {
     ) {
         self.group = group
         self.vehicleCoordinateLookup = vehicleCoordinateLookup
+        self.liveVehicleDetailLookup = liveVehicleDetailLookup
         self.trainVehicles = trainVehicles
         self._routeShape = routeShape
         self._selectedDirectionIndex = selectedDirectionIndex
@@ -2443,7 +2450,14 @@ struct RouteDetailSheet: View {
     /// Unified vehicle coordinate lookup — uses vehicleCoordinateLookup closure for buses,
     /// trainVehicles for subway/LIRR/MNR. Returns nil for scheduled-only arrivals.
     private func vehicleCoordinate(for arrival: NearbyTransitResponse) -> CLLocationCoordinate2D? {
-        guard let vid = arrival.vehicleId, !vid.isEmpty else { return nil }
+        if let detail = liveVehicleDetailLookup?(arrival),
+           !detail.isStale,
+           detail.positionConfidence >= 0.5 {
+            return CLLocationCoordinate2D(latitude: detail.lat, longitude: detail.lon)
+        }
+
+        let vid = arrival.vehicleId ?? arrival.tripId
+        guard let vid, !vid.isEmpty else { return nil }
         if arrival.isBus {
             return vehicleCoordinateLookup?(vid)
         } else {
@@ -2518,6 +2532,7 @@ struct RouteDetailSheet: View {
         let isSched = !arrival.isCancelled && status == .scheduled
         let isTrackedOnly = !arrival.isCancelled && status == .tracked
         let hasMarker = isLiveOnMap?(arrival) ?? false
+        let liveDetail = liveVehicleDetailLookup?(arrival)
         return ArrivalChipData(
             id: arrival.id,
             minutesRemaining: eta.minutesRemaining,
@@ -2540,7 +2555,12 @@ struct RouteDetailSheet: View {
             mode: arrival.mode,
             delaySeconds: arrival.delaySeconds,
             isStalled: arrival.isStalled,
-            arrivalProximityText: arrival.arrivalProximityText
+            arrivalProximityText: arrival.arrivalProximityText,
+            livePositionSource: liveDetail?.positionSource,
+            livePositionAgeSeconds: liveDetail?.positionAgeSeconds,
+            livePositionConfidence: liveDetail?.positionConfidence,
+            nextStopName: liveDetail?.nextStopName,
+            downstreamStopCount: liveDetail?.downstreamStopCount ?? 0
         )
     }
 

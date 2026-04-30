@@ -58,7 +58,15 @@ struct ArrivalChipView: View {
     private struct MetadataTag: Identifiable {
         let id: String
         let label: String
+        let compactLabel: String
         let color: Color
+
+        init(id: String, label: String, compactLabel: String? = nil, color: Color) {
+            self.id = id
+            self.label = label
+            self.compactLabel = compactLabel ?? label
+            self.color = color
+        }
     }
 
     // MARK: Body
@@ -134,6 +142,7 @@ struct ArrivalChipView: View {
             tags.append(MetadataTag(
                 id: "variant",
                 label: chip.variantLabel ?? chip.serviceVariant.displayLabel,
+                compactLabel: chip.serviceVariant.displayLabel,
                 color: chip.serviceVariant.tintColor(routeColor: chipAccent)
             ))
         } else if chip.isExpress {
@@ -148,12 +157,14 @@ struct ArrivalChipView: View {
             tags.append(MetadataTag(
                 id: "stalled",
                 label: "Stalled",
+                compactLabel: "Stall",
                 color: AppTheme.Colors.alertRed
             ))
         } else if let delay = chip.delayBadge {
             tags.append(MetadataTag(
                 id: "delay",
                 label: delay.label,
+                compactLabel: compactDelayLabel(delay.label),
                 color: delay.isLate ? Color.orange : Color.blue
             ))
         }
@@ -162,6 +173,16 @@ struct ArrivalChipView: View {
             tags.append(MetadataTag(
                 id: "tracked",
                 label: "Tracked",
+                compactLabel: "Track",
+                color: AppTheme.Colors.textSecondary
+            ))
+        }
+
+        if let quality = chip.liveQualityBadge {
+            tags.append(MetadataTag(
+                id: "live-quality",
+                label: quality,
+                compactLabel: compactQualityLabel(quality),
                 color: AppTheme.Colors.textSecondary
             ))
         }
@@ -170,6 +191,7 @@ struct ArrivalChipView: View {
             tags.append(MetadataTag(
                 id: "proximity",
                 label: proximity,
+                compactLabel: compactProximityLabel(proximity),
                 color: chipAccent
             ))
         }
@@ -178,10 +200,11 @@ struct ArrivalChipView: View {
     }
 
     private var metadataTray: some View {
-        let visibleCount = isFirst ? 4 : 3
-        let visibleTags = Array(metadataTags.prefix(visibleCount))
-        let hiddenCount = max(0, metadataTags.count - visibleTags.count)
-        return HStack(spacing: 4) {
+        let allTags = metadataTags
+        let visibleCount = metadataVisibleCount(for: allTags)
+        let visibleTags = Array(allTags.prefix(visibleCount))
+        let hiddenCount = max(0, allTags.count - visibleTags.count)
+        return HStack(spacing: 3) {
             ForEach(visibleTags) { tag in
                 metadataToken(tag)
             }
@@ -194,14 +217,25 @@ struct ArrivalChipView: View {
         .padding(.bottom, 4)
     }
 
+    private func metadataVisibleCount(for tags: [MetadataTag]) -> Int {
+        guard !tags.isEmpty else { return 0 }
+        if isFirst { return min(tags.count, 3) }
+
+        let hasLongTag = tags.contains { $0.compactLabel.count > 5 }
+        let hasOverflow = tags.count > 2
+        if hasLongTag || hasOverflow { return 1 }
+        return min(tags.count, 2)
+    }
+
     private func metadataToken(_ tag: MetadataTag) -> some View {
-        Text(tag.label)
-            .font(.system(size: 8.5, weight: .heavy, design: .rounded))
+        Text(isFirst ? tag.label : tag.compactLabel)
+            .font(.system(size: isFirst ? 8.5 : 8, weight: .heavy, design: .rounded))
             .lineLimit(1)
-            .minimumScaleFactor(0.72)
+            .minimumScaleFactor(0.82)
             .foregroundStyle(usesSolidAccentCard ? .white.opacity(0.92) : tag.color)
-            .padding(.horizontal, isFirst ? 6 : 5)
-            .padding(.vertical, isFirst ? 3.5 : 3)
+            .padding(.horizontal, isFirst ? 6 : 4)
+            .padding(.vertical, isFirst ? 3.5 : 2.5)
+            .frame(maxWidth: isFirst ? 68 : 44)
             .background(
                 Capsule().fill(
                     usesSolidAccentCard ? .white.opacity(0.18) : tag.color.opacity(0.12)
@@ -213,14 +247,14 @@ struct ArrivalChipView: View {
 
     private func overflowToken(count: Int) -> some View {
         Text("+\(count)")
-            .font(.system(size: 8.5, weight: .heavy, design: .rounded))
+            .font(.system(size: isFirst ? 8.5 : 8, weight: .heavy, design: .rounded))
             .foregroundStyle(
                 usesSolidAccentCard
                     ? .white.opacity(0.92)
                     : AppTheme.Colors.textSecondary
             )
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
+            .padding(.horizontal, isFirst ? 6 : 5)
+            .padding(.vertical, isFirst ? 3 : 2.5)
             .background(
                 Capsule().fill(
                     usesSolidAccentCard
@@ -230,6 +264,26 @@ struct ArrivalChipView: View {
             )
             .accessibilityLabel("\(count) more tags")
             .dynamicTypeSize(...DynamicTypeSize.large)
+    }
+
+    private func compactDelayLabel(_ label: String) -> String {
+        label.replacingOccurrences(of: "Late ", with: "+")
+            .replacingOccurrences(of: "Early ", with: "-")
+    }
+
+    private func compactQualityLabel(_ label: String) -> String {
+        label == "At stop" ? "At" : label
+    }
+
+    private func compactProximityLabel(_ label: String) -> String {
+        let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized.contains("approach") { return "Near" }
+        if normalized.contains("at stop") { return "At" }
+        if normalized.contains("stop away") || normalized.contains("stops away") {
+            let digits = normalized.prefix { $0.isNumber }
+            return digits.isEmpty ? "Near" : "\(digits)st"
+        }
+        return label
     }
 
     private var etaCounter: some View {

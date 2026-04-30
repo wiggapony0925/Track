@@ -1028,11 +1028,9 @@ struct HomeView: View {
         return RouteDetailSheet(
             group: enrichedGroup,
             vehicleCoordinateLookup: { vid in
-                if let bus = viewModel.busVehicles.first(where: { $0.vehicleId == vid }) {
-                    return CLLocationCoordinate2D(latitude: bus.lat, longitude: bus.lon)
-                }
-                return nil
+                viewModel.coordinateForTappedVehicleAnywhere(vid)
             },
+            liveVehicleDetailLookup: { viewModel.liveVehicleDetail(for: $0) },
             trainVehicles: viewModel.filteredTrainVehicles,
             routeShape: $viewModel.routeShape,
             selectedDirectionIndex: $viewModel.selectedDirectionIndex,
