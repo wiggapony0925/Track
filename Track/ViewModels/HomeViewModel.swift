@@ -819,14 +819,31 @@ final class HomeViewModel {
         "\(group.mode):\(group.routeId)"
     }
 
-    /// Stable, normalized identity for a direction entry.
-    /// Uses direction text + optional label so reordered arrays still resolve correctly.
-    private func normalizedDirectionKey(_ direction: DirectionArrivalsResponse) -> String {
+    /// Stable, normalized display identity for a direction entry.
+    /// Used only while preserving the currently selected tab during shape enrichment,
+    /// because backend metadata may be added as part of the enrichment itself.
+    private func normalizedDirectionDisplayKey(_ direction: DirectionArrivalsResponse) -> String {
         let base = direction.direction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let label = direction.directionLabel?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? ""
         return label.isEmpty ? base : "\(base)|\(label)"
+    }
+
+    /// Stable, normalized identity for a direction entry.
+    /// Includes backend direction/branch metadata so reordered arrays and
+    /// duplicate-looking branch tabs don't collapse onto the same preference.
+    private func normalizedDirectionKey(_ direction: DirectionArrivalsResponse) -> String {
+        [
+            normalizedDirectionDisplayKey(direction),
+            direction.directionId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            direction.branchId?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+        ]
+        .compactMap { value in
+            guard let value, !value.isEmpty else { return nil }
+            return value
+        }
+        .joined(separator: "|")
     }
 
     private func isGenericBusShapeHeadsign(_ headsign: String) -> Bool {
@@ -1517,11 +1534,7 @@ final class HomeViewModel {
             shapeDirectionId: shapeDirectionId,
             fallbackToCombined: false
         )
-        if !directionCandidates.isEmpty {
-            return directionCandidates
-        }
-
-        return shape.decodedPolylines
+        return directionCandidates
     }
 
     private nonisolated static func bestDirectionPolylines(
@@ -1995,8 +2008,7 @@ final class HomeViewModel {
                         let d = removeDuplicateSegments(activeRaw)
                         let m = mergeAdjacentPolylines(d)
                         if m.count > 1 {
-                            let s = consolidateIntoSinglePolyline(m)
-                            return s.count >= 2 ? [s] : m
+                            return m.sorted { $0.count > $1.count }
                         }
                         return m
                     }()
@@ -3655,7 +3667,11 @@ final class HomeViewModel {
         // coverage but no true shape geometry/stop_sequence, so its bus polyline
         // is only an approximate last-resort fallback.
         let localShape = LocalRouteShapeProvider.shape(for: group)
-        if let localShape, routeShape(localShape, matches: group) {
+        let localShapeIsRenderable = localShape.map {
+            LocalRouteShapeProvider.hasRenderableGeometry($0)
+        } ?? false
+        let canUseInitialLocalShape = group.isBus || localShapeIsRenderable
+        if let localShape, canUseInitialLocalShape, routeShape(localShape, matches: group) {
             routeShape = localShape
             enrichGroupWithShapeDirections(localShape)
         } else if let currentShape = routeShape, !routeShape(currentShape, matches: group) {
@@ -3678,7 +3694,7 @@ final class HomeViewModel {
                 cachedShape = localShape
                 shouldPersistInitialShape = false
             }
-        } else if let localShape {
+        } else if let localShape, localShapeIsRenderable {
             cachedShape = localShape
             shouldPersistInitialShape = true
         } else {
@@ -3774,7 +3790,10 @@ final class HomeViewModel {
                         guard self.selectedRouteId == loadingRouteId else { return }
                     }
                     do {
-                        fetched = try await TrackAPI.fetchRouteShape(routeID: loadingRouteId)
+                        fetched = try await TrackAPI.fetchRouteDetailShape(
+                            routeID: loadingRouteId,
+                            mode: group.mode
+                        )
                         break
                     } catch {
                         AppLogger.shared.logError(
@@ -3814,7 +3833,10 @@ final class HomeViewModel {
                     loadedShape = cached
                     AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.routeId)")
                 } else {
-                    loadedShape = try await TrackAPI.fetchLIRRShape(routeID: group.routeId)
+                    loadedShape = try await TrackAPI.fetchRouteDetailShape(
+                        routeID: group.routeId,
+                        mode: group.mode
+                    )
                     cacheRouteShape(loadedShape, for: group.routeId)
                 }
                 guard selectedRouteId == loadingRouteId else { return }
@@ -3849,7 +3871,10 @@ final class HomeViewModel {
                     loadedShape = cached
                     AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.routeId)")
                 } else {
-                    loadedShape = try await TrackAPI.fetchMNRShape(routeID: group.routeId)
+                    loadedShape = try await TrackAPI.fetchRouteDetailShape(
+                        routeID: group.routeId,
+                        mode: group.mode
+                    )
                     cacheRouteShape(loadedShape, for: group.routeId)
                 }
                 guard selectedRouteId == loadingRouteId else { return }
@@ -3884,7 +3909,10 @@ final class HomeViewModel {
                     loadedShape = cached
                     AppLogger.shared.log("SHAPE_CACHE", message: "HIT \(group.displayName)")
                 } else {
-                    loadedShape = try await TrackAPI.fetchSubwayShape(routeID: group.displayName)
+                    loadedShape = try await TrackAPI.fetchRouteDetailShape(
+                        routeID: group.displayName,
+                        mode: group.mode
+                    )
                     cacheRouteShape(loadedShape, for: group.displayName)
                 }
                 guard selectedRouteId == loadingRouteId else { return }
@@ -4080,7 +4108,7 @@ final class HomeViewModel {
         let existingCount = group.directions.count
         let previousSelectedDirectionKey: String? = {
             guard group.directions.indices.contains(selectedDirectionIndex) else { return nil }
-            return normalizedDirectionKey(group.directions[selectedDirectionIndex])
+            return normalizedDirectionDisplayKey(group.directions[selectedDirectionIndex])
         }()
 
         // Build a new directions array ordered by shape direction_id.
@@ -4262,6 +4290,9 @@ final class HomeViewModel {
             orderedDirections.count != existingCount
             || zip(orderedDirections, group.directions).contains(where: {
                 $0.direction != $1.direction
+                    || $0.directionLabel != $1.directionLabel
+                    || $0.directionId != $1.directionId
+                    || $0.branchId != $1.branchId
             })
 
         #if DEBUG
@@ -4307,7 +4338,7 @@ final class HomeViewModel {
             //    unchanged to avoid redundant DIR_CHANGE / flip-flopping.
             if let key = previousSelectedDirectionKey,
                let resolvedIndex = updatedGroup.directions.firstIndex(where: {
-                   normalizedDirectionKey($0) == key
+                   normalizedDirectionDisplayKey($0) == key
                }) {
                 if resolvedIndex != selectedDirectionIndex {
                     let previousIndex = selectedDirectionIndex

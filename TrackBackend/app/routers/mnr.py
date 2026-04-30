@@ -8,6 +8,7 @@ from app.models import (
     RESP_404,
     RESP_502,
     AllCommuterRailLinesResponse,
+    RouteDetail,
     RouteShape,
     TrackArrival,
 )
@@ -20,6 +21,7 @@ from app.services.mapping.rail.shapes import (
     get_all_mnr_lines,
     get_single_mnr_line,
 )
+from app.services.route_detail import build_route_detail
 
 router = APIRouter(tags=["mnr"])
 
@@ -68,6 +70,27 @@ async def mnr_shape(
         get_all_fn=get_all_mnr_lines,
         get_single_fn=get_single_mnr_line,
     )
+
+
+@router.get(
+    "/mnr/route-detail/{route_id}",
+    response_model=RouteDetail,
+    summary="Get Metro-North route detail patterns",
+    description=(
+        "Returns a Transit-style route detail object with line direction "
+        "patterns, ordered stops, and geometry."
+    ),
+    responses={**RESP_404},
+)
+async def mnr_route_detail(
+    route_id: str = Path(
+        ...,
+        description="Metro-North GTFS route ID, prefixed form, or line name.",
+        examples=["1", "MNR_1", "Hudson"],
+    )
+) -> RouteDetail:
+    shape = await mnr_shape(route_id)
+    return build_route_detail(route_id=shape.route_id, mode="mnr", shape=shape)
 
 
 @router.get(

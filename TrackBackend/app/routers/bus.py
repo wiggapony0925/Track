@@ -37,11 +37,13 @@ from app.models import (
     BusTileRoute,
     BusTileStop,
     BusVehicle,
+    RouteDetail,
     RouteShape,
 )
 from app.routers.nearby import _bus_color_for_service_type, _classify_bus_service_type
 from app.services.mapping.bus.routes import get_bus_open_data_shapes
 from app.services.mapping.bus.stops import get_bus_route_stops, get_bus_stop_index
+from app.services.route_detail import build_route_detail
 from app.services.transit.schedule_service import schedule_service
 from app.utils.logger import TrackLogger
 
@@ -817,3 +819,28 @@ async def bus_route_shape(
         )
         response.headers["X-Track-Degraded"] = "shape-fallback"
         return await _fallback_route_shape(route_id)
+
+
+@router.get(
+    "/route-detail/{route_id:path}",
+    response_model=RouteDetail,
+    summary="Get bus route detail patterns",
+    description=(
+        "Returns a Transit-style route detail object where each backend-authored "
+        "direction pattern carries its own geometry and ordered stops."
+    ),
+    responses={**RESP_404, **RESP_502},
+)
+async def bus_route_detail(
+    route_id: str = Path(
+        ...,
+        description="Fully-qualified OBA route ID or short route name.",
+        examples=["MTA NYCT_B63", "B63"],
+    ),
+    response: Response = None,
+) -> RouteDetail:
+    response.headers["Cache-Control"] = (
+        "public, max-age=3600, stale-while-revalidate=86400, stale-if-error=604800"
+    )
+    shape = await bus_route_shape(route_id, response=response)
+    return build_route_detail(route_id=route_id, mode="bus", shape=shape)

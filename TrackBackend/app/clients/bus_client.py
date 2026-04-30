@@ -527,7 +527,7 @@ def _evict_cache(
 # Route-shape cache: mostly-static data, long-lived (TTLs from cache_config)
 _route_shape_cache: dict[str, _TTLCacheEntry] = {}
 _route_shape_inflight: dict[str, asyncio.Task[RouteShape]] = {}
-_BUS_ROUTE_SHAPE_SOURCE_VERSION = "open-data-v4"
+_BUS_ROUTE_SHAPE_SOURCE_VERSION = "open-data-v5"
 
 _BUS_STATIC_GTFS_ROOT = Path(__file__).resolve().parent.parent / "data" / "bus"
 _static_route_shape_index: dict[str, RouteShape] | None = None
@@ -719,6 +719,12 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
         _db_path = Path("app/data/transit_schedule.db")
         route_stop_ordered: dict[str, list[tuple[int, str]]] = defaultdict(list)
         route_stop_seen: dict[str, set[str]] = defaultdict(set)
+        route_stop_ordered_by_dir: dict[str, dict[int, list[tuple[int, str]]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        route_stop_seen_by_dir: dict[str, dict[int, set[str]]] = defaultdict(
+            lambda: defaultdict(set)
+        )
         if _db_path.exists():
             import sqlite3 as _sqlite3
 
@@ -732,19 +738,32 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
                     placeholders = ",".join("?" for _ in _route_shorts)
                     _cur.execute(
                         f"""
-                        SELECT DISTINCT st.stop_id, st.stop_sequence, r.route_short_name
+                        SELECT DISTINCT st.stop_id, st.stop_sequence, r.route_short_name, t.direction_id
                         FROM stop_times st
                         JOIN trips t ON t.feed_id = st.feed_id AND t.trip_id = st.trip_id
                         JOIN routes r ON r.feed_id = t.feed_id AND r.route_id = t.route_id AND r.route_type = 3
                         WHERE r.route_short_name IN ({placeholders})
-                        ORDER BY r.route_short_name, st.stop_sequence
+                        ORDER BY r.route_short_name, t.direction_id, st.stop_sequence
                     """,
                         list(_route_shorts),
                     )
-                    for _sid, _seq, _short in _cur.fetchall():
+                    for _sid, _seq, _short, _direction_id in _cur.fetchall():
                         if _sid and _short and _sid not in route_stop_seen[_short]:
                             route_stop_seen[_short].add(_sid)
                             route_stop_ordered[_short].append((_seq or 0, _sid))
+                        try:
+                            _dir_id = int(_direction_id or 0)
+                        except (TypeError, ValueError):
+                            _dir_id = 0
+                        if (
+                            _sid
+                            and _short
+                            and _sid not in route_stop_seen_by_dir[_short][_dir_id]
+                        ):
+                            route_stop_seen_by_dir[_short][_dir_id].add(_sid)
+                            route_stop_ordered_by_dir[_short][_dir_id].append(
+                                (_seq or 0, _sid)
+                            )
                 _conn.close()
             except Exception as _exc:
                 TrackLogger.warning(
@@ -765,6 +784,35 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
         for short, by_dir in route_shape_ids_by_dir.items():
             directions: list[DirectionShape] = []
             route_polylines: list[str] = []
+
+            def stops_from_ordered_ids(ordered_stop_ids: list[str]) -> list[BusStop]:
+                stops_for_ids: list[BusStop] = []
+                for stop_id in ordered_stop_ids:
+                    meta = stop_meta.get(stop_id)
+                    if not meta:
+                        continue
+                    name, lat, lon = meta
+                    stops_for_ids.append(
+                        BusStop(
+                            id=stop_id,
+                            name=name,
+                            lat=lat,
+                            lon=lon,
+                            direction=None,
+                        )
+                    )
+                return stops_for_ids
+
+            ordered_stop_ids = [
+                sid for _, sid in sorted(route_stop_ordered.get(short, []))
+            ]
+            stops: list[BusStop] = stops_from_ordered_ids(ordered_stop_ids)
+            direction_stops: dict[int, list[BusStop]] = {}
+            for direction_id, ordered in route_stop_ordered_by_dir.get(short, {}).items():
+                direction_ordered_stop_ids = [sid for _, sid in sorted(ordered)]
+                direction_stops[direction_id] = stops_from_ordered_ids(
+                    direction_ordered_stop_ids
+                )
 
             for direction_id in sorted(by_dir.keys()):
                 dir_polylines: list[str] = []
@@ -790,31 +838,12 @@ def _load_static_bus_route_shape_index() -> dict[str, RouteShape]:
                         direction_id=direction_id,
                         headsign=f"Direction {direction_id}",
                         polylines=dir_polylines,
-                        stops=[],
+                        stops=direction_stops.get(direction_id) or stops,
                     )
                 )
 
             if not route_polylines:
                 continue
-
-            stops: list[BusStop] = []
-            ordered_stop_ids = [
-                sid for _, sid in sorted(route_stop_ordered.get(short, []))
-            ]
-            for stop_id in ordered_stop_ids:
-                meta = stop_meta.get(stop_id)
-                if not meta:
-                    continue
-                name, lat, lon = meta
-                stops.append(
-                    BusStop(
-                        id=stop_id,
-                        name=name,
-                        lat=lat,
-                        lon=lon,
-                        direction=None,
-                    )
-                )
 
             route_polylines = _merge_polyline_segments(route_polylines)
             fresh = RouteShape(

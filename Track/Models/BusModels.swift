@@ -509,11 +509,6 @@ struct RouteShapeResponse: Codable, Sendable {
         shapeDirectionId: Int? = nil
     ) -> DirectionShapeResponse? {
         guard !directions.isEmpty else { return nil }
-
-        if let shapeDirectionId,
-           let match = directions.first(where: { $0.directionId == shapeDirectionId }) {
-            return match
-        }
         
         // Prefer matching by name to headsign — but only when the name is
         // long enough for substring matching to be reliable.  Short compass
@@ -539,6 +534,11 @@ struct RouteShapeResponse: Codable, Sendable {
                 }
             }
         }
+
+        if let shapeDirectionId,
+           let match = directions.first(where: { $0.directionId == shapeDirectionId }) {
+            return match
+        }
         
         // Fallback to GTFS direction_id (0 or 1)
         if let match = directions.first(where: { $0.directionId == index }) {
@@ -559,11 +559,6 @@ struct RouteShapeResponse: Codable, Sendable {
         fallbackToCombined: Bool = true
     ) -> [BusStop] {
         guard !directions.isEmpty else { return stops }
-
-        if let shapeDirectionId,
-           let match = directions.first(where: { $0.directionId == shapeDirectionId }) {
-            return match.stops.isEmpty && fallbackToCombined ? stops : match.stops
-        }
         
         // Prefer matching by name to headsign — same guard as matchedDirection
         // to avoid short compass codes ("N"/"S") false-matching on substrings.
@@ -585,6 +580,11 @@ struct RouteShapeResponse: Codable, Sendable {
                 }
             }
         }
+
+        if let shapeDirectionId,
+           let match = directions.first(where: { $0.directionId == shapeDirectionId }) {
+            return match.stops.isEmpty && fallbackToCombined ? stops : match.stops
+        }
         
         // Fallback to GTFS direction_id (0 or 1)
         if let match = directions.first(where: { $0.directionId == index }) {
@@ -593,6 +593,42 @@ struct RouteShapeResponse: Codable, Sendable {
         let safeIdx = min(index, directions.count - 1)
         let dirStops = directions[safeIdx].stops
         return dirStops.isEmpty && fallbackToCombined ? stops : dirStops
+    }
+}
+
+/// Backend-authored route pattern used by Transit-style route detail responses.
+struct RoutePatternResponse: Codable, Identifiable, Sendable {
+    var id: String { patternId }
+
+    let patternId: String
+    let directionId: Int
+    let headsign: String
+    let polylines: [String]
+    let stops: [BusStop]
+    let serviceType: String?
+    let localOnlyStopIds: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case patternId = "pattern_id"
+        case directionId = "direction_id"
+        case headsign, polylines, stops
+        case serviceType = "service_type"
+        case localOnlyStopIds = "local_only_stop_ids"
+    }
+}
+
+/// Transit-style route detail response: one route shape plus backend-authored patterns.
+struct RouteDetailResponse: Codable, Sendable {
+    let routeId: String
+    let mode: String
+    let routeShape: RouteShapeResponse
+    let patterns: [RoutePatternResponse]
+
+    enum CodingKeys: String, CodingKey {
+        case routeId = "route_id"
+        case mode
+        case routeShape = "route_shape"
+        case patterns
     }
 }
 

@@ -92,6 +92,56 @@ struct StaticNearbyDisplayTests {
         #expect(viewModel.filteredNearbyGroupedBusArrivals.map(\.routeId) == ["M11"])
     }
 
+    @Test func routeDetailDecodesBackendAuthoredPatterns() throws {
+        let json = """
+        {
+            "route_id": "E",
+            "mode": "subway",
+            "route_shape": {
+                "route_id": "E",
+                "polylines": ["_p~iF~ps|U_ulLnnqC_mqNvxq`@"],
+                "stops": [
+                    {"id": "E01", "name": "World Trade Center", "lat": 40.712, "lon": -74.01}
+                ],
+                "directions": [
+                    {
+                        "direction_id": 0,
+                        "headsign": "Jamaica Center-Parsons/Archer",
+                        "polylines": ["_p~iF~ps|U_ulLnnqC_mqNvxq`@"],
+                        "stops": [
+                            {"id": "E01", "name": "World Trade Center", "lat": 40.712, "lon": -74.01}
+                        ],
+                        "service_type": "local",
+                        "local_only_stop_ids": []
+                    }
+                ],
+                "service_type": "local"
+            },
+            "patterns": [
+                {
+                    "pattern_id": "subway:E:0:jamaica:0",
+                    "direction_id": 0,
+                    "headsign": "Jamaica Center-Parsons/Archer",
+                    "polylines": ["_p~iF~ps|U_ulLnnqC_mqNvxq`@"],
+                    "stops": [
+                        {"id": "E01", "name": "World Trade Center", "lat": 40.712, "lon": -74.01}
+                    ],
+                    "service_type": "local",
+                    "local_only_stop_ids": []
+                }
+            ]
+        }
+        """
+
+        let detail = try JSONDecoder().decode(RouteDetailResponse.self, from: Data(json.utf8))
+
+        #expect(detail.routeId == "E")
+        #expect(detail.mode == "subway")
+        #expect(detail.routeShape.directions.first?.headsign == "Jamaica Center-Parsons/Archer")
+        #expect(detail.patterns.first?.patternId == "subway:E:0:jamaica:0")
+        #expect(detail.patterns.first?.stops.first?.name == "World Trade Center")
+    }
+
     @Test func liveModeStillMovesPlaceholderGroupsToInactive() {
         let viewModel = HomeViewModel()
         viewModel.groupedTransit = [staticGroup()]
@@ -406,7 +456,7 @@ struct StaticNearbyDisplayTests {
         #expect(LocalRouteShapeProvider.hasRenderableGeometry(shape))
     }
 
-    @Test func routeLevelGeometryBackfillsEmptyDirectionPolylines() {
+    @Test func emptyDirectionGeometryDoesNotBackfillCombinedRoutePolyline() {
         let stops = [
             BusStop(id: "Q26-1", name: "15 Av/115 St", lat: 40.785, lon: -73.845, direction: "0"),
             BusStop(id: "Q26-2", name: "110 St/14 Av", lat: 40.790, lon: -73.835, direction: "0")
@@ -439,8 +489,50 @@ struct StaticNearbyDisplayTests {
             isBus: true
         )
 
-        #expect(candidates.count == 1)
-        #expect(candidates.first?.count == 2)
+        #expect(candidates.isEmpty)
+    }
+
+    @Test func branchHeadsignBeatsSharedDirectionId() {
+        let sharedStops = [
+            BusStop(id: "E01", name: "World Trade Center", lat: 40.712, lon: -74.009, direction: nil),
+            BusStop(id: "E02", name: "Queens Plaza", lat: 40.748, lon: -73.937, direction: nil)
+        ]
+        let jamaicaCenterStops = sharedStops + [
+            BusStop(id: "EJC", name: "Jamaica Center-Parsons/Archer", lat: 40.702, lon: -73.801, direction: nil)
+        ]
+        let jamaica179Stops = sharedStops + [
+            BusStop(id: "E179", name: "Jamaica-179 St", lat: 40.713, lon: -73.783, direction: nil)
+        ]
+        let shape = RouteShapeResponse(
+            routeId: "E",
+            polylines: [],
+            stops: jamaicaCenterStops + jamaica179Stops,
+            directions: [
+                DirectionShapeResponse(
+                    directionId: 0,
+                    headsign: "Jamaica Center-Parsons/Archer",
+                    polylines: [],
+                    stops: jamaicaCenterStops
+                ),
+                DirectionShapeResponse(
+                    directionId: 0,
+                    headsign: "Jamaica-179 St",
+                    polylines: [],
+                    stops: jamaica179Stops
+                )
+            ],
+            serviceType: nil
+        )
+
+        let matched = shape.stopsForDirection(
+            index: 0,
+            name: "Jamaica-179 St",
+            shapeDirectionId: 0,
+            fallbackToCombined: false
+        )
+
+        #expect(matched.map(\.name).contains("Jamaica-179 St"))
+        #expect(!matched.map(\.name).contains("Jamaica Center-Parsons/Archer"))
     }
 
     @Test func genericNumericDirectionLabelsAreFallbacks() {

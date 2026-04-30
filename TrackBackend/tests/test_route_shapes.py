@@ -505,7 +505,7 @@ class TestBusRouteShapeEndpoint:
 
         await bus_client.get_route_shape("MTA NYCT_M11")
 
-        assert shared_cache_keys == ["open-data-v4:MTA NYCT_M11"]
+        assert shared_cache_keys == ["open-data-v5:MTA NYCT_M11"]
 
     @pytest.mark.asyncio
     async def test_open_data_shape_uses_oba_ordered_stops(self, monkeypatch):

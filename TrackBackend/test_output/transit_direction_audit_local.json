@@ -1,0 +1,381 @@
+{
+  "track_summary": {
+    "subway": {
+      "routes": 29,
+      "directions": 68,
+      "issues": 0,
+      "gaps": 0,
+      "notes": 9,
+      "avg_elapsed_ms": 8.163
+    },
+    "lirr": {
+      "routes": 12,
+      "directions": 24,
+      "issues": 0,
+      "gaps": 0,
+      "notes": 0,
+      "avg_elapsed_ms": 11.023
+    },
+    "mnr": {
+      "routes": 6,
+      "directions": 12,
+      "issues": 0,
+      "gaps": 0,
+      "notes": 0,
+      "avg_elapsed_ms": 11.636
+    },
+    "bus": {
+      "routes": 253,
+      "directions": 500,
+      "issues": 0,
+      "gaps": 0,
+      "notes": 0,
+      "avg_elapsed_ms": 103.1
+    }
+  },
+  "transit_summary": {},
+  "transit_error": null,
+  "comparisons": [],
+  "track_routes_with_issues": [],
+  "track_routes_with_gaps": [],
+  "track_routes_with_notes": [
+    {
+      "source": "track",
+      "mode": "subway",
+      "route_id": "2",
+      "display_name": "2",
+      "polyline_count": 4,
+      "stop_count": 142,
+      "direction_count": 3,
+      "directions": [
+        {
+          "direction_id": 0,
+          "headsign": "Wakefield-241 St",
+          "polyline_count": 2,
+          "stop_count": 71,
+          "first_stop": "Flatbush Av-Brooklyn College",
+          "last_stop": "Nostrand Av",
+          "local_only_stop_count": 19
+        },
+        {
+          "direction_id": 1,
+          "headsign": "Flatbush Av-Brooklyn College",
+          "polyline_count": 1,
+          "stop_count": 61,
+          "first_stop": "Wakefield-241 St",
+          "last_stop": "Flatbush Av-Brooklyn College",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 1,
+          "headsign": "New Lots Av",
+          "polyline_count": 1,
+          "stop_count": 52,
+          "first_stop": "Wakefield-241 St",
+          "last_stop": "New Lots Av",
+          "local_only_stop_count": 0
+        }
+      ],
+      "issues": [],
+      "gaps": [],
+      "notes": [
+        "direction_id 1 has 2 branch headsigns"
+      ],
+      "elapsed_ms": 0.24525000480934978
+    },
+    {
+      "source": "track",
+      "mode": "subway",
+      "route_id": "5",
+      "display_name": "5",
+      "polyline_count": 6,
+      "stop_count": 101,
+      "direction_count": 4,
+      "directions": [
+        {
+          "direction_id": 0,
+          "headsign": "Eastchester-Dyre Av",
+          "polyline_count": 2,
+          "stop_count": 46,
+          "first_stop": "New Lots Av",
+          "last_stop": "President St-Medgar Evers College",
+          "local_only_stop_count": 10
+        },
+        {
+          "direction_id": 0,
+          "headsign": "Nereid Av",
+          "polyline_count": 1,
+          "stop_count": 33,
+          "first_stop": "Flatbush Av-Brooklyn College",
+          "last_stop": "Nereid Av",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 1,
+          "headsign": "Flatbush Av-Brooklyn College",
+          "polyline_count": 2,
+          "stop_count": 45,
+          "first_stop": "Eastchester-Dyre Av",
+          "last_stop": "Bronx Park East",
+          "local_only_stop_count": 10
+        },
+        {
+          "direction_id": 1,
+          "headsign": "Crown Hts-Utica Av",
+          "polyline_count": 1,
+          "stop_count": 30,
+          "first_stop": "Eastchester-Dyre Av",
+          "last_stop": "Crown Hts-Utica Av",
+          "local_only_stop_count": 0
+        }
+      ],
+      "issues": [],
+      "gaps": [],
+      "notes": [
+        "direction_id 0 has 2 branch headsigns",
+        "direction_id 1 has 2 branch headsigns"
+      ],
+      "elapsed_ms": 0.2819579967763275
+    },
+    {
+      "source": "track",
+      "mode": "subway",
+      "route_id": "A",
+      "display_name": "A",
+      "polyline_count": 6,
+      "stop_count": 131,
+      "direction_count": 4,
+      "directions": [
+        {
+          "direction_id": 0,
+          "headsign": "Inwood-207 St",
+          "polyline_count": 3,
+          "stop_count": 66,
+          "first_stop": "Far Rockaway-Mott Av",
+          "last_stop": "Beach 90 St",
+          "local_only_stop_count": 31
+        },
+        {
+          "direction_id": 1,
+          "headsign": "Far Rockaway-Mott Av",
+          "polyline_count": 1,
+          "stop_count": 58,
+          "first_stop": "Inwood-207 St",
+          "last_stop": "Far Rockaway-Mott Av",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 1,
+          "headsign": "Ozone Park-Lefferts Blvd",
+          "polyline_count": 1,
+          "stop_count": 52,
+          "first_stop": "Inwood-207 St",
+          "last_stop": "Ozone Park-Lefferts Blvd",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 1,
+          "headsign": "Rockaway Park-Beach 116 St",
+          "polyline_count": 1,
+          "stop_count": 34,
+          "first_stop": "Dyckman St",
+          "last_stop": "Rockaway Park-Beach 116 St",
+          "local_only_stop_count": 0
+        }
+      ],
+      "issues": [],
+      "gaps": [],
+      "notes": [
+        "direction_id 1 has 3 branch headsigns"
+      ],
+      "elapsed_ms": 0.4460419877432287
+    },
+    {
+      "source": "track",
+      "mode": "subway",
+      "route_id": "E",
+      "display_name": "E",
+      "polyline_count": 4,
+      "stop_count": 70,
+      "direction_count": 3,
+      "directions": [
+        {
+          "direction_id": 0,
+          "headsign": "Jamaica Center-Parsons/Archer",
+          "polyline_count": 1,
+          "stop_count": 32,
+          "first_stop": "World Trade Center",
+          "last_stop": "Jamaica Center-Parsons/Archer",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 0,
+          "headsign": "Jamaica-179 St",
+          "polyline_count": 1,
+          "stop_count": 23,
+          "first_stop": "World Trade Center",
+          "last_stop": "Jamaica-179 St",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 1,
+          "headsign": "World Trade Center",
+          "polyline_count": 2,
+          "stop_count": 34,
+          "first_stop": "Jamaica Center-Parsons/Archer",
+          "last_stop": "Parsons Blvd",
+          "local_only_stop_count": 15
+        }
+      ],
+      "issues": [],
+      "gaps": [],
+      "notes": [
+        "direction_id 0 has 2 branch headsigns"
+      ],
+      "elapsed_ms": 0.15308402362279594
+    },
+    {
+      "source": "track",
+      "mode": "subway",
+      "route_id": "N",
+      "display_name": "N",
+      "polyline_count": 6,
+      "stop_count": 99,
+      "direction_count": 3,
+      "directions": [
+        {
+          "direction_id": 0,
+          "headsign": "Astoria-Ditmars Blvd",
+          "polyline_count": 2,
+          "stop_count": 46,
+          "first_stop": "Coney Island-Stillwell Av",
+          "last_stop": "Canal St",
+          "local_only_stop_count": 6
+        },
+        {
+          "direction_id": 0,
+          "headsign": "96 St",
+          "polyline_count": 1,
+          "stop_count": 21,
+          "first_stop": "Coney Island-Stillwell Av",
+          "last_stop": "96 St",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 1,
+          "headsign": "Coney Island-Stillwell Av",
+          "polyline_count": 3,
+          "stop_count": 50,
+          "first_stop": "Astoria-Ditmars Blvd",
+          "last_stop": "Lexington Av/63 St",
+          "local_only_stop_count": 27
+        }
+      ],
+      "issues": [],
+      "gaps": [],
+      "notes": [
+        "direction_id 0 has 2 branch headsigns"
+      ],
+      "elapsed_ms": 0.33454198273830116
+    },
+    {
+      "source": "track",
+      "mode": "subway",
+      "route_id": "R",
+      "display_name": "R",
+      "polyline_count": 4,
+      "stop_count": 94,
+      "direction_count": 4,
+      "directions": [
+        {
+          "direction_id": 0,
+          "headsign": "Forest Hills-71 Av",
+          "polyline_count": 1,
+          "stop_count": 44,
+          "first_stop": "Bay Ridge-95 St",
+          "last_stop": "Forest Hills-71 Av",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 0,
+          "headsign": "96 St",
+          "polyline_count": 1,
+          "stop_count": 33,
+          "first_stop": "Bay Ridge-95 St",
+          "last_stop": "96 St",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 1,
+          "headsign": "Bay Ridge-95 St",
+          "polyline_count": 1,
+          "stop_count": 44,
+          "first_stop": "Forest Hills-71 Av",
+          "last_stop": "Bay Ridge-95 St",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 1,
+          "headsign": "Bay Pkwy",
+          "polyline_count": 1,
+          "stop_count": 40,
+          "first_stop": "Forest Hills-71 Av",
+          "last_stop": "Bay Pkwy",
+          "local_only_stop_count": 0
+        }
+      ],
+      "issues": [],
+      "gaps": [],
+      "notes": [
+        "direction_id 0 has 2 branch headsigns",
+        "direction_id 1 has 2 branch headsigns"
+      ],
+      "elapsed_ms": 0.20837498595938087
+    },
+    {
+      "source": "track",
+      "mode": "subway",
+      "route_id": "W",
+      "display_name": "W",
+      "polyline_count": 3,
+      "stop_count": 91,
+      "direction_count": 3,
+      "directions": [
+        {
+          "direction_id": 0,
+          "headsign": "Astoria-Ditmars Blvd",
+          "polyline_count": 1,
+          "stop_count": 44,
+          "first_stop": "86 St",
+          "last_stop": "Astoria-Ditmars Blvd",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 1,
+          "headsign": "86 St",
+          "polyline_count": 1,
+          "stop_count": 44,
+          "first_stop": "Astoria-Ditmars Blvd",
+          "last_stop": "86 St",
+          "local_only_stop_count": 0
+        },
+        {
+          "direction_id": 1,
+          "headsign": "Bay Pkwy",
+          "polyline_count": 1,
+          "stop_count": 35,
+          "first_stop": "Astoria-Ditmars Blvd",
+          "last_stop": "Bay Pkwy",
+          "local_only_stop_count": 0
+        }
+      ],
+      "issues": [],
+      "gaps": [],
+      "notes": [
+        "direction_id 1 has 2 branch headsigns"
+      ],
+      "elapsed_ms": 0.1585409918334335
+    }
+  ],
+  "transit_routes": []
+}

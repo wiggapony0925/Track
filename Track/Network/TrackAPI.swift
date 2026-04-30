@@ -775,6 +775,43 @@ struct TrackAPI {
         return try decoder.decode(RouteShapeResponse.self, from: data)
     }
 
+    /// Fetches the backend-authored route detail object for a route.
+    static func fetchRouteDetail(routeID: String, mode: String) async throws -> RouteDetailResponse {
+        let encoded =
+            routeID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? routeID
+        let path: String
+        switch mode.lowercased() {
+        case "subway", "train":
+            path = "/subway/route-detail/\(encoded)"
+        case "lirr":
+            path = "/lirr/route-detail/\(encoded)"
+        case "mnr", "metro_north", "metro-north":
+            path = "/mnr/route-detail/\(encoded)"
+        default:
+            path = "/bus/route-detail/\(encoded)"
+        }
+        let data = try await get(path: path)
+        return try decoder.decode(RouteDetailResponse.self, from: data)
+    }
+
+    /// Fetches route detail first, falling back to legacy shape endpoints if needed.
+    static func fetchRouteDetailShape(routeID: String, mode: String) async throws -> RouteShapeResponse {
+        do {
+            return try await fetchRouteDetail(routeID: routeID, mode: mode).routeShape
+        } catch {
+            switch mode.lowercased() {
+            case "subway", "train":
+                return try await fetchSubwayShape(routeID: routeID)
+            case "lirr":
+                return try await fetchLIRRShape(routeID: routeID)
+            case "mnr", "metro_north", "metro-north":
+                return try await fetchMNRShape(routeID: routeID)
+            default:
+                return try await fetchRouteShape(routeID: routeID)
+            }
+        }
+    }
+
     /// Fetches all bus route shapes and stops for map tile baking.
     ///
     /// Returns every NYC bus route polyline and every revenue stop in a

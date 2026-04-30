@@ -879,10 +879,56 @@ struct RouteDetailSheet: View {
             let merged = mergeOrderedPolylines(segments)
             cachedDirectionPolyline = merged.flatMap { $0 }
         } else if segments.count > 1 {
-            cachedDirectionPolyline = consolidateIntoSinglePolyline(segments)
+            cachedDirectionPolyline = bestRailSegment(
+                from: segments,
+                directionStops: directionStops
+            ) ?? segments.max(by: { $0.count < $1.count }) ?? []
         } else {
             cachedDirectionPolyline = segments.flatMap { $0 }
         }
+    }
+
+    private func bestRailSegment(
+        from segments: [[CLLocationCoordinate2D]],
+        directionStops: [BusStop]
+    ) -> [CLLocationCoordinate2D]? {
+        guard segments.count > 1,
+              let anchor = selectedRailSegmentAnchor(in: directionStops)
+        else { return nil }
+
+        return segments.min { lhs, rhs in
+            let lhsDistance = VehicleInterpolator
+                .snap(coordinate: anchor, to: lhs)?.distanceFromPolyline ?? .greatestFiniteMagnitude
+            let rhsDistance = VehicleInterpolator
+                .snap(coordinate: anchor, to: rhs)?.distanceFromPolyline ?? .greatestFiniteMagnitude
+            return lhsDistance < rhsDistance
+        }
+    }
+
+    private func selectedRailSegmentAnchor(in directionStops: [BusStop]) -> CLLocationCoordinate2D? {
+        let candidateKeys = [
+            inSheetSelectedStopId,
+            selectedStopId,
+            stableNearestArrivals.first?.stopId,
+            stableNearestArrivals.first?.stopName,
+            nearestStopArrivals.first?.stopId,
+            nearestStopArrivals.first?.stopName,
+        ].compactMap { key -> String? in
+            guard let key, !key.isEmpty else { return nil }
+            return key
+        }
+
+        for key in candidateKeys {
+            let normalizedKey = key.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            if let stop = directionStops.first(where: { stop in
+                stop.id == key
+                    || normalizeStopId(stop.id) == normalizeStopId(key)
+                    || stop.name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == normalizedKey
+            }) {
+                return CLLocationCoordinate2D(latitude: stop.lat, longitude: stop.lon)
+            }
+        }
+        return nil
     }
 
     /// Updates the bound `isSelectedArrivalExpress` from the currently

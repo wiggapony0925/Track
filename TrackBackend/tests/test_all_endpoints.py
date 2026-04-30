@@ -17,6 +17,7 @@ from app.models import (
     BusVehicle,
     CommuterRailLineOverlay,
     DirectionArrivals,
+    DirectionShape,
     ElevatorStatus,
     GroupedNearbyTransit,
     NearbyTransitArrival,
@@ -201,6 +202,43 @@ class TestSubwayShape:
         response = client.get("/subway/shape/ZZZ")
         assert response.status_code == 404
 
+    @patch("app.routers.subway.get_subway_route_shape")
+    def test_route_detail_returns_patterns(self, mock_shape):
+        class FakeStop:
+            def __init__(self, stop_id, name, lat, lon):
+                self.stop_id = stop_id
+                self.name = name
+                self.lat = lat
+                self.lon = lon
+
+        from app.services.mapping.subway.shapes import DirectionData
+
+        stops = [FakeStop("E01", "World Trade Center", 40.712, -74.01)]
+        polylines = [[(40.7, -74.0), (40.71, -74.01)]]
+        mock_shape.return_value = (
+            polylines,
+            stops,
+            [
+                DirectionData(
+                    direction_id=0,
+                    headsign="Jamaica Center-Parsons/Archer",
+                    polylines=polylines,
+                    stops=stops,
+                )
+            ],
+        )
+
+        response = client.get("/subway/route-detail/E")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["route_id"] == "E"
+        assert data["mode"] == "subway"
+        assert data["route_shape"]["directions"][0]["headsign"] == (
+            "Jamaica Center-Parsons/Archer"
+        )
+        assert data["patterns"][0]["headsign"] == "Jamaica Center-Parsons/Archer"
+        assert data["patterns"][0]["stops"][0]["name"] == "World Trade Center"
+
 
 class TestSubwayArrivals:
     """GET /subway/{line_id} — live arrivals for a line."""
@@ -377,6 +415,29 @@ class TestBusRouteShape:
         assert data["route_id"] == "MTA NYCT_B63"
         assert len(data["polylines"]) == 1
         assert len(data["stops"]) == 1
+
+    @patch("app.routers.bus.get_route_shape", new_callable=AsyncMock)
+    def test_route_detail_returns_patterns(self, mock_shape):
+        mock_shape.return_value = RouteShape(
+            route_id="B63",
+            polylines=["encoded_poly"],
+            stops=[BusStop(id="S1", name="Stop 1", lat=40.0, lon=-74.0)],
+            directions=[
+                DirectionShape(
+                    direction_id=0,
+                    headsign="Pier 6",
+                    polylines=["encoded_poly"],
+                    stops=[BusStop(id="S1", name="Stop 1", lat=40.0, lon=-74.0)],
+                )
+            ],
+        )
+        response = client.get("/bus/route-detail/B63")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["mode"] == "bus"
+        assert data["route_shape"]["route_id"] == "B63"
+        assert data["patterns"][0]["headsign"] == "Pier 6"
+        assert len(data["patterns"][0]["stops"]) == 1
 
 
 # ===================================================================

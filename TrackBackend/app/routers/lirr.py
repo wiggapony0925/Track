@@ -8,6 +8,7 @@ from app.models import (
     RESP_404,
     RESP_502,
     AllCommuterRailLinesResponse,
+    RouteDetail,
     RouteShape,
     TrackArrival,
 )
@@ -20,6 +21,7 @@ from app.services.mapping.rail.shapes import (
     get_all_lirr_lines,
     get_single_lirr_line,
 )
+from app.services.route_detail import build_route_detail
 
 router = APIRouter(tags=["lirr"])
 
@@ -73,6 +75,27 @@ async def lirr_shape(
         get_single_fn=get_single_lirr_line,
         name_normaliser=_normalise_lirr_name,
     )
+
+
+@router.get(
+    "/lirr/route-detail/{route_id}",
+    response_model=RouteDetail,
+    summary="Get LIRR route detail patterns",
+    description=(
+        "Returns a Transit-style route detail object with branch direction "
+        "patterns, ordered stops, and geometry."
+    ),
+    responses={**RESP_404},
+)
+async def lirr_route_detail(
+    route_id: str = Path(
+        ...,
+        description="LIRR branch GTFS route ID, prefixed form, or branch name.",
+        examples=["9", "LIRR_9", "Babylon"],
+    )
+) -> RouteDetail:
+    shape = await lirr_shape(route_id)
+    return build_route_detail(route_id=shape.route_id, mode="lirr", shape=shape)
 
 
 @router.get(

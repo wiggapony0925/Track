@@ -23,6 +23,7 @@ from app.models import (
     BusStop,
     DirectionShape,
     ProcessedStationsResponse,
+    RouteDetail,
     RouteShape,
     SubwayLineOverlay,
     SubwayStation,
@@ -46,6 +47,7 @@ from app.services.mapping.subway.shapes import (
     get_subway_route_shape,
     get_subway_service_type,
 )
+from app.services.route_detail import build_route_detail
 from app.utils.logger import TrackLogger
 from app.utils.polyline_utils import (
     decode_polyline as _decode_polyline,
@@ -789,6 +791,28 @@ async def subway_shape(
         directions=directions,
         service_type=get_subway_service_type(clean_id),
     )
+
+
+@router.get(
+    "/subway/route-detail/{route_id}",
+    response_model=RouteDetail,
+    summary="Get subway route detail patterns",
+    description=(
+        "Returns a Transit-style route detail object where each backend-authored "
+        "pattern keeps one headsign, stop list, and geometry together."
+    ),
+    responses={**RESP_404},
+)
+async def subway_route_detail(
+    route_id: str = Path(
+        ...,
+        description="Subway route ID (case-insensitive).",
+        examples=["A", "E", "7"],
+    ),
+) -> RouteDetail:
+    clean_id = clean_route_id(route_id)
+    shape = await subway_shape(clean_id)
+    return build_route_detail(route_id=clean_id, mode="subway", shape=shape)
 
 
 @router.get(

@@ -1171,6 +1171,38 @@ class RouteShape(BaseModel):
     )
 
 
+class RoutePattern(BaseModel):
+    """Backend-authored route itinerary/pattern geometry.
+
+    Unlike a broad direction bucket, a pattern keeps one headsign, ordered stop
+    list, and exact geometry together so clients do not have to infer which
+    stops belong to a selected branch.
+    """
+
+    pattern_id: str = Field(..., description="Stable pattern identifier.")
+    direction_id: int = Field(..., description="GTFS direction_id: 0 or 1.")
+    headsign: str = Field("", description="Passenger-facing terminal/headsign.")
+    polylines: list[str] = Field(..., description="Encoded pattern geometry.")
+    stops: list[BusStop] = Field(..., description="Ordered pattern stops.")
+    service_type: str | None = Field(
+        None, description="Service pattern: 'express', 'local', 'mixed', or null."
+    )
+    local_only_stop_ids: list[str] = Field(
+        [], description="Stops served only by the local/longer variant."
+    )
+
+
+class RouteDetail(BaseModel):
+    """Transit-style route detail object for route detail screens."""
+
+    route_id: str = Field(..., description="GTFS route ID.")
+    mode: str = Field(..., description="Transit mode: subway, bus, lirr, or mnr.")
+    route_shape: RouteShape = Field(..., description="Backwards-compatible shape.")
+    patterns: list[RoutePattern] = Field(
+        [], description="Backend-authored itinerary/pattern entries."
+    )
+
+
 class SubwayLineOverlay(BaseModel):
     """Lightweight shape for drawing a single subway line on the map.
 
