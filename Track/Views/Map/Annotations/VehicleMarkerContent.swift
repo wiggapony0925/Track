@@ -32,7 +32,7 @@ struct VehicleMarkerContent: View {
                 .clipShape(AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle())))
                 .overlay(
                     AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle()))
-                        .stroke(markerStrokeColor, lineWidth: markerStrokeWidth)
+                        .stroke(isHighlighted ? Color.white : Color.clear, lineWidth: 3)
                 )
                 .overlay(alignment: .topTrailing) {
                     if let dotColor = occupancyDotColor {
@@ -58,7 +58,7 @@ struct VehicleMarkerContent: View {
                     .minimumScaleFactor(0.75)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1.5)
-                    .background(Capsule().fill(freshnessColor))
+                    .background(Capsule().fill(freshnessColor.opacity(0.95)))
                     .overlay(Capsule().stroke(.white.opacity(0.9), lineWidth: 0.6))
                     .offset(y: 25)
                     .accessibilityLabel("Updated \(freshnessLabel) ago")
@@ -94,20 +94,6 @@ struct VehicleMarkerContent: View {
         if updateAgeSeconds > 180 { return AppTheme.Colors.alertRed }
         if updateAgeSeconds > 90 { return Color.orange }
         return color
-    }
-
-    private var markerStrokeColor: Color {
-        if isHighlighted { return .white }
-        guard let updateAgeSeconds else { return .clear }
-        if updateAgeSeconds > 180 { return AppTheme.Colors.alertRed }
-        if updateAgeSeconds > 90 { return Color.orange }
-        return .clear
-    }
-
-    private var markerStrokeWidth: CGFloat {
-        if isHighlighted { return 3 }
-        guard let updateAgeSeconds else { return 0 }
-        return updateAgeSeconds > 90 ? 2 : 0
     }
 }
 
