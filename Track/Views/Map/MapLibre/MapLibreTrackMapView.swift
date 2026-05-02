@@ -35,6 +35,7 @@ struct MapLibreTrackMapView: View {
     @Binding var showStations: Bool
     @Binding var currentMapCenter: CLLocationCoordinate2D?
     @Binding var currentMapDistance: Double?
+    @Binding var userTrackingMode: TrackUserTrackingMode
     var onRouteStopTap: ((BusStop) -> Void)? = nil
     var onSystemStationTap: ((MapSystemViewModel.ConsolidatedStation) -> Void)? = nil
     var onBusStopTap: ((BusStop) -> Void)? = nil
@@ -169,6 +170,7 @@ struct MapLibreTrackMapView: View {
                 currentMapCenter: $currentMapCenter,
                 currentMapDistance: $currentMapDistance,
                 showStations: $showStations,
+                userTrackingMode: $userTrackingMode,
                 subwayPolylines: viewModel.flattenedSubwayPolylines,
                 commuterRailPolylines: viewModel.flattenedCommuterRailPolylines,
                 stations: viewModel.consolidatedStations,
@@ -653,6 +655,7 @@ private struct MapLibreSystemStationTapOverlay: View {
         locationManager: LocationManager(),
         showStations: .constant(true),
         currentMapCenter: .constant(nil),
-        currentMapDistance: .constant(nil)
+        currentMapDistance: .constant(nil),
+        userTrackingMode: .constant(.none)
     )
 }

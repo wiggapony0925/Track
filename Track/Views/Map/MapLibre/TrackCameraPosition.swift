@@ -127,3 +127,10 @@ extension TrackCameraPosition {
         ))
     }
 }
+
+/// User tracking modes mirroring MapLibre's MLNUserTrackingMode
+enum TrackUserTrackingMode: Equatable {
+    case none
+    case follow
+    case followWithHeading
+}

@@ -17,6 +17,7 @@ struct MapControlsOverlay: View {
     @Binding var sheetDetent: TrackSheetDetent
     let currentMapCenter: CLLocationCoordinate2D?
     let currentMapDistance: Double?
+    @Binding var userTrackingMode: TrackUserTrackingMode
 
     /// Called when the user taps the recenter button — HomeView uses this
     /// to dismiss drag-to-search and snap back to the real GPS location.
@@ -122,17 +123,14 @@ struct MapControlsOverlay: View {
 
             controlDivider
 
-            // ── Recenter Button ──
-            // Disabled (and dimmed) when the map is already centered on
-            // the user's location.  Re-enables the moment the user pans
-            // or zooms the camera away.
+            // ── Recenter / Tracking Button ──
             controlButton(
-                icon: "location.fill",
-                tint: AppTheme.Colors.mtaBlue,
-                a11y: "Recenter on my location",
-                isEnabled: !isMapCenteredOnUser
+                icon: trackingIcon,
+                tint: trackingTint,
+                a11y: trackingA11y,
+                isEnabled: true // Always enabled to allow cycling modes
             ) {
-                centerMap()
+                cycleTrackingMode()
             }
         }
         .background {
@@ -239,6 +237,39 @@ struct MapControlsOverlay: View {
         }
     }
 
+    // MARK: - Tracking State
+
+    private var trackingIcon: String {
+        // If a route is selected, the button acts as a "fit route" button.
+        if viewModel.selectedRouteId != nil {
+            return "location.fill"
+        }
+        switch userTrackingMode {
+        case .none: return "location.fill"
+        case .follow: return "location.fill"
+        case .followWithHeading: return "location.north.line.fill"
+        }
+    }
+
+    private var trackingTint: Color {
+        if viewModel.selectedRouteId != nil {
+            return !isMapCenteredOnUser ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textSecondary.opacity(0.45)
+        }
+        switch userTrackingMode {
+        case .none: return !isMapCenteredOnUser ? AppTheme.Colors.mtaBlue : AppTheme.Colors.textSecondary.opacity(0.45)
+        case .follow, .followWithHeading: return AppTheme.Colors.mtaBlue
+        }
+    }
+
+    private var trackingA11y: String {
+        if viewModel.selectedRouteId != nil { return "Fit route on screen" }
+        switch userTrackingMode {
+        case .none: return "Recenter on my location"
+        case .follow: return "Track with compass"
+        case .followWithHeading: return "Stop compass tracking"
+        }
+    }
+
     // MARK: - Computed Properties
 
     /// Color of the currently selected route.
@@ -277,6 +308,35 @@ struct MapControlsOverlay: View {
     }
 
     // MARK: - Actions
+
+    private func cycleTrackingMode() {
+        // If a route is selected, keep the existing "fit route" behavior
+        // instead of locking to the user.
+        if viewModel.selectedRouteId != nil {
+            centerMap()
+            return
+        }
+
+        // Dismiss drag-to-search and restore real location data.
+        onRecenter?()
+
+        // Collapse the sheet to reveal the map.
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            sheetDetent = SheetConstants.defaultDetent
+        }
+
+        // Cycle through the MapLibre tracking modes.
+        switch userTrackingMode {
+        case .none:
+            userTrackingMode = .follow
+        case .follow:
+            userTrackingMode = .followWithHeading
+        case .followWithHeading:
+            userTrackingMode = .follow
+        }
+
+        HapticManager.impact(.light)
+    }
 
     private func centerMap() {
         // Dismiss drag-to-search and restore real location data.
@@ -750,6 +810,7 @@ private struct IslandButtonStyle: ButtonStyle {
             sheetDetent: .constant(SheetConstants.defaultDetent),
             currentMapCenter: nil,
             currentMapDistance: nil,
+            userTrackingMode: .constant(.none),
             onAlertsTapped: {},
             dragToSearchEnabled: .constant(true)
         )

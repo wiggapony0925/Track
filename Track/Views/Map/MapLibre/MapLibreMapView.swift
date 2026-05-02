@@ -226,6 +226,9 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     /// Whether station annotations are visible (zoom-dependent).
     @Binding var showStations: Bool
 
+    /// User tracking mode (none, follow, followWithHeading)
+    @Binding var userTrackingMode: TrackUserTrackingMode
+
     // MARK: - Data Inputs
 
     /// System map subway polylines (flattened for O(1) lookup per ID).
@@ -607,6 +610,18 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                 coordinator.lastRouteTintActive = wantsTint
                 coordinator.lastRouteTintColor = wantsTint ? routeColor : nil
             }
+        }
+
+        // ── User Tracking Mode ──
+        let targetMLNMode: MLNUserTrackingMode = {
+            switch userTrackingMode {
+            case .none: return .none
+            case .follow: return .follow
+            case .followWithHeading: return .followWithHeading
+            }
+        }()
+        if mapView.userTrackingMode != targetMLNMode {
+            mapView.userTrackingMode = targetMLNMode
         }
 
         // ── Camera sync (only if externally changed) ──
@@ -1011,6 +1026,28 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
             }
             pendingCameraSync = work
             DispatchQueue.main.async(execute: work)
+        }
+
+        // MARK: - Delegate: Tracking Mode
+
+        func mapView(_ mapView: MLNMapView, didChange mode: MLNUserTrackingMode, animated: Bool) {
+            let trackMode: TrackUserTrackingMode = {
+                switch mode {
+                case .none: return .none
+                case .follow: return .follow
+                case .followWithHeading: return .followWithHeading
+                case .followWithCourse: return .followWithHeading
+                @unknown default: return .none
+                }
+            }()
+            
+            // Dispatch to avoid state modification during view update
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                if self.parent.userTrackingMode != trackMode {
+                    self.parent.userTrackingMode = trackMode
+                }
+            }
         }
 
         // MARK: - Delegate: Annotation Handling

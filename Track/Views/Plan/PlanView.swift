@@ -160,7 +160,8 @@ struct PlanView: View {
                     locationManager: locationManager,
                     showStations: $heroShowStations,
                     currentMapCenter: $heroMapCenter,
-                    currentMapDistance: $heroMapDistance
+                    currentMapDistance: $heroMapDistance,
+                    userTrackingMode: .constant(.none)
                 )
                 .allowsHitTesting(false)
 

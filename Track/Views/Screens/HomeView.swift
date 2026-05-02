@@ -42,6 +42,7 @@ struct HomeView: View {
     /// Bridges sheet pixel height to the map's UIKit contentInset in
     /// real-time (60fps) without SwiftUI re-renders.
     @State private var sheetHeightObserver = SheetHeightObserver()
+    @State private var userTrackingMode: TrackUserTrackingMode = .none
     /// True when the user has dragged the sheet fully down past the minimum.
     /// Shows the peek-restore button and hides the sheet from view.
     @State private var isSheetCollapsed: Bool = false
@@ -254,11 +255,17 @@ struct HomeView: View {
                     showStations: $showStations,
                     currentMapCenter: $currentMapCenter,
                     currentMapDistance: $currentMapDistance,
+                    userTrackingMode: $userTrackingMode,
                     onRouteStopTap: presentRouteStopDetail,
                     onSystemStationTap: presentTrainStopDetail,
                     onBusStopTap: presentBusStopDetail,
                     onSavedPlaceTap: presentSavedPlaceActionPopup,
-                    onUserCameraGesture: { userCameraOverrideActive = true },
+                    onUserCameraGesture: {
+                        userCameraOverrideActive = true
+                        if userTrackingMode != .none {
+                            userTrackingMode = .none
+                        }
+                    },
                     isDragSearchActive: isDragSearchActive,
                     dragSearchSettledCenter: dragSearchSettledCenter,
                     sheetHeightObserver: sheetHeightObserver
@@ -272,8 +279,10 @@ struct HomeView: View {
                         sheetDetent: $sheetDetent,
                         currentMapCenter: currentMapCenter,
                         currentMapDistance: currentMapDistance,
+                        userTrackingMode: $userTrackingMode,
                         onRecenter: {
                             userCameraOverrideActive = false
+                            userTrackingMode = .none
                             // Dismiss drag-to-search state without camera snap —
                             // MapControlsOverlay.centerMap() handles camera positioning
                             // so we avoid competing animations.
