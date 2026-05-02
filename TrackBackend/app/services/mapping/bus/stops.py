@@ -404,7 +404,17 @@ async def get_bus_route_stops(
     # Normalise to short form (e.g. "MTA NYCT_B63" → "B63").
     short = route_id.split("_", 1)[-1].strip() if "_" in route_id else route_id
 
-    return route_dir_index.get(f"{short}|{direction_id}", [])
+    stops = route_dir_index.get(f"{short}|{direction_id}", [])
+
+    # Filter out the current route from the transfer list.
+    return [
+        stop.model_copy(
+            update={
+                "route_ids": [r for r in stop.route_ids if r != short]
+            }
+        )
+        for stop in stops
+    ]
 
 
 def invalidate_bus_stops_cache() -> None:

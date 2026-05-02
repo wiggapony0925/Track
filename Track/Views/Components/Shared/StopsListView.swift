@@ -541,16 +541,6 @@ struct StopRowView: View {
                 .font(.system(size: 8, weight: .medium))
                 .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
 
-            // Current route badge — always shown first, highlighted
-            if let routeID = currentRouteID {
-                RouteBadge(
-                    routeID: routeID,
-                    size: .custom(18, 10),
-                    isBus: currentRouteMode == "bus",
-                    mode: currentRouteMode
-                )
-            }
-
             // Show up to 6 transfer badges, then "+N"
             let visible = Array(stop.transfers.prefix(6))
             let overflow = stop.transfers.count - visible.count
