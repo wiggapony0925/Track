@@ -409,7 +409,7 @@ struct TripEnvironmentalImpact: Codable, Equatable {
     }
 }
 
-// MARK: - Trip Leg
+// MARK: - Trip Leg (Updated for Ghost Tracking)
 
 struct TripLeg: Identifiable, Codable, Equatable {
     var id = UUID()

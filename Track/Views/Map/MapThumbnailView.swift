@@ -56,11 +56,9 @@ final class MapThumbnailCache {
                 isDark: isDark
             )
             if let image {
-                await MainActor.run {
-                    self?.store(image, key: key)
-                }
+                self?.store(image, key: key)
             }
-            await MainActor.run { self?.inFlight.removeValue(forKey: key) }
+            self?.inFlight.removeValue(forKey: key)
             return image
         }
         inFlight[key] = task

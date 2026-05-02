@@ -236,8 +236,8 @@ final class GoModeViewModel {
             "trip_id": tripId ?? "",
             "lat": location.coordinate.latitude,
             "lon": location.coordinate.longitude,
-            "bearing": location.course >= 0 ? location.course : nil,
-            "speed": location.speed >= 0 ? location.speed : nil,
+            "bearing": (location.course >= 0 ? location.course : NSNull()) as Any,
+            "speed": (location.speed >= 0 ? location.speed : NSNull()) as Any,
             "accuracy": location.horizontalAccuracy,
             "timestamp": now.timeIntervalSince1970
         ] as [String : Any]

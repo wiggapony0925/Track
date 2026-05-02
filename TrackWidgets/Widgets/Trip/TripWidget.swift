@@ -47,7 +47,8 @@ struct TripWidgetEntry: TimelineEntry {
                 alightStopName: "W 34 ST/10 AV",
                 departureTime: Date().addingTimeInterval(-8 * 60),
                 arrivalTime: Date().addingTimeInterval(2 * 60),
-                durationMinutes: 10
+                durationMinutes: 10,
+                tripId: nil
             ),
             TrackedTripLeg(
                 id: "bus-1",
@@ -60,7 +61,8 @@ struct TripWidgetEntry: TimelineEntry {
                 alightStopName: "Herald Sq",
                 departureTime: Date().addingTimeInterval(2 * 60),
                 arrivalTime: Date().addingTimeInterval(17 * 60),
-                durationMinutes: 15
+                durationMinutes: 15,
+                tripId: "080350_7..N"
             ),
             TrackedTripLeg(
                 id: "walk-2",
@@ -73,7 +75,8 @@ struct TripWidgetEntry: TimelineEntry {
                 alightStopName: "34 St-Herald Sq",
                 departureTime: Date().addingTimeInterval(17 * 60),
                 arrivalTime: Date().addingTimeInterval(22 * 60),
-                durationMinutes: 5
+                durationMinutes: 5,
+                tripId: nil
             ),
             TrackedTripLeg(
                 id: "q-1",
@@ -86,7 +89,8 @@ struct TripWidgetEntry: TimelineEntry {
                 alightStopName: "Coney Island-Stillwell Av",
                 departureTime: Date().addingTimeInterval(22 * 60),
                 arrivalTime: Date().addingTimeInterval(52 * 60),
-                durationMinutes: 30
+                durationMinutes: 30,
+                tripId: "BFA25-12345"
             )
         ],
         updatedAt: Date()

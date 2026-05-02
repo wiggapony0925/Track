@@ -15,6 +15,26 @@ import Foundation
 import MapLibre
 import Network
 
+// MARK: - Continuation Guard
+
+/// Thread-safe once-only flag preventing a CheckedContinuation from being
+/// resumed more than once when the path-update and timeout race.
+final class ContinuationBox: Sendable {
+    private let _lock = NSLock()
+    // nonisolated(unsafe) is safe here: the lock serialises all access.
+    nonisolated(unsafe) private var _resumed = false
+
+    nonisolated init(_ continuation: CheckedContinuation<Bool, Never>) {}
+
+    nonisolated func tryResume() -> Bool {
+        _lock.lock()
+        defer { _lock.unlock() }
+        guard !_resumed else { return false }
+        _resumed = true
+        return true
+    }
+}
+
 // MARK: - Download State
 
 enum MapTileDownloadState: Equatable {
@@ -295,25 +315,5 @@ final class MapTileOfflineManager: ObservableObject {
                 continuation.resume(returning: false)
             }
         }
-    }
-}
-
-// MARK: - Continuation Guard
-
-/// Thread-safe once-only flag preventing a CheckedContinuation from being
-/// resumed more than once when the path-update and timeout race.
-private final class ContinuationBox: Sendable {
-    private let _lock = NSLock()
-    // nonisolated(unsafe) is safe here: the lock serialises all access.
-    nonisolated(unsafe) private var _resumed = false
-
-    init(_ continuation: CheckedContinuation<Bool, Never>) {}
-
-    func tryResume() -> Bool {
-        _lock.lock()
-        defer { _lock.unlock() }
-        guard !_resumed else { return false }
-        _resumed = true
-        return true
     }
 }
