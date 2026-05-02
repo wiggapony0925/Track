@@ -230,8 +230,17 @@ struct RouteBadge: View {
         .frame(minWidth: size.dimension, minHeight: size.dimension)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(backgroundColor)
-                .shadow(color: backgroundColor.opacity(0.3), radius: 1, x: 0, y: 1)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            backgroundColor.opacity(1.0),
+                            backgroundColor.opacity(0.85)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .shadow(color: backgroundColor.opacity(0.4), radius: 2, x: 0, y: 1.5)
         )
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         .accessibilityLabel("\(isSBS ? "Select Bus Service" : "Bus") Route \(routeID)")

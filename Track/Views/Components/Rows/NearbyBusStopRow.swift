@@ -9,14 +9,16 @@ struct NearbyBusStopRow: View {
     var body: some View {
         HStack(spacing: 12) {
             ZStack {
-                Circle()
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(AppTheme.Colors.mtaBlue)
                     .frame(
                         width: AppTheme.Layout.badgeSizeMedium,
                         height: AppTheme.Layout.badgeSizeMedium
                     )
+                    .shadow(color: AppTheme.Colors.mtaBlue.opacity(0.3), radius: 2, x: 0, y: 1)
+                
                 Image(systemName: "bus.fill")
-                    .font(.custom("Helvetica-Bold", size: AppTheme.Layout.badgeFontMedium))
+                    .font(.system(size: AppTheme.Layout.badgeFontMedium, weight: .bold))
                     .foregroundColor(AppTheme.Colors.textOnColor)
             }
             .accessibilityHidden(true)

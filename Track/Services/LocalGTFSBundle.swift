@@ -280,6 +280,16 @@ nonisolated public final class LocalGTFSBundle: @unchecked Sendable {
         return out
     }
 
+    /// Returns the set of other routes that serve a specific stop.
+    /// Used for offline transfer badges in the route detail view.
+    public func transfers(forStopID stopID: String) -> [LocalRoute] {
+        return queue.sync { [self] in
+            var out: [String: [LocalRoute]] = [:]
+            queryChunk([stopID], into: &out)
+            return out[stopID] ?? []
+        }
+    }
+
     private func queryChunk(_ stopIDs: [String], into out: inout [String: [LocalRoute]]) {
         let placeholders = Array(repeating: "?", count: stopIDs.count).joined(separator: ",")
         let sql = """

@@ -537,9 +537,10 @@ struct StopRowView: View {
     /// Compact transfer badge row — current route highlighted, then transfers.
     private var transferBadgeRow: some View {
         HStack(spacing: 3) {
-            Image(systemName: "arrow.left.arrow.right")
-                .font(.system(size: 8, weight: .medium))
-                .foregroundColor(AppTheme.Colors.textSecondary.opacity(0.5))
+            Image(systemName: "bus.fill")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(AppTheme.Colors.mtaBlue.opacity(0.8))
+                .padding(.trailing, 1)
 
             // Show up to 6 transfer badges, then "+N"
             let visible = Array(stop.transfers.prefix(6))

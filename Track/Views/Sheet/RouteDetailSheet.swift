@@ -4080,6 +4080,20 @@ struct RouteDetailSheet: View {
             }
         }
 
+        // ── 3. Tier 3: Local GTFS Bundle (Offline Fallback) ──
+        // If we still have no transfers (e.g. offline or API gap), query
+        // the bundled SQLite database which carries full "route_stops"
+        // static inventory.
+        if routes.isEmpty, let localBundle = GTFSBundleManager.shared.current {
+            let localTransfers = localBundle.transfers(forStopID: stop.id)
+            for localRoute in localTransfers {
+                let display = localRoute.shortName ?? localRoute.routeID
+                if display != currentRoute && !display.isEmpty {
+                    routes.insert(display)
+                }
+            }
+        }
+
         // Filter out express variants that duplicate a base line the user
         // already sees (e.g. "6X" when "6" is present, "7X" when "7" is present,
         // "FX" when "F" is present).  These are the same physical line.
