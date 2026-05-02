@@ -116,6 +116,13 @@ struct ContentView: View {
                 // the network. Per-bucket TTLs prevent over-fetching.
                 PrefetchService.shared.prefetchPlannerData()
 
+                // Silently pre-download the NYC Metro offline map tile pack
+                // over Wi-Fi so the base map renders without a network connection.
+                // Idempotent — skips if pack is already fresh (<30 days).
+                Task.detached(priority: .background) {
+                    await MapTileOfflineManager.shared.ensurePackDownloaded()
+                }
+
                 // Auto-request if still undecided (e.g. first launch)
                 if locationManager.authorizationStatus == .notDetermined {
                     locationManager.requestPermission()
@@ -138,6 +145,12 @@ struct ContentView: View {
                         // is throttled (30 s minimum interval) and only
                         // refreshes buckets that are actually stale.
                         PrefetchService.shared.prefetchPlannerData()
+
+                        // Re-check tile pack on foreground — downloads if
+                        // the pack expired while the app was backgrounded.
+                        Task.detached(priority: .background) {
+                            await MapTileOfflineManager.shared.ensurePackDownloaded()
+                        }
                     }
                 }
             }

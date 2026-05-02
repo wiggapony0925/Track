@@ -614,7 +614,8 @@ final class OfflineCacheManager: ObservableObject {
         }
     }
     
-    /// Clear all cached data
+    /// Clear all cached data — transit data, pre-baked tiles, and the
+    /// MapLibre offline base-map tile pack.
     func clearCache() {
         userDefaults.removeObject(forKey: CacheKey.nearbyArrivals)
         userDefaults.removeObject(forKey: CacheKey.subwayArrivals)
@@ -643,6 +644,17 @@ final class OfflineCacheManager: ObservableObject {
             try? FileManager.default.removeItem(at: dir)
         }
         clearBakedTiles()
+        // Also wipe the offline base-map tile pack so the user gets a
+        // clean slate. The pack will be re-queued on next Wi-Fi launch.
+        MapTileOfflineManager.shared.deletePack()
         lastFetchTime = nil
+    }
+
+    // MARK: - Map Tile Pack Passthrough
+
+    /// Current state of the MapLibre offline base-map tile pack.
+    /// Convenience passthrough so callers need only import OfflineCacheManager.
+    var mapTilePackState: MapTileDownloadState {
+        MapTileOfflineManager.shared.downloadState
     }
 }
