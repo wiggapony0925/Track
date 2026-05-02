@@ -2053,11 +2053,68 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
             stale_ttl=BUS_VEHICLES_STALE_TTL,
             data=[item.model_dump(mode="json") for item in fresh],
         )
-        return fresh
+        # ── Blend Crowdsourced Beacons ──
+        # If any users are in GO mode for this route, they broadcast their
+        # position. We blend these in to fill gaps in the official SIRI feed.
+        beacons = await _fetch_beacons(canonical_id)
+        return _blend_vehicles_with_beacons(fresh, beacons)
     except Exception:
         if cached is not None:
             return cached
         raise
+
+
+async def _fetch_beacons(route_id: str) -> list[Any]:
+    """Fetch user-broadcasted beacons for a route from Redis."""
+    client = _redis.get_client()
+    if client is None:
+        return []
+    try:
+        pattern = f"track:beacons:{route_id}:*"
+        keys = await client.keys(pattern)
+        if not keys:
+            return []
+        raw = await client.mget(keys)
+        return [json.loads(r) for r in raw if r]
+    except Exception:
+        return []
+
+
+def _blend_vehicles_with_beacons(
+    official: list[BusVehicle], beacons: list[dict]
+) -> list[BusVehicle]:
+    """Merge official SIRI data with crowdsourced user beacons.
+    
+    Prioritizes official data for a given vehicle_id. If a beacon refers
+    to a vehicle not in the official list, it is added as a 'Ghost' vehicle.
+    """
+    if not beacons:
+        return official
+
+    result = {v.vehicle_id: v for v in official}
+    
+    for b in beacons:
+        vid = b.get("vehicle_id") or b.get("trip_id") or f"ghost-{hash(b.get('timestamp'))}"
+        
+        # If we already have official data for this vehicle, skip the beacon.
+        # Official data (GPS from the bus itself) is more authoritative.
+        if vid in result:
+            continue
+            
+        # Create a 'Ghost' vehicle from the user beacon
+        result[vid] = BusVehicle(
+            vehicle_id=vid,
+            route_id=b.get("route_id", ""),
+            trip_id=b.get("trip_id"),
+            lat=b.get("lat", 0.0),
+            lon=b.get("lon", 0.0),
+            bearing=b.get("bearing", 0.0),
+            timestamp=int(b.get("timestamp", _time.time())),
+            # Mark as crowdsourced so the frontend can show a distinct 'Ghost' icon
+            is_crowdsourced=True
+        )
+        
+    return list(result.values())
     finally:
         if _vehicle_inflight.get(cache_key) is task:
             _vehicle_inflight.pop(cache_key, None)

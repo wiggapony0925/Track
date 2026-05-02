@@ -73,7 +73,8 @@ struct MapLibreVehicleOverlay: View {
                     color: markerColor,
                     isHighlighted: isHighlighted,
                     occupancy: vehicle.occupancy,
-                    updateAgeSeconds: updateAge
+                    updateAgeSeconds: updateAge,
+                    isGhost: vehicle.isCrowdsourced ?? false
                 ) {
                     toggleVehicle(vehicle.vehicleId)
                 }
@@ -152,6 +153,7 @@ extension VehicleMarkerContent {
         isExpress: Bool = false,
         occupancy: Int? = nil,
         updateAgeSeconds: TimeInterval? = nil,
+        isGhost: Bool = false,
         onTap: (() -> Void)? = nil
     ) {
         self.init(
@@ -161,6 +163,7 @@ extension VehicleMarkerContent {
             isExpress: isExpress,
             occupancy: occupancy,
             updateAgeSeconds: updateAgeSeconds,
+            isGhost: isGhost,
             onTap: onTap
         )
     }

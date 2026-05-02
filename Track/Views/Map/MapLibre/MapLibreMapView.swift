@@ -149,11 +149,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         let selectedStopEq: Bool = lhs.selectedRouteStopID == rhs.selectedRouteStopID
         let rerouteEq: Bool = lhs.reroutedRouteIDs == rhs.reroutedRouteIDs
         let modeEq: Bool = lhs.selectedMode == rhs.selectedMode
+        let dimEq: Bool = lhs.mapDimmingFactor == rhs.mapDimmingFactor
         let sheetInsetEq: Bool = lhs.freezeSheetInsetWhileDragSearching
             == rhs.freezeSheetInsetWhileDragSearching
 
         guard camEq, stationsEq, darkEq, activeEq, flatEq, busEq, colorEq,
-              selectedStopEq, rerouteEq, modeEq, sheetInsetEq else {
+              selectedStopEq, rerouteEq, modeEq, dimEq, sheetInsetEq else {
             return false
         }
 
@@ -322,6 +323,10 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
     var searchRadiusFarther: Double = 4023
     /// Much-farther tier radius in meters.
     var searchRadiusMuch: Double = 8047
+
+    /// The visual dimming factor for the map background (0.0 to 1.0).
+    /// Applied to non-essential layers when Focus Mode is active.
+    var mapDimmingFactor: Double = 0.0
 
     /// Callback to pass the MLNMapView reference back to the parent
     /// so SwiftUI overlays can project coordinates → screen points.
@@ -704,6 +709,12 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         // before the basemap tiles are visible.
         if coordinator.styleLoaded && coordinator.initialTilesRendered {
             coordinator.updateAllLayers(mapView: mapView, representable: self)
+            
+            // ── Focus Mode Dimming ──
+            // Dynamically update the opacity of background and road layers
+            // based on the mapDimmingFactor. This provides an immersive
+            // "Cockpit" feel without reloading the entire style.
+            coordinator.updateFocusDimming(mapView: mapView, factor: mapDimmingFactor)
         }
     }
 
@@ -3730,6 +3741,55 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
         private func clearSource(style: MLNStyle, sourceID: String) {
             if let source = style.source(withIdentifier: sourceID) as? MLNShapeSource {
                 source.shape = MLNShapeCollectionFeature(shapes: [])
+            }
+        }
+
+        /// Dynamically updates the opacity of background and road layers
+        /// based on the provided dimming factor (0.0 to 1.0).
+        func updateFocusDimming(mapView: MLNMapView, factor: Double) {
+            guard let style = mapView.style else { return }
+
+            // Target baseline opacities for different layer types.
+            // We don't want to dim them to zero, just push them into the background.
+            let baseOpacity: Double = 1.0
+            let targetOpacity = baseOpacity * (1.0 - factor)
+
+            // Cache the pattern matchers (regex would be overkill here)
+            let backgroundPatterns = ["background", "land", "earth", "water", "park", "forest"]
+            let detailPatterns = ["road", "street", "highway", "building", "label", "symbol"]
+
+            for layer in style.layers {
+                let id = layer.identifier.lowercased()
+
+                // Skip our own transit layers (they start with "track-" or "bus-")
+                if id.contains("track-") || id.contains("bus-") || id.contains("station-") {
+                    continue
+                }
+
+                // Determine the multiplier based on layer importance.
+                // Background layers (land/water) dim more aggressively.
+                // Road labels/buildings dim slightly less to maintain context.
+                let multiplier: Double
+                if backgroundPatterns.contains(where: { id.contains($0) }) {
+                    multiplier = 0.8 // 80% of the target (deeper dim)
+                } else if detailPatterns.contains(where: { id.contains($0) }) {
+                    multiplier = 1.0 // 100% of the target
+                } else {
+                    continue
+                }
+
+                let finalOpacity = targetOpacity * multiplier
+
+                if let fill = layer as? MLNFillStyleLayer {
+                    fill.fillOpacity = NSExpression(forConstantValue: finalOpacity)
+                } else if let line = layer as? MLNLineStyleLayer {
+                    line.lineOpacity = NSExpression(forConstantValue: finalOpacity)
+                } else if let symbol = layer as? MLNSymbolStyleLayer {
+                    symbol.iconOpacity = NSExpression(forConstantValue: finalOpacity)
+                    symbol.textOpacity = NSExpression(forConstantValue: finalOpacity)
+                } else if let background = layer as? MLNBackgroundStyleLayer {
+                    background.backgroundOpacity = NSExpression(forConstantValue: finalOpacity)
+                }
             }
         }
     }

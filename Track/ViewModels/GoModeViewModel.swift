@@ -23,11 +23,25 @@ final class GoModeViewModel {
     /// Route color for the tracked line in GO mode.
     var goModeRouteColor: Color?
 
+    /// The specific GTFS trip ID being tracked, if known.
+    var tripId: String?
+
     /// Stops the user has already passed in GO mode (for checklist dimming).
     var passedStopIds: Set<String> = []
 
     /// Transit ETA computed via MKDirections (minutes remaining).
     var transitEtaMinutes: Int?
+
+    /// The visual dimming factor for the map background (0.0 to 1.0).
+    /// Used by MapLibreMapView to desaturate/darken non-essential layers.
+    var mapDimmingFactor: Double = 0.0
+    
+    /// Total number of stops in the active route (for progress calculation).
+    var totalStopCount: Int = 0
+    
+    /// Tracks the last time a crowdsourced beacon was sent to the backend.
+    private var lastBeaconSentTime: Date = .distantPast
+    private let beaconInterval: TimeInterval = 15.0
 
     // MARK: - Get-Off Notification State
 
@@ -64,13 +78,33 @@ final class GoModeViewModel {
     /// user's position and dims already-passed stops.
     ///
     /// Inspired by the Transit app's hands-free tracking experience.
-    func activateGoMode(routeName: String, routeColor: Color) {
+    func activateGoMode(routeName: String, routeColor: Color, tripId: String? = nil) {
         isGoModeActive = true
         goModeRouteName = routeName
         goModeRouteColor = routeColor
+        self.tripId = tripId
         passedStopIds = []
         getOffNotificationFired = false
         isApproachingDestination = false
+
+        // Animate focus mode entrance
+        withAnimation(.easeInOut(duration: 0.8)) {
+            mapDimmingFactor = 0.4
+        }
+        
+        GoHapticEngine.shared.goActivated()
+        
+        // Start Live Activity
+        Task {
+            await LiveActivityManager.shared.startActivity(
+                lineId: routeName,
+                destination: alightStopName ?? "Your Destination",
+                arrivalTime: Date().addingTimeInterval(3600), // Placeholder ETA
+                isBus: true,
+                minutesAway: nil,
+                nextArrivals: []
+            )
+        }
     }
 
     /// Sets the destination stop for get-off notifications.
@@ -86,8 +120,14 @@ final class GoModeViewModel {
     /// Deactivates "GO" mode and returns to the normal map view.
     func deactivateGoMode() {
         isGoModeActive = false
+        mapDimmingFactor = 0.0
+        
+        // End Live Activity
+        LiveActivityManager.shared.endActivity()
+
         goModeRouteName = nil
         goModeRouteColor = nil
+        tripId = nil
         passedStopIds = []
         transitEtaMinutes = nil
         alightStopId = nil
@@ -95,6 +135,11 @@ final class GoModeViewModel {
         alightStopCoordinate = nil
         getOffNotificationFired = false
         isApproachingDestination = false
+
+        // Animate focus mode exit
+        withAnimation(.easeInOut(duration: 0.5)) {
+            mapDimmingFactor = 0.0
+        }
     }
 
     // MARK: - Stop Tracking
@@ -102,7 +147,10 @@ final class GoModeViewModel {
     /// Marks a stop as passed (dimmed in the checklist). Called when
     /// the user's GPS position moves beyond a stop along the route.
     func markStopPassed(_ stopId: String) {
-        passedStopIds.insert(stopId)
+        if !passedStopIds.contains(stopId) {
+            passedStopIds.insert(stopId)
+            GoHapticEngine.shared.stopPassed()
+        }
     }
 
     /// Returns whether a stop has been passed in GO mode.
@@ -142,12 +190,17 @@ final class GoModeViewModel {
                 // If the stop is more than 90° behind, mark as passed
                 if normalized > 90 {
                     passedStopIds.insert(stop.id)
+                    updateLiveActivity()
                 }
             } else {
                 // No bearing data — fall back to proximity only
                 passedStopIds.insert(stop.id)
+                updateLiveActivity()
             }
         }
+        
+        // Update total stop count for progress
+        totalStopCount = shape.stops.count
 
         // Check proximity to alight (get-off) stop
         checkGetOffProximity(userLocation: loc)
@@ -158,7 +211,69 @@ final class GoModeViewModel {
     /// continue to fire from app-level GPS updates.
     func updateUserLocation(_ location: CLLocation?) {
         guard isGoModeActive, let location else { return }
+        // ── Crowdsourced Tracking (Beacon) ──
+        broadcastBeaconIfNeeded(location: location)
         checkGetOffProximity(userLocation: location)
+    }
+    
+    /// Sends a location beacon to the backend to help other users track
+    /// the vehicle if it's missing from official SIRI feeds.
+    private func broadcastBeaconIfNeeded(location: CLLocation) {
+        guard let routeId = goModeRouteName else { return }
+        
+        // Throttle to avoid draining battery/bandwidth
+        let now = Date()
+        guard now.timeIntervalSince(lastBeaconSentTime) >= beaconInterval else { return }
+        
+        // Only broadcast if moving (to ensure we're actually on the bus)
+        // or if we've just started.
+        guard location.speed > 1.5 || lastBeaconSentTime == .distantPast else { return }
+        
+        lastBeaconSentTime = now
+        
+        let beacon = [
+            "route_id": routeId,
+            "trip_id": tripId ?? "",
+            "lat": location.coordinate.latitude,
+            "lon": location.coordinate.longitude,
+            "bearing": location.course >= 0 ? location.course : nil,
+            "speed": location.speed >= 0 ? location.speed : nil,
+            "accuracy": location.horizontalAccuracy,
+            "timestamp": now.timeIntervalSince1970
+        ] as [String : Any]
+        
+        Task {
+            do {
+                let url = URL(string: "https://api.track.jeffrey.ai/tracking/beacon")!
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: beacon)
+                
+                let (_, response) = try await URLSession.shared.data(for: request)
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
+                    // Beacon accepted
+                }
+            } catch {
+                // Fail silently — non-critical
+            }
+        }
+    }
+    
+    /// Calculates the journey progress (0.0 to 1.0) and updates
+    /// the lock screen Live Activity.
+    private func updateLiveActivity() {
+        guard isGoModeActive, totalStopCount > 0 else { return }
+        
+        let progress = Double(passedStopIds.count) / Double(totalStopCount)
+        let remaining = totalStopCount - passedStopIds.count
+        
+        LiveActivityManager.shared.updateActivity(
+            statusText: "\(remaining) stops remaining",
+            arrivalTime: Date().addingTimeInterval(Double(remaining * 120)), // Very rough estimate
+            progress: progress,
+            minutesAway: nil
+        )
     }
 
     // MARK: - Get-Off Proximity Check
@@ -175,11 +290,15 @@ final class GoModeViewModel {
             // Arrived — fire notification and set flag
             isApproachingDestination = true
             getOffNotificationFired = true
+            
+            HapticManager.notification(.success)
             fireGetOffNotification(isNow: true)
+            GoHapticEngine.shared.arrived()
         } else if distance <= Self.approachWarningRadius && !isApproachingDestination {
             // Approaching — fire early warning
             isApproachingDestination = true
             fireGetOffNotification(isNow: false)
+            GoHapticEngine.shared.approachingDestination()
         }
     }
 

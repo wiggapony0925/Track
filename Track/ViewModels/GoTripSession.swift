@@ -290,7 +290,8 @@ final class GoTripSession {
         else { return }
         goMode.activateGoMode(
             routeName: Self.displayLineID(for: leg),
-            routeColor: Self.color(for: leg)
+            routeColor: Self.color(for: leg),
+            tripId: leg.tripId
         )
         requestTripNotificationPermissionIfNeeded()
     }

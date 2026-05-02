@@ -2885,8 +2885,8 @@ extension HomeViewModel {
 
     // MARK: - GO Mode Forwarding (methods)
 
-    func activateGoMode(routeName: String, routeColor: Color) {
-        goMode.activateGoMode(routeName: routeName, routeColor: routeColor)
+    func activateGoMode(routeName: String, routeColor: Color, tripId: String? = nil) {
+        goMode.activateGoMode(routeName: routeName, routeColor: routeColor, tripId: tripId)
     }
 
     func setAlightStop(id: String, name: String, lat: Double, lon: Double) {

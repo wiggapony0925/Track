@@ -963,6 +963,12 @@ class BusVehicle(BaseModel):
     is_realtime: bool = Field(
         True, description="False when position is interpolated from static schedule."
     )
+    is_crowdsourced: bool = Field(
+        False, description="True when the position is reported by a user in GO mode ('Ghost' tracking)."
+    )
+    trip_id: str | None = Field(
+        None, description="GTFS trip ID for the current run, if known."
+    )
     position_recorded_at: dt.datetime | None = Field(
         None,
         description="When the GPS position was last recorded (RecordedAtTime). Stale > 3 min may indicate signal loss.",

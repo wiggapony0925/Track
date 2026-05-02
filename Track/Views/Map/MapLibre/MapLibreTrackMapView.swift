@@ -199,6 +199,7 @@ struct MapLibreTrackMapView: View {
                 searchRadiusNear: nearYouRadius,
                 searchRadiusFarther: fartherAwayRadius,
                 searchRadiusMuch: muchFartherAwayRadius,
+                mapDimmingFactor: viewModel.goMode.mapDimmingFactor,
                 onMapViewReady: { mapView in
                     self.mapViewRef = mapView
                 },

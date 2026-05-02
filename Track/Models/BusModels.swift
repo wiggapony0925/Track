@@ -213,6 +213,12 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
     /// Expected arrival time at next stop from SIRI MonitoredCall.
     var expectedArrival: Date?
 
+    /// True when the position is reported by a user in GO mode ('Ghost' tracking).
+    var isCrowdsourced: Bool? = false
+
+    /// GTFS trip ID for the current run, if known.
+    var tripId: String? = nil
+
     /// Future stops for this vehicle (from SIRI OnwardCalls).
     /// Used to sync the arrivals list with vehicle movement in real-time.
     var onwardCalls: [BusArrival]? = []
@@ -272,6 +278,8 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         case expectedArrival = "expected_arrival"
         case onwardCalls = "onward_calls"
         case isRealtime = "is_realtime"
+        case isCrowdsourced = "is_crowdsourced"
+        case tripId = "trip_id"
         case positionRecordedAt = "position_recorded_at"
         case occupancy = "occupancy_status"
         case progressStatus = "progress_status"
@@ -300,7 +308,9 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         progressRate: String? = nil,
         blockRef: String? = nil,
         destinationRef: String? = nil,
-        originAimedDepartureTime: Date? = nil
+        originAimedDepartureTime: Date? = nil,
+        isCrowdsourced: Bool? = false,
+        tripId: String? = nil
     ) {
         self.vehicleId = vehicleId
         self.routeId = routeId
@@ -320,6 +330,8 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         self.blockRef = blockRef
         self.destinationRef = destinationRef
         self.originAimedDepartureTime = originAimedDepartureTime
+        self.isCrowdsourced = isCrowdsourced
+        self.tripId = tripId
     }
 
     init(from decoder: Decoder) throws {
@@ -342,6 +354,8 @@ struct BusVehicleResponse: Codable, Identifiable, Equatable {
         blockRef = try c.decodeIfPresent(String.self, forKey: .blockRef)
         destinationRef = try c.decodeIfPresent(String.self, forKey: .destinationRef)
         originAimedDepartureTime = try c.decodeIfPresent(Date.self, forKey: .originAimedDepartureTime)
+        isCrowdsourced = try c.decodeIfPresent(Bool.self, forKey: .isCrowdsourced) ?? false
+        tripId = try c.decodeIfPresent(String.self, forKey: .tripId)
     }
 
     /// Returns a copy with an interpolated position for smooth map animation.

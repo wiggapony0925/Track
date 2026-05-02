@@ -20,15 +20,17 @@ struct VehicleMarkerContent: View {
     /// Seconds since the upstream vehicle position was recorded. Rendered
     /// as a tiny freshness badge so riders can see whether the marker is live.
     var updateAgeSeconds: TimeInterval? = nil
+    /// When true, the marker represents a 'Ghost' vehicle (crowdsourced beacon).
+    var isGhost: Bool = false
     var onTap: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
+            Image(systemName: isGhost ? "person.wave.2.fill" : icon)
+                .font(.system(size: isGhost ? 12 : 14, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
-                .background(color)
+                .background(isGhost ? color.opacity(0.85) : color)
                 .clipShape(AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle())))
                 .overlay(
                     AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle()))
