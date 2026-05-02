@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import os
 import sqlite3
+import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -12,13 +13,26 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.services.track_engine.integration import reset_engine_service
-
-client = TestClient(app)
+from app.auth import require_user, optional_user, AuthUser
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from pytest import MonkeyPatch
+
+client = TestClient(app)
+
+# --- Mocks for Auth ---
+MOCK_USER_ID = uuid.uuid4()
+
+async def mock_require_user():
+    return AuthUser(user_id=MOCK_USER_ID, email="test@example.com")
+
+async def mock_optional_user():
+    return AuthUser(user_id=MOCK_USER_ID, email="test@example.com")
+
+app.dependency_overrides[require_user] = mock_require_user
+app.dependency_overrides[optional_user] = mock_optional_user
 
 
 def _build_schedule_db(path: Path) -> None:
@@ -140,12 +154,13 @@ def test_engine_routes_cover_backend_state_without_local_planner(
     monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
     monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
     monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
+    monkeypatch.setenv("TRACK_ENGINE_URL", "")
     reset_engine_service()
 
     save_place_resp = client.post(
         "/engine/places",
         json={
-            "user_id": "user-1",
+            "user_id": str(MOCK_USER_ID),
             "label": "Work",
             "kind": "work",
             "lat": 40.0020,
@@ -156,14 +171,14 @@ def test_engine_routes_cover_backend_state_without_local_planner(
     assert save_place_resp.status_code == 200
     assert save_place_resp.json()["label"] == "Work"
 
-    search_resp = client.get("/engine/search", params={"q": "wo", "user_id": "user-1"})
+    search_resp = client.get("/engine/search", params={"q": "wo", "user_id": str(MOCK_USER_ID)})
     assert search_resp.status_code == 200
     assert search_resp.json()[0]["label"] == "Work"
 
     save_trip_resp = client.post(
         "/engine/trips/saved",
         json={
-            "user_id": "user-1",
+            "user_id": str(MOCK_USER_ID),
             "name": "Morning commute",
             "origin": {
                 "label": "Home",
@@ -186,7 +201,7 @@ def test_engine_routes_cover_backend_state_without_local_planner(
     calendar_resp = client.request(
         "PUT",
         "/engine/calendar/events",
-        params={"user_id": "user-1"},
+        params={"user_id": str(MOCK_USER_ID)},
         json=[
             {
                 "external_id": "event-1",
@@ -203,12 +218,13 @@ def test_engine_routes_cover_backend_state_without_local_planner(
 
     health_resp = client.get("/engine/health")
     assert health_resp.status_code == 200
-    assert health_resp.json()["routing_backend"] == "backend_state_only"
+    health_payload = health_resp.json()
+    assert health_payload["routing_backend"] == "backend_state_only"
 
     plan_resp = client.post(
         "/engine/plan",
         json={
-            "user_id": "user-1",
+            "user_id": str(MOCK_USER_ID),
             "origin": {
                 "label": "Home",
                 "lat": 40.0000,
@@ -232,7 +248,7 @@ def test_engine_routes_cover_backend_state_without_local_planner(
     go_resp = client.post(
         "/engine/go",
         json={
-            "user_id": "user-1",
+            "user_id": str(MOCK_USER_ID),
             "origin": {
                 "label": "Home",
                 "lat": 40.0000,
@@ -254,14 +270,14 @@ def test_engine_routes_cover_backend_state_without_local_planner(
     assert go_resp.status_code == 503
     assert "TRACK_ENGINE_URL is not configured" in go_resp.json()["detail"]
 
-    recents_resp = client.get("/engine/trips/recent", params={"user_id": "user-1"})
+    recents_resp = client.get("/engine/trips/recent", params={"user_id": str(MOCK_USER_ID)})
     assert recents_resp.status_code == 200
     assert recents_resp.json() == []
 
     recs_resp = client.get(
         "/engine/recommendations",
         params={
-            "user_id": "user-1",
+            "user_id": str(MOCK_USER_ID),
             "origin_lat": 40.0000,
             "origin_lon": -73.0000,
             "origin_label": "Home",
@@ -270,6 +286,48 @@ def test_engine_routes_cover_backend_state_without_local_planner(
     )
     assert recs_resp.status_code == 200
     assert recs_resp.json()[0]["label"] == "Work"
+
+    os.environ.pop("TRACK_ENGINE_SCHEDULE_DB", None)
+    os.environ.pop("TRACK_ENGINE_STATE_DB", None)
+    os.environ.pop("TRACK_ENGINE_STATE_BACKEND", None)
+    reset_engine_service()
+
+
+def test_engine_search_bbox_filtering(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    schedule_db = tmp_path / "schedule_bbox.db"
+    state_db = tmp_path / "state_bbox.db"
+    _build_schedule_db(schedule_db)
+
+    monkeypatch.setenv("TRACK_ENGINE_SCHEDULE_DB", str(schedule_db))
+    monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
+    monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
+    monkeypatch.setenv("TRACK_ENGINE_URL", "")
+    reset_engine_service()
+
+    # 1. Search without bbox — returns "Alpha" at (40.0, -73.0)
+    search_all = client.get("/engine/search", params={"q": "alpha"})
+    assert search_all.status_code == 200
+    payload_all = search_all.json()
+    assert any(r["label"] == "Alpha" for r in payload_all), f"Expected Alpha in {payload_all}"
+
+    # 2. Search with bbox that INCLUDES Alpha (40.0, -73.0)
+    # min_lon, min_lat, max_lon, max_lat
+    bbox_inc = "-73.1,39.9,-72.9,40.1"
+    search_inc = client.get("/engine/search", params={"q": "alpha", "bbox": bbox_inc})
+    assert search_inc.status_code == 200
+    payload_inc = search_inc.json()
+    assert any(r["label"] == "Alpha" for r in payload_inc), f"Expected Alpha in {payload_inc}"
+
+    # 3. Search with bbox that EXCLUDES Alpha (40.0, -73.0)
+    # This bbox is far away in NYC (Alpha is at 40.0, -73.0)
+    bbox_exc = "-74.1,40.6,-73.9,40.8"
+    search_exc = client.get("/engine/search", params={"q": "alpha", "bbox": bbox_exc})
+    assert search_exc.status_code == 200
+    payload_exc = search_exc.json()
+    assert not any(r["label"] == "Alpha" for r in payload_exc), f"Expected NO Alpha in {payload_exc}"
 
     os.environ.pop("TRACK_ENGINE_SCHEDULE_DB", None)
     os.environ.pop("TRACK_ENGINE_STATE_DB", None)
@@ -292,12 +350,13 @@ def test_engine_search_degrades_when_schedule_db_has_no_stops_table(
     monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
     monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
     monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
+    monkeypatch.setenv("TRACK_ENGINE_URL", "")
     reset_engine_service()
 
     save_place_resp = client.post(
         "/engine/places",
         json={
-            "user_id": "user-1",
+            "user_id": str(MOCK_USER_ID),
             "label": "Richmond Hill High School",
             "kind": "school",
             "lat": 40.6945,
@@ -309,7 +368,7 @@ def test_engine_search_degrades_when_schedule_db_has_no_stops_table(
 
     search_resp = client.get(
         "/engine/search",
-        params={"q": "richmond", "user_id": "user-1"},
+        params={"q": "richmond", "user_id": str(MOCK_USER_ID)},
     )
     assert search_resp.status_code == 200
     payload = search_resp.json()
@@ -334,12 +393,13 @@ def test_engine_search_and_health_degrade_when_schedule_db_is_invalid(
     monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
     monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
     monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
+    monkeypatch.setenv("TRACK_ENGINE_URL", "")
     reset_engine_service()
 
     save_place_resp = client.post(
         "/engine/places",
         json={
-            "user_id": "user-1",
+            "user_id": str(MOCK_USER_ID),
             "label": "Work",
             "kind": "work",
             "lat": 40.0020,
@@ -349,7 +409,7 @@ def test_engine_search_and_health_degrade_when_schedule_db_is_invalid(
     )
     assert save_place_resp.status_code == 200
 
-    search_resp = client.get("/engine/search", params={"q": "wo", "user_id": "user-1"})
+    search_resp = client.get("/engine/search", params={"q": "wo", "user_id": str(MOCK_USER_ID)})
     assert search_resp.status_code == 200
     assert search_resp.json()[0]["label"] == "Work"
 
@@ -378,6 +438,7 @@ def test_engine_schedule_artifact_endpoint_exports_gzip_snapshot(
     monkeypatch.setenv("TRACK_ENGINE_STATE_DB", str(state_db))
     monkeypatch.setenv("TRACK_ENGINE_STATE_BACKEND", "sqlite")
     monkeypatch.setenv("TRACK_ENGINE_ENABLE_REALTIME_ENRICHMENT", "0")
+    monkeypatch.setenv("TRACK_ENGINE_URL", "")
     reset_engine_service()
 
     response = client.get("/engine/bootstrap/schedule-db.gz")

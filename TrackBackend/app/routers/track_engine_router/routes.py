@@ -329,14 +329,25 @@ async def search_engine_places(
     q: str = Query(..., min_length=1, description="Search query."),
     lat: float | None = Query(None, description="Optional current latitude."),
     lon: float | None = Query(None, description="Optional current longitude."),
+    bbox: str | None = Query(None, description="Optional bounding box: min_lon,min_lat,max_lon,max_lat"),
     limit: int = Query(12, ge=1, le=50, description="Maximum number of results."),
     user: AuthUser | None = Depends(optional_user),
 ) -> list[EngineSearchResult]:
+    parsed_bbox = None
+    if bbox:
+        try:
+            parts = [float(p.strip()) for p in bbox.split(",")]
+            if len(parts) == 4:
+                parsed_bbox = (parts[0], parts[1], parts[2], parts[3])
+        except ValueError:
+            pass
+
     results = await get_engine_service().search(
         query=q,
         user_id=str(user.user_id) if user else None,
         near_lat=lat,
         near_lon=lon,
+        bbox=parsed_bbox,
         limit=limit,
     )
     return [

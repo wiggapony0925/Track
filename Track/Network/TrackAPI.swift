@@ -1156,11 +1156,24 @@ struct TrackAPI {
 
     // MARK: - Track Engine
 
+    /// Search saved places, recent trips, and transit stops from the backend engine.
+    ///
+    /// - Parameters:
+    ///   - query: The search text typed by the user.
+    ///   - userID: Authenticated user ID for personalised saved/recent results.
+    ///   - latitude: User's current latitude — scores nearby stops higher.
+    ///   - longitude: User's current longitude — scores nearby stops higher.
+    ///   - boundingBox: Optional hard geographic filter as `(minLon, minLat, maxLon, maxLat)`.
+    ///                  Any result outside this box is silently dropped before scoring.
+    ///                  Pass the visible map region when it is available to keep results
+    ///                  strictly local to the area the user is looking at.
+    ///   - limit: Maximum results to return (default 12, max 50).
     static func fetchEngineSearch(
         query: String,
         userID: String? = nil,
         latitude: Double? = nil,
         longitude: Double? = nil,
+        boundingBox: (minLon: Double, minLat: Double, maxLon: Double, maxLat: Double)? = nil,
         limit: Int = 12
     ) async throws -> [PlannerSearchResult] {
         guard var components = URLComponents(string: baseURL + "/engine/search") else {
@@ -1178,6 +1191,11 @@ struct TrackAPI {
         }
         if let longitude {
             queryItems.append(URLQueryItem(name: "lon", value: String(longitude)))
+        }
+        // Serialize bbox as "minLon,minLat,maxLon,maxLat" — matches backend expectation.
+        if let bb = boundingBox {
+            let bboxString = "\(bb.minLon),\(bb.minLat),\(bb.maxLon),\(bb.maxLat)"
+            queryItems.append(URLQueryItem(name: "bbox", value: bboxString))
         }
         components.queryItems = queryItems
 

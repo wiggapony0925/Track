@@ -58,6 +58,15 @@ def get_engine_service() -> TrackEngineService:
 def reset_engine_service() -> None:
     """Test helper to rebuild the singleton after env changes."""
 
+    # Also reset the pool's path so it picks up the new environment variable
+    from app.services.transit.db_pool import schedule_pool
+    schedule_db = _resolve_db_path(
+        "TRACK_ENGINE_SCHEDULE_DB",
+        default_path=_DEFAULT_SCHEDULE_DB,
+        render_filename="transit_schedule.db",
+    )
+    schedule_pool._db_path = schedule_db
+
     get_engine_service.cache_clear()
 
 

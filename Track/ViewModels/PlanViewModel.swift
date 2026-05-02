@@ -700,12 +700,19 @@ final class PlanViewModel {
             try? await Task.sleep(for: .milliseconds(220))
             guard !Task.isCancelled else { return }
 
+            // Build a spatial bbox so the backend drops stops outside the
+            // user's current metro area before scoring.  ~20 km radius keeps
+            // every NYC neighbourhood visible while blocking upstate/NJ noise.
+            // 1° lat ≈ 111 km, 1° lon ≈ 85 km at NYC latitude.
+            let searchBbox = Self.searchBoundingBox(around: effectiveOriginCoordinate)
+
             do {
                 let results = try await TrackAPI.fetchEngineSearch(
                     query: trimmed,
                     userID: currentUserID,
                     latitude: effectiveOriginCoordinate?.latitude,
                     longitude: effectiveOriginCoordinate?.longitude,
+                    boundingBox: searchBbox,
                     limit: 12
                 )
                 guard !Task.isCancelled else { return }
@@ -715,6 +722,30 @@ final class PlanViewModel {
                 searchResults = []
             }
         }
+    }
+
+    /// Computes a bounding box for the engine search.
+    ///
+    /// When the user's coordinate is known we expand ~20 km in each direction.
+    /// When it is unknown we fall back to a conservative NYC metro bbox that
+    /// covers all five boroughs plus immediate surroundings.
+    private static func searchBoundingBox(
+        around coordinate: CLLocationCoordinate2D?
+    ) -> (minLon: Double, minLat: Double, maxLon: Double, maxLat: Double) {
+        if let coord = coordinate {
+            // ~20 km expressed in degrees.  Latitude is always ~0.180°.
+            // Longitude degree-size shrinks with cos(lat); at NYC (40.7°) ≈ 0.237°.
+            let dLat = 0.180
+            let dLon = 0.237
+            return (
+                minLon: coord.longitude - dLon,
+                minLat: coord.latitude  - dLat,
+                maxLon: coord.longitude + dLon,
+                maxLat: coord.latitude  + dLat
+            )
+        }
+        // NYC metro fallback: covers all five boroughs + Newark/JFK/LGA approach.
+        return (minLon: -74.30, minLat: 40.47, maxLon: -73.65, maxLat: 40.95)
     }
 
     func selectCompletion(_ completion: MKLocalSearchCompletion, isOrigin: Bool) async -> Bool {

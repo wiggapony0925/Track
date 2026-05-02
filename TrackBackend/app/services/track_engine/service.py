@@ -3014,6 +3014,10 @@ class TrackEngineService:
         user_id: str | None = None,
         near_lat: float | None = None,
         near_lon: float | None = None,
+        # Optional hard-filter: (min_lon, min_lat, max_lon, max_lat).
+        # Any result whose coordinate falls outside this box is dropped
+        # before scoring, so callers never see out-of-area results.
+        bbox: tuple[float, float, float, float] | None = None,
         limit: int = 12,
     ) -> list[SearchResult]:
         schedule_ready = True
@@ -3029,7 +3033,17 @@ class TrackEngineService:
 
         merged: dict[tuple[str, int, int], SearchResult] = {}
 
+        def _in_bbox(lat: float, lon: float) -> bool:
+            """Return True when no bbox is set or when the point is inside it."""
+            if bbox is None:
+                return True
+            min_lon, min_lat, max_lon, max_lat = bbox
+            return min_lat <= lat <= max_lat and min_lon <= lon <= max_lon
+
         def add_result(result: SearchResult) -> None:
+            # Hard-drop anything outside the bounding box before deduplication.
+            if not _in_bbox(result.lat, result.lon):
+                return
             key = (
                 result.label.lower(),
                 round(result.lat * 10_000),
