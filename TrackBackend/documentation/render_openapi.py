@@ -12,6 +12,7 @@ _DOCS_ROOT = Path(__file__).resolve().parent
 _MARKDOWN_FILES = [
     _DOCS_ROOT / "openapi_overview.md",
     _DOCS_ROOT / "api_principles.md",
+    _DOCS_ROOT / "data_lifecycle.md",
     _DOCS_ROOT / "endpoint_playbook.md",
 ]
 
