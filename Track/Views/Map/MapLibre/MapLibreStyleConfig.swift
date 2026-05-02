@@ -208,9 +208,27 @@ enum MapLibreStyleConfig {
         mapTilerAPIKey != "YOUR_MAPTILER_KEY" && !mapTilerAPIKey.isEmpty
     }
 
+    /// MapTiler Basic v2 Light — ultra-minimal basemap: just land, water, roads,
+    /// and place labels. No POIs, no icons, no clutter. Transit lines pop much
+    /// better over this style since there's zero competing visual noise.
+    /// Ideal when an active route or full system map is being displayed.
+    static var basicLightStyleURL: URL? {
+        URL(string: "https://api.maptiler.com/maps/basic-v2/style.json?key=\(mapTilerAPIKey)")
+    }
+
+    /// MapTiler Basic v2 Dark — minimal dark basemap, same reasoning as basicLight.
+    static var basicDarkStyleURL: URL? {
+        URL(string: "https://api.maptiler.com/maps/basic-v2-dark/style.json?key=\(mapTilerAPIKey)")
+    }
+
     /// Returns the correct style URL based on dark mode preference.
-    static func styleURL(isDarkMode: Bool) -> URL? {
+    /// When `transitFocused` is true, returns the basic-v2 minimal style so
+    /// transit polylines have maximum visual hierarchy with no competing POIs.
+    static func styleURL(isDarkMode: Bool, transitFocused: Bool = false) -> URL? {
         guard hasAPIKey else { return nil }
+        if transitFocused {
+            return isDarkMode ? basicDarkStyleURL : basicLightStyleURL
+        }
         return isDarkMode ? darkStyleURL : lightStyleURL
     }
 

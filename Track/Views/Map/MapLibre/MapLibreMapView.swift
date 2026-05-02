@@ -646,17 +646,38 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     coordinator.pendingCameraSync = nil
                     coordinator.programmaticCameraInFlight = true
                     coordinator.lastWrittenCamera = nil  // Clear — this is external
-                    mapView.setCenter(
-                        state.center,
-                        zoomLevel: state.zoom,
-                        direction: state.bearing,
-                        animated: true
-                    )
-                    let pitchDiff: Double = abs(state.pitch - Double(mapView.camera.pitch))
-                    if pitchDiff > 1.0 {
-                        let camera = mapView.camera
-                        camera.pitch = CGFloat(state.pitch)
-                        mapView.setCamera(camera, animated: true)
+
+                    // Use fly(to:) for long-distance moves — arcs up then drops
+                    // for a premium feel (Transit-app style). Short moves keep
+                    // the linear setCenter for responsiveness.
+                    let isLongMove = latDiff > 0.05 || lonDiff > 0.05
+                    if isLongMove {
+                        let targetCamera = MLNMapCamera(
+                            lookingAtCenter: state.center,
+                            altitude: mapView.camera.altitude,
+                            pitch: CGFloat(state.pitch),
+                            heading: state.bearing
+                        )
+                        mapView.fly(
+                            to: targetCamera,
+                            withDuration: 0.9,
+                            peakAltitude: 12_000
+                        ) {
+                            coordinator.programmaticCameraInFlight = false
+                        }
+                    } else {
+                        mapView.setCenter(
+                            state.center,
+                            zoomLevel: state.zoom,
+                            direction: state.bearing,
+                            animated: true
+                        )
+                        let pitchDiff: Double = abs(state.pitch - Double(mapView.camera.pitch))
+                        if pitchDiff > 1.0 {
+                            let camera = mapView.camera
+                            camera.pitch = CGFloat(state.pitch)
+                            mapView.setCamera(camera, animated: true)
+                        }
                     }
                 }
             }
@@ -2927,13 +2948,16 @@ struct MapLibreMapView: UIViewRepresentable, Equatable {
                     ne: CLLocationCoordinate2D(latitude: maxLat, longitude: maxLon)
                 )
 
-                let padding = UIEdgeInsets(top: 60, left: 40, bottom: 60, right: 40)
+                // More bottom padding so the trip results sheet doesn't overlap the route.
+                let padding = UIEdgeInsets(top: 80, left: 40, bottom: 220, right: 40)
                 programmaticCameraInFlight = true
                 mapView.setVisibleCoordinateBounds(
                     bounds,
                     edgePadding: padding,
-                    animated: false,
-                    completionHandler: nil
+                    animated: true,
+                    completionHandler: { [weak self] in
+                        self?.programmaticCameraInFlight = false
+                    }
                 )
             }
         }
