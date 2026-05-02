@@ -2062,6 +2062,9 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
         if cached is not None:
             return cached
         raise
+    finally:
+        if _vehicle_inflight.get(cache_key) is task:
+            _vehicle_inflight.pop(cache_key, None)
 
 
 async def _fetch_beacons(route_id: str) -> list[Any]:
@@ -2115,9 +2118,6 @@ def _blend_vehicles_with_beacons(
         )
         
     return list(result.values())
-    finally:
-        if _vehicle_inflight.get(cache_key) is task:
-            _vehicle_inflight.pop(cache_key, None)
 
 
 async def _fetch_vehicle_positions_uncached(canonical_id: str) -> list[BusVehicle]:
