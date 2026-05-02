@@ -76,6 +76,8 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
     /// SIRI MonitoredCall.ArrivalProximityText (e.g. "at stop", "approaching").
     /// Bus-only.
     var arrivalProximityText: String? = nil
+    /// True when this arrival's real-time position is provided by anonymous user beacons ('Ghost' vehicle).
+    var isCrowdsourced: Bool = false
 
     var isBus: Bool { mode == "bus" }
     var isLIRR: Bool { mode == "lirr" }
@@ -126,6 +128,7 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         case variantLabel = "variant_label"
         case delaySeconds = "delay_seconds"
         case isStalled = "is_stalled"
+        case isCrowdsourced = "is_crowdsourced"
         case arrivalProximityText = "arrival_proximity_text"
     }
 
@@ -155,6 +158,7 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         variantLabel: String? = nil,
         delaySeconds: Int? = nil,
         isStalled: Bool = false,
+        isCrowdsourced: Bool = false,
         arrivalProximityText: String? = nil
     ) {
         self.routeId = routeId
@@ -180,6 +184,7 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         self.variantLabel = variantLabel
         self.delaySeconds = delaySeconds
         self.isStalled = isStalled
+        self.isCrowdsourced = isCrowdsourced
         self.arrivalProximityText = arrivalProximityText
     }
 
@@ -208,6 +213,7 @@ struct NearbyTransitResponse: Codable, Identifiable, Equatable {
         variantLabel = try c.decodeIfPresent(String.self, forKey: .variantLabel)
         delaySeconds = try c.decodeIfPresent(Int.self, forKey: .delaySeconds)
         isStalled = try c.decodeIfPresent(Bool.self, forKey: .isStalled) ?? false
+        isCrowdsourced = try c.decodeIfPresent(Bool.self, forKey: .isCrowdsourced) ?? false
         arrivalProximityText = try c.decodeIfPresent(String.self, forKey: .arrivalProximityText)
     }
 }

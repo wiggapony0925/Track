@@ -437,6 +437,7 @@ struct TripLeg: Identifiable, Codable, Equatable {
     /// `nil` for walk legs.
     let crowding: String?
     let liveStatus: TripLegLiveStatus?
+    let tripId: String?
     let alerts: [TripServiceAlert]
 
     init(
@@ -460,6 +461,7 @@ struct TripLeg: Identifiable, Codable, Equatable {
         adaAccessible: Bool? = nil,
         crowding: String? = nil,
         liveStatus: TripLegLiveStatus? = nil,
+        tripId: String? = nil,
         alerts: [TripServiceAlert] = []
     ) {
         self.mode = mode
@@ -482,6 +484,7 @@ struct TripLeg: Identifiable, Codable, Equatable {
         self.adaAccessible = adaAccessible
         self.crowding = crowding
         self.liveStatus = liveStatus
+        self.tripId = tripId
         self.alerts = alerts
     }
 
@@ -1335,6 +1338,7 @@ struct EngineTripLegDTO: Codable, Equatable {
     let adaAccessible: Bool?
     let crowding: String?
     let liveStatus: EngineLegLiveStatusDTO?
+    let tripID: String?
     let alerts: [EngineServiceAlertDTO]
 
     enum CodingKeys: String, CodingKey {
@@ -1357,6 +1361,7 @@ struct EngineTripLegDTO: Codable, Equatable {
         case adaAccessible = "ada_accessible"
         case crowding
         case liveStatus = "live_status"
+        case tripID = "trip_id"
         case alerts
     }
 
@@ -1382,6 +1387,7 @@ struct EngineTripLegDTO: Codable, Equatable {
             adaAccessible: adaAccessible,
             crowding: crowding,
             liveStatus: liveStatus?.toTripLegLiveStatus(),
+            tripId: tripID,
             alerts: alerts.map { $0.toTripServiceAlert() }
         )
     }

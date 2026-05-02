@@ -115,8 +115,10 @@ struct NearbyTransitRow: View {
                 ? "arrow.triangle.2.circlepath" : "location.fill"
         let trackLabel: String = isTracking
             ? "Tracking"
-            : isTrackingAnother
-                ? "Switch to This" : "Track Live Route"
+            : arrival.isCrowdsourced
+                ? "Contributing"
+                : isTrackingAnother
+                    ? "Switch to This" : "Track Live Route"
         let trackBg: Color = isTracking
             ? AppTheme.Colors.successGreen
             : isTrackingAnother
@@ -349,6 +351,8 @@ struct NearbyTransitRow: View {
     private var liveIndicatorContent: some View {
         if arrival.isCancelled {
             cancelledPill
+        } else if arrival.isCrowdsourced {
+            ghostPill
         } else if isLiveOnMap && !arrival.isScheduledOnly {
             liveOnMapPill
         } else if arrival.isScheduledOnly {
@@ -440,6 +444,21 @@ struct NearbyTransitRow: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(AppTheme.Colors.alertRed.opacity(0.1))
+        .clipShape(Capsule())
+    }
+
+    private var ghostPill: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "ghost.fill")
+                .font(.system(size: 8, weight: .semibold))
+            Text("Crowdsourced")
+                .font(.custom("Helvetica-Bold", size: 9))
+                .textCase(.uppercase)
+        }
+        .foregroundColor(AppTheme.Colors.warningYellow)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(AppTheme.Colors.warningYellow.opacity(0.1))
         .clipShape(Capsule())
     }
 

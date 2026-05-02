@@ -276,7 +276,8 @@ final class GoTripSession {
                     alightStopName: leg.alightStopName,
                     departureTime: Self.resolvedBoardingTime(for: leg),
                     arrivalTime: Self.resolvedLegArrivalTime(for: leg),
-                    durationMinutes: leg.durationMinutes
+                    durationMinutes: leg.durationMinutes,
+                    tripId: leg.tripId
                 )
             },
             updatedAt: Date()

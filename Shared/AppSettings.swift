@@ -104,6 +104,13 @@ struct AppSettings {
     var defaultNearYouRadiusMeters: Double { _nearYouRadiusMeters }
     var defaultFartherAwayRadiusMeters: Double { _fartherAwayRadiusMeters }
     var defaultMuchFartherAwayRadiusMeters: Double { _muchFartherAwayRadiusMeters }
+    
+    /// Whether the user participates in crowdsourced tracking (sending beacons).
+    var isContributing: Bool {
+        UserDefaults.standard.object(
+            forKey: "is_contributing_tracking"
+        ) as? Bool ?? true
+    }
 
 
     // MARK: - Location Settings

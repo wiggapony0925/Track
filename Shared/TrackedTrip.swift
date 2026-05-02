@@ -56,6 +56,7 @@ struct TrackedTripLeg: Codable, Equatable, Identifiable {
     let departureTime: Date
     let arrivalTime: Date
     let durationMinutes: Int
+    let tripId: String?
 
     var isTransit: Bool {
         mode != "walk" && mode != "transfer"

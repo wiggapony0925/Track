@@ -512,6 +512,7 @@ class NearbyTransitArrival(BaseModel):
                     "variant_label": None,
                     "delay_seconds": 30,
                     "is_stalled": False,
+                    "is_crowdsourced": False,
                     "arrival_proximity_text": "approaching",
                 }
             ]
@@ -599,6 +600,10 @@ class NearbyTransitArrival(BaseModel):
             "(SIRI ProgressRate/ProgressStatus = 'noProgress'). Drives a red "
             "'Stalled' chip pill so riders know the bus isn't moving."
         ),
+    )
+    is_crowdsourced: bool = Field(
+        False,
+        description="True when this arrival's real-time position is provided by anonymous user beacons ('Ghost' vehicle).",
     )
     arrival_proximity_text: str | None = Field(
         None,

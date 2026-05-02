@@ -219,7 +219,7 @@ final class GoModeViewModel {
     /// Sends a location beacon to the backend to help other users track
     /// the vehicle if it's missing from official SIRI feeds.
     private func broadcastBeaconIfNeeded(location: CLLocation) {
-        guard let routeId = goModeRouteName else { return }
+        guard let routeId = goModeRouteName, AppSettings.shared.isContributing else { return }
         
         // Throttle to avoid draining battery/bandwidth
         let now = Date()
