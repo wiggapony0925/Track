@@ -252,7 +252,7 @@ def _copy_stops(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
         if lat is None or lon is None:
             continue
         cur.execute(
-            "INSERT INTO stops(stop_id, stop_name, stop_lat, stop_lon, parent_station, mode) "
+            "INSERT OR IGNORE INTO stops(stop_id, stop_name, stop_lat, stop_lon, parent_station, mode) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             (
                 stop_id,
@@ -263,15 +263,16 @@ def _copy_stops(src: sqlite3.Connection, dst: sqlite3.Connection) -> int:
                 stop_route_modes.get(stop_id, "bus"),
             ),
         )
-        id_map_rows.append((rowid, stop_id))
-        rtree_rows.append((rowid, float(lat), float(lat), float(lon), float(lon)))
-        inserted += 1
+        if cur.rowcount > 0:
+            id_map_rows.append((rowid, stop_id))
+            rtree_rows.append((rowid, float(lat), float(lat), float(lon), float(lon)))
+            inserted += 1
 
     cur.executemany(
-        "INSERT INTO stops_id_map(rowid, stop_id) VALUES (?, ?)", id_map_rows
+        "INSERT OR IGNORE INTO stops_id_map(rowid, stop_id) VALUES (?, ?)", id_map_rows
     )
     cur.executemany(
-        "INSERT INTO stops_rtree(id, min_lat, max_lat, min_lon, max_lon) "
+        "INSERT OR IGNORE INTO stops_rtree(id, min_lat, max_lat, min_lon, max_lon) "
         "VALUES (?, ?, ?, ?, ?)",
         rtree_rows,
     )

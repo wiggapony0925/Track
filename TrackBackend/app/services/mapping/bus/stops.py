@@ -209,20 +209,24 @@ def _build_indexes(
 # ---------------------------------------------------------------------------
 
 
-def _load_disk_cache() -> (
-    tuple[dict[str, BusStop], dict[str, list[BusStop]]] | None
-):
+def _load_disk_cache(
+    allow_stale: bool = False,
+) -> tuple[dict[str, BusStop], dict[str, list[BusStop]]] | None:
     """Load indexes from disk if the cache file exists and is still fresh.
+
+    Args:
+        allow_stale: If True, returns the cache even if it is older than
+            _CACHE_MAX_AGE_S. Useful as a fallback when the API is down.
 
     Returns:
         A tuple of (stop_index, route_dir_index), or None if the cache is
-        missing or stale.
+        missing or (not allow_stale and stale).
     """
     if not _CACHE_PATH.exists():
         return None
 
     age = time.time() - _CACHE_PATH.stat().st_mtime
-    if age > _CACHE_MAX_AGE_S:
+    if not allow_stale and age > _CACHE_MAX_AGE_S:
         return None
 
     try:
@@ -328,9 +332,32 @@ async def _ensure_indexes() -> (
             "[BUS_STOPS] Fetching from MTA open data…", tag="BUS_STOPS"
         )
 
-        rows = await _fetch_all_rows()
-        _stop_index, _route_dir_index = _build_indexes(rows)
-        _save_disk_cache(_stop_index, _route_dir_index)
+        try:
+            rows = await _fetch_all_rows()
+            _stop_index, _route_dir_index = _build_indexes(rows)
+            _save_disk_cache(_stop_index, _route_dir_index)
+        except Exception as exc:
+            TrackLogger.error(
+                f"[BUS_STOPS] Upstream fetch failed: {exc}. Attempting stale fallback.",
+                tag="BUS_STOPS",
+            )
+            # Fallback: try to load the disk cache even if it is stale.
+            stale_cached = _load_disk_cache(allow_stale=True)
+            if stale_cached is not None:
+                _stop_index, _route_dir_index = stale_cached
+                TrackLogger.warning(
+                    f"[BUS_STOPS] Using stale disk cache ({len(_stop_index)} stops) "
+                    "due to upstream failure.",
+                    tag="BUS_STOPS",
+                )
+                return _stop_index, _route_dir_index
+            # No cache at all — let the error propagate or return empty.
+            # Given tile-data's scale, an empty result is better than a 500 crash.
+            TrackLogger.error(
+                "[BUS_STOPS] No disk cache available for fallback. Returning empty.",
+                tag="BUS_STOPS",
+            )
+            _stop_index, _route_dir_index = {}, {}
 
         TrackLogger.info(
             f"[BUS_STOPS] Indexed {len(_stop_index)} stops across"
