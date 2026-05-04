@@ -33,11 +33,21 @@ def _timestamp_age_seconds(timestamp: int | None, *, now: dt.datetime) -> float 
     return max(0.0, now.timestamp() - float(timestamp))
 
 
-def _confidence(*, is_realtime: bool, is_stale: bool, has_age: bool) -> float:
+def _confidence(
+    *,
+    is_realtime: bool,
+    is_stale: bool,
+    has_age: bool,
+    position_source: str = "gps",
+) -> float:
     if is_stale:
         return 0.15
     if not is_realtime:
         return 0.55
+    if position_source == "crowdsourced":
+        return 0.72 if has_age else 0.65
+    if position_source == "stop_anchor":
+        return 0.68
     if not has_age:
         return 0.85
     return 1.0
@@ -59,12 +69,13 @@ def build_bus_live_vehicle_details(
         ]
         first_call = vehicle.onward_calls[0] if vehicle.onward_calls else None
         headsign = vehicle.destination_ref or (first_call.destination_name if first_call else None)
+        position_source = "crowdsourced" if vehicle.is_crowdsourced else "gps"
         details.append(
             LiveVehicleDetail(
                 vehicle_id=vehicle.vehicle_id,
                 route_id=vehicle.route_id,
                 mode="bus",
-                trip_id=None,
+                trip_id=vehicle.trip_id,
                 pattern_id=None,
                 direction_id=vehicle.direction_ref,
                 headsign=headsign,
@@ -75,7 +86,7 @@ def build_bus_live_vehicle_details(
                 next_stop_name=first_call.stop_name if first_call else None,
                 downstream_stop_count=len(downstream_stop_ids),
                 downstream_stop_ids=downstream_stop_ids,
-                position_source="gps" if vehicle.is_realtime else "interpolated",
+                position_source=position_source if vehicle.is_realtime else "interpolated",
                 position_age_seconds=age,
                 is_stale=is_stale,
                 is_realtime=vehicle.is_realtime,
@@ -83,6 +94,7 @@ def build_bus_live_vehicle_details(
                     is_realtime=vehicle.is_realtime,
                     is_stale=is_stale,
                     has_age=age is not None,
+                    position_source=position_source,
                 ),
                 status=vehicle.status_text,
                 vehicle=vehicle.model_dump(mode="json"),
@@ -127,6 +139,7 @@ def build_train_live_vehicle_details(
                     is_realtime=True,
                     is_stale=is_stale,
                     has_age=age is not None,
+                    position_source=position_source,
                 ),
                 status=vehicle.status,
                 vehicle=vehicle.model_dump(mode="json"),

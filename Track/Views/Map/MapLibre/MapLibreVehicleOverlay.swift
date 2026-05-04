@@ -46,6 +46,7 @@ struct MapLibreVehicleOverlay: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1.0)) { timeline in
             GeometryReader { _ in
+                let _ = cameraChangeToken
                 ZStack {
                     busVehicleMarkers(now: timeline.date)
                     trainVehicleMarkers(now: timeline.date)
@@ -64,9 +65,15 @@ struct MapLibreVehicleOverlay: View {
                 longitude: vehicle.lon
             )
             let isHighlighted: Bool = tappedVehicleId == vehicle.vehicleId
-            let updateAge = liveVehicleDetailsByKey[vehicle.vehicleId]?.effectivePositionAgeSeconds(now: now)
+            let detail = liveVehicleDetailsByKey[vehicle.vehicleId]
+            let updateAge = detail?.effectivePositionAgeSeconds(now: now)
                 ?? vehicle.positionRecordedAt.map { now.timeIntervalSince($0) }
             let markerColor: Color = busColorLookup?(vehicle.routeId) ?? AppTheme.Colors.mtaBlue
+            let quality = markerQuality(
+                detail: detail,
+                updateAge: updateAge,
+                isCrowdsourced: vehicle.isCrowdsourced ?? false
+            )
             if let point: CGPoint = projectToScreen(coord, mapView: mapView) {
                 VehicleMarkerContent(
                     icon: TransportMode.bus.icon,
@@ -74,7 +81,8 @@ struct MapLibreVehicleOverlay: View {
                     isHighlighted: isHighlighted,
                     occupancy: vehicle.occupancy,
                     updateAgeSeconds: updateAge,
-                    isGhost: vehicle.isCrowdsourced ?? false
+                    isGhost: vehicle.isCrowdsourced ?? false,
+                    quality: quality
                 ) {
                     toggleVehicle(vehicle.vehicleId)
                 }
@@ -100,10 +108,11 @@ struct MapLibreVehicleOverlay: View {
     private func trainMarkerContent(for train: TrainVehicle, now: Date) -> some View {
         let rid: String = train.routeId.lowercased()
         let vehicleKey: String = train.tripId ?? train.id
-        let isHighlighted: Bool = tappedVehicleId == vehicleKey
+        let isHighlighted: Bool = tappedVehicleId == vehicleKey || tappedVehicleId == train.id
         let detail = liveVehicleDetailsByKey[vehicleKey] ?? liveVehicleDetailsByKey[train.id]
         let updateAge = detail?.effectivePositionAgeSeconds(now: now)
             ?? train.timestamp.map { now.timeIntervalSince1970 - Double($0) }
+        let quality = markerQuality(detail: detail, updateAge: updateAge, isCrowdsourced: false)
 
         return Group {
             if rid.contains("lirr") || rid.contains("lir") {
@@ -112,7 +121,8 @@ struct MapLibreVehicleOverlay: View {
                     color: UIColor(AppTheme.CommuterRailColors.lirrBlue),
                     isHighlighted: isHighlighted,
                     occupancy: train.occupancy,
-                    updateAgeSeconds: updateAge
+                    updateAgeSeconds: updateAge,
+                    quality: quality
                 ) { toggleVehicle(vehicleKey) }
             } else if rid.contains("mnr") || rid.contains("metro") {
                 VehicleMarkerContent(
@@ -120,7 +130,8 @@ struct MapLibreVehicleOverlay: View {
                     color: UIColor(AppTheme.CommuterRailColors.mnrBlue),
                     isHighlighted: isHighlighted,
                     occupancy: train.occupancy,
-                    updateAgeSeconds: updateAge
+                    updateAgeSeconds: updateAge,
+                    quality: quality
                 ) { toggleVehicle(vehicleKey) }
             } else {
                 let expressVariants: Set<String> = ["6X", "7X", "FX"]
@@ -131,10 +142,29 @@ struct MapLibreVehicleOverlay: View {
                     isHighlighted: isHighlighted,
                     isExpress: isExpress,
                     occupancy: train.occupancy,
-                    updateAgeSeconds: updateAge
+                    updateAgeSeconds: updateAge,
+                    quality: quality
                 ) { toggleVehicle(vehicleKey) }
             }
         }
+    }
+
+    private func markerQuality(
+        detail: LiveVehicleDetailResponse?,
+        updateAge: TimeInterval?,
+        isCrowdsourced: Bool
+    ) -> VehicleMarkerQuality {
+        if detail?.isStale == true { return .stale }
+        if let updateAge, updateAge > 180 { return .stale }
+        if isCrowdsourced { return .estimated }
+        if let detail {
+            if detail.positionConfidence < 0.7 { return .estimated }
+            if detail.positionSource == "interpolated" || detail.positionSource == "stop_anchor" {
+                return .estimated
+            }
+        }
+        if let updateAge, updateAge > 90 { return .estimated }
+        return .live
     }
 
     private func toggleVehicle(_ id: String) {
@@ -154,6 +184,7 @@ extension VehicleMarkerContent {
         occupancy: Int? = nil,
         updateAgeSeconds: TimeInterval? = nil,
         isGhost: Bool = false,
+        quality: VehicleMarkerQuality = .live,
         onTap: (() -> Void)? = nil
     ) {
         self.init(
@@ -164,6 +195,7 @@ extension VehicleMarkerContent {
             occupancy: occupancy,
             updateAgeSeconds: updateAgeSeconds,
             isGhost: isGhost,
+            quality: quality,
             onTap: onTap
         )
     }

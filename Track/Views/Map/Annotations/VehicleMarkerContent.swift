@@ -4,6 +4,39 @@
 
 import SwiftUI
 
+enum VehicleMarkerQuality: Equatable {
+    case live
+    case estimated
+    case stale
+
+    var opacity: Double {
+        switch self {
+        case .live: 1.0
+        case .estimated: 0.78
+        case .stale: 0.48
+        }
+    }
+
+    var strokeStyle: StrokeStyle {
+        switch self {
+        case .live:
+            StrokeStyle(lineWidth: 0)
+        case .estimated:
+            StrokeStyle(lineWidth: 1.4, dash: [3, 2])
+        case .stale:
+            StrokeStyle(lineWidth: 1.4, dash: [2, 3])
+        }
+    }
+
+    var borderColor: Color {
+        switch self {
+        case .live: .clear
+        case .estimated: .white.opacity(0.9)
+        case .stale: AppTheme.Colors.warningYellow.opacity(0.95)
+        }
+    }
+}
+
 /// Reusable vehicle marker icon rendered inside a MapLibre overlay.
 /// All four vehicle types share the same circle-icon layout and
 /// highlight/tap behavior — only the icon and color differ.
@@ -22,6 +55,7 @@ struct VehicleMarkerContent: View {
     var updateAgeSeconds: TimeInterval? = nil
     /// When true, the marker represents a 'Ghost' vehicle (crowdsourced beacon).
     var isGhost: Bool = false
+    var quality: VehicleMarkerQuality = .live
     var onTap: (() -> Void)? = nil
 
     var body: some View {
@@ -31,10 +65,15 @@ struct VehicleMarkerContent: View {
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
                 .background(isGhost ? color.opacity(0.85) : color)
+                .opacity(quality.opacity)
                 .clipShape(AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle())))
                 .overlay(
                     AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle()))
                         .stroke(isHighlighted ? Color.white : Color.clear, lineWidth: 3)
+                )
+                .overlay(
+                    AnyShape(isExpress ? AnyShape(RotatedDiamondShape()) : AnyShape(Circle()))
+                        .stroke(quality.borderColor, style: quality.strokeStyle)
                 )
                 .overlay(alignment: .topTrailing) {
                     if let dotColor = occupancyDotColor {

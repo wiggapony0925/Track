@@ -2474,7 +2474,7 @@ struct RouteDetailSheet: View {
             return CLLocationCoordinate2D(latitude: detail.lat, longitude: detail.lon)
         }
 
-        let vid = arrival.vehicleId ?? arrival.tripId
+        let vid = vehicleFocusKey(for: arrival)
         guard let vid, !vid.isEmpty else { return nil }
         if arrival.isBus {
             return vehicleCoordinateLookup?(vid)
@@ -2485,6 +2485,13 @@ struct RouteDetailSheet: View {
             }
         }
         return nil
+    }
+
+    private func vehicleFocusKey(for arrival: NearbyTransitResponse) -> String? {
+        if arrival.isBus {
+            return arrival.vehicleId ?? arrival.tripId
+        }
+        return arrival.tripId ?? arrival.vehicleId
     }
 
     // MARK: - Smart ETA
@@ -2528,7 +2535,7 @@ struct RouteDetailSheet: View {
 
         return ArrivalETAEngine.computeETA(
             vehicleCoord: vehicleCoord,
-            vehicleKey: arrival.vehicleId ?? arrival.tripId,
+            vehicleKey: vehicleFocusKey(for: arrival),
             stopCoord: stopCoord,
             polyline: polyline,
             arrivalTs: arrival.arrivalTs,
@@ -2605,7 +2612,7 @@ struct RouteDetailSheet: View {
         ) {
             // Scheduled and cancelled chips are informational — not tappable.
             guard isChipTappable else { return }
-            let vehicleKey = arrival.vehicleId ?? arrival.tripId
+            let vehicleKey = vehicleFocusKey(for: arrival)
             if selectedChipId == arrival.id {
                 selectedChipId = nil
                 selectedChipRouteId = nil
@@ -3066,7 +3073,7 @@ struct RouteDetailSheet: View {
         selectedChipId = firstLive.arrival.id
         selectedChipRouteId = firstLive.arrival.routeId
         isSelectedArrivalExpress = firstLive.arrival.isExpress
-        onFocusVehicle?(firstLive.arrival.vehicleId ?? firstLive.arrival.tripId)
+        onFocusVehicle?(vehicleFocusKey(for: firstLive.arrival))
     }
 
     /// Resolve a stop_id to its `CLLocationCoordinate2D` using the route
@@ -3706,7 +3713,7 @@ struct RouteDetailSheet: View {
                         expandedArrivalID = arrival.id
                         // Expand -> focus map if live
                         if isLiveOnMap?(arrival) ?? false {
-                            onFocusVehicle?(arrival.vehicleId ?? arrival.tripId)
+                            onFocusVehicle?(vehicleFocusKey(for: arrival))
                         }
                     }
                 }

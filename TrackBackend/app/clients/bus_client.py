@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import csv
+import datetime as dt
 import json
 import random as _random
 import re
@@ -2149,6 +2150,10 @@ def _blend_vehicles_with_beacons(
             continue
             
         # Create a 'Ghost' vehicle from the user beacon
+        recorded_at = dt.datetime.fromtimestamp(
+            float(b.get("timestamp", _time.time())),
+            tz=dt.UTC,
+        )
         result[vid] = BusVehicle(
             vehicle_id=vid,
             route_id=b.get("route_id", ""),
@@ -2156,7 +2161,7 @@ def _blend_vehicles_with_beacons(
             lat=b.get("lat", 0.0),
             lon=b.get("lon", 0.0),
             bearing=b.get("bearing", 0.0),
-            timestamp=int(b.get("timestamp", _time.time())),
+            position_recorded_at=recorded_at,
             # Mark as crowdsourced so the frontend can show a distinct 'Ghost' icon
             is_crowdsourced=True
         )

@@ -135,6 +135,11 @@ extension HomeViewModel {
                 guard self.selectedRouteId == routeId else { return }
                 self.replaceLiveVehicleDetails(liveDetails)
                 let isFirstLoad = self.busVehicles.isEmpty
+                let gpsTimestamp = Date()
+                let qualityControlledVehicles = self.dampenUnreasonableBusJumps(
+                    vehicles,
+                    at: gpsTimestamp
+                )
 
                 // 1) Snapshot current DISPLAY positions as interpolation origins.
                 for v in self.busVehicles {
@@ -149,11 +154,10 @@ extension HomeViewModel {
                 // feed the speed history — animation ticks run at 10× speed
                 // and would cause the ETA engine to show falsely low times.
                 self._targetBusGPS = Dictionary(
-                    vehicles.map { ($0.vehicleId, $0) },
+                    qualityControlledVehicles.map { ($0.vehicleId, $0) },
                     uniquingKeysWith: { $1 }
                 )
-                let gpsTimestamp = Date()
-                for v in vehicles {
+                for v in qualityControlledVehicles {
                     ArrivalETAEngine.recordPosition(
                         vehicleKey: v.vehicleId,
                         coordinate: CLLocationCoordinate2D(latitude: v.lat, longitude: v.lon),
@@ -167,8 +171,8 @@ extension HomeViewModel {
                 //    `isVehicleLiveOnMap` accurate while avoiding the snap.
                 if isFirstLoad {
                     // First load: show at raw GPS — no previous position to lerp from.
-                    self.busVehicles = vehicles
-                    for v in vehicles {
+                    self.busVehicles = qualityControlledVehicles
+                    for v in qualityControlledVehicles {
                         self.previousBusPositions[v.vehicleId] = BusSnapshot(
                             lat: v.lat, lon: v.lon, timestamp: Date()
                         )
@@ -178,7 +182,7 @@ extension HomeViewModel {
                         self.busVehicles.map { ($0.vehicleId, $0) },
                         uniquingKeysWith: { $1 }
                     )
-                    let newIds = Set(vehicles.map(\.vehicleId))
+                    let newIds = Set(qualityControlledVehicles.map(\.vehicleId))
                     let now = Date()
 
                     var merged: [BusVehicleResponse] = []
@@ -187,7 +191,7 @@ extension HomeViewModel {
                         merged.append(v)
                     }
                     // Add brand-new vehicles at their raw GPS position
-                    for v in vehicles where existingById[v.vehicleId] == nil {
+                    for v in qualityControlledVehicles where existingById[v.vehicleId] == nil {
                         merged.append(v)
                         self.previousBusPositions[v.vehicleId] = BusSnapshot(
                             lat: v.lat, lon: v.lon, timestamp: Date()
@@ -225,6 +229,41 @@ extension HomeViewModel {
             }
         } catch {
             AppLogger.shared.logError("refreshBusVehicles(\(routeId))", error: error)
+        }
+    }
+
+    private func dampenUnreasonableBusJumps(
+        _ vehicles: [BusVehicleResponse],
+        at timestamp: Date
+    ) -> [BusVehicleResponse] {
+        guard lastBusUpdateTime != .distantPast else { return vehicles }
+        let elapsed = timestamp.timeIntervalSince(lastBusUpdateTime)
+        guard elapsed > 0, elapsed < 120 else { return vehicles }
+
+        let maxMetersPerSecond = 32.0
+        let allowedDistance = max(250.0, maxMetersPerSecond * elapsed)
+        let displayedByVehicleId = Dictionary(
+            busVehicles.map { ($0.vehicleId, $0) },
+            uniquingKeysWith: { $1 }
+        )
+
+        return vehicles.map { vehicle in
+            guard let anchor = _targetBusGPS[vehicle.vehicleId]
+                ?? displayedByVehicleId[vehicle.vehicleId]
+            else { return vehicle }
+            let anchorLocation = CLLocation(latitude: anchor.lat, longitude: anchor.lon)
+            let newLocation = CLLocation(latitude: vehicle.lat, longitude: vehicle.lon)
+            let distance = anchorLocation.distance(from: newLocation)
+            guard distance > allowedDistance else { return vehicle }
+
+            let fraction = min(0.35, allowedDistance / max(distance, 1))
+            let lat = anchor.lat + (vehicle.lat - anchor.lat) * fraction
+            let lon = anchor.lon + (vehicle.lon - anchor.lon) * fraction
+            return vehicle.withInterpolatedPosition(
+                lat: lat,
+                lon: lon,
+                bearing: vehicle.bearing ?? anchor.bearing ?? 0
+            )
         }
     }
 
@@ -1157,7 +1196,7 @@ extension HomeViewModel {
     }
 
     /// Interpolates bus positions along the route polyline between GPS fetches.
-    /// Called every tick (1s) for smooth movement between the 10s GPS refresh.
+    /// Called every tick (1s) for smooth movement between live GPS refreshes.
     ///
     /// Reads target GPS from `_targetBusGPS` (set by `refreshBusVehicles`)
     /// and smoothly moves the display positions in `busVehicles` toward
@@ -1165,7 +1204,7 @@ extension HomeViewModel {
     func updateBusSimulation() {
         guard !busVehicles.isEmpty else { return }
         let elapsed = Date().timeIntervalSince(lastBusUpdateTime)
-        let duration: TimeInterval = 10.0  // seconds between GPS poll
+        let duration = LiveTrackingClock.vehiclePollIntervalSeconds
 
         let polyline = cachedInterpolationPolyline
         let hasPolyline = polyline.count >= 2

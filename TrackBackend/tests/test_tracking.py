@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 
 from app.clients import bus_client
 from app.clients import redis_client
-from app.models import BusVehicle
+from app.models import BusVehicle, TransitVehicle
 from app.routers import tracking
+from app.services.live_vehicle_detail import (
+    STALE_POSITION_SECONDS,
+    build_bus_live_vehicle_details,
+    build_train_live_vehicle_details,
+)
 
 
 class FakeRedis:
@@ -121,3 +127,82 @@ async def test_cached_official_vehicles_still_receive_beacon_overlay(
 
     assert [vehicle.vehicle_id for vehicle in blended] == ["official-1", "trip-ghost"]
     assert blended[1].is_crowdsourced is True
+
+
+def test_crowdsourced_bus_live_detail_preserves_trip_and_age() -> None:
+    vehicle = BusVehicle(
+        vehicle_id="trip-ghost",
+        route_id="B63",
+        trip_id="trip-ghost",
+        lat=40.677,
+        lon=-73.982,
+        position_recorded_at=datetime.now(UTC),
+        is_crowdsourced=True,
+    )
+
+    detail = build_bus_live_vehicle_details([vehicle])[0]
+
+    assert detail.trip_id == "trip-ghost"
+    assert detail.position_source == "crowdsourced"
+    assert detail.position_age_seconds is not None
+    assert detail.position_confidence == 0.72
+    assert detail.vehicle["is_crowdsourced"] is True
+
+
+def test_bus_live_detail_confidence_distinguishes_quality_bands() -> None:
+    now = datetime.now(UTC)
+    vehicles = [
+        BusVehicle(
+            vehicle_id="official-fresh",
+            route_id="B63",
+            lat=40.677,
+            lon=-73.982,
+            position_recorded_at=now - timedelta(seconds=12),
+        ),
+        BusVehicle(
+            vehicle_id="interpolated",
+            route_id="B63",
+            lat=40.678,
+            lon=-73.981,
+            is_realtime=False,
+            position_recorded_at=now - timedelta(seconds=30),
+        ),
+        BusVehicle(
+            vehicle_id="stale",
+            route_id="B63",
+            lat=40.679,
+            lon=-73.980,
+            position_recorded_at=now - timedelta(seconds=STALE_POSITION_SECONDS + 5),
+        ),
+    ]
+
+    details = {
+        detail.vehicle_id: detail
+        for detail in build_bus_live_vehicle_details(vehicles, now=now)
+    }
+
+    assert details["official-fresh"].position_source == "gps"
+    assert details["official-fresh"].position_confidence == 1.0
+    assert details["interpolated"].position_source == "interpolated"
+    assert details["interpolated"].position_confidence == 0.55
+    assert details["stale"].is_stale is True
+    assert details["stale"].position_confidence == 0.15
+
+
+def test_train_stop_anchor_confidence_stays_visible_but_estimated() -> None:
+    now = datetime.now(UTC)
+    train = TransitVehicle(
+        vehicle_id="trip-A",
+        route_id="A",
+        trip_id="trip-A",
+        lat=40.7527,
+        lon=-73.9772,
+        current_stop_id="A27",
+        timestamp=int((now - timedelta(seconds=20)).timestamp()),
+    )
+
+    detail = build_train_live_vehicle_details([train], now=now)[0]
+
+    assert detail.position_source == "stop_anchor"
+    assert detail.position_confidence == 0.68
+    assert detail.position_confidence >= 0.5
