@@ -1972,7 +1972,7 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
         stale_ttl=BUS_VEHICLES_STALE_TTL,
     )
     if cache_state == "fresh":
-        return cached
+        return await _blend_cached_vehicles_with_beacons(cached, canonical_id)
 
     if cache_state is None:
         shared, shared_state = await _shared_cache_get(
@@ -1992,6 +1992,8 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
             )
             cached = shared
             cache_state = shared_state
+            if shared_state == "fresh":
+                return await _blend_cached_vehicles_with_beacons(shared, canonical_id)
 
     if cache_state == "stale":
         if cache_key not in _vehicle_inflight:
@@ -2025,7 +2027,7 @@ async def get_vehicle_positions(route_id: str) -> list[BusVehicle]:
 
             refresh_task = asyncio.create_task(_refresh_vehicles())
             _vehicle_inflight[cache_key] = refresh_task
-        return cached
+        return await _blend_cached_vehicles_with_beacons(cached, canonical_id)
 
     inflight = _vehicle_inflight.get(cache_key)
     if inflight is not None:
@@ -2073,14 +2075,56 @@ async def _fetch_beacons(route_id: str) -> list[Any]:
     if client is None:
         return []
     try:
-        pattern = f"track:beacons:{route_id}:*"
-        keys = await client.keys(pattern)
+        keys: list[Any] = []
+        seen_keys: set[str] = set()
+        for candidate in _beacon_route_id_candidates(route_id):
+            pattern = f"track:beacons:{candidate}:*"
+            for key in await client.keys(pattern):
+                key_id = key.decode() if isinstance(key, bytes) else str(key)
+                if key_id not in seen_keys:
+                    seen_keys.add(key_id)
+                    keys.append(key)
         if not keys:
             return []
         raw = await client.mget(keys)
         return [json.loads(r) for r in raw if r]
     except Exception:
         return []
+
+
+async def _blend_cached_vehicles_with_beacons(
+    vehicles: list[BusVehicle], route_id: str
+) -> list[BusVehicle]:
+    """Overlay short-lived beacon data on cached official vehicle results."""
+    beacons = await _fetch_beacons(route_id)
+    return _blend_vehicles_with_beacons(vehicles, beacons)
+
+
+def _beacon_route_id_candidates(route_id: str) -> list[str]:
+    """Return route IDs the iOS app may use when broadcasting beacons.
+
+    GO mode often stores the user-facing route label (for example ``B63``),
+    while backend vehicle lookups use canonical SIRI IDs such as
+    ``MTA NYCT_B63``. Check both forms so the app-shaped payload is usable.
+    """
+    candidates = [route_id]
+    if "_" in route_id:
+        short = route_id.split("_", 1)[1]
+        candidates.append(short)
+        normalized = normalize_bus_short_name(short)
+        candidates.append(normalized)
+    else:
+        normalized = normalize_bus_short_name(route_id)
+        candidates.append(normalized)
+
+    result: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        value = candidate.strip()
+        if value and value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
 
 
 def _blend_vehicles_with_beacons(

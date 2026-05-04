@@ -341,14 +341,10 @@ struct ArrivalChipView: View {
     /// want to confirm the right bus pulled up.  Trains have no
     /// equivalent rider-visible identifier, so this is bus-only.
     private func busFooter(id: String) -> some View {
-        HStack(spacing: 1.5) {
-            Image(systemName: "bus.fill")
-                .font(.system(size: 7.5, weight: .semibold))
-            Text("#\(id)")
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .lineLimit(1)
-        }
-        .foregroundStyle(
+        Text("#\(id)")
+            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .lineLimit(1)
+            .foregroundStyle(
             usesSolidAccentCard
                 ? .white.opacity(0.78)
                 : AppTheme.Colors.textSecondary.opacity(0.55)

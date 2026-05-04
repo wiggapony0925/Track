@@ -174,11 +174,6 @@ struct NearbyTransitRow: View {
 
     private var expandedArrivalDetail: some View {
         HStack(spacing: 10) {
-            Image(systemName: arrival.isBus ? "bus.fill" : "tram.fill")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(AppTheme.Colors.mtaBlue)
-                .frame(width: 20)
-
             VStack(alignment: .leading, spacing: 2) {
                 Text("Next Arrival")
                     .font(.custom("Helvetica-Bold", size: 11))
@@ -418,14 +413,10 @@ struct NearbyTransitRow: View {
     }
 
     private var enRoutePill: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "bus.fill")
-                .font(.system(size: 8, weight: .semibold))
-            Text("En Route")
-                .font(.custom("Helvetica-Bold", size: 9))
-                .textCase(.uppercase)
-        }
-        .foregroundColor(AppTheme.Colors.mtaBlue.opacity(0.7))
+        Text("En Route")
+            .font(.custom("Helvetica-Bold", size: 9))
+            .textCase(.uppercase)
+            .foregroundColor(AppTheme.Colors.mtaBlue.opacity(0.7))
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(AppTheme.Colors.mtaBlue.opacity(0.08))

@@ -214,21 +214,15 @@ struct RouteBadge: View {
     // MARK: - Bus Badge (Pill)
     
     private var busBadge: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "bus.fill")
-                .font(.system(size: size.fontSize * 0.75, weight: .bold))
-                .foregroundColor(.white.opacity(0.9))
-
-            Text(busDisplayText)
-                .font(.system(size: size.fontSize, weight: .heavy, design: .rounded))
-                .foregroundColor(.white)
-                .minimumScaleFactor(0.4)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3.5)
-        .frame(minWidth: size.dimension, minHeight: size.dimension)
-        .background(
+        Text(busDisplayText)
+            .font(.system(size: size.fontSize, weight: .heavy, design: .rounded))
+            .foregroundColor(.white)
+            .minimumScaleFactor(0.4)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3.5)
+            .frame(minWidth: size.dimension, minHeight: size.dimension)
+            .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(
                     LinearGradient(

@@ -2889,9 +2889,8 @@ struct RouteDetailSheet: View {
                 Circle()
                     .fill(routeColor.opacity(0.08))
                     .frame(width: 52, height: 52)
-                Image(systemName: group.isBus ? "bus.fill" : "tram.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(routeColor)
+                
+                // Icon removed per user request to simplify UI outside stop section.
             }
 
             VStack(alignment: .leading, spacing: 4) {
