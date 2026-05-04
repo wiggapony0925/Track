@@ -1,0 +1,380 @@
+{
+  "frontend_contract": {
+    "frontend_handles_well": [
+      "stable IDs are used for SwiftUI diffing, so markers do not recreate every GPS tick",
+      "bus GPS targets are stored separately and animated toward, avoiding snap-forward/jump-back flicker",
+      "impossible bus jumps are dampened before GPS targets feed marker interpolation or ETA speed history",
+      "marker quality is explicit: GPS is solid, crowdsourced/interpolated/stop-anchor is estimated, stale is faded",
+      "train markers prefer GTFS-RT VehiclePosition entries and fall back to polyline interpolation",
+      "direction-scoped filteredBusVehicles/filteredTrainVehicles prevent wrong-direction markers from being shown",
+      "12s grace buffers keep markers from vanishing on one bad poll cycle"
+    ],
+    "frontend_risks_to_watch": [
+      "Transit appears to model route detail as backend-owned itineraries; Track still builds some train movement from arrivals + shape",
+      "NYCT subway VehiclePosition often has stop-anchored positions instead of GPS, so Track can look less fluid than buses",
+      "bus directionRef is only 0/1, so multi-branch/short-turn buses depend on destination text matching",
+      "the public Transit API comparison may expose realtime departures, but not necessarily all raw vehicle GPS positions"
+    ],
+    "missing_confidence": 0,
+    "missing_identity": 0,
+    "missing_position": 0,
+    "stale_positions": 5,
+    "total_track_vehicles_sampled": 250
+  },
+  "generated_at": 1777925189,
+  "superiority_scorecard": {
+    "avg_track_latency_ms": 159.98301550280303,
+    "can_claim_publicly": false,
+    "confidence_rate": 1.0,
+    "gates": [
+      {
+        "evidence": "250/250 sampled vehicles expose stable vehicle_id/trip_id",
+        "metric": 1.0,
+        "name": "stable_marker_identity",
+        "passed": true,
+        "threshold": 1.0
+      },
+      {
+        "evidence": "250/250 sampled vehicles expose usable lat/lon",
+        "metric": 1.0,
+        "name": "valid_marker_positions",
+        "passed": true,
+        "threshold": 1.0
+      },
+      {
+        "evidence": "250/250 sampled vehicles expose position_confidence",
+        "metric": 1.0,
+        "name": "confidence_transparency",
+        "passed": true,
+        "threshold": 0.95
+      },
+      {
+        "evidence": "5/250 sampled vehicles are stale",
+        "metric": 0.02,
+        "name": "freshness_control",
+        "passed": true,
+        "threshold": 0.05
+      },
+      {
+        "evidence": "0 error-level contract issues found",
+        "metric": 0,
+        "name": "frontend_contract_errors",
+        "passed": true,
+        "threshold": 0
+      },
+      {
+        "evidence": "average Track live endpoint latency is 160ms",
+        "metric": 159.98301550280303,
+        "name": "track_endpoint_latency",
+        "passed": true,
+        "threshold": 750
+      },
+      {
+        "evidence": "Transit API sample unavailable; cannot prove this category yet",
+        "metric": null,
+        "name": "measured_transit_latency_advantage",
+        "passed": false,
+        "threshold": null
+      }
+    ],
+    "honest_claim": "Track has strong measured tracking gates, but this run does not prove it is better than Transit.",
+    "identity_rate": 1.0,
+    "position_rate": 1.0,
+    "proven_better_than_transit": false,
+    "sampled_track_vehicle_count": 250,
+    "stale_rate": 0.02,
+    "transit_latency_ms": null,
+    "verdict": "not_proven_yet"
+  },
+  "track": [
+    {
+      "elapsed_ms": 224.45037501165643,
+      "endpoint": "/bus/live-vehicles/MTA%20NYCT_B63",
+      "issues": [],
+      "mode": "bus",
+      "position_source_counts": {
+        "gps": 22
+      },
+      "realtime_count": 22,
+      "route_id": "MTA NYCT_B63",
+      "sample_vehicle_ids": [
+        "MTA NYCT_429",
+        "MTA NYCT_799",
+        "MTA NYCT_370",
+        "MTA NYCT_420",
+        "MTA NYCT_363",
+        "MTA NYCT_439",
+        "MTA NYCT_7980",
+        "MTA NYCT_421"
+      ],
+      "stale_position_count": 0,
+      "vehicle_count": 22,
+      "with_confidence_count": 22,
+      "with_next_stop_count": 22,
+      "with_onward_calls_count": 22,
+      "with_position_count": 22,
+      "with_stable_identity_count": 22,
+      "with_trip_id_count": 0
+    },
+    {
+      "elapsed_ms": 159.71274999901652,
+      "endpoint": "/subway/live-vehicles/E",
+      "issues": [
+        {
+          "message": "vehicle confidence below visible threshold (0.15)",
+          "severity": "warning",
+          "vehicle_id": "093400_E..N66R"
+        },
+        {
+          "message": "train position is stale (234s)",
+          "severity": "warning",
+          "vehicle_id": "093400_E..N66R"
+        }
+      ],
+      "mode": "subway",
+      "position_source_counts": {
+        "stop_anchor": 48
+      },
+      "realtime_count": 0,
+      "route_id": "E",
+      "sample_vehicle_ids": [
+        "091750_E..N66R",
+        "091800_E..S71R",
+        "092200_E..N66R",
+        "092300_E..S71R",
+        "092800_E..S71R",
+        "092900_E..N66R",
+        "093300_E..S71R",
+        "093400_E..N66R"
+      ],
+      "stale_position_count": 1,
+      "vehicle_count": 48,
+      "with_confidence_count": 48,
+      "with_next_stop_count": 48,
+      "with_onward_calls_count": 0,
+      "with_position_count": 48,
+      "with_stable_identity_count": 48,
+      "with_trip_id_count": 48
+    },
+    {
+      "elapsed_ms": 213.09549998841248,
+      "endpoint": "/subway/live-vehicles/A",
+      "issues": [
+        {
+          "message": "vehicle confidence below visible threshold (0.15)",
+          "severity": "warning",
+          "vehicle_id": "089300_A..S58R"
+        },
+        {
+          "message": "train position is stale (209s)",
+          "severity": "warning",
+          "vehicle_id": "089300_A..S58R"
+        }
+      ],
+      "mode": "subway",
+      "position_source_counts": {
+        "stop_anchor": 48
+      },
+      "realtime_count": 0,
+      "route_id": "A",
+      "sample_vehicle_ids": [
+        "087450_A..N55R",
+        "087800_A..S58R",
+        "088500_A..S57R",
+        "089000_A..N55R",
+        "089300_A..S58R",
+        "089800_A..S57R",
+        "090400_A..N54R",
+        "090500_A..N55R"
+      ],
+      "stale_position_count": 1,
+      "vehicle_count": 48,
+      "with_confidence_count": 48,
+      "with_next_stop_count": 48,
+      "with_onward_calls_count": 0,
+      "with_position_count": 48,
+      "with_stable_identity_count": 48,
+      "with_trip_id_count": 48
+    },
+    {
+      "elapsed_ms": 104.68395802308805,
+      "endpoint": "/subway/live-vehicles/7",
+      "issues": [
+        {
+          "message": "vehicle confidence below visible threshold (0.15)",
+          "severity": "warning",
+          "vehicle_id": "097200_7..S"
+        },
+        {
+          "message": "train position is stale (221s)",
+          "severity": "warning",
+          "vehicle_id": "097200_7..S"
+        }
+      ],
+      "mode": "subway",
+      "position_source_counts": {
+        "stop_anchor": 19
+      },
+      "realtime_count": 0,
+      "route_id": "7",
+      "sample_vehicle_ids": [
+        "092950_7..S",
+        "093250_7..N",
+        "093350_7..S",
+        "093850_7..S",
+        "094050_7..N",
+        "094250_7..S",
+        "094650_7..S",
+        "094850_7..N"
+      ],
+      "stale_position_count": 1,
+      "vehicle_count": 19,
+      "with_confidence_count": 19,
+      "with_next_stop_count": 19,
+      "with_onward_calls_count": 0,
+      "with_position_count": 19,
+      "with_stable_identity_count": 19,
+      "with_trip_id_count": 19
+    },
+    {
+      "elapsed_ms": 114.97737499303184,
+      "endpoint": "/subway/live-vehicles/L",
+      "issues": [],
+      "mode": "subway",
+      "position_source_counts": {
+        "stop_anchor": 19
+      },
+      "realtime_count": 0,
+      "route_id": "L",
+      "sample_vehicle_ids": [
+        "092850_L..N",
+        "093250_L..S",
+        "093350_L..N",
+        "093750_L..S",
+        "093850_L..N",
+        "094250_L..S",
+        "094300_L..N",
+        "094700_L..N"
+      ],
+      "stale_position_count": 0,
+      "vehicle_count": 19,
+      "with_confidence_count": 19,
+      "with_next_stop_count": 19,
+      "with_onward_calls_count": 0,
+      "with_position_count": 19,
+      "with_stable_identity_count": 19,
+      "with_trip_id_count": 19
+    },
+    {
+      "elapsed_ms": 187.98833302571438,
+      "endpoint": "/subway/live-vehicles/N",
+      "issues": [],
+      "mode": "subway",
+      "position_source_counts": {
+        "stop_anchor": 36
+      },
+      "realtime_count": 0,
+      "route_id": "N",
+      "sample_vehicle_ids": [
+        "088950_N..N33R",
+        "089250_N..S34R",
+        "089900_N..N16R",
+        "089850_N..S34R",
+        "090400_N..N33R",
+        "090650_N..S34R",
+        "091250_N..N33R",
+        "091450_N..S34R"
+      ],
+      "stale_position_count": 0,
+      "vehicle_count": 36,
+      "with_confidence_count": 36,
+      "with_next_stop_count": 36,
+      "with_onward_calls_count": 0,
+      "with_position_count": 36,
+      "with_stable_identity_count": 36,
+      "with_trip_id_count": 36
+    },
+    {
+      "elapsed_ms": 132.0803329872433,
+      "endpoint": "/subway/live-vehicles/Q",
+      "issues": [
+        {
+          "message": "vehicle confidence below visible threshold (0.15)",
+          "severity": "warning",
+          "vehicle_id": "092800_Q..N36R"
+        },
+        {
+          "message": "train position is stale (279s)",
+          "severity": "warning",
+          "vehicle_id": "092800_Q..N36R"
+        },
+        {
+          "message": "vehicle confidence below visible threshold (0.15)",
+          "severity": "warning",
+          "vehicle_id": "093300_Q..S36R"
+        },
+        {
+          "message": "train position is stale (504s)",
+          "severity": "warning",
+          "vehicle_id": "093300_Q..S36R"
+        }
+      ],
+      "mode": "subway",
+      "position_source_counts": {
+        "stop_anchor": 36
+      },
+      "realtime_count": 0,
+      "route_id": "Q",
+      "sample_vehicle_ids": [
+        "088950_Q..N36R",
+        "089650_Q..N36R",
+        "090150_Q..S36R",
+        "090550_Q..N36R",
+        "090950_Q..S36R",
+        "091350_Q..N36R",
+        "091750_Q..S36R",
+        "092100_Q..N36R"
+      ],
+      "stale_position_count": 2,
+      "vehicle_count": 36,
+      "with_confidence_count": 36,
+      "with_next_stop_count": 36,
+      "with_onward_calls_count": 0,
+      "with_position_count": 36,
+      "with_stable_identity_count": 36,
+      "with_trip_id_count": 36
+    },
+    {
+      "elapsed_ms": 142.8754999942612,
+      "endpoint": "/subway/live-vehicles/1",
+      "issues": [],
+      "mode": "subway",
+      "position_source_counts": {
+        "stop_anchor": 22
+      },
+      "realtime_count": 0,
+      "route_id": "1",
+      "sample_vehicle_ids": [
+        "090850_1..S03R",
+        "091350_1..S03R",
+        "091350_1..N03R",
+        "091850_1..S03R",
+        "091950_1..N03R",
+        "092350_1..S03R",
+        "092600_1..N03R",
+        "092850_1..S03R"
+      ],
+      "stale_position_count": 0,
+      "vehicle_count": 22,
+      "with_confidence_count": 22,
+      "with_next_stop_count": 22,
+      "with_onward_calls_count": 0,
+      "with_position_count": 22,
+      "with_stable_identity_count": 22,
+      "with_trip_id_count": 22
+    }
+  ],
+  "track_base_url": "https://track-vkrr.onrender.com",
+  "transit_error": null,
+  "transit_nearby": null
+}

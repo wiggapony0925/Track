@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import ssl
+import statistics
 import time
 import urllib.parse
 import urllib.request
@@ -49,7 +50,9 @@ class TrackVehicleSummary:
     with_trip_id_count: int = 0
     with_next_stop_count: int = 0
     with_onward_calls_count: int = 0
+    with_confidence_count: int = 0
     stale_position_count: int = 0
+    position_source_counts: dict[str, int] = field(default_factory=dict)
     sample_vehicle_ids: list[str] = field(default_factory=list)
     issues: list[VehicleIssue] = field(default_factory=list)
     elapsed_ms: float = 0.0
@@ -170,6 +173,24 @@ def _position_age_s(vehicle: dict[str, Any]) -> float | None:
     return None
 
 
+def _record_quality_metadata(summary: TrackVehicleSummary, vehicle: dict[str, Any]) -> None:
+    confidence = vehicle.get("position_confidence")
+    if isinstance(confidence, (int, float)):
+        summary.with_confidence_count += 1
+        if confidence < 0.5:
+            summary.issues.append(
+                VehicleIssue(
+                    "warning",
+                    f"vehicle confidence below visible threshold ({confidence:.2f})",
+                    vehicle.get("vehicle_id"),
+                )
+            )
+
+    source = vehicle.get("position_source")
+    if isinstance(source, str) and source:
+        summary.position_source_counts[source] = summary.position_source_counts.get(source, 0) + 1
+
+
 def audit_track_bus(client: JsonClient, base_url: str, route_id: str) -> TrackVehicleSummary:
     encoded = urllib.parse.quote(route_id, safe="")
     endpoint = f"/bus/live-vehicles/{encoded}"
@@ -191,6 +212,7 @@ def audit_track_bus(client: JsonClient, base_url: str, route_id: str) -> TrackVe
     )
     for vehicle in vehicles or []:
         vehicle_id = vehicle.get("vehicle_id")
+        _record_quality_metadata(summary, vehicle)
         if vehicle_id:
             summary.with_stable_identity_count += 1
             if len(summary.sample_vehicle_ids) < 8:
@@ -246,6 +268,7 @@ def audit_track_train(client: JsonClient, base_url: str, line_id: str) -> TrackV
     for vehicle in vehicles or []:
         vehicle_id = vehicle.get("vehicle_id")
         trip_id = vehicle.get("trip_id")
+        _record_quality_metadata(summary, vehicle)
         if vehicle_id or trip_id:
             summary.with_stable_identity_count += 1
             if len(summary.sample_vehicle_ids) < 8:
@@ -351,15 +374,19 @@ def frontend_contract_summary(track: list[TrackVehicleSummary]) -> dict[str, Any
     total = sum(item.vehicle_count for item in track)
     missing_identity = sum(item.vehicle_count - item.with_stable_identity_count for item in track)
     missing_position = sum(item.vehicle_count - item.with_position_count for item in track)
+    missing_confidence = sum(item.vehicle_count - item.with_confidence_count for item in track)
     stale = sum(item.stale_position_count for item in track)
     return {
         "total_track_vehicles_sampled": total,
         "missing_identity": missing_identity,
         "missing_position": missing_position,
+        "missing_confidence": missing_confidence,
         "stale_positions": stale,
         "frontend_handles_well": [
             "stable IDs are used for SwiftUI diffing, so markers do not recreate every GPS tick",
             "bus GPS targets are stored separately and animated toward, avoiding snap-forward/jump-back flicker",
+            "impossible bus jumps are dampened before GPS targets feed marker interpolation or ETA speed history",
+            "marker quality is explicit: GPS is solid, crowdsourced/interpolated/stop-anchor is estimated, stale is faded",
             "train markers prefer GTFS-RT VehiclePosition entries and fall back to polyline interpolation",
             "direction-scoped filteredBusVehicles/filteredTrainVehicles prevent wrong-direction markers from being shown",
             "12s grace buffers keep markers from vanishing on one bad poll cycle",
@@ -371,6 +398,198 @@ def frontend_contract_summary(track: list[TrackVehicleSummary]) -> dict[str, Any
             "the public Transit API comparison may expose realtime departures, but not necessarily all raw vehicle GPS positions",
         ],
     }
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return numerator / denominator
+
+
+def build_superiority_scorecard(
+    track: list[TrackVehicleSummary],
+    transit: TransitNearbySummary | None,
+) -> dict[str, Any]:
+    total = sum(item.vehicle_count for item in track)
+    identity_count = sum(item.with_stable_identity_count for item in track)
+    position_count = sum(item.with_position_count for item in track)
+    confidence_count = sum(item.with_confidence_count for item in track)
+    stale_count = sum(item.stale_position_count for item in track)
+    error_count = sum(
+        1
+        for item in track
+        for issue in item.issues
+        if issue.severity == "error"
+    )
+    avg_track_latency_ms = (
+        statistics.mean(item.elapsed_ms for item in track) if track else 0.0
+    )
+
+    identity_rate = _ratio(identity_count, total)
+    position_rate = _ratio(position_count, total)
+    confidence_rate = _ratio(confidence_count, total)
+    stale_rate = _ratio(stale_count, total)
+
+    gates: list[dict[str, Any]] = [
+        {
+            "name": "stable_marker_identity",
+            "passed": total > 0 and identity_rate == 1.0,
+            "metric": identity_rate,
+            "threshold": 1.0,
+            "evidence": f"{identity_count}/{total} sampled vehicles expose stable vehicle_id/trip_id",
+        },
+        {
+            "name": "valid_marker_positions",
+            "passed": total > 0 and position_rate == 1.0,
+            "metric": position_rate,
+            "threshold": 1.0,
+            "evidence": f"{position_count}/{total} sampled vehicles expose usable lat/lon",
+        },
+        {
+            "name": "confidence_transparency",
+            "passed": total > 0 and confidence_rate >= 0.95,
+            "metric": confidence_rate,
+            "threshold": 0.95,
+            "evidence": f"{confidence_count}/{total} sampled vehicles expose position_confidence",
+        },
+        {
+            "name": "freshness_control",
+            "passed": total > 0 and stale_rate <= 0.05,
+            "metric": stale_rate,
+            "threshold": 0.05,
+            "evidence": f"{stale_count}/{total} sampled vehicles are stale",
+        },
+        {
+            "name": "frontend_contract_errors",
+            "passed": error_count == 0,
+            "metric": error_count,
+            "threshold": 0,
+            "evidence": f"{error_count} error-level contract issues found",
+        },
+        {
+            "name": "track_endpoint_latency",
+            "passed": bool(track) and avg_track_latency_ms <= 750,
+            "metric": avg_track_latency_ms,
+            "threshold": 750,
+            "evidence": f"average Track live endpoint latency is {avg_track_latency_ms:.0f}ms",
+        },
+    ]
+
+    if transit:
+        gates.append(
+            {
+                "name": "measured_transit_latency_advantage",
+                "passed": bool(track) and avg_track_latency_ms < transit.elapsed_ms,
+                "metric": avg_track_latency_ms,
+                "threshold": transit.elapsed_ms,
+                "evidence": (
+                    f"Track avg live latency {avg_track_latency_ms:.0f}ms vs "
+                    f"Transit nearby sample {transit.elapsed_ms:.0f}ms"
+                ),
+            }
+        )
+    else:
+        gates.append(
+            {
+                "name": "measured_transit_latency_advantage",
+                "passed": False,
+                "metric": None,
+                "threshold": None,
+                "evidence": "Transit API sample unavailable; cannot prove this category yet",
+            }
+        )
+
+    core_passed = all(gate["passed"] for gate in gates[:-1])
+    transit_passed = gates[-1]["passed"]
+    proven_better_than_transit = core_passed and transit_passed
+
+    return {
+        "verdict": "proven_for_measured_categories" if proven_better_than_transit else "not_proven_yet",
+        "proven_better_than_transit": proven_better_than_transit,
+        "can_claim_publicly": proven_better_than_transit,
+        "honest_claim": (
+            "Track beat Transit in this measured audit."
+            if proven_better_than_transit
+            else "Track has strong measured tracking gates, but this run does not prove it is better than Transit."
+        ),
+        "sampled_track_vehicle_count": total,
+        "identity_rate": identity_rate,
+        "position_rate": position_rate,
+        "confidence_rate": confidence_rate,
+        "stale_rate": stale_rate,
+        "avg_track_latency_ms": avg_track_latency_ms,
+        "transit_latency_ms": transit.elapsed_ms if transit else None,
+        "gates": gates,
+    }
+
+
+def write_markdown_report(payload: dict[str, Any], output: Path) -> None:
+    scorecard = payload["superiority_scorecard"]
+    lines = [
+        "# Track Live Tracking Proof Scorecard",
+        "",
+        f"Generated at: `{payload['generated_at']}`",
+        f"Track backend: `{payload['track_base_url']}`",
+        "",
+        f"Verdict: **{scorecard['verdict']}**",
+        "",
+        scorecard["honest_claim"],
+        "",
+        "## Measured Summary",
+        "",
+        f"- Track vehicles sampled: `{scorecard['sampled_track_vehicle_count']}`",
+        f"- Stable identity rate: `{scorecard['identity_rate']:.1%}`",
+        f"- Valid position rate: `{scorecard['position_rate']:.1%}`",
+        f"- Confidence metadata rate: `{scorecard['confidence_rate']:.1%}`",
+        f"- Stale position rate: `{scorecard['stale_rate']:.1%}`",
+        f"- Average Track live endpoint latency: `{scorecard['avg_track_latency_ms']:.0f}ms`",
+        f"- Transit comparison latency: `{scorecard['transit_latency_ms']:.0f}ms`"
+        if scorecard["transit_latency_ms"] is not None
+        else "- Transit comparison latency: `not measured`",
+        "",
+        "## Proof Gates",
+        "",
+        "| Gate | Result | Evidence |",
+        "| --- | --- | --- |",
+    ]
+    for gate in scorecard["gates"]:
+        status = "PASS" if gate["passed"] else "FAIL"
+        lines.append(f"| `{gate['name']}` | {status} | {gate['evidence']} |")
+
+    lines.extend(
+        [
+            "",
+            "## Track Endpoint Samples",
+            "",
+            "| Mode | Route | Vehicles | Positions | IDs | Confidence | Stale | Sources | Latency | Issues |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: |",
+        ]
+    )
+    for item in payload["track"]:
+        sources = ", ".join(
+            f"{name}:{count}" for name, count in item["position_source_counts"].items()
+        ) or "n/a"
+        lines.append(
+            "| "
+            f"{item['mode']} | {item['route_id']} | {item['vehicle_count']} | "
+            f"{item['with_position_count']} | {item['with_stable_identity_count']} | "
+            f"{item['with_confidence_count']} | {item['stale_position_count']} | "
+            f"{sources} | {item['elapsed_ms']:.0f}ms | {len(item['issues'])} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## What This Proves",
+            "",
+            "This run proves Track's sampled live marker contract is strong when the gates pass: stable marker identity, usable positions, explicit confidence metadata, stale-position handling, and acceptable endpoint latency.",
+            "",
+            "It does not prove Track is better than Transit unless a Transit API sample is included and the Transit comparison gate passes. That is intentional: the app should earn that claim with evidence, not vibes.",
+            "",
+        ]
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines), encoding="utf-8")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -387,6 +606,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-transit-interval-s", type=float, default=13.0)
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--markdown-output",
+        type=Path,
+        default=None,
+        help="Optional markdown proof report path. Defaults to output path with .md suffix.",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero unless the scorecard proves Track better for measured categories.",
+    )
     return parser
 
 
@@ -423,6 +653,7 @@ def main() -> None:
             except Exception as exc:
                 transit_error = str(exc)
 
+    scorecard = build_superiority_scorecard(track_results, transit_summary)
     payload = {
         "generated_at": int(time.time()),
         "track_base_url": args.track_base_url,
@@ -430,11 +661,15 @@ def main() -> None:
         "transit_nearby": asdict(transit_summary) if transit_summary else None,
         "transit_error": transit_error,
         "frontend_contract": frontend_contract_summary(track_results),
+        "superiority_scorecard": scorecard,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    markdown_output = args.markdown_output or args.output.with_suffix(".md")
+    write_markdown_report(payload, markdown_output)
 
     print(f"Wrote {args.output}")
+    print(f"Wrote {markdown_output}")
     for item in track_results:
         issue_count = len(item.issues)
         print(
@@ -451,6 +686,14 @@ def main() -> None:
         )
     elif transit_error:
         print(f"transit nearby: skipped/error: {transit_error}")
+
+    print(f"scorecard verdict: {scorecard['verdict']}")
+    for gate in scorecard["gates"]:
+        status = "PASS" if gate["passed"] else "FAIL"
+        print(f"  {status} {gate['name']}: {gate['evidence']}")
+
+    if args.strict and not scorecard["proven_better_than_transit"]:
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":
