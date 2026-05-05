@@ -3277,6 +3277,40 @@ final class HomeViewModel {
         return true
     }
 
+    @discardableResult
+    func loadOfflineNearbyPreview(location: CLLocation, reason: String) async -> Bool {
+        guard !hasLoadedOnce, groupedTransit.isEmpty else { return false }
+        guard let groups = await TrackAPI.fetchLocalNearbyGrouped(
+            lat: location.coordinate.latitude,
+            lon: location.coordinate.longitude,
+            reason: reason
+        ), !groups.isEmpty else { return false }
+
+        groupedTransit = groups
+        rebuildGhostRoutes()
+        lastKnownUserLocation = location
+        rebuildDistanceCache(location: location, groups: groups)
+
+        var seenIDs = Set<String>()
+        nearbyTransit = groups
+            .flatMap(\.directions)
+            .flatMap(\.arrivals)
+            .filter { seenIDs.insert($0.id).inserted }
+
+        hasLoadedOnce = true
+        isRefreshing = true
+        isShowingStaticNearbyRoutes = true
+        _beginStaleRowsWindow()
+
+        TransitDataReadyFlag.markReady()
+        NotificationCenter.default.post(name: .transitDataLoaded, object: nil)
+        AppLogger.shared.log(
+            "OFFLINE",
+            message: "Loaded \(groups.count) local nearby preview groups - \(reason)"
+        )
+        return true
+    }
+
     /// Refreshes the view based on current location and transport mode.
     /// Uses a "stale-while-revalidate" pattern: if data already exists,
     /// the refresh happens silently in the background so the user keeps
@@ -3786,26 +3820,10 @@ final class HomeViewModel {
                         try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 s
                         guard self.selectedRouteId == loadingRouteId else { return }
                     }
-                    do {
-                        let vehicles = try await TrackAPI.fetchBusVehicles(routeID: loadingRouteId)
-                        guard self.selectedRouteId == loadingRouteId else { return }
-                        self.busVehicles = vehicles
-                        self._targetBusGPS = Dictionary(
-                            vehicles.map { ($0.vehicleId, $0) },
-                            uniquingKeysWith: { $1 }
-                        )
-                        for v in vehicles {
-                            self.previousBusPositions[v.vehicleId] = BusSnapshot(
-                                lat: v.lat, lon: v.lon, timestamp: Date()
-                            )
-                        }
-                        self.lastBusUpdateTime = Date()
+                    await self.refreshBusVehicles()
+                    guard self.selectedRouteId == loadingRouteId else { return }
+                    if !self.busVehicles.isEmpty {
                         return  // success — stop retrying
-                    } catch {
-                        AppLogger.shared.logError(
-                            "fetchBusVehicles(\(loadingRouteId))"
-                            + " attempt=\(attempt)",
-                            error: error)
                     }
                 }
             }

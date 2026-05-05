@@ -304,8 +304,18 @@ class TrackLogger:
         _path = path.split("?", maxsplit=1)[0]
         if _path == "/" and status == 404:
             return  # suppress Render probe noise entirely
+        # Bot probes for /robots.txt, /favicon.ico, /sitemap.xml are routine —
+        # log at INFO instead of WARNING so they don't pollute warning channels.
+        _routine_404_paths = {"/robots.txt", "/favicon.ico", "/sitemap.xml"}
+        if _path in _routine_404_paths and status == 404:
+            return  # suppress crawler noise entirely
         if _path == "/health" and status == 503:
             level = logging.INFO  # warmup 503 is expected
+        elif status in (401, 403):
+            # Unauthenticated / forbidden requests are expected client
+            # behavior (signed-out users, expired tokens, public probes).
+            # They are not server-side problems, so log at INFO.
+            level = logging.INFO
         else:
             level = (
                 logging.INFO

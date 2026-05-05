@@ -213,12 +213,29 @@ enum ArrivalETAEngine {
             let straightLine = CLLocation(latitude: vCoord.latitude, longitude: vCoord.longitude)
                 .distance(from: CLLocation(latitude: sCoord.latitude, longitude: sCoord.longitude))
 
+            // If the feed says this arrival is still well in the future
+            // (> 3 min), the vehicle currently at the stop is almost
+            // certainly a *different* (earlier) train/bus on the same
+            // route — not the one this chip represents. Trust the feed
+            // timestamp and skip the position-based short-circuits that
+            // would otherwise force every chip to "0 min".
+            let feedSecondsAhead: Double? = arrivalTs.map {
+                Double($0) - Date.now.timeIntervalSince1970
+            }
+            let feedIsFarFuture = (feedSecondsAhead ?? 0) > 180
+
             // Vehicle is at the stop (within 50 m)
-            if straightLine < 50 {
+            if straightLine < 50, !feedIsFarFuture {
                 if let key = vehicleKey { smoothedETA.removeValue(forKey: key) }
                 return SmartETA(
                     secondsRemaining: 0, isAtStop: true, isPastArrival: isPast,
                     source: .vehiclePosition, estimatedSpeedMps: nil)
+            }
+            if straightLine < 50, feedIsFarFuture, let secs = feedSecondsAhead {
+                return SmartETA(
+                    secondsRemaining: max(0, secs), isAtStop: false,
+                    isPastArrival: isPast,
+                    source: .feedTimestamp, estimatedSpeedMps: nil)
             }
 
             // Measure distance along the polyline if available
@@ -245,7 +262,9 @@ enum ArrivalETAEngine {
             // ── Dwell detection ──
             // If the vehicle is stopped (speed ≈ 0) and is very close to the
             // DESTINATION stop, it is arriving — treat as "Now" rather than stalled.
-            if speedEstimate.isStopped, routeDistance < 150 {
+            // Skip when the feed says this arrival is still far in the future:
+            // the dwelling vehicle is a different (earlier) trip on this route.
+            if speedEstimate.isStopped, routeDistance < 150, !feedIsFarFuture {
                 if let key = vehicleKey { smoothedETA.removeValue(forKey: key) }
                 return SmartETA(
                     secondsRemaining: 0, isAtStop: true, isPastArrival: isPast,

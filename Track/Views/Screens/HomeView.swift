@@ -641,7 +641,15 @@ struct HomeView: View {
                 // If the user moved significantly since last session, the
                 // cache is still loaded for instant display but flagged
                 // so we know the first network fetch is critical.
-                viewModel.loadSessionCache(cachedLocation: cachedLoc)
+                let loadedSessionCache = viewModel.loadSessionCache(cachedLocation: cachedLoc)
+                if !loadedSessionCache {
+                    Task {
+                        await viewModel.loadOfflineNearbyPreview(
+                            location: cachedLoc,
+                            reason: "cold launch cached GPS"
+                        )
+                    }
+                }
 
                 // Phase 2: Fetch fresh data in background.
                 // If the session cache indicates the user is at (roughly)
@@ -667,6 +675,12 @@ struct HomeView: View {
                     "SPECULATIVE",
                     message: "No cached GPS — starting speculative"
                         + " fetch with NYC center (\(lat), \(lng))")
+                Task {
+                    await viewModel.loadOfflineNearbyPreview(
+                        location: speculativeLoc,
+                        reason: "cold launch speculative NYC"
+                    )
+                }
                 Task {
                     await viewModel.refresh(location: speculativeLoc, force: true)
                     lastUpdated = Date()
@@ -1318,18 +1332,25 @@ struct HomeView: View {
             let isCommuterRail = viewModel.selectedGroupedRoute?.isCommuterRail ?? false
             let startTime = Date()
             var consecutiveErrors = 0
+            let selectedRouteIdAtStart = viewModel.selectedRouteId
             Task { @MainActor in
-                if isBus {
-                    await viewModel.refreshBusVehicles()
-                } else if isCommuterRail {
-                    viewModel.updateSimulation()
-                    await viewModel.refreshCommuterRailVehicles()
-                } else {
-                    viewModel.updateSimulation()
-                    await viewModel.refreshTrainVehicles()
+                await refreshSelectedRouteLiveData(
+                    isBus: isBus,
+                    isCommuterRail: isCommuterRail
+                )
+
+                var previousDelay: TimeInterval = 0
+                for delay in LiveTrackingClock.routeDetailBurstDelaysSeconds {
+                    try? await Task.sleep(for: .seconds(max(0, delay - previousDelay)))
+                    previousDelay = delay
+                    guard viewModel.selectedRouteId == selectedRouteIdAtStart else { return }
+                    await refreshSelectedRouteLiveData(
+                        isBus: isBus,
+                        isCommuterRail: isCommuterRail
+                    )
                 }
             }
-            // Fetch live vehicle positions on the shared 25 s cadence.
+            // Fetch live vehicle positions on the shared route-detail cadence.
             let tickInterval: TimeInterval = 1.0
             let livePollInterval = Int(LiveTrackingClock.vehiclePollIntervalSeconds)
             let timer = Timer.scheduledTimer(withTimeInterval: tickInterval, repeats: true) { _ in
@@ -1369,6 +1390,21 @@ struct HomeView: View {
                 }
             }
             vehiclePollTimer = timer
+        }
+    }
+
+    private func refreshSelectedRouteLiveData(
+        isBus: Bool,
+        isCommuterRail: Bool
+    ) async {
+        if isBus {
+            await viewModel.refreshBusVehicles()
+        } else if isCommuterRail {
+            viewModel.updateSimulation()
+            await viewModel.refreshCommuterRailVehicles()
+        } else {
+            viewModel.updateSimulation()
+            await viewModel.refreshTrainVehicles()
         }
     }
     

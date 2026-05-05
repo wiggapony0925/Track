@@ -910,8 +910,11 @@ def _sync_check_and_refresh(full_check: bool) -> dict[str, str]:
         for name in feeds_to_check:
             missing_files = _missing_materialized_files(name)
             if missing_files:
-                TrackLogger.warning(
-                    f"[GTFS] {name}: missing local materialized files — refreshing: "
+                # Expected on cold start / ephemeral container disks — the
+                # bundled GTFS files haven't been materialized yet. Logged at
+                # INFO so it doesn't show up as a backend warning.
+                TrackLogger.info(
+                    f"[GTFS] {name}: materializing local files on first use: "
                     + ", ".join(str(path.relative_to(_DATA_DIR)) for path in missing_files),
                     tag="GTFS",
                 )
