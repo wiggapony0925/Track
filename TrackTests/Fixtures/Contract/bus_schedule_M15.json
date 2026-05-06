@@ -1,0 +1,1867 @@
+{
+  "route_id": "MTA NYCT_M15",
+  "directions": [
+    {
+      "route_id": "MTA NYCT_M15",
+      "direction": "EAST HARLEM 125 ST via 1 AV",
+      "headsign": "EAST HARLEM 125 ST via 1 AV",
+      "departures": [
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778031078,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-129000_M15_248"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778031279,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-124300_M15_235"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778031678,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-130000_M15_237"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778031879,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-126400_M15_245"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778032278,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-131000_M15_238"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778032539,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-126600_M15_246"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778032878,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-132000_M15_250"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778033259,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-127800_M15_247"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778033478,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-133000_M15_239"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778034078,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-134000_M15_240"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778034678,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-135000_M15_241"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778035278,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-136000_M15_252"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778035878,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-137000_M15_242"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778036598,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-138200_M15_243"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778037318,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-139400_M15_244"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778038038,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-140600_M15_253"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778038750,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-141800_M15_245"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778039470,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-143000_M15_246"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778040198,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-144200_M15_247"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778040918,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-145400_M15_248"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778041638,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-146600_M15_249"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778042358,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-147800_M15_250"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778043078,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-149000_M15_251"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778043670,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-006000_M15_201"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778044570,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-151500_M15_252"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778045470,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-009000_M15_202"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778046370,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-154500_M15_253"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778047270,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-012000_M15_203"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778049070,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-015000_M15_204"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778050870,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-018000_M15_201"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778052670,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-021000_M15_202"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778054470,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-024000_M15_203"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778056270,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-027000_M15_204"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778057470,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-029000_M15_205"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778058550,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-030800_M15_206"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778059330,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-032100_M15_207"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778060050,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-033300_M15_201"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778060950,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-034800_M15_208"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778061850,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-036300_M15_209"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778063350,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-038800_M15_202"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778064454,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-040600_M15_203"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778065534,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-042400_M15_211"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778065946,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-038600_M15_210"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778066494,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-044000_M15_212"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778067417,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-045500_M15_204"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778067479,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-040700_M15_205"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778068497,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-047300_M15_214"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778068799,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-042600_M15_206"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778069629,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-049200_M15_215"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778070012,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-044400_M15_213"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778070709,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-051000_M15_217"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778071212,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-046000_M15_207"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778071849,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-052900_M15_208"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778072292,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-047800_M15_216"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778072929,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-054700_M15_222"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778073372,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-049600_M15_218"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778074009,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-056500_M15_221"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778074452,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-051400_M15_219"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778075089,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-058300_M15_223"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778075532,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-053200_M15_220"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778076169,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-060100_M15_225"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778076672,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-055100_M15_210"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778077249,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-061900_M15_227"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778077752,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-056900_M15_224"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778078329,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-063700_M15_228"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778078832,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-058700_M15_230"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778079349,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-065400_M15_209"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778079912,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-060500_M15_226"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778080377,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-067100_M15_206"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778081052,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-062300_M15_229"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778081457,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-068900_M15_211"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778082192,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-064100_M15_205"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778082537,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-070700_M15_214"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778083212,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-065900_M15_231"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778083617,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-072500_M15_232"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778084232,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-067600_M15_213"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778084817,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-074500_M15_217"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778085312,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-069400_M15_207"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778086017,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-076500_M15_215"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778086392,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-071200_M15_216"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778087217,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-078500_M15_219"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778087472,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-073000_M15_212"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778088417,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-080500_M15_218"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778088612,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-074900_M15_210"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778089617,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-082500_M15_224"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778089905,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-076900_M15_220"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778090817,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-084500_M15_234"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778091165,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-078900_M15_208"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778092017,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-086500_M15_223"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778092425,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-080900_M15_221"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778093277,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-088600_M15_233"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778093625,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-082900_M15_230"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778094477,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-090600_M15_227"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778094918,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-084900_M15_222"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778095677,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-092600_M15_228"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778096118,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-086900_M15_237"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778096757,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-094400_M15_236"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778097318,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-088900_M15_238"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778097837,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-096200_M15_229"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778098518,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-091000_M15_239"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778098857,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-097900_M15_235"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778099718,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-093000_M15_241"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778099989,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-099800_M15_225"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778100798,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-094900_M15_243"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778101069,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-101600_M15_226"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778101878,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-096700_M15_244"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778102149,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-103400_M15_245"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778102838,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-098500_M15_246"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778103229,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-105200_M15_247"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778103732,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-100200_M15_242"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778104369,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-107100_M15_232"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778104872,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-102000_M15_231"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778105449,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-108900_M15_240"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778105939,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-103800_M15_251"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778106529,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-110700_M15_230"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778106779,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-105600_M15_248"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778107609,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-112500_M15_234"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778107799,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-107400_M15_250"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778108786,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-109300_M15_252"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778108966,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-114800_M15_253"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778109746,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-111100_M15_237"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778110166,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-116800_M15_233"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778110766,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-112900_M15_238"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778111246,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-118600_M15_249"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778111906,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-114800_M15_239"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778112334,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-120400_M15_243"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778113046,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-116800_M15_241"
+        },
+        {
+          "stop_name": "WATER ST/BROAD ST",
+          "stop_id": "MTA_401664",
+          "departure_time": 1778113474,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-122300_M15_244"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778114066,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-118700_M15_242"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778115132,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-120600_M15_231"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778115999,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-122400_M15_251"
+        },
+        {
+          "stop_name": "1 AV/E 93 ST",
+          "stop_id": "MTA_401718",
+          "departure_time": 1778117079,
+          "headsign": "EAST HARLEM 125 ST via 1 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-124400_M15_236"
+        }
+      ]
+    },
+    {
+      "route_id": "MTA NYCT_M15",
+      "direction": "SOUTH FERRY via 2 AV",
+      "headsign": "SOUTH FERRY via 2 AV",
+      "departures": [
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778030932,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-123800_M15_253"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778031599,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-125000_M15_241"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778032259,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-126200_M15_252"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778033039,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-127700_M15_249"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778033939,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-129200_M15_243"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778034839,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-130700_M15_244"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778035627,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-132200_M15_253"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778036167,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-133400_M15_245"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778036647,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-134600_M15_246"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778037367,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-135800_M15_247"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778038087,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-137000_M15_248"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778038807,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-138200_M15_249"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778039527,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-139400_M15_250"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778040247,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-140600_M15_251"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778040975,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-BM-141800_M15_201"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778042219,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-002000_M15_202"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778042347,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-143900_M15_252"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778044469,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-006000_M15_203"
+        },
+        {
+          "stop_name": "2 AV/E 17 ST",
+          "stop_id": "MTA_401781",
+          "departure_time": 1778044507,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-148000_M15_253"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778046269,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-009000_M15_204"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778048069,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-012000_M15_201"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778049869,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-015000_M15_202"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778051669,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-018000_M15_203"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778053469,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-021000_M15_204"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778054669,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-023000_M15_205"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778055569,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-024500_M15_206"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778056469,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-026000_M15_207"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778057189,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-027200_M15_201"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778057909,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-028400_M15_208"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778058629,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-029600_M15_209"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778059349,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-030800_M15_202"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778060069,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-032000_M15_210"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778060849,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-033000_M15_203"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778061449,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-034000_M15_211"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778062079,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-035000_M15_205"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778062559,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-035800_M15_212"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778062919,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-036400_M15_206"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778063279,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-037000_M15_204"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778063639,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-037600_M15_213"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778064119,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-038200_M15_214"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778064539,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-038800_M15_207"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778065019,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-039400_M15_215"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778065409,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-040000_M15_216"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778065829,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-040600_M15_217"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778066189,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-041200_M15_218"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778066729,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-041900_M15_208"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778067209,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-042700_M15_219"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778067749,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-043500_M15_209"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778068229,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-044300_M15_220"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778068769,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-045100_M15_221"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778069309,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-045900_M15_210"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778069849,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-046700_M15_223"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778070389,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-047500_M15_224"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778070869,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-048300_M15_225"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778071349,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-049100_M15_205"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778071829,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-049900_M15_227"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778072309,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-050700_M15_226"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778072789,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-051500_M15_228"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778073269,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-052300_M15_229"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778073749,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-053100_M15_209"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778074229,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-053900_M15_212"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778074769,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-054800_M15_206"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778075309,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-055700_M15_231"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778075849,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-056600_M15_211"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778076478,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-057500_M15_213"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778077198,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-058400_M15_218"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778077738,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-059300_M15_207"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778078218,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-060200_M15_219"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778078758,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-061100_M15_216"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778079298,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-062000_M15_220"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778079838,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-062900_M15_212"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778080378,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-063800_M15_215"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778080918,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-064700_M15_222"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778081458,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-065600_M15_224"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778082058,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-066600_M15_221"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778082658,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-067600_M15_218"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778083258,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-068600_M15_208"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778083858,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-069600_M15_226"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778084458,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-070600_M15_225"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778085118,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-071600_M15_229"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778085718,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-072600_M15_227"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778086318,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-073600_M15_223"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778086918,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-074600_M15_222"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778087518,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-075600_M15_233"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778088118,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-076600_M15_209"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778088718,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-077600_M15_213"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778089318,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-078600_M15_206"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778089858,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-079500_M15_228"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778090398,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-080400_M15_211"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778090938,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-081300_M15_216"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778091478,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-082200_M15_214"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778092018,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-083100_M15_229"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778092558,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-084000_M15_232"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778093098,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-084900_M15_235"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778093638,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-085800_M15_217"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778094178,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-086700_M15_220"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778094718,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-087600_M15_215"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778095318,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-088600_M15_226"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778095918,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-089600_M15_219"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778096518,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-090600_M15_221"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778097118,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-091600_M15_218"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778097718,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-092600_M15_230"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778098318,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-093600_M15_224"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778098918,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-094600_M15_232"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778099518,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-095600_M15_234"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778100088,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-096600_M15_237"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778100568,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-097600_M15_223"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778101108,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-098600_M15_238"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778101768,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-099600_M15_252"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778102368,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-100600_M15_239"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778102968,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-101600_M15_227"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778103509,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-102600_M15_241"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778104109,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-103600_M15_228"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778104709,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-104600_M15_233"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778105309,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-105600_M15_236"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778105909,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-106600_M15_249"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778106449,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-107600_M15_229"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778106989,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-108600_M15_246"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778107589,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-109600_M15_242"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778108189,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-110600_M15_225"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778108759,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-111600_M15_231"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778109359,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-112600_M15_226"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778109899,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-113600_M15_251"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778110439,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-114600_M15_248"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778111039,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-115600_M15_236"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778111639,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-116600_M15_250"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778112239,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-117600_M15_252"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778112839,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-118600_M15_240"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778113439,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-119600_M15_237"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778114039,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-120600_M15_238"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778114459,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-121600_M15_234"
+        },
+        {
+          "stop_name": "2 AV/E 73 ST",
+          "stop_id": "MTA_903365",
+          "departure_time": 1778114999,
+          "headsign": "SOUTH FERRY via 2 AV",
+          "trip_id": "MTA NYCT_OH_B6-Weekday-SDon-122600_M15_239"
+        }
+      ]
+    }
+  ]
+}

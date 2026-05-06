@@ -1,0 +1,1769 @@
+[
+  {
+    "route_id": "6",
+    "title": "[6] trains are running with delays in both directions after we addressed a signal problem at Parkchester\n.",
+    "description": "[6X] trains have concluded for the evening.",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1778029994,
+    "affected_routes": [
+      "6"
+    ],
+    "alert_type": "Delays",
+    "sort_order": 26,
+    "display_before_active": 0,
+    "active_period_end": 1778031481,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "F",
+    "title": "Downtown [F] and [M] trains in both directions are running with delays after we moved a train that had its brakes activated near Broadway-Lafayette St.",
+    "description": "Downtown [F] and [M] trains in both directions have resumed making scheduled stops.",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1778028993,
+    "affected_routes": [
+      "F",
+      "M"
+    ],
+    "alert_type": "Delays",
+    "sort_order": 26,
+    "display_before_active": 0,
+    "active_period_end": null,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "F",
+    "title": "Coney Island -bound [F] and Church Av-bound [G] trains are running with delays after we removed a train in need of  cleaning from service at Church Av.",
+    "description": "Coney Island -bound [F] and Church Av-bound [G] trains have resumed making local stops from Smith-9 Sts to Church Av.",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1778029460,
+    "affected_routes": [
+      "F",
+      "G"
+    ],
+    "alert_type": "Delays",
+    "sort_order": 26,
+    "display_before_active": 0,
+    "active_period_end": null,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "E",
+    "title": "Madison Av entrance to 5 Av/53 St [E][F] Station is closed at all times\nUse 5 Av entrance",
+    "description": "Note: 5 Av/53 St [E][F] Station is exit only during weekday AM rush hours, 6:30 AM to 10:30 AM. Use nearby Lexington Av/53 St [E][F] during these times.\n\nWhat's happening? \nEscalator replacement",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1784298600,
+    "affected_routes": [
+      "E",
+      "F"
+    ],
+    "alert_type": "Station Notice",
+    "sort_order": 3,
+    "display_before_active": null,
+    "active_period_end": 1778063400,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until Jul 17"
+  },
+  {
+    "route_id": "F",
+    "title": "No Brooklyn-bound [F] service at 21 St-Queensbridge, Roosevelt Island, Lexington Av/63 St and 57 St",
+    "description": "Brooklyn-bound [F] trains are rerouted via Court Sq [E] from 36 St to 5 Av/53 St and resumes service at 47-50 Sts-Rockefeller Ctr.\n\nTravel alternatives:\nFor service to these stations, take the [F] to 47-50 Sts-Rockefeller Ctr [accessibility icon] and transfer to a Jamaica-bound [F].\n\nFor service from 21 St-Queensbridge and Roosevelt Island, take the [F] to Steinway St and transfer to a Brooklyn-bound [F].\n\nFrom Lexington Av/63 St, take the [Q] to 34 St-Herald Sq [accessibility icon] and transfer to a Brooklyn-bound [F].\n\nFrom 57 St, use the nearby 57 St-7 Av [N][Q] station for downtown service to 34 St-Herald Sq where Brooklyn-bound [F] service is available.\n\nWhat's happening?\nEscalator replacement",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1778204700,
+    "affected_routes": [
+      "F"
+    ],
+    "alert_type": "Planned - Reroute",
+    "sort_order": 18,
+    "display_before_active": 3600,
+    "active_period_end": 1778058000,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "May 5 - 6, Tue 9:45 PM to Wed 5 AM and May 7 - 8, Thu 9:45 PM to Fri 5 AM"
+  },
+  {
+    "route_id": "G",
+    "title": "In Brooklyn, no [G] between Hoyt-Schermerhorn Sts and Church Av\nTrains run every 20 minutes between Bedford-Nostrand Avs and Hoyt-Schermerhorn Sts",
+    "description": "[G] runs in two sections:\n1. Between Court Sq and Bedford-Nostrand Avs\n2. Between Bedford-Nostrand Avs and Hoyt-Schermerhorn Sts, every 20 minutes\n(All trains board/depart from the Court Sq-bound platform between Bedford-Nostrand Avs and Hoyt-Schermerhorn Sts)\nTransfer at Bedford-Nostrand Avs to continue your trip.\nFor Bergen St, Carroll St, Smith-9 Sts, 4 Av-9 St, 7 Av, 15 St-Prospect Park, Fort Hamilton Pkwy and Church Av, take the [F] instead.\nTransfer between [G] and [A][C] trains at Hoyt-Schermerhorn Sts\nTransfer between [A][C] and [F] trains at Jay St-MetroTech\n\nWhat's happening?\nTrack maintenance\n\n[accessibility icon] This service change affects one or more ADA accessible stations and these travel alternatives may not be fully accessible. Please contact 511 to plan your trip.",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1778203800,
+    "affected_routes": [
+      "G"
+    ],
+    "alert_type": "Planned - Part Suspended",
+    "sort_order": 20,
+    "display_before_active": 3600,
+    "active_period_end": 1778058000,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "May 4 - 8, Mon to Fri, 9:30 PM to 5:00 AM"
+  },
+  {
+    "route_id": "6",
+    "title": "In the Bronx, Manhattan-bound [6] runs express from Parkchester to 3 Av-138 St",
+    "description": "Trains stop at Hunts Point Av.\n\nFor service to St Lawrence Av, Morrison Av-Soundview, Elder Av and Whitlock Av, take the [6] to Hunts Point Av and transfer to a Pelham Bay Park-bound [6].\n\nFor service to Longwood Av, E 149 St, E 143 St-St Mary's St, Cypress Av and Brook Av, take the [6] to 3 Av-138 St and transfer to a Pelham Bay Park-bound [6].\n\nFor service from these stations, take the [6] to Hunts Point Av or Parkchester and transfer to a Manhattan-bound [6].\n\nWhat's happening?\nWe're replacing tracks\n\n[accessibility icon] This service change affects one or more ADA accessible stations and these travel alternatives may not be fully accessible. Please contact 511 to plan your trip.",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1780019100,
+    "affected_routes": [
+      "6"
+    ],
+    "alert_type": "Planned - Stops Skipped",
+    "sort_order": 16,
+    "display_before_active": 3600,
+    "active_period_end": 1778058000,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "May 4 - May 22, Mon to Fri, and May 26 - 29, Tue to Fri, 9:45 PM to 5:00 AM"
+  },
+  {
+    "route_id": "4",
+    "title": "In the Bronx, Woodlawn-bound [4] skips Burnside Av",
+    "description": "Use nearby 176 St or 183 St stations.\n\nAdditional travel alternatives:\nFor service to this station, take the [4] to 183 St and transfer to a Manhattan-bound train.\n\nFor service from this station, take the [4] to 176 St and transfer to a Woodlawn-bound train.\n\nWhat's happening?\nWe're making station improvements",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1777280400,
+    "affected_routes": [
+      "4"
+    ],
+    "alert_type": "Station Notice",
+    "sort_order": 3,
+    "display_before_active": 3600,
+    "active_period_end": 1789963140,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through September 2026"
+  },
+  {
+    "route_id": "7",
+    "title": "In Queens, Manhattan-bound [7] skips 69 St and 52 St\nAll trains at 61 St-Woodside board from the Flushing-bound platform",
+    "description": "Use nearby 74 St-Broadway, 61 St-Woodside or 46 St-Bliss St stations.\n\nAdditional travel alternatives:\nFor service to 69 St, take the [7] to 61 St-Woodside and transfer to a Flushing-bound [7].\n\nFor service to 52 St, take the [7] to 46 St-Bliss St and transfer to a Flushing-bound [7].\n\nFor service from these stations, take the [7] to 61 St-Woodside or 74 St-Broadway and transfer to a Manhattan-bound [7].\n\nNote: There will be temporary platforms located at 46 St-Bliss St, 40 St-Lowery St and 33 St-Rawson St.\n\nWhat's happening?\nStructural maintenance",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1765965600,
+    "affected_routes": [
+      "7"
+    ],
+    "alert_type": "Station Notice",
+    "sort_order": 3,
+    "display_before_active": null,
+    "active_period_end": 1778299140,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through mid-May 2026"
+  },
+  {
+    "route_id": "7",
+    "title": "In Queens, Flushing-bound [7] skips 103 St-Corona Plaza",
+    "description": "Use nearby Junction Blvd or 111 St stations.\n\nAdditional travel alternatives:\nFor service to this station, take the [7] to 111 St and transfer to a Manhattan-bound train.\n\nFor service from this station, take the [7] to Junction Blvd and transfer to a Flushing-bound train.\n\nWhat's happening?\nWe're making station improvements",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1778961600,
+    "affected_routes": [
+      "7"
+    ],
+    "alert_type": "Station Notice",
+    "sort_order": 3,
+    "display_before_active": null,
+    "active_period_end": 1778298300,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through June 2026"
+  },
+  {
+    "route_id": "Z",
+    "title": "Take the [J] instead",
+    "description": "[Z] service operates weekday rush hours only.",
+    "severity": "warning",
+    "mode": "subway",
+    "updated_at": 1792018800,
+    "affected_routes": [
+      "Z"
+    ],
+    "alert_type": "No Scheduled Service",
+    "sort_order": 1,
+    "display_before_active": 0,
+    "active_period_end": 1778065200,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Middays, overnight and weekends"
+  },
+  {
+    "route_id": "M14A+",
+    "title": "You may wait longer for these buses:\nM14A-SBS, M14D-SBS, M15, M34-SBS, M34A-SBS, M79-SBS, M101, M102, M103",
+    "description": "We're running as much service as we can with the operators we have available.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1778022284,
+    "affected_routes": [
+      "M14A+",
+      "M14D+",
+      "M34+",
+      "M34A+",
+      "M79+"
+    ],
+    "alert_type": "Delays",
+    "sort_order": 26,
+    "display_before_active": 0,
+    "active_period_end": 1778032842,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "BX8",
+    "title": "Northbound Bx8 buses are bypassing the Otis Ave/Logan Ave stop due to roadwork on Logan Ave between Otis Ave and Bruckner Blvd.",
+    "description": "Use the Crosby Ave/Bruckner Blvd stop instead.\n\nNOTE: Bus arrival information may not be accurate/available while buses are detoured.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1778022271,
+    "affected_routes": [
+      "BX8"
+    ],
+    "alert_type": "Detour",
+    "sort_order": 31,
+    "display_before_active": 0,
+    "active_period_end": null,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "B12",
+    "title": "B12 buses are detoured in both directions due to a religious procession on East New York Ave between Schenectady Ave and Albany Avenue.",
+    "description": "Eastbound B12 buses will not serve stops from East New York Ave/Albany Ave to Lefferts Ave/Schenectady Ave.\n\nWhile detoured, eastbound B12 buses will make stops as requested along Eastern Pkwy.\n\nWestbound B12 buses will not serve stops from East New York Ave/Troy Ave to Albany Ave/Fenimore St.\n\nWhile detoured, westbound B12 buses will make stops as requested along Schenectady Ave and Winthrop St.\n\nNote: Bus arrival information may not be accurate while buses are detoured.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1778003199,
+    "affected_routes": [
+      "B12"
+    ],
+    "alert_type": "Detour",
+    "sort_order": 31,
+    "display_before_active": 0,
+    "active_period_end": null,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "M101",
+    "title": "M101, M102 and M103 buses are running with delays in both directions because of protest activity near Lexington Avenue/E 68th Street.",
+    "description": "Please allow additional travel time.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1778013474,
+    "affected_routes": [
+      "M101",
+      "M102",
+      "M103"
+    ],
+    "alert_type": "Delays",
+    "sort_order": 26,
+    "display_before_active": 0,
+    "active_period_end": null,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "M66",
+    "title": "M66 buses are detoured in both directions because of protest activity near E 68th St/Park Ave.",
+    "description": "While detoured, eastbound buses will not make stops from E 68th St/Madison Ave to E 68th St/2nd Ave.\nInstead, buses will make stops along Madison Ave, E 72nd St and 2nd Ave, as requested.\n\nWestbound buses will not make stops from E 67th St/Lexington Ave and E 67th St/Madison Ave.\nInstead, buses will make stops along 3rd Ave, E 72nd St and Madison Ave, as requested.\n\nNote: Bus arrival information may not be accurate/available while buses are detoured.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1778014145,
+    "affected_routes": [
+      "M66"
+    ],
+    "alert_type": "Detour",
+    "sort_order": 31,
+    "display_before_active": 0,
+    "active_period_end": null,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "M72",
+    "title": "M72 buses will be detoured from the 65th Street Transverse, the eastbound stop on E 65th St at 5th Ave will be closed - no stops missed westbound",
+    "description": "Here is a map of the detoured route.\n\nWhat's happening?\nStreet milling and paving\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1778025600,
+    "affected_routes": [
+      "M72"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1778056200,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "May 5 - 6, Tue 8:00 PM to Wed 4:30 AM"
+  },
+  {
+    "route_id": "M66",
+    "title": "M66 buses will be detoured from the 65th Street Transverse between 5th Ave at E 67th St and W 65th St at Broadway - no stops missed westbound",
+    "description": "Westbound buses operate via 5th Ave, Grand Army Plaza, Central Park South and Central Park West.\nEastbound buses operate via Broadway, Columbus Circle, Central Park South, E 59th St and Madison Ave.\n\nHere is a map of the detoured map.\n\nEastbound missed stops:\nAlong W 65th St from Columbus Ave to 5th Ave\n\nWhat's happening?\nStreet milling and paving\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1778025600,
+    "affected_routes": [
+      "M66"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1778056200,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "May 5 - 6, Tue 8:00 PM to Wed 4:30 AM"
+  },
+  {
+    "route_id": "M8",
+    "title": "Eastbound M8 stops on E 8th St at Lafayette St, Astor Pl at Cooper Sq East, and along Saint Marks Pl from 2nd Ave to Avenue A will be closed",
+    "description": "Buses operate via Broadway, East Houston St and Avenue A.\n\nHere is a map of the detoured route.\n\nWhat's happening?\nStreet milling and paving\n\nNOTE: Bus arrival information may not be accurate/available while buses are detoured.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1778025600,
+    "affected_routes": [
+      "M8"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1778056200,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "May 5 - 6, Tue 8:00 PM to Wed 4:30 AM"
+  },
+  {
+    "route_id": "M1",
+    "title": "Southbound M1, M2, and M3 buses will be detoured from E 8th St at Broadway to 9th St at 4th Ave",
+    "description": "Buses operate via Broadway, E Houston St, Bowery into 3rd Ave, E9th St, 4th Ave.\nHere is a map of the detoured route.\n\nM1 Missed stops:\nAlong Broadway from West Houston St to Spring St\nCentre St at Grand St\n\nM2 and M3 Missed stop:\nE 8th St at Lafayette St\n\nWhat's happening?\nStreet milling and paving\n\nNOTE: Bus arrival information may not be accurate/available while buses are detoured.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1778025600,
+    "affected_routes": [
+      "M1",
+      "M2",
+      "M3"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1778056200,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "May 5 - 6, Tue 8:00 PM to Wed 4:30 AM"
+  },
+  {
+    "route_id": "M101",
+    "title": "Southbound M101 and M102 stops on 3rd Ave at E 14th St/E 11th St, and Cooper Sq at E 7th St will be closed",
+    "description": "Buses operate via 2nd Ave.\nSee map\n\nWhat's happening?\nStreet milling and paving\n\nNOTE: Bus arrival information may not be accurate/available while buses are detoured.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1778025600,
+    "affected_routes": [
+      "M101",
+      "M102"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1778056200,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "May 5 - 6, Tue 8:00 PM to Wed 4:30 AM"
+  },
+  {
+    "route_id": "M4",
+    "title": "Northbound M4 stops on Fort Washington Ave from W 165th St to W 179th St will be closed",
+    "description": "Buses operate via Broadway making requested stops.\n\nHere is a map of the detoured route.\n\nWhat's happening?\nCrane operation\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1777867200,
+    "affected_routes": [
+      "M4"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "M3",
+    "title": "Northbound M3 and M4 stop on Madison Ave at E 45th St will be bypassed, use the stops on Madison Ave at E 42nd St or E 47th St",
+    "description": "What's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1777719600,
+    "affected_routes": [
+      "M3",
+      "M4"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "May 2 7:00 AM - Ongoing"
+  },
+  {
+    "route_id": "B63",
+    "title": "Northbound B63 stop on 5th Ave at Bergen St has been removed; the new northbound stop will be made on Bergen St at 5th Ave - no stops will be missed southbound",
+    "description": "Buses detour between Atlantic Ave at 4th Ave and 5th Ave at Bergen St in both directions.\nNorthbound buses operate via 5th Ave, Bergen St and 4th Ave.\nSouthbound buses operate via Atlantic Ave, 4th Ave, Dean St and 5th Ave\n\nSee a map of this stop change.\n\nWhat's happening?\nNYC Dept. of Transportation is reconstructing Flatbush Ave to include bus lanes\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1777953600,
+    "affected_routes": [
+      "B63"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Beginning, Tuesday May 5th, 2026"
+  },
+  {
+    "route_id": "S42",
+    "title": "Northbound S42 and S52  buses are detoured due to roadwork at Hamilton Ave/St. Marks Pl.",
+    "description": "Buses will not serve stops from Westervelt Ave/Hamilton Ave to Bay St/Borough Pl.\nWhile detoured, stops will be made along Richmond Terr as requested.\nNote: Bus arrival information may not be available/accurate while buses are detoured.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1777287600,
+    "affected_routes": [
+      "S42",
+      "S52"
+    ],
+    "alert_type": "Planned - Detour",
+    "sort_order": 17,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Apr 27 7:00 AM - Ongoing"
+  },
+  {
+    "route_id": "B41",
+    "title": "Southbound B41 and B67 stop at Flatbush Ave/Atlantic Ave is closed\nBoard southbound B41 and B67 at Flatbush Ave/State St",
+    "description": "What's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1777435200,
+    "affected_routes": [
+      "B41",
+      "B67"
+    ],
+    "alert_type": "Planned - Stops Skipped",
+    "sort_order": 16,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "QM65",
+    "title": "QM65 buses are not stopping at Trinity Pl/Thames St in either direction due to construction",
+    "description": "Please use the Trinity Pl/Rector St stop instead.\n\nNote: Bus arrival information may not be accurate or available in the service change area.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1725336000,
+    "affected_routes": [
+      "QM65"
+    ],
+    "alert_type": "Planned - Stops Skipped",
+    "sort_order": 16,
+    "display_before_active": 3600,
+    "active_period_end": 1861851600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "Q101",
+    "title": "Q101 stops on Jackson Ave at 50th Ave in both directions are closed",
+    "description": "For northbound service, use the stop on Jackson Ave at 47th Rd.\nFor southbound service, use the stop on Borden Ave at 5th St.\n\nWhat's happening?\nNYC DOT Construction - Bus boarding islands\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1776830400,
+    "affected_routes": [
+      "Q101"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "B65",
+    "title": "Eastbound B65 stops on Dean St from 3rd Ave to Carlton Ave are closed",
+    "description": "Buses make temporary stops on Atlantic Ave at Flatbush Ave and Carlton Ave in the B45 stops.\n\nHere is a map of the detoured route.\n\nWhat's happening?\nConstruction - Infrastructure upgrades\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1773374400,
+    "affected_routes": [
+      "B65"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "Q50",
+    "title": "Northbound Q50 buses will be detoured from Linden Pl at 35th Ave to 31st Rd - no stops will be missed",
+    "description": "Please allow additional travel time.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1774843200,
+    "affected_routes": [
+      "Q50"
+    ],
+    "alert_type": "Expect Delays",
+    "sort_order": 12,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "Q25",
+    "title": "Northbound Q25 stop on Linden Pl at 35th Ave will be closed, use the temporary stop on Linden Pl at Northern Blvd.",
+    "description": "Buses operate via 35th Ave, Farrington St and 31st Rd. See a map of stop change.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1774843200,
+    "affected_routes": [
+      "Q25"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "Q58",
+    "title": "Westbound Q58 and Q98 stops on Putnam Ave at Myrtle Ave and Palmetto St at Myrtle Ave will be closed",
+    "description": "The last stop before detour will be made on Myrtle Ave at Cypress Ave.\nHere is a map of the detoured route.\n\nWhat's happening?\nTrack structural maintenance\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1776679200,
+    "affected_routes": [
+      "Q58",
+      "Q98"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1779271200,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Apr 20 - May 20, Mon 6:00 AM to Wed 6:00 AM"
+  },
+  {
+    "route_id": "Q55",
+    "title": "Westbound Q55 stop on Myrtle Ave at Palmetto Ave will be closed",
+    "description": "The last stop before detour will be made on Myrtle Ave at Cypress Ave.\nHere is a map of the detoured route.\n\nWhat's happening?\nTrack structural maintenance\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1776675600,
+    "affected_routes": [
+      "Q55"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1780282800,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Apr 20 - May 31, Mon 5:00 AM to Sun 11:00 PM"
+  },
+  {
+    "route_id": "Q07",
+    "title": "Eastbound Q7 stop on Grant Ave at Etna St will be closed",
+    "description": "For service, use the stops on Jamaica Ave at Eldert Lane or Rockaway Blvd at 75th St.\nBuses operate via Jamaica Ave, Crescent St and Ridgewood Ave.\n\nHere is a map of the detoured route.\n\nWhat's happening?\nBlockage\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1776225600,
+    "affected_routes": [
+      "Q07"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1830229200,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through December 2027"
+  },
+  {
+    "route_id": "B70",
+    "title": "The first stop of the Dyker Heights-bound B70 will be made on 2nd Ave at 37th St\nThe last Sunset Park-bound stop will be made on 39th St at 3rd Ave",
+    "description": "Here is a map of the stop change.\n\nWhat's happening?\nOperational Improvements\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1775793600,
+    "affected_routes": [
+      "B70"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "In effect"
+  },
+  {
+    "route_id": "B35",
+    "title": "The first Brownsville-bound B35 stop will be made on 2nd Ave at 37th St\nThe last Sunset Park-bound stop will be made on 39th St at 3rd Ave",
+    "description": "Here is a map of the stop change.\n\nWhat's happening?\nOperational Improvements\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1775793600,
+    "affected_routes": [
+      "B35"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "In effect"
+  },
+  {
+    "route_id": "M42",
+    "title": "M42 buses may experience delays on 42nd St at 9th Ave in both directions",
+    "description": "Please allow additional travel time.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1775793600,
+    "affected_routes": [
+      "M42"
+    ],
+    "alert_type": "Expect Delays",
+    "sort_order": 12,
+    "display_before_active": 3600,
+    "active_period_end": 1778385600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until May 10, 2026"
+  },
+  {
+    "route_id": "M101",
+    "title": "Northbound M101, M102, and M103 stop on 3rd Ave at E 42nd St has been moved",
+    "description": "Buses will make a temporary stop before the intersection on 3rd Ave at E 42nd St.\nSee a map of this stop change.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1775707200,
+    "affected_routes": [
+      "M101",
+      "M102",
+      "M103"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1838088000,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through 2028"
+  },
+  {
+    "route_id": "M15",
+    "title": "M15 stops on South St at Whitehall St will be bypassed, the first and last stops will be made on Water St at Whitehall St",
+    "description": "Here is a map of the detoured route.\n\nWhat's happening?\nDOT Construction - Battery Park\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1775620800,
+    "affected_routes": [
+      "M15"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1785470400,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Beginning Apr 8 through Jul 31, 2026"
+  },
+  {
+    "route_id": "M4",
+    "title": "Southbound M4 limited stop on 5th Ave at W 46th St has been removed",
+    "description": "For service, use the stops on 5th Ave at W 41st St or W 49th St\nSee a map of the stop change.\n\nWhat's happening?\nOperational Improvements\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1775620800,
+    "affected_routes": [
+      "M4"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "In effect"
+  },
+  {
+    "route_id": "Q76",
+    "title": "Westbound Q76 stop on 14th Ave at Whitestone Expwy will be removed",
+    "description": "For service, use the stops on 14th Ave at 142nd St or 147th St.\nHere is a map of the stop change.\n\nWhat's happening?\nOperational Improvements\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1775620800,
+    "affected_routes": [
+      "Q76"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Effective, April 12, 2026"
+  },
+  {
+    "route_id": "M20",
+    "title": "Southbound M7 and M20 stop on 7th Ave at W 28th St will be bypassed, use the stop on 7th Ave at W 25th St",
+    "description": "Here is a map of the stop change.\n\nWhat's happening?\nWater Main Replacement\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1775732400,
+    "affected_routes": [
+      "M20",
+      "M7"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1783735200,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Beginning Apr 9, 2026 through Jul 10, 2026"
+  },
+  {
+    "route_id": "Q103",
+    "title": "Hunters Point-bound Q103 is rerouted to 41 Ave between Vernon Blvd and 21 St",
+    "description": "Three new stops are coming to 41 Ave, stops on 40 Ave will be discontinued.\nHere is a map of the route change.\n\nThe following stops have been established:\n41st Ave at Vernon Blvd\n41st Ave at 10th St\n41st Ave at 21st St\n\nWhat's happening?\nOperational Improvements - service resumed on 41st Avenue\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1775966400,
+    "affected_routes": [
+      "Q103"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "In effect"
+  },
+  {
+    "route_id": "M101",
+    "title": "Westbound M101 and M125 stop on E 125th St at 3rd Ave will be bypassed, please use the stop on E 125th St at Lexington Ave",
+    "description": "See a map of this stop change.\n\nWhat is happening?\nConstruction\n\nNOTE: Bus arrival information may not be accurate/available while buses are detoured.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1775016000,
+    "affected_routes": [
+      "M101",
+      "M125"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "Q61",
+    "title": "Northbound Q61 stop on Linden Pl at 35th Ave is closed, use the temporary stop on Linden Pl at Northern Blvd",
+    "description": "Buses operate via 35th Ave, Farrington St and 32nd Ave.\nSee a map of this stop change.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1774843200,
+    "affected_routes": [
+      "Q61"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "Q32",
+    "title": "The eastbound Q32 bus stop at Roosevelt Ave and 51st St is closed. Board on the near corner of Roosevelt Ave and 51st St instead.",
+    "description": "What's Happening?\nConstruction.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1774798620,
+    "affected_routes": [
+      "Q32"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Mar 29 11:37 AM - Ongoing"
+  },
+  {
+    "route_id": "M11",
+    "title": "The M11 bus stop on Amsterdam Ave at W 65th St is closed.\nBoard on the far side of Amsterdam Ave at W 66th St instead.",
+    "description": "What's happening?\nBuilding construction\n\nNote: Bus arrival information may not be accurate or available in the service change area.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1774648835,
+    "affected_routes": [
+      "M11"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Mar 27 6:00 PM - Ongoing"
+  },
+  {
+    "route_id": "B16",
+    "title": "Southbound B16 stops on 13th Ave at 41st St, 45th St, 49th St and 52nd St have been removed",
+    "description": "Customers can continue to use nearby stops along 13th Ave on 39th St, 43rd St, 47th St, 50th St and 54th St.\nSee map\n\nThese changes are an effort to improve service and spacing along these avenues for our customers.\n\nWhat's happening?\nTraffic improvements\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1774497600,
+    "affected_routes": [
+      "B16"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "In effect"
+  },
+  {
+    "route_id": "M101",
+    "title": "Northbound M101 limited stop on 3rd Ave at 9th St has been removed, customers are advised to use the stop on Astor Pl at Cooper Sq East",
+    "description": "See a map of the stop change.\n\nWhat's happening?\nNorthbound stop change\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1773374400,
+    "affected_routes": [
+      "M101"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "In effect"
+  },
+  {
+    "route_id": "M15+",
+    "title": "The northbound M15 and M15-SBS bus stops on Water St at Wall St and Pine St has been temporarily moved to the far side of Pine St",
+    "description": "What's happening?\nConstruction - Water St\n\nNOTE: M15-SBS customers must pay fare before boarding by using the machine at regular bus stop located on Water St at Pine St or bus door with OMNY.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1772514000,
+    "affected_routes": [
+      "M15+",
+      "M15"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1782792000,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through June 2026"
+  },
+  {
+    "route_id": "M11",
+    "title": "Northbound M11 buses are bypassing the stop on Amsterdam Ave at W 62nd St, use the stops on Amsterdam Ave at W 59th St or W 65th St",
+    "description": "See a map of this stop change.\n\nWhat's happening?\nConstruction - Lincoln Center Damrosch Park Rehabilitation\n\nNote: Bus arrival information may not be accurate or available while buses are detoured.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1772427600,
+    "affected_routes": [
+      "M11"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through 2028"
+  },
+  {
+    "route_id": "M104",
+    "title": "The first southbound M104 stop will be made on W 129th St at Amsterdam Ave",
+    "description": "Here's a map of the stop change.\n\nWhat's happening?\nPermanent southbound first stop change\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1770699600,
+    "affected_routes": [
+      "M104"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "In effect"
+  },
+  {
+    "route_id": "Q32",
+    "title": "Eastbound Q32 stop on Madison Ave at E 52nd St will be bypassed, use the temporary stop on Madison Ave at E 51st St",
+    "description": "See a map of this stop change.\n\nWhat's happening?\nConstruction - 509 Madison Ave\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1769662800,
+    "affected_routes": [
+      "Q32"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "Q54",
+    "title": "Williamsburg-bound Q54 and Q59 buses are bypassing the stop on Grand St at Graham Ave",
+    "description": "For service, use the stops on Grand St at Bushwick Ave or Lorimer St\nSee a map of this stop change.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1769058000,
+    "affected_routes": [
+      "Q54",
+      "Q59"
+    ],
+    "alert_type": "Planned - Stops Skipped",
+    "sort_order": 16,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "M15+",
+    "title": "Northbound M15-SBS stop on Water St at Pine St is closed, buses make a temporary stop across the intersection on Water St at Pine St",
+    "description": "See a map of this stop change.\n\n~If paying with MetroCard, obtain tickets from the vending machine at the original stop on Water St/Pine St.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1768971600,
+    "affected_routes": [
+      "M15+"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1782792000,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until June 30th, 2026"
+  },
+  {
+    "route_id": "BXM11",
+    "title": "Northbound BxM11 stop on Madison Ave at E 47th St is closed, please use the stop on Madison Ave at E 46th St instead",
+    "description": "See a map of this stop change.\n\nWhat's happening?\nConstruction - 383 Madison Ave\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1768539600,
+    "affected_routes": [
+      "BXM11"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1830315600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through 2028"
+  },
+  {
+    "route_id": "BXM3",
+    "title": "Northbound BxM3 and BxM4 stop on Madison Ave at E 46th St is closed, please use the M3 bus stop on Madison Ave at E 45th St instead",
+    "description": "What's happening?\nConstruction - 383 Madison Ave\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1768539600,
+    "affected_routes": [
+      "BXM3",
+      "BXM4"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1830315600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through 2028"
+  },
+  {
+    "route_id": "Q4",
+    "title": "Q4, Q5, Q84, Q85, Q86, Q87, Q89 and QM63 buses are running with delays due to utility work on Merrick Blvd between 110th Ave and Linden Blvd.",
+    "description": "Allow additional travel time.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1768347900,
+    "affected_routes": [
+      "Q4",
+      "Q5",
+      "Q84",
+      "Q85",
+      "Q87",
+      "Q89",
+      "QM63"
+    ],
+    "alert_type": "Expect Delays",
+    "sort_order": 12,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "M66",
+    "title": "Westbound M66 stop on E 67th St at Madison Ave will be bypassed, use the temporary stop on the far side of E 67th St at Madison Ave",
+    "description": "What's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1767934800,
+    "affected_routes": [
+      "M66"
+    ],
+    "alert_type": "Planned - Stops Skipped",
+    "sort_order": 16,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "B63",
+    "title": "B63 buses may experience delays on 5th Ave between 64th St and 65th St and will wait out any temporary closures",
+    "description": "Please allow additional travel time.\n\nWhat's happening?\nDOT - Lane Shift/5th Avenue Bridge/65th Street",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1767675600,
+    "affected_routes": [
+      "B63"
+    ],
+    "alert_type": "Expect Delays",
+    "sort_order": 12,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "B12",
+    "title": "B12 buses are detoured between Pitkin Ave at Rockaway Ave and Eastern Parkway main roadway at Rockaway Ave - no stops will be missed",
+    "description": "Eastbound buses operate via Pitkin Ave, Rockaway Ave, Eastern Parkway and Dean St.\nWestbound buses operate via Pacific St, Eastern Pkwy, Rockaway Ave and Pitkin Ave.\nHere is a map of the detoured route.\n\nWhat’s happening?\nDEP-Construction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1765256400,
+    "affected_routes": [
+      "B12"
+    ],
+    "alert_type": "Planned - Detour",
+    "sort_order": 17,
+    "display_before_active": 3600,
+    "active_period_end": 1780286400,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through June 1, 2026"
+  },
+  {
+    "route_id": "M66",
+    "title": "Westbound M66 stop on E 68th St at York Ave is closed, the first stop will be made on E 67th St at 1st Ave.",
+    "description": "What's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1769058000,
+    "affected_routes": [
+      "M66"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "Q07",
+    "title": "Westbound Q7 stop on Jamaica Ave at Eldert Ln is closed; customers will be dropped off on Eldert Ln at 87th Ave instead",
+    "description": "What's happening\nConstruction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1756612800,
+    "affected_routes": [
+      "Q07"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "SIM4",
+    "title": "SIM4X/SIM8X trips will be discontinued, more trips coming to SIM4/SIM8",
+    "description": "Things to know:\nSIM4X and SIM8X are special express trips of the SIM4 and SIM8 routes.\nRegular SIM4 and SIM8 trips will not be reduced.\nSome of the express SIM4X and SIM8X trips will be converted to full route SIM4 and SIM8 trips.\nThese changes are part of our regular process of reviewing bus schedules and ridership demand. Discontinuing the SIM4X and SIM8X and converting some of these trips into full-route SIM4 and SIM8 trips will better use underutilized resources.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1756785600,
+    "affected_routes": [
+      "SIM4",
+      "SIM8"
+    ],
+    "alert_type": "Special Notice",
+    "sort_order": 4,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Effective Tuesday, September 2"
+  },
+  {
+    "route_id": "Q50",
+    "title": "Bronx-bound Q50 buses may experience delays in Flushing, but no stops are missed; buses use Farrington St from 35th Ave to 31st Rd",
+    "description": "Please allow additional travel time.\n\nWhat's happening?\nNYC DEP sewer maintenance\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1756094400,
+    "affected_routes": [
+      "Q50"
+    ],
+    "alert_type": "Expect Delays",
+    "sort_order": 12,
+    "display_before_active": 0,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "Q38",
+    "title": "Maspeth-bound Q38 stop on 63rd Dr at Austin St has been temporarily relocated north between Wetherole St and Austin St",
+    "description": "See a map of the boarding change.\n\nWhat's happening?\nConstruction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1756699200,
+    "affected_routes": [
+      "Q38"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1827377940,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until Fall 2027"
+  },
+  {
+    "route_id": "M15",
+    "title": "Northbound M15 stop on 1st Ave at E 77th St is being bypassed",
+    "description": "Please use the stops on 1st Ave at E 75th St or E 81st St instead.\n\nWhat's happening?\nConstruction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1753070400,
+    "affected_routes": [
+      "M15"
+    ],
+    "alert_type": "Planned - Stops Skipped",
+    "sort_order": 16,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "B82",
+    "title": "Southbound B82 stop on and Mermaid Ave at W 17th St is closed",
+    "description": "For service, use the stops on W 17th St at Neptune Ave or Mermaid Ave at Stillwell Ave.\nBuses also make requested stops along Neptune Ave and Stillwell Ave.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1752206400,
+    "affected_routes": [
+      "B82"
+    ],
+    "alert_type": "Planned - Detour",
+    "sort_order": 17,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "Q32",
+    "title": "Eastbound Q32 stop on Roosevelt Ave at 61st St has been temporarily relocated to Roosevelt Ave between 60th St and 61st St, before the intersection",
+    "description": "Here is a map of the temporary stop change.\n\nWhat's happening?\nConstruction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1751083200,
+    "affected_routes": [
+      "Q32"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through Sep 2026"
+  },
+  {
+    "route_id": "M35",
+    "title": "Eastbound M35 stop on Rivers Edge Rd at Manhattan Psychiatric Center is closed",
+    "description": "For service, use the stop on Main Roadway at Manhattan Psych Center instead.\n\nSee a map of this stop change.\n\nWhat's happening?\nDemolition Work\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1798712400,
+    "affected_routes": [
+      "M35"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1778042580,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "SIM15",
+    "title": "Staten Island-bound SIM5, SIM15 and SIM35 stop on State St at Bridge St is closed; use the temporary stop on State St closer to Bridge St instead",
+    "description": "See a map of the new stop location.\n\nWhat's happening?\nConstruction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1743566400,
+    "affected_routes": [
+      "SIM15",
+      "SIM35",
+      "SIM5"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through November 2026"
+  },
+  {
+    "route_id": "M20",
+    "title": "Northbound M20 and M55 stop on State St at Bridge St is closed; use the temporary stop on State St before the intersection instead",
+    "description": "See a map of the new stop location.\n\nWhat's happening?\nConstruction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1743566400,
+    "affected_routes": [
+      "M20",
+      "M55"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through November 2026"
+  },
+  {
+    "route_id": "B65",
+    "title": "Westbound B65 stop on Smith St at Atlantic Ave is closed. Please use the stops on Smith St at Bergen St or Livingston St",
+    "description": "See a map of this stop change.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1740718800,
+    "affected_routes": [
+      "B65"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until April 2029"
+  },
+  {
+    "route_id": "B61",
+    "title": "Northbound B61 stop on Smith St at Atlantic Ave is closed - Please use the stops on Atlantic Ave at Court St or Smith St at Livingston St",
+    "description": "See a map of this stop change.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1740718800,
+    "affected_routes": [
+      "B61"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until April 2029"
+  },
+  {
+    "route_id": "B44",
+    "title": "Southbound B44 stop on Nostrand Ave at Avenue N is closed; use nearby stops on Nostrand Ave at Avenue M or Kings Highway",
+    "description": "See a map of this stop change.",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1737954000,
+    "affected_routes": [
+      "B44"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "In effect"
+  },
+  {
+    "route_id": "BX39",
+    "title": "Southbound Bx39 stop on White Plains Rd at E 215th St is closed; please use the new stop on White Plains Rd at E 216th St instead",
+    "description": "See a map of the boarding change.\n\nWhat's happening?\nConstruction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1736917200,
+    "affected_routes": [
+      "BX39"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through Fall 2026"
+  },
+  {
+    "route_id": "B16",
+    "title": "Northbound B16 stop on Caton Ave at Ocean Pkwy is closed; buses will make a stop on Caton Ave between Ocean Pkwy and E 7th St instead",
+    "description": "See a map of the boarding change.\n\nWhat's happening?\nConstruction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1736226000,
+    "affected_routes": [
+      "B16"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "X28",
+    "title": "X28  and X38  stops on Surf Ave at W 21st St are closed in both directions",
+    "description": "For northbound service, use the temporary stop on Surf Ave at W 22nd St.\nFor southbound service, use the stop on W 17th St at Mermaid Ave.\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1735880435,
+    "affected_routes": [
+      "X28",
+      "X38"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "SIM11",
+    "title": "Southbound SIM6 and SIM11 buses are skipping the stop on Lexington Ave at E 45th St - use the temporary stop on Lexington Ave at E 43rd St instead",
+    "description": "What's happening?\nWater main construction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1733288400,
+    "affected_routes": [
+      "SIM11",
+      "SIM6"
+    ],
+    "alert_type": "Planned - Stops Skipped",
+    "sort_order": 16,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "SIM22",
+    "title": "Southbound SIM22 and SIM26 are skipping the stop on Lexington Ave at E 45th St - use stops on Lexington Ave at E 53rd St or E 42nd St at Madison Ave instead",
+    "description": "See a map of the bypass.\n\nWhat's happening?\nWater main construction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1733288400,
+    "affected_routes": [
+      "SIM22",
+      "SIM26"
+    ],
+    "alert_type": "Planned - Stops Skipped",
+    "sort_order": 16,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "M101",
+    "title": "Southbound M101, M102 and M103 buses are skipping the stop on Lexington Ave at E 46th St; use the temporary stop on Lexington Ave at E 45th St instead",
+    "description": "See a map of the boarding change.\n\nWhat's happening?\nWater main construction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1733288400,
+    "affected_routes": [
+      "M101",
+      "M102",
+      "M103"
+    ],
+    "alert_type": "Planned - Stops Skipped",
+    "sort_order": 16,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "M79+",
+    "title": "Eastbound M79-SBS stop on W 81st St at Central Park West is temporarily closed; please use the nearby stop on W 81st St at Columbus Ave",
+    "description": "See a map of this stop change.\n\nWhat's happening?\nElevator construction at the 81 St Subway Station",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1721880000,
+    "affected_routes": [
+      "M79+"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "B8",
+    "title": "Eastbound B8 stop on 18th Ave at 53rd St is closed; please use nearby stops on 18th Ave at 55th St or 50th St.",
+    "description": "See a map of the stops.\n\nWhat's happening?\n18th Avenue Bridge maintenance and rehabilitation\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1718251200,
+    "affected_routes": [
+      "B8"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "M66",
+    "title": "Eastbound M66 stop on W 65th St at Columbus Ave is being bypassed; use the stop on W 65th at Broadway instead",
+    "description": "See a map of this stop change.\n\nWhat's happening?\nBuilding Construction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1713931200,
+    "affected_routes": [
+      "M66"
+    ],
+    "alert_type": "Planned - Stops Skipped",
+    "sort_order": 16,
+    "display_before_active": 3600,
+    "active_period_end": 1808539200,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through 2027"
+  },
+  {
+    "route_id": "Q52+",
+    "title": "Southbound Q52-SBS and Q53-SBS stop on Cross Bay Blvd at Liberty Ave has been temporarily relocated down the block before 107th Ave",
+    "description": "What's happening?\nRockaway Blvd Subway Station Accessibility Upgrades\n\nPlan your trip at mta.info or use the MTA app (download the app for iOS or Android)",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1712894405,
+    "affected_routes": [
+      "Q52+",
+      "Q53+"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "BXM11",
+    "title": "Southbound BxM11 buses are detouring from E 177th St at Bronx River Parkway to Bruckner Blvd at Bruckner Expy - no stops will be missed",
+    "description": "Please allow additional travel time.\n\nSee a map of the detour\n\nWhat's happening?\nBronx River Southbound Ramp - Construction Project",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1711944000,
+    "affected_routes": [
+      "BXM11"
+    ],
+    "alert_type": "Expect Delays",
+    "sort_order": 12,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Through December 2027"
+  },
+  {
+    "route_id": "M8",
+    "title": "M8 buses are not serving the Avenue D Loop",
+    "description": "The first and last stops will be made on E 10th St at Avenue D in both directions.\nSee map\n\nWhat's happening?\nConstruction\n\nNote: Bus arrival information may not be available/accurate while buses are detoured",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1753243200,
+    "affected_routes": [
+      "M8"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1793582426,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "B44",
+    "title": "Northbound B44 stop on Nostrand Ave at Avenue I is closed, please use nearby stops on Nostrand Ave at Avenue J or Flatbush Ave instead",
+    "description": "(see map)\n\nWhat's happening?\nConstruction",
+    "severity": "warning",
+    "mode": "bus",
+    "updated_at": 1705986000,
+    "affected_routes": [
+      "B44"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": 3600,
+    "active_period_end": 1781481600,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Until further notice"
+  },
+  {
+    "route_id": "5",
+    "title": "Buses replace trains between Babylon and Montauk",
+    "description": "Check bus departure times on TrainTime or at mta.info/schedules, as westbound buses leave earlier than normal train times.\n\nBuses will run in three zones, making all stops along a section of the branch and running non-stop to/from Babylon. Local travel between stops in different zones is not possible.\nBay Shore through Patchogue\nBellport through Southampton\nBridgehampton through Montauk\nThe last trains to run are the 8:36pm from Babylon and the 9:07pm from Speonk. Service resumes with the 4:10am from Speonk.\n\nWhat's happening?\nTrack maintenance",
+    "severity": "warning",
+    "mode": "lirr",
+    "updated_at": 1778202000,
+    "affected_routes": [
+      "5"
+    ],
+    "alert_type": "Planned - Substitute Buses",
+    "sort_order": 19,
+    "display_before_active": 3600,
+    "active_period_end": 1778054400,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Weeknights, May 5 - 8, 9 PM to 4 AM"
+  },
+  {
+    "route_id": "12",
+    "title": "You must be in the first four cars to exit at Forest Hills in both directions",
+    "description": "What’s Happening?\nAccessibility improvements",
+    "severity": "warning",
+    "mode": "lirr",
+    "updated_at": 1762765200,
+    "affected_routes": [
+      "12"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": null,
+    "active_period_end": 1780200000,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Starting November 10 until Summer 2026"
+  },
+  {
+    "route_id": "1",
+    "title": "You must be in the last six cars to exit eastbound trains at Babylon",
+    "description": "The eastern half of both platforms are closed for replacement. Use the stairs by North Carll Ave or the elevator to reach the platforms.\n\nCustomers on Montauk Branch diesel trains with six or more cars, listen for announcements or ask a crew member to see if your car will open at Babylon.\n\nAllow additional time to get upstairs, and check the TrainTime app for possible track changes as construction continues.",
+    "severity": "warning",
+    "mode": "lirr",
+    "updated_at": 1757140200,
+    "affected_routes": [
+      "1"
+    ],
+    "alert_type": "Boarding Change",
+    "sort_order": 10,
+    "display_before_active": null,
+    "active_period_end": 1778472000,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Sep 6 through May 10, 2026"
+  },
+  {
+    "route_id": "5",
+    "title": "The 6:17pm train from Grand Central to Danbury is operating 80-85 minutes late because of a train with mechanical issues, earlier, near Merritt 7.",
+    "description": "",
+    "severity": "warning",
+    "mode": "mnr",
+    "updated_at": 1778030661,
+    "affected_routes": [
+      "5"
+    ],
+    "alert_type": "Some Delays",
+    "sort_order": 24,
+    "display_before_active": 0,
+    "active_period_end": null,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "6",
+    "title": "The 8:01pm train from Waterbury to Bridgeport is operating 45-50 minutes late because of a disabled train, earlier, at Naugatuck.",
+    "description": "",
+    "severity": "warning",
+    "mode": "mnr",
+    "updated_at": 1778028641,
+    "affected_routes": [
+      "6"
+    ],
+    "alert_type": "Some Delays",
+    "sort_order": 24,
+    "display_before_active": 0,
+    "active_period_end": null,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "5",
+    "title": "The 8:05pm train from South Norwalk to Danbury is operating 50-55 minutes late because of a train with mechanical issues, earlier, near Merritt 7.",
+    "description": "",
+    "severity": "warning",
+    "mode": "mnr",
+    "updated_at": 1778029360,
+    "affected_routes": [
+      "5"
+    ],
+    "alert_type": "Some Delays",
+    "sort_order": 24,
+    "display_before_active": 0,
+    "active_period_end": null,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": null
+  },
+  {
+    "route_id": "2",
+    "title": "Temporary platforms are in place at Botanical Garden, Williams Bridge, and Woodlawn for northbound travel. Build in extra travel time to reach the platform.",
+    "description": "What's Happening?\n\nWe are renovating some Harlem Line stations in the Bronx. Learn more about the project here.",
+    "severity": "warning",
+    "mode": "mnr",
+    "updated_at": 1776312000,
+    "affected_routes": [
+      "2"
+    ],
+    "alert_type": "Station Notice",
+    "sort_order": 3,
+    "display_before_active": null,
+    "active_period_end": 1796100300,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Apr 16 - Nov 2026"
+  },
+  {
+    "route_id": "3",
+    "title": "The elevator leading to the track 3 platform at New Rochelle is closed for upgrade work.",
+    "description": "Track 3 will remain accessible from other entrances.\n\nCustomers requiring elevator access should consider traveling from Larchmont station.",
+    "severity": "warning",
+    "mode": "mnr",
+    "updated_at": 1771822800,
+    "affected_routes": [
+      "3"
+    ],
+    "alert_type": "Station Notice",
+    "sort_order": 3,
+    "display_before_active": null,
+    "active_period_end": 1778298300,
+    "cause": null,
+    "effect": null,
+    "human_readable_active_period": "Feb 23 - May 8"
+  }
+]

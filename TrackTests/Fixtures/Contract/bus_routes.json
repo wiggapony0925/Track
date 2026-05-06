@@ -1,0 +1,2648 @@
+[
+  {
+    "id": "MTA NYCT_M34+",
+    "short_name": "M34+",
+    "long_name": "East Side - Javits Center",
+    "color": "006CB7",
+    "description": "Select Bus Service via 34th St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_B106",
+    "short_name": "B106",
+    "long_name": "J Shuttle Bus - Hewes St & Essex St",
+    "color": "6CBE45",
+    "description": ""
+  },
+  {
+    "id": "MTA NYCT_B102",
+    "short_name": "B102",
+    "long_name": "Q Shuttle Bus - Stillwell Ave - Kings Hwy",
+    "color": "EE352E",
+    "description": "via OCEAN AV/BRIGHTON BEACH AV"
+  },
+  {
+    "id": "MTA NYCT_B52",
+    "short_name": "B52",
+    "long_name": "Downtown Brooklyn - Ridgewood",
+    "color": "EE352E",
+    "description": "via Gates Av / Greene Av / Atlantic Av"
+  },
+  {
+    "id": "MTA NYCT_Q24",
+    "short_name": "Q24",
+    "long_name": "Bedford Stuyvesant - Jamaica",
+    "color": "00AEEF",
+    "description": "via Atlantic Av"
+  },
+  {
+    "id": "MTA NYCT_S66",
+    "short_name": "S66",
+    "long_name": "St. George - Port Richmond",
+    "color": "6CBE45",
+    "description": "via Victory Blvd / Jewett Av"
+  },
+  {
+    "id": "MTA NYCT_Q27",
+    "short_name": "Q27",
+    "long_name": "Cambria Heights - Flushing",
+    "color": "EE352E",
+    "description": "via Springfield Blvd / Rocky Hill Rd / 46th Av"
+  },
+  {
+    "id": "MTA NYCT_Q29",
+    "short_name": "Q29",
+    "long_name": "Elmhurst - Glendale",
+    "color": "FAA61A",
+    "description": "via Dry Harbor Rd / 80 St"
+  },
+  {
+    "id": "MTA NYCT_B46+",
+    "short_name": "B46+",
+    "long_name": "Kings Plaza - Williamsburg",
+    "color": "6CBE45",
+    "description": "Select Bus Service via Utica Av - Malcolm X Blvd"
+  },
+  {
+    "id": "MTA NYCT_S61",
+    "short_name": "S61",
+    "long_name": "St. George - Staten Island Mall",
+    "color": "EE352E",
+    "description": "via Victory Blvd / Bradley Av"
+  },
+  {
+    "id": "MTA NYCT_SIM15",
+    "short_name": "SIM15",
+    "long_name": "Eltingville - Lower Manhattan Express",
+    "color": "00933C",
+    "description": "via Richmond Rd"
+  },
+  {
+    "id": "MTA NYCT_Q20",
+    "short_name": "Q20",
+    "long_name": "College Point - Jamaica",
+    "color": "FAA61A",
+    "description": "via 20 Av / Main St"
+  },
+  {
+    "id": "MTA NYCT_S62",
+    "short_name": "S62",
+    "long_name": "St. George - Travis",
+    "color": "B933AD",
+    "description": "via Victory Blvd"
+  },
+  {
+    "id": "MTA NYCT_B44",
+    "short_name": "B44",
+    "long_name": "Sheepshead Bay - Williamsburg",
+    "color": "B933AD",
+    "description": "via Nostrand Av"
+  },
+  {
+    "id": "MTA NYCT_B43",
+    "short_name": "B43",
+    "long_name": "Greenpoint - Lefferts Gardens",
+    "color": "EE352E",
+    "description": "via Manhattan Av / Graham Av / Tompkins Av / Throop Av"
+  },
+  {
+    "id": "MTA NYCT_SIM10",
+    "short_name": "SIM10",
+    "long_name": "Eltingville - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Hylan Bl"
+  },
+  {
+    "id": "MTA NYCT_B46",
+    "short_name": "B46",
+    "long_name": "Kings Plaza - Williamsburg",
+    "color": "6CBE45",
+    "description": "via Utica Av - Malcolm X Blvd"
+  },
+  {
+    "id": "MTA NYCT_SIM11",
+    "short_name": "SIM11",
+    "long_name": "New Dorp - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Hylan Bl / Madison Av / Lexington Av"
+  },
+  {
+    "id": "MTA NYCT_B45",
+    "short_name": "B45",
+    "long_name": "Downtown Brooklyn - Crown Heights",
+    "color": "EE352E",
+    "description": "via St Johns Place / Washington Av / Atlantic Av"
+  },
+  {
+    "id": "MTA NYCT_B48",
+    "short_name": "B48",
+    "long_name": "Lefferts Gardens - Greenpoint",
+    "color": "6CBE45",
+    "description": "via Lorimer St / Franklin & Classon Av"
+  },
+  {
+    "id": "MTA NYCT_T403",
+    "short_name": "T403",
+    "long_name": "G Shuttle Bus - Court Square - Bedford/Nostrand",
+    "color": "6CBE45",
+    "description": "via JACKSON AVE/MANHATTAN"
+  },
+  {
+    "id": "MTA NYCT_B47",
+    "short_name": "B47",
+    "long_name": "Kings Plaza - Bedford-Stuyvesant",
+    "color": "FAA61A",
+    "description": "via Broadway / Ralph Av / Avenue U"
+  },
+  {
+    "id": "MTA NYCT_SIM9",
+    "short_name": "SIM9",
+    "long_name": "Eltingville - Greenwich Village Express",
+    "color": "00933C",
+    "description": "via F Capodanno Blvd"
+  },
+  {
+    "id": "MTA NYCT_B49",
+    "short_name": "B49",
+    "long_name": "Manhattan Beach - Bedford-Stuyvesant",
+    "color": "EE352E",
+    "description": "via Ocean Av / Bedford & Rogers Av"
+  },
+  {
+    "id": "MTA NYCT_SIM8",
+    "short_name": "SIM8",
+    "long_name": "Huguenot - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Richmond Av / Woodrow Rd"
+  },
+  {
+    "id": "MTA NYCT_SIM7",
+    "short_name": "SIM7",
+    "long_name": "Eltingville - Greenwich Village Express",
+    "color": "00933C",
+    "description": "via Hylan Bl / Richmond Av"
+  },
+  {
+    "id": "MTA NYCT_SIM6",
+    "short_name": "SIM6",
+    "long_name": "Eltingville - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via F Capodanno / Giffords La"
+  },
+  {
+    "id": "MTA NYCT_B60",
+    "short_name": "B60",
+    "long_name": "Williamsburg - Canarsie",
+    "color": "B933AD",
+    "description": "via Wilson Av / Rockaway Av"
+  },
+  {
+    "id": "MTA NYCT_SIM5",
+    "short_name": "SIM5",
+    "long_name": "Eltingville - Lower Manhattan Express",
+    "color": "00933C",
+    "description": "via F Capodanno / Giffords La"
+  },
+  {
+    "id": "MTA NYCT_SIM4",
+    "short_name": "SIM4",
+    "long_name": "Eltingville - Lower Manhattan Express",
+    "color": "00933C",
+    "description": "via Richmond Av"
+  },
+  {
+    "id": "MTA NYCT_B62",
+    "short_name": "B62",
+    "long_name": "Astoria - Downtown Brooklyn",
+    "color": "00AEEF",
+    "description": "via Bklyn Navy Yard / Manhattan Av / 21 St"
+  },
+  {
+    "id": "MTA NYCT_SIM1C",
+    "short_name": "SIM1C",
+    "long_name": "Eltingville - Manhattan Express",
+    "color": "00933C",
+    "description": "via Hylan Bl / Richmond Av"
+  },
+  {
+    "id": "MTA NYCT_SIM3",
+    "short_name": "SIM3",
+    "long_name": "Pt. Richmond - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Watchogue Rd"
+  },
+  {
+    "id": "MTA NYCT_B61",
+    "short_name": "B61",
+    "long_name": "Park Slope - Downtown Brooklyn",
+    "color": "6CBE45",
+    "description": "via Van Brunt St / Columbia St / 9th St"
+  },
+  {
+    "id": "MTA NYCT_SIM2",
+    "short_name": "SIM2",
+    "long_name": "Tottenville - Lower Manhattan Express",
+    "color": "00933C",
+    "description": "via Huguenot Av / Hylan Bl"
+  },
+  {
+    "id": "MTA NYCT_B64",
+    "short_name": "B64",
+    "long_name": "Bay Ridge - Coney Island",
+    "color": "6CBE45",
+    "description": "via Bay Ridge Av / Bath Av"
+  },
+  {
+    "id": "MTA NYCT_SIM1",
+    "short_name": "SIM1",
+    "long_name": "Eltingville - Lower Manhattan Express",
+    "color": "00933C",
+    "description": "via Hylan Bl / Richmond Av"
+  },
+  {
+    "id": "MTA NYCT_B63",
+    "short_name": "B63",
+    "long_name": "Bay Ridge - Cobble Hill",
+    "color": "006CB7",
+    "description": "via 5th Av / Atlantic Av"
+  },
+  {
+    "id": "MTA NYCT_S76",
+    "short_name": "S76",
+    "long_name": "St. George - Oakwood",
+    "color": "B933AD",
+    "description": "via Richmond Rd / New Dorp Ln"
+  },
+  {
+    "id": "MTA NYCT_Q36",
+    "short_name": "Q36",
+    "long_name": "Little Neck - Jamaica",
+    "color": "FAA61A",
+    "description": "via Jamaica Av / Hillside Av / Little Neck Pkwy"
+  },
+  {
+    "id": "MTA NYCT_S78",
+    "short_name": "S78",
+    "long_name": "St. George - Bricktown Mall",
+    "color": "FAA61A",
+    "description": "via Hylan Blvd"
+  },
+  {
+    "id": "MTA NYCT_S79+",
+    "short_name": "S79+",
+    "long_name": "Staten Island Mall - Bay Ridge",
+    "color": "006CB7",
+    "description": "Select Bus Service via Verrazano-Narrows Bridge / Hylan Blvd"
+  },
+  {
+    "id": "MTA NYCT_Q38",
+    "short_name": "Q38",
+    "long_name": "Rego Park - Maspeth",
+    "color": "FAA61A",
+    "description": "via Metropolitan Av / 63 Dr"
+  },
+  {
+    "id": "MTA NYCT_Q39",
+    "short_name": "Q39",
+    "long_name": "Long Island City - Glendale",
+    "color": "FAA61A",
+    "description": "via 48 Av / Forest Av"
+  },
+  {
+    "id": "MTA NYCT_BX12+",
+    "short_name": "Bx12+",
+    "long_name": "Bay Plaza - Inwood",
+    "color": "006CB7",
+    "description": "Select Bus Service via Pelham Pkwy / Fordham Rd"
+  },
+  {
+    "id": "MTA NYCT_Q30",
+    "short_name": "Q30",
+    "long_name": "Little Neck - Jamaica",
+    "color": "FAA61A",
+    "description": "via Horace Harding Expwy / Utopia Pkwy / Homelawn St"
+  },
+  {
+    "id": "MTA NYCT_SIM24",
+    "short_name": "SIM24",
+    "long_name": "Prince's Bay - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Huguenot Av"
+  },
+  {
+    "id": "MTA NYCT_SIM25",
+    "short_name": "SIM25",
+    "long_name": "Tottenville - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Rossville Av"
+  },
+  {
+    "id": "MTA NYCT_S74",
+    "short_name": "S74",
+    "long_name": "St. George - Bricktown Mall",
+    "color": "EE352E",
+    "description": "via Richmond Rd / Arthur Kill Rd"
+  },
+  {
+    "id": "MTA NYCT_SIM26",
+    "short_name": "SIM26",
+    "long_name": "Tottenville - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Bloomingdale Rd"
+  },
+  {
+    "id": "MTA NYCT_Q31",
+    "short_name": "Q31",
+    "long_name": "Bayside - Jamaica",
+    "color": "FAA61A",
+    "description": "via Bell Blvd / Utopia Pkwy / Homelawn St"
+  },
+  {
+    "id": "MTA NYCT_B54",
+    "short_name": "B54",
+    "long_name": "Downtown Brooklyn - Ridgewood",
+    "color": "6CBE45",
+    "description": "via Myrtle Av"
+  },
+  {
+    "id": "MTA NYCT_B57",
+    "short_name": "B57",
+    "long_name": "Gowanus - Maspeth",
+    "color": "EE352E",
+    "description": "via Flushing Av"
+  },
+  {
+    "id": "MTA NYCT_SIM22",
+    "short_name": "SIM22",
+    "long_name": "Eltingville - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Arthur Kill Rd / Richmond Av"
+  },
+  {
+    "id": "MTA NYCT_L90",
+    "short_name": "L90",
+    "long_name": "L Shuttle Bus - Lorimer St - Myrtle Wyckoff Avs",
+    "color": "EE352E",
+    "description": "via Wyckoff Av / Metropolitan Av"
+  },
+  {
+    "id": "MTA NYCT_SIM23",
+    "short_name": "SIM23",
+    "long_name": "Annadale - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Arden Av"
+  },
+  {
+    "id": "MTA NYCT_L92",
+    "short_name": "L92",
+    "long_name": "L Shuttle Bus - Abingdon Sq - FDR Drive",
+    "color": "EE352E",
+    "description": "via 14 St"
+  },
+  {
+    "id": "MTA NYCT_BX2",
+    "short_name": "Bx2",
+    "long_name": "Kingsbridge Heights - Mott Haven",
+    "color": "FAA61A",
+    "description": "via Grand Concourse / E 149th St"
+  },
+  {
+    "id": "MTA NYCT_T430",
+    "short_name": "T430",
+    "long_name": "J Shuttle Bus - Crescent St - Myrtle Ave",
+    "color": "EE352E",
+    "description": "via Atlantic Av/Broadway"
+  },
+  {
+    "id": "MTA NYCT_BX1",
+    "short_name": "Bx1",
+    "long_name": "Riverdale - Mott Haven",
+    "color": "00AEEF",
+    "description": "via Grand Concourse / E 138th St"
+  },
+  {
+    "id": "MTA NYCT_B70",
+    "short_name": "B70",
+    "long_name": "Dyker Heights - Sunset Park",
+    "color": "B933AD",
+    "description": "via 92nd St / 3rd Av / 8th Av"
+  },
+  {
+    "id": "MTA NYCT_BX4",
+    "short_name": "Bx4",
+    "long_name": "Westchester Sq - The Hub",
+    "color": "FAA61A",
+    "description": "via Westchester Av"
+  },
+  {
+    "id": "MTA NYCT_X28",
+    "short_name": "X28",
+    "long_name": "Sea Gate / Bensonhurst - Manhattan Express",
+    "color": "00933C",
+    "description": "via Surf Av / Cropsey Av"
+  },
+  {
+    "id": "MTA NYCT_BX3",
+    "short_name": "Bx3",
+    "long_name": "Riverdale - George Washington Bridge",
+    "color": "EE352E",
+    "description": "via Sedgwick Av / University Av / W 181st St"
+  },
+  {
+    "id": "MTA NYCT_X27",
+    "short_name": "X27",
+    "long_name": "Bay Ridge - Manhattan Express",
+    "color": "00933C",
+    "description": "via Shore Rd"
+  },
+  {
+    "id": "MTA NYCT_BX6",
+    "short_name": "Bx6",
+    "long_name": "Hunts Point - Riverside Dr",
+    "color": "EE352E",
+    "description": "via E 161st St / E 163rd St / W 155 St"
+  },
+  {
+    "id": "MTA NYCT_BX5",
+    "short_name": "Bx5",
+    "long_name": "Pelham Bay - Gladstone Sq",
+    "color": "EE352E",
+    "description": "via Bruckner Blvd  / Story Av"
+  },
+  {
+    "id": "MTA NYCT_B74",
+    "short_name": "B74",
+    "long_name": "Sea Gate - Stillwell Av",
+    "color": "EE352E",
+    "description": "via Mermaid Av"
+  },
+  {
+    "id": "MTA NYCT_Q45",
+    "short_name": "Q45",
+    "long_name": "Fresh Meadows - Kew Gardens",
+    "color": "EE352E",
+    "description": "via Union Turnpike"
+  },
+  {
+    "id": "MTA NYCT_S86",
+    "short_name": "S86",
+    "long_name": "St. George - Oakwood LTD",
+    "color": "B933AD",
+    "description": "via Richmond Rd / New Dorp Ln (S76 Limited)"
+  },
+  {
+    "id": "MTA NYCT_S89",
+    "short_name": "S89",
+    "long_name": "Eltingville - Bayonne LTD",
+    "color": "EE352E",
+    "description": "via Richmond Av (S59 Limited)"
+  },
+  {
+    "id": "MTA NYCT_Q46",
+    "short_name": "Q46",
+    "long_name": "LIJ Hospital - Kew Gardens",
+    "color": "EE352E",
+    "description": "via Union Turnpike"
+  },
+  {
+    "id": "MTA NYCT_Q48",
+    "short_name": "Q48",
+    "long_name": "Glen Oaks - Kew Gardens",
+    "color": "006CB7",
+    "description": "via Union Turnpike"
+  },
+  {
+    "id": "MTA NYCT_S81",
+    "short_name": "S81",
+    "long_name": "St. George - Grant City LTD",
+    "color": "006CB7",
+    "description": "via Bay St / Father Capodanno Blvd (S51 Limited)"
+  },
+  {
+    "id": "MTA NYCT_M116",
+    "short_name": "M116",
+    "long_name": "West Side - East Harlem",
+    "color": "6CBE45",
+    "description": "via 116th St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_Q43",
+    "short_name": "Q43",
+    "long_name": "Floral Park - Jamaica",
+    "color": "EE352E",
+    "description": "via Sutphin Blvd / Hillside Av"
+  },
+  {
+    "id": "MTA NYCT_Q42",
+    "short_name": "Q42",
+    "long_name": "Addisleigh Park - Jamaica",
+    "color": "00AEEF",
+    "description": "via 174 St / Liberty Av / Sayres Av"
+  },
+  {
+    "id": "MTA NYCT_S84",
+    "short_name": "S84",
+    "long_name": "St. George - Bricktown Mall LTD",
+    "color": "EE352E",
+    "description": "via Richmond Rd / Arthur Kill Rd (S74 Limited)"
+  },
+  {
+    "id": "MTA NYCT_B65",
+    "short_name": "B65",
+    "long_name": "Downtown Brooklyn - Crown Heights",
+    "color": "00AEEF",
+    "description": "via Bergen St & Dean St"
+  },
+  {
+    "id": "MTA NYCT_B68",
+    "short_name": "B68",
+    "long_name": "Coney Island - Windsor Terrace",
+    "color": "EE352E",
+    "description": "via Coney Island Av / Brighton Beach Av"
+  },
+  {
+    "id": "MTA NYCT_B67",
+    "short_name": "B67",
+    "long_name": "Brooklyn Navy Yard - Kensington",
+    "color": "EE352E",
+    "description": "via Flatbush Av / 7th Av / McDonald Av"
+  },
+  {
+    "id": "MTA NYCT_T426",
+    "short_name": "T426",
+    "long_name": "L Shuttle Bus - Broadway Junction - Rockaway Parkway",
+    "color": "6CBE45",
+    "description": "via Pennsylvania Ave/Flatlands Ave"
+  },
+  {
+    "id": "MTA NYCT_B69",
+    "short_name": "B69",
+    "long_name": "Downtown Brooklyn - Kensington",
+    "color": "006CB7",
+    "description": "via Vanderbilt Av / 7th Av / McDonald Av"
+  },
+  {
+    "id": "MTA NYCT_M23+",
+    "short_name": "M23+",
+    "long_name": "Chelsea Piers - East Side",
+    "color": "B933AD",
+    "description": "Select Bus Service via 23rd St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_B82",
+    "short_name": "B82",
+    "long_name": "Coney Island - Spring Creek Towers",
+    "color": "6CBE45",
+    "description": "via Bay Pkwy / Kings Hwy / Flatlands Av"
+  },
+  {
+    "id": "MTA NYCT_X37",
+    "short_name": "X37",
+    "long_name": "Bay Ridge - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Shore Rd"
+  },
+  {
+    "id": "MTA NYCT_B116",
+    "short_name": "B116",
+    "long_name": "Q Shuttle Bus - Atlantic Avenue - Prospect Park",
+    "color": "6CBE45",
+    "description": ""
+  },
+  {
+    "id": "MTA NYCT_B84",
+    "short_name": "B84",
+    "long_name": "Spring Creek-New Lots",
+    "color": "006CB7",
+    "description": "via Ashford Street/Flatlands Avenue"
+  },
+  {
+    "id": "MTA NYCT_B83",
+    "short_name": "B83",
+    "long_name": "Spring Creek - Broadway Junction",
+    "color": "EE352E",
+    "description": "via Van Siclen Av / Pennsylvania Av / Gateway Dr"
+  },
+  {
+    "id": "MTA NYCT_X38",
+    "short_name": "X38",
+    "long_name": "Sea Gate / Bensonhurst - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Surf Av / Cropsey Av"
+  },
+  {
+    "id": "MTA NYCT_Q56",
+    "short_name": "Q56",
+    "long_name": "Broadway Junction - Jamaica",
+    "color": "B933AD",
+    "description": "via Jamaica Av"
+  },
+  {
+    "id": "MTA NYCT_S98",
+    "short_name": "S98",
+    "long_name": "St. George - Mariners Harbor LTD",
+    "color": "EE352E",
+    "description": "via Forest Av (S48 Limited)"
+  },
+  {
+    "id": "MTA NYCT_SIM33C",
+    "short_name": "SIM33C",
+    "long_name": "Mariners Harbor - Greenwich Village Express",
+    "color": "00933C",
+    "description": "via N Gannon Av"
+  },
+  {
+    "id": "MTA NYCT_Q55",
+    "short_name": "Q55",
+    "long_name": "Ridgewood - Richmond Hill",
+    "color": "EE352E",
+    "description": "via Myrtle Av"
+  },
+  {
+    "id": "MTA NYCT_Q58",
+    "short_name": "Q58",
+    "long_name": "Ridgewood - Flushing",
+    "color": "6CBE45",
+    "description": "via Fresh Pond Rd / Corona Av / College Pt Blvd"
+  },
+  {
+    "id": "MTA NYCT_Q59",
+    "short_name": "Q59",
+    "long_name": "Williamsburg - Rego Park",
+    "color": "FAA61A",
+    "description": "via Grand St / Grand Av / Queens Blvd"
+  },
+  {
+    "id": "MTA NYCT_S90",
+    "short_name": "S90",
+    "long_name": "St. George - Amazon",
+    "color": "B933AD",
+    "description": "via Richmond Terrace (S40 Limited)"
+  },
+  {
+    "id": "MTA NYCT_S92",
+    "short_name": "S92",
+    "long_name": "St. George - Travis LTD",
+    "color": "B933AD",
+    "description": "via Victory Blvd (S62 Limited)"
+  },
+  {
+    "id": "MTA NYCT_S91",
+    "short_name": "S91",
+    "long_name": "St. George - Staten Island Mall LTD",
+    "color": "EE352E",
+    "description": "via Victory Blvd / Bradley Av (S61 Limited)"
+  },
+  {
+    "id": "MTA NYCT_S94",
+    "short_name": "S94",
+    "long_name": "St. George - Staten Island Mall LTD",
+    "color": "FAA61A",
+    "description": "via Richmond Av (S44 Limited)"
+  },
+  {
+    "id": "MTA NYCT_M106",
+    "short_name": "M106",
+    "long_name": "East Harlem - West Side",
+    "color": "6CBE45",
+    "description": "via 96th St / E 106th St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_S93",
+    "short_name": "S93",
+    "long_name": "College of Staten Island - Bay Ridge LTD",
+    "color": "EE352E",
+    "description": "via Verrazano-Narrows / Victory"
+  },
+  {
+    "id": "MTA NYCT_Q54",
+    "short_name": "Q54",
+    "long_name": "Williamsburg - Jamaica",
+    "color": "B933AD",
+    "description": "via Jamaica Av / Metropolitan Av"
+  },
+  {
+    "id": "MTA NYCT_S96",
+    "short_name": "S96",
+    "long_name": "St. George - West Shore Plaza LTD",
+    "color": "006CB7",
+    "description": "via Castleton Av (S46 Limited)"
+  },
+  {
+    "id": "MTA NYCT_BX8",
+    "short_name": "Bx8",
+    "long_name": "Williamsbridge - Locust Point",
+    "color": "FAA61A",
+    "description": "via Bronxwood Av / Williamsbridge Rd / Crosby Av"
+  },
+  {
+    "id": "MTA NYCT_M101",
+    "short_name": "M101",
+    "long_name": "East Village - Fort George",
+    "color": "FAA61A",
+    "description": "via Third Av / Lexington Av / Amsterdam Av"
+  },
+  {
+    "id": "MTA NYCT_B111",
+    "short_name": "B111",
+    "long_name": "L Shuttle Bus - Atlantic Av and Myrtle-Wyckoff Avenues",
+    "color": "6CBE45",
+    "description": ""
+  },
+  {
+    "id": "MTA NYCT_BX7",
+    "short_name": "Bx7",
+    "long_name": "Riverdale - Washington Heights",
+    "color": "EE352E",
+    "description": "via Riverdale Av / Broadway"
+  },
+  {
+    "id": "MTA NYCT_M102",
+    "short_name": "M102",
+    "long_name": "Harlem - East Village",
+    "color": "FAA61A",
+    "description": "via 3rd Av / Lexington Av / Lenox Av"
+  },
+  {
+    "id": "MTA NYCT_M103",
+    "short_name": "M103",
+    "long_name": "East Harlem - City Hall",
+    "color": "B933AD",
+    "description": "via 3rd Av / Lexington Av"
+  },
+  {
+    "id": "MTA NYCT_BX9",
+    "short_name": "Bx9",
+    "long_name": "Riverdale - West Farms Sq",
+    "color": "FAA61A",
+    "description": "via Broadway / Kingsbridge Rd / Southern Blvd"
+  },
+  {
+    "id": "MTA NYCT_M104",
+    "short_name": "M104",
+    "long_name": "West Harlem - Times Square",
+    "color": "B933AD",
+    "description": "via Broadway / 8th Av"
+  },
+  {
+    "id": "MTA NYCT_M100",
+    "short_name": "M100",
+    "long_name": "Inwood - Harlem",
+    "color": "00AEEF",
+    "description": "via Broadway / Amsterdam Av"
+  },
+  {
+    "id": "MTA NYCT_BX13",
+    "short_name": "Bx13",
+    "long_name": "George Washington Bridge - Bronx Terminal Market",
+    "color": "006CB7",
+    "description": "via W 181st St / Ogden Av / River Av"
+  },
+  {
+    "id": "MTA NYCT_B90",
+    "short_name": "B90",
+    "long_name": "F Shuttle Bus - Church Av - Stillwell Av",
+    "color": "EE352E",
+    "description": "via McDonald Av"
+  },
+  {
+    "id": "MTA NYCT_BX12",
+    "short_name": "Bx12",
+    "long_name": "Pelham Bay - Inwood",
+    "color": "006CB7",
+    "description": "via Pelham Pkwy / Fordham Rd"
+  },
+  {
+    "id": "MTA NYCT_B93",
+    "short_name": "B93",
+    "long_name": "G Shuttle Bus - Jay St / Metro Tech - Bedford Av / Nostrand Av",
+    "color": "6CBE45",
+    "description": "via DeKalb Av / LaFayette Av"
+  },
+  {
+    "id": "MTA NYCT_BX11",
+    "short_name": "Bx11",
+    "long_name": "George Washington Bridge - Parkchester",
+    "color": "FAA61A",
+    "description": "via E 170th St /  E 174th St"
+  },
+  {
+    "id": "MTA NYCT_BX10",
+    "short_name": "Bx10",
+    "long_name": "Riverdale - Norwood",
+    "color": "006CB7",
+    "description": "via H. Hudson Pkwy / W 231st St / Jerome Av"
+  },
+  {
+    "id": "MTA NYCT_B94",
+    "short_name": "B94",
+    "long_name": "G Shuttle Bus - Nassau Avenue - Court Square",
+    "color": "6CBE45",
+    "description": "via Jackson Av / Manhattan Av"
+  },
+  {
+    "id": "MTA NYCT_B96",
+    "short_name": "B96",
+    "long_name": "2 Shuttle Bus - Flatbush Ave - Franklin Ave",
+    "color": "6CBE45",
+    "description": "via Nostrand Av/New York Av"
+  },
+  {
+    "id": "MTA NYCT_Q67",
+    "short_name": "Q67",
+    "long_name": "Long Island City - Middle Village",
+    "color": "FAA61A",
+    "description": "via 49 Av / Laurel Hill Bl / Borden Av / 69 St"
+  },
+  {
+    "id": "MTA NYCT_BX19",
+    "short_name": "Bx19",
+    "long_name": "NY Botanical Garden - Riverbank Park",
+    "color": "B933AD",
+    "description": "via Southern Bl / E 149th St"
+  },
+  {
+    "id": "MTA NYCT_BX17",
+    "short_name": "Bx17",
+    "long_name": "Fordham Plaza - Port Morris",
+    "color": "006CB7",
+    "description": "via Crotona Av / Prospect Av"
+  },
+  {
+    "id": "MTA NYCT_BX16",
+    "short_name": "Bx16",
+    "long_name": "Pelham - Norwood",
+    "color": "00AEEF",
+    "description": "via E 233rd St / Nereid Av"
+  },
+  {
+    "id": "MTA NYCT_BX15",
+    "short_name": "Bx15",
+    "long_name": "Fordham Plaza - The Hub",
+    "color": "FAA61A",
+    "description": "via 3rd Av"
+  },
+  {
+    "id": "MTA NYCT_Q61",
+    "short_name": "Q61",
+    "long_name": "Beechhurst - Flushing",
+    "color": "B933AD",
+    "description": "via Willets Pt Bl"
+  },
+  {
+    "id": "MTA NYCT_M14A+",
+    "short_name": "M14A+",
+    "long_name": "Lower East Side - Abingdon Sq",
+    "color": "6CBE45",
+    "description": "Select Bus Service via 14th St / Av A"
+  },
+  {
+    "id": "MTA NYCT_B82+",
+    "short_name": "B82+",
+    "long_name": "Coney Island -spring Creek Towers",
+    "color": "6CBE45",
+    "description": "select Bus service via Bay Pkwy / Kings Hwy / Flatlands Av"
+  },
+  {
+    "id": "MTA NYCT_T323",
+    "short_name": "T323",
+    "long_name": "7 Shuttle Bus - Queensboro Plz - Vernon Bl-Jackson Av",
+    "color": "6CBE45",
+    "description": "via Jackson Av"
+  },
+  {
+    "id": "MTA NYCT_T321",
+    "short_name": "T321",
+    "long_name": "7 Shuttle Bus - Main Street - Mets/Willets Pt",
+    "color": "6CBE45",
+    "description": "via ROOSEVELT AVE"
+  },
+  {
+    "id": "MTA NYCT_T320",
+    "short_name": "T320",
+    "long_name": "7 Shuttle Bus - 74 St/Roosevelt Av - Queens Plaza",
+    "color": "6CBE45",
+    "description": "via Queens Blvd/Roosevelt Av"
+  },
+  {
+    "id": "MTA NYCT_Q77",
+    "short_name": "Q77",
+    "long_name": "Springfield Gardens - Jamaica",
+    "color": "FAA61A",
+    "description": "via Springfield / Francis Lewis / Hillside Av"
+  },
+  {
+    "id": "MTA NYCT_Q76",
+    "short_name": "Q76",
+    "long_name": "College Point - Jamaica",
+    "color": "6CBE45",
+    "description": "via Francis Lewis Blvd / Hillside Av"
+  },
+  {
+    "id": "MTA NYCT_Q75",
+    "short_name": "Q75",
+    "long_name": "Jamaica - QCC",
+    "color": "00AEEF",
+    "description": "via Utopia Pkwy / Horace Harding Expwy"
+  },
+  {
+    "id": "MTA NYCT_B99",
+    "short_name": "B99",
+    "long_name": "3 Shuttle Bus - Utica Avenue - New Lots Avenue",
+    "color": "6CBE45",
+    "description": "via Livonia Av"
+  },
+  {
+    "id": "MTA NYCT_J90",
+    "short_name": "J90",
+    "long_name": "J Shuttle Bus - Crescent St - Jamaica Van Wyck Station",
+    "color": "EE352E",
+    "description": "via Jamaica Av"
+  },
+  {
+    "id": "MTA NYCT_M125",
+    "short_name": "M125",
+    "long_name": "Manhattanville - The Hub",
+    "color": "B933AD",
+    "description": "via 125th St / Willis Av"
+  },
+  {
+    "id": "MTA NYCT_BX35",
+    "short_name": "Bx35",
+    "long_name": "George Washington Bridge-West Farms Road",
+    "color": "00AEEF",
+    "description": "via E 167th / W 181st St"
+  },
+  {
+    "id": "MTA NYCT_T113",
+    "short_name": "T113",
+    "long_name": "5 Shuttle Bus - East 180 St - Dyre Ave",
+    "color": "EE352E",
+    "description": "via Morris Park Ave/Williamsbridge Rd"
+  },
+  {
+    "id": "MTA NYCT_BX34",
+    "short_name": "Bx34",
+    "long_name": "Woodlawn - Fordham Center",
+    "color": "B933AD",
+    "description": "via Katonah Av / Bainbridge Av / Valentine Av"
+  },
+  {
+    "id": "MTA NYCT_T354",
+    "short_name": "T354",
+    "long_name": "A Shuttle Bus - Beach 90 Street - Far Rockaway",
+    "color": "EE352E",
+    "description": "via BEACH CHANNEL DR"
+  },
+  {
+    "id": "MTA NYCT_BX33",
+    "short_name": "Bx33",
+    "long_name": "Port Morris - Harlem",
+    "color": "6CBE45",
+    "description": "via E 138th St / W 135th St"
+  },
+  {
+    "id": "MTA NYCT_T232",
+    "short_name": "T232",
+    "long_name": "D Shuttle Bus - Grand Street - West 4th Street",
+    "color": "00933C",
+    "description": ""
+  },
+  {
+    "id": "MTA NYCT_BX32",
+    "short_name": "Bx32",
+    "long_name": "Kingsbridge VA Hospital - Mott Haven",
+    "color": "6CBE45",
+    "description": "via Morris Av / Jerome Av"
+  },
+  {
+    "id": "MTA NYCT_BX31",
+    "short_name": "Bx31",
+    "long_name": "Woodlawn - Westchester Sq",
+    "color": "EE352E",
+    "description": "via E 233 St / Eastchester Rd"
+  },
+  {
+    "id": "MTA NYCT_BX30",
+    "short_name": "Bx30",
+    "long_name": "Co-op City Section 5 - Pelham Parkway",
+    "color": "EE352E",
+    "description": "via Boston Rd"
+  },
+  {
+    "id": "MTA NYCT_Q89",
+    "short_name": "Q89",
+    "long_name": "Green Acres - Jamaica",
+    "color": "B933AD",
+    "description": "via Conduit Av"
+  },
+  {
+    "id": "MTA NYCT_Q88",
+    "short_name": "Q88",
+    "long_name": "Elmhurst - Queens Village",
+    "color": "FAA61A",
+    "description": "via Horace Harding Expwy / 73rd Av / Springfield Blvd"
+  },
+  {
+    "id": "MTA NYCT_BX39",
+    "short_name": "Bx39",
+    "long_name": "Wakefield - Clasons Pt",
+    "color": "FAA61A",
+    "description": "via White Plains Rd"
+  },
+  {
+    "id": "MTA NYCT_BX38",
+    "short_name": "Bx38",
+    "long_name": "Co-op City Bay Plaza - Norwood",
+    "color": "FAA61A",
+    "description": "via E Gun Hill Rd / Co-op City Blvd"
+  },
+  {
+    "id": "MTA NYCT_BX36",
+    "short_name": "Bx36",
+    "long_name": "Soundview - George Washington Bridge",
+    "color": "B933AD",
+    "description": "via E Tremont Av / White Plains Rd"
+  },
+  {
+    "id": "MTA NYCT_Q83",
+    "short_name": "Q83",
+    "long_name": "Cambria Heights - Jamaica",
+    "color": "6CBE45",
+    "description": "via Murdock Av / Liberty Av"
+  },
+  {
+    "id": "MTA NYCT_Q82",
+    "short_name": "Q82",
+    "long_name": "Jamaica - Belmont Park",
+    "color": "FAA61A",
+    "description": "via Hillside Av"
+  },
+  {
+    "id": "MTA NYCT_Q85",
+    "short_name": "Q85",
+    "long_name": "Rosedale - Jamaica",
+    "color": "EE352E",
+    "description": "via Merrick Blvd / Conduit Av / 243 St"
+  },
+  {
+    "id": "MTA NYCT_Q84",
+    "short_name": "Q84",
+    "long_name": "Laurelton - Jamaica",
+    "color": "B933AD",
+    "description": "via Merrick Blvd / 120th Av"
+  },
+  {
+    "id": "MTA NYCT_Q87",
+    "short_name": "Q87",
+    "long_name": "Green Acres - Jamaica",
+    "color": "B933AD",
+    "description": "via Merrick Bl / Hook Creek Bl"
+  },
+  {
+    "id": "MTA NYCT_Q86",
+    "short_name": "Q86",
+    "long_name": "Rosedale - Jamaica",
+    "color": "B933AD",
+    "description": "via Merrick Bl / Huxley St"
+  },
+  {
+    "id": "MTA NYCT_BX24",
+    "short_name": "Bx24",
+    "long_name": "Country Club - Hutchinson Metro Center",
+    "color": "6CBE45",
+    "description": "via Westchester Av / Country Club Loop"
+  },
+  {
+    "id": "MTA NYCT_T464",
+    "short_name": "T464",
+    "long_name": "Q Shuttle Bus - Prospect Park - Coney Island/Stillwell Av",
+    "color": "EE352E",
+    "description": "via OCEAN AV"
+  },
+  {
+    "id": "MTA NYCT_BX22",
+    "short_name": "Bx22",
+    "long_name": "Bedford Park - Castle Hill",
+    "color": "EE352E",
+    "description": "via Castle Hill Av / Fordham Rd"
+  },
+  {
+    "id": "MTA NYCT_BX21",
+    "short_name": "Bx21",
+    "long_name": "Westchester Sq - Mott Haven",
+    "color": "6CBE45",
+    "description": "via Morris Park Av / Boston Rd"
+  },
+  {
+    "id": "MTA NYCT_BX20",
+    "short_name": "Bx20",
+    "long_name": "Riverdale - Inwood",
+    "color": "00AEEF",
+    "description": "via Broadway / Henry Hudson Pkwy"
+  },
+  {
+    "id": "MTA NYCT_M15+",
+    "short_name": "M15+",
+    "long_name": "East Harlem - South Ferry",
+    "color": "006CB7",
+    "description": "Select Bus Service via 1st Av / 2nd Av"
+  },
+  {
+    "id": "MTA NYCT_M15",
+    "short_name": "M15",
+    "long_name": "East Harlem - South Ferry",
+    "color": "006CB7",
+    "description": "via 1st Av / 2nd Av"
+  },
+  {
+    "id": "MTA NYCT_BX29",
+    "short_name": "Bx29",
+    "long_name": "City Island - Pelham Bay",
+    "color": "00AEEF",
+    "description": "via City Island Rd / City Island Av"
+  },
+  {
+    "id": "MTA NYCT_BX28",
+    "short_name": "Bx28",
+    "long_name": "Co-op City Section 5 - Fordham Center",
+    "color": "00AEEF",
+    "description": "via E Gun Hill Rd / Bartow Av"
+  },
+  {
+    "id": "MTA NYCT_BX27",
+    "short_name": "Bx27",
+    "long_name": "Clasons Pt - Gladstone Sq",
+    "color": "00AEEF",
+    "description": "via Westchester Av / Soundview Av"
+  },
+  {
+    "id": "MTA NYCT_BX26",
+    "short_name": "Bx26",
+    "long_name": "Co-op City Section 5 - Bedford Park",
+    "color": "FAA61A",
+    "description": "via Allerton Av / Co-op City Blvd"
+  },
+  {
+    "id": "MTA NYCT_BX25",
+    "short_name": "Bx25",
+    "long_name": "Co-op City Bay Plaza - Bedford Park",
+    "color": "FAA61A",
+    "description": "via Allerton Av"
+  },
+  {
+    "id": "MTA NYCT_M10",
+    "short_name": "M10",
+    "long_name": "Harlem - Columbus Circle",
+    "color": "006CB7",
+    "description": "via Central Park West / Frederick Douglass Blvd"
+  },
+  {
+    "id": "MTA NYCT_Q96",
+    "short_name": "Q96",
+    "long_name": "E Shuttle Bus - 21 St/Queensbridge - Court Sq",
+    "color": "6CBE45",
+    "description": "via Jackson Av"
+  },
+  {
+    "id": "MTA NYCT_M12",
+    "short_name": "M12",
+    "long_name": "Midtown West - West Village",
+    "color": "006CB7",
+    "description": "via 11 Av / 12 Av"
+  },
+  {
+    "id": "MTA NYCT_M11",
+    "short_name": "M11",
+    "long_name": "Riverbank Park & Harlem - West Village",
+    "color": "FAA61A",
+    "description": "via 9th - Columbus Av / 10th - Amsterdam Av"
+  },
+  {
+    "id": "MTA NYCT_Q98",
+    "short_name": "Q98",
+    "long_name": "Ridgewood - Flushing",
+    "color": "6CBE45",
+    "description": "via Fresh Pond Rd / Horace Harding Expwy / College Pt Blvd"
+  },
+  {
+    "id": "MTA NYCT_Q97",
+    "short_name": "Q97",
+    "long_name": "A Shuttle Bus - Howard Beach and Far Rockaway",
+    "color": "6CBE45",
+    "description": ""
+  },
+  {
+    "id": "MTA NYCT_Q90",
+    "short_name": "Q90",
+    "long_name": "Flushing - LaGuardia Airport",
+    "color": "EE352E",
+    "description": "via Seaver Way / Ditmars Blvd"
+  },
+  {
+    "id": "MTA NYCT_M86+",
+    "short_name": "M86+",
+    "long_name": "Yorkville - West Side",
+    "color": "FAA61A",
+    "description": "Select Bus Service via 86th St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_M21",
+    "short_name": "M21",
+    "long_name": "Lower East Side - West Village",
+    "color": "FAA61A",
+    "description": "via Houston St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_M20",
+    "short_name": "M20",
+    "long_name": "Lincoln Center - South Ferry",
+    "color": "EE352E",
+    "description": "via 7th Av / 8th Av / Battery Park City"
+  },
+  {
+    "id": "MTA NYCT_BX41+",
+    "short_name": "Bx41+",
+    "long_name": "Williamsbridge - The Hub",
+    "color": "EE352E",
+    "description": "Select Bus Service via Webster Av"
+  },
+  {
+    "id": "MTA NYCT_BX4A",
+    "short_name": "Bx4A",
+    "long_name": "Westchester Sq - Gladstone Sq",
+    "color": "FAA61A",
+    "description": "via Metropolitan Av / Westchester Av"
+  },
+  {
+    "id": "MTA NYCT_M22",
+    "short_name": "M22",
+    "long_name": "Lower East Side - Battery Park City",
+    "color": "00AEEF",
+    "description": "via Madison St / Chambers St"
+  },
+  {
+    "id": "MTA NYCT_T127",
+    "short_name": "T127",
+    "long_name": "D Shuttle Bus - Mosholu Pkwy #4 - 205 St",
+    "color": "EE352E",
+    "description": "via Grand Concourse"
+  },
+  {
+    "id": "MTA NYCT_BX46",
+    "short_name": "Bx46",
+    "long_name": "Prospect Av - Westchester Av / Hunts Point Market",
+    "color": "EE352E",
+    "description": "via Barretto PK"
+  },
+  {
+    "id": "MTA NYCT_BX42",
+    "short_name": "Bx42",
+    "long_name": "Throgs Neck - River Park Towers",
+    "color": "EE352E",
+    "description": "via E Tremont Av / E 180th St / Burnside Av"
+  },
+  {
+    "id": "MTA NYCT_BX41",
+    "short_name": "Bx41",
+    "long_name": "Williamsbridge - The Hub",
+    "color": "EE352E",
+    "description": "via Webster Av"
+  },
+  {
+    "id": "MTA NYCT_BX40",
+    "short_name": "Bx40",
+    "long_name": "Throgs Neck - River Park Towers",
+    "color": "006CB7",
+    "description": "via E Tremont Av / E 180th St / Burnside Av"
+  },
+  {
+    "id": "MTA NYCT_M31",
+    "short_name": "M31",
+    "long_name": "Yorkville - Clinton",
+    "color": "B933AD",
+    "description": "via  York Av / 57th St"
+  },
+  {
+    "id": "MTA NYCT_M35",
+    "short_name": "M35",
+    "long_name": "Ward's Island - East Harlem",
+    "color": "FAA61A",
+    "description": "via Randall's Island / RFK Bridge"
+  },
+  {
+    "id": "MTA NYCT_M14D+",
+    "short_name": "M14D+",
+    "long_name": "Lower East Side - Chelsea Piers",
+    "color": "6CBE45",
+    "description": "Select Bus Service via 14th St / Av D"
+  },
+  {
+    "id": "MTA NYCT_T117",
+    "short_name": "T117",
+    "long_name": "2 Shuttle Bus - Wakefield-241 Street - East 180 Street",
+    "color": "EE352E",
+    "description": "via WHITE PLAINS RD"
+  },
+  {
+    "id": "MTA NYCT_M60+",
+    "short_name": "M60+",
+    "long_name": "West Side - LaGuardia Airport",
+    "color": "EE352E",
+    "description": "Select Bus Service via 125th St / Astoria Blvd"
+  },
+  {
+    "id": "MTA NYCT_BX18A",
+    "short_name": "Bx18A",
+    "long_name": "Morris Heights/High Bridge Circulator",
+    "color": "6CBE45",
+    "description": "via 168 St / Undercliff Av"
+  },
+  {
+    "id": "MTA NYCT_BX18B",
+    "short_name": "Bx18B",
+    "long_name": "Morris Heights/High Bridge Circulator",
+    "color": "6CBE45",
+    "description": "via 168 St / Sedgwick Av"
+  },
+  {
+    "id": "MTA NYCT_Q44+",
+    "short_name": "Q44+",
+    "long_name": "Bronx Zoo - Jamaica",
+    "color": "EE352E",
+    "description": "Select Bus Service via Main St / Cross Bronx Svc Rd"
+  },
+  {
+    "id": "MTA NYCT_M7",
+    "short_name": "M7",
+    "long_name": "Harlem - 14th Street",
+    "color": "00AEEF",
+    "description": "via Columbus / Amsterdam / 6 & 7 Av / Bway"
+  },
+  {
+    "id": "MTA NYCT_M8",
+    "short_name": "M8",
+    "long_name": "West Village - East Village",
+    "color": "00AEEF",
+    "description": "via 8 & 9 St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_M42",
+    "short_name": "M42",
+    "long_name": "United Nations - W 42 St Pier",
+    "color": "EE352E",
+    "description": "via 42nd St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_M9",
+    "short_name": "M9",
+    "long_name": "Battery Park City - Kips Bay",
+    "color": "B933AD",
+    "description": "via Avenue C / E Broadway"
+  },
+  {
+    "id": "MTA NYCT_M1",
+    "short_name": "M1",
+    "long_name": "Harlem - East Village",
+    "color": "EE352E",
+    "description": "via 5th Av / Madison Av"
+  },
+  {
+    "id": "MTA NYCT_M2",
+    "short_name": "M2",
+    "long_name": "Washington Heights - East Village",
+    "color": "B933AD",
+    "description": "via 5th Av / Madison Av / AC Powell Blvd"
+  },
+  {
+    "id": "MTA NYCT_M3",
+    "short_name": "M3",
+    "long_name": "Fort George - East Village",
+    "color": "B933AD",
+    "description": "via 5th Av / Madison Av / St Nicholas Av"
+  },
+  {
+    "id": "MTA NYCT_M4",
+    "short_name": "M4",
+    "long_name": "The Cloisters - 32 St",
+    "color": "00AEEF",
+    "description": "via 5th Av / Madison Av / Broadway / Ft.Washington Av"
+  },
+  {
+    "id": "MTA NYCT_M5",
+    "short_name": "M5",
+    "long_name": "George Washington Bridge - 31 St & 6 Av",
+    "color": "EE352E",
+    "description": "via 5th Av / Av of Americas / Riverside Dr"
+  },
+  {
+    "id": "MTA NYCT_T260",
+    "short_name": "T260",
+    "long_name": "7 Shuttle Bus - Times Square - Hudson Yards",
+    "color": "00933C",
+    "description": "via 42 St"
+  },
+  {
+    "id": "MTA NYCT_M55",
+    "short_name": "M55",
+    "long_name": "W 44 St  - South Ferry",
+    "color": "6CBE45",
+    "description": "via 5 Av & 6 Av"
+  },
+  {
+    "id": "MTA NYCT_M57",
+    "short_name": "M57",
+    "long_name": "East Side - West Side",
+    "color": "00AEEF",
+    "description": "via 57th St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_BX6+",
+    "short_name": "Bx6+",
+    "long_name": "Hunts Point - Riverside Dr",
+    "color": "EE352E",
+    "description": "Select Bus Service via E 161st St / E 163rd St / W 155 St"
+  },
+  {
+    "id": "MTA NYCT_M50",
+    "short_name": "M50",
+    "long_name": "W 42 St Pier - East Side",
+    "color": "6CBE45",
+    "description": "via 49th St / 50th St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_BX95",
+    "short_name": "BX95",
+    "long_name": "4 Shuttle Bus - Kingsbridge Rd and Woodlawn",
+    "color": "6CBE45",
+    "description": ""
+  },
+  {
+    "id": "MTA NYCT_SIM4C",
+    "short_name": "SIM4C",
+    "long_name": "Huguenot - Manhattan Express",
+    "color": "00933C",
+    "description": "via Richmond Av"
+  },
+  {
+    "id": "MTA NYCT_M66",
+    "short_name": "M66",
+    "long_name": "East Side - Lincoln Center",
+    "color": "FAA61A",
+    "description": "via 65th & 68th St (East) / 67th & 66th St (West)"
+  },
+  {
+    "id": "MTA NYCT_BX92",
+    "short_name": "BX92",
+    "long_name": "2 Shuttle Bus - 135 St and 3 Av-149 St",
+    "color": "6CBE45",
+    "description": "via 145 St/149 St/3 Av"
+  },
+  {
+    "id": "MTA NYCT_QM68",
+    "short_name": "QM68",
+    "long_name": "Floral Park - Midtown Express",
+    "color": "00933C",
+    "description": "via Hillside Av / Queens Bl / Madison Av"
+  },
+  {
+    "id": "MTA NYCT_B20",
+    "short_name": "B20",
+    "long_name": "Ridgewood - Spring Creek",
+    "color": "6CBE45",
+    "description": "via Pennsylvania Av / Decatur St"
+  },
+  {
+    "id": "MTA NYCT_QM63",
+    "short_name": "QM63",
+    "long_name": "Rosedale - Midtown Express",
+    "color": "00933C",
+    "description": "via Madison Av"
+  },
+  {
+    "id": "MTA NYCT_Q1",
+    "short_name": "Q1",
+    "long_name": "Bellerose - Jamaica",
+    "color": "FAA61A",
+    "description": "via Springfield Blvd / Braddock Av / Hillside Av"
+  },
+  {
+    "id": "MTA NYCT_QM64",
+    "short_name": "QM64",
+    "long_name": "Elmont - Midtown Express",
+    "color": "00933C",
+    "description": "via Madison Av"
+  },
+  {
+    "id": "MTA NYCT_B11",
+    "short_name": "B11",
+    "long_name": "Sunset Park - Midwood",
+    "color": "006CB7",
+    "description": "via 49th & 50th St / Avenue J"
+  },
+  {
+    "id": "MTA NYCT_B13",
+    "short_name": "B13",
+    "long_name": "Spring Creek - Wyckoff Hospital",
+    "color": "FAA61A",
+    "description": "via Crescent St / Jamaica Av / Wyckoff Av"
+  },
+  {
+    "id": "MTA NYCT_B12",
+    "short_name": "B12",
+    "long_name": "Lefferts Gardens - East New York",
+    "color": "6CBE45",
+    "description": "via Clarkson Av / Empire Blvd / East New York Av"
+  },
+  {
+    "id": "MTA NYCT_B15",
+    "short_name": "B15",
+    "long_name": "Bedford Stuyvesant - JFK AirTrain",
+    "color": "B933AD",
+    "description": "via Marcus Garvey Blvd / New Lots Av"
+  },
+  {
+    "id": "MTA NYCT_B14",
+    "short_name": "B14",
+    "long_name": "Spring Creek - Crown Heights",
+    "color": "00AEEF",
+    "description": "via Sutter Av / Pitkin Av"
+  },
+  {
+    "id": "MTA NYCT_B17",
+    "short_name": "B17",
+    "long_name": "Canarsie - Crown Heights",
+    "color": "B933AD",
+    "description": "via Remsen Av / Seaview Av"
+  },
+  {
+    "id": "MTA NYCT_M72",
+    "short_name": "M72",
+    "long_name": "East Side - West Side",
+    "color": "6CBE45",
+    "description": "via 72nd St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_B16",
+    "short_name": "B16",
+    "long_name": "Bay Ridge - Lefferts Gardens",
+    "color": "FAA61A",
+    "description": "via Ft Hamilton Pkwy / 13th & 14th Av"
+  },
+  {
+    "id": "MTA NYCT_Q121",
+    "short_name": "Q121",
+    "long_name": "A Shuttle Bus - Howard Beach and Far Rockaway",
+    "color": "6CBE45",
+    "description": "via Beach Channel Dr"
+  },
+  {
+    "id": "MTA NYCT_B31",
+    "short_name": "B31",
+    "long_name": "Gerritsen Beach - Kings Hwy Station",
+    "color": "FAA61A",
+    "description": "via Gerritsen Av / Avenue R"
+  },
+  {
+    "id": "MTA NYCT_S42",
+    "short_name": "S42",
+    "long_name": "St. George - Clyde Place",
+    "color": "00AEEF",
+    "description": "via St Marks Pl / Jersey St"
+  },
+  {
+    "id": "MTA NYCT_S44",
+    "short_name": "S44",
+    "long_name": "St. George - Staten Island Mall",
+    "color": "FAA61A",
+    "description": "via Richmond Av"
+  },
+  {
+    "id": "MTA NYCT_S46",
+    "short_name": "S46",
+    "long_name": "St. George - West Shore Plaza",
+    "color": "006CB7",
+    "description": "via Castleton Av"
+  },
+  {
+    "id": "MTA NYCT_S48",
+    "short_name": "S48",
+    "long_name": "St. George - Mariners Harbor",
+    "color": "EE352E",
+    "description": "via Forest Av"
+  },
+  {
+    "id": "MTA NYCT_SIM35",
+    "short_name": "SIM35",
+    "long_name": "Port Richmond - Lower Manhattan Express",
+    "color": "00933C",
+    "description": "via Clove Rd"
+  },
+  {
+    "id": "MTA NYCT_S40",
+    "short_name": "S40",
+    "long_name": "St. George - Amazon",
+    "color": "B933AD",
+    "description": "via Richmond Terrace"
+  },
+  {
+    "id": "MTA NYCT_Q2",
+    "short_name": "Q2",
+    "long_name": "Queens Village - Jamaica",
+    "color": "6CBE45",
+    "description": "via Hollis Av / Hillside Av"
+  },
+  {
+    "id": "MTA NYCT_SIM31",
+    "short_name": "SIM31",
+    "long_name": "Eltingville - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Forest Hill Rd"
+  },
+  {
+    "id": "MTA NYCT_Q3",
+    "short_name": "Q3",
+    "long_name": "Jamaica - JFK Airport",
+    "color": "00AEEF",
+    "description": "via Farmers Blvd / Hillside Av"
+  },
+  {
+    "id": "MTA NYCT_SIM32",
+    "short_name": "SIM32",
+    "long_name": "Travis - Lower Manhattan Express",
+    "color": "00933C",
+    "description": "via N Gannon Av / Victory Bl"
+  },
+  {
+    "id": "MTA NYCT_B24",
+    "short_name": "B24",
+    "long_name": "Williamsburg - Greenpoint",
+    "color": "FAA61A",
+    "description": "via Greenpoint Av & 48th St / Meeker Av"
+  },
+  {
+    "id": "MTA NYCT_M34A+",
+    "short_name": "M34A+",
+    "long_name": "Waterside - Port Authority Terminal",
+    "color": "006CB7",
+    "description": "Select Bus Service via 34th St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_Q4",
+    "short_name": "Q4",
+    "long_name": "Cambria Heights - Jamaica",
+    "color": "EE352E",
+    "description": "via Linden Blvd / Merrick Blvd"
+  },
+  {
+    "id": "MTA NYCT_SIM33",
+    "short_name": "SIM33",
+    "long_name": "Mariners Harbor - Manhattan Express",
+    "color": "00933C",
+    "description": "via N Gannon Av"
+  },
+  {
+    "id": "MTA NYCT_Q5",
+    "short_name": "Q5",
+    "long_name": "Laurelton - Jamaica",
+    "color": "EE352E",
+    "description": "via Merrick Blvd"
+  },
+  {
+    "id": "MTA NYCT_SIM34",
+    "short_name": "SIM34",
+    "long_name": "Mariners Harbor - Lower Manhattan Express",
+    "color": "00933C",
+    "description": "via Watchogue Rd"
+  },
+  {
+    "id": "MTA NYCT_B26",
+    "short_name": "B26",
+    "long_name": "Downtown Brooklyn - Ridgewood",
+    "color": "006CB7",
+    "description": "via Halsey St / Fulton St"
+  },
+  {
+    "id": "MTA NYCT_B25",
+    "short_name": "B25",
+    "long_name": "Dwntn Bklyn & DUMBO - Broadway Junction",
+    "color": "6CBE45",
+    "description": "via Fulton St"
+  },
+  {
+    "id": "MTA NYCT_B44+",
+    "short_name": "B44+",
+    "long_name": "Sheepshead Bay - Williamsburg",
+    "color": "B933AD",
+    "description": "Select Bus Service via Nostrand Av"
+  },
+  {
+    "id": "MTA NYCT_SIM30",
+    "short_name": "SIM30",
+    "long_name": "Sunnyside - Midtown Manhattan Express",
+    "color": "00933C",
+    "description": "via Forest Av"
+  },
+  {
+    "id": "MTA NYCT_B42",
+    "short_name": "B42",
+    "long_name": "Canarsie Pier - Rockaway Parkway Station",
+    "color": "006CB7",
+    "description": "via Rockaway Pkwy"
+  },
+  {
+    "id": "MTA NYCT_B41",
+    "short_name": "B41",
+    "long_name": "Kings Plaza - Downtown Brooklyn",
+    "color": "006CB7",
+    "description": "via Flatbush Av / Livingston St"
+  },
+  {
+    "id": "MTA NYCT_M79+",
+    "short_name": "M79+",
+    "long_name": "Yorkville - West Side",
+    "color": "EE352E",
+    "description": "Select Bus Service via 79th St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_B3",
+    "short_name": "B3",
+    "long_name": "Bensonhurst - Bergen Beach",
+    "color": "EE352E",
+    "description": "via Avenue U"
+  },
+  {
+    "id": "MTA NYCT_Q12",
+    "short_name": "Q12",
+    "long_name": "Little Neck - Flushing",
+    "color": "EE352E",
+    "description": "via Northern Blvd"
+  },
+  {
+    "id": "MTA NYCT_S54",
+    "short_name": "S54",
+    "long_name": "West New Brighton - Eltingville",
+    "color": "FAA61A",
+    "description": "via Manor Rd"
+  },
+  {
+    "id": "MTA NYCT_B4",
+    "short_name": "B4",
+    "long_name": "Bay Ridge - Sheepshead Bay",
+    "color": "6CBE45",
+    "description": "via Bay Ridge Pkwy / 86th St / Avenue Z"
+  },
+  {
+    "id": "MTA NYCT_S53",
+    "short_name": "S53",
+    "long_name": "Port Richmond - Bay Ridge",
+    "color": "EE352E",
+    "description": "via Verrazano-Narrows Bridge / Clove Rd"
+  },
+  {
+    "id": "MTA NYCT_Q14",
+    "short_name": "Q14",
+    "long_name": "East Elmhurst - Ridgewood",
+    "color": "00AEEF",
+    "description": "via Eliot Av"
+  },
+  {
+    "id": "MTA NYCT_S56",
+    "short_name": "S56",
+    "long_name": "Huguenot - Staten Island Mall",
+    "color": "6CBE45",
+    "description": "via Richmond Av / Arthur Kill Rd / Foster Rd"
+  },
+  {
+    "id": "MTA NYCT_SIM3C",
+    "short_name": "SIM3C",
+    "long_name": "Pt. Richmond - Manhattan Express",
+    "color": "00933C",
+    "description": "via Watchogue Rd"
+  },
+  {
+    "id": "MTA NYCT_B6",
+    "short_name": "B6",
+    "long_name": "Bath Beach - East New York",
+    "color": "EE352E",
+    "description": "via Bay Pkwy / Avenue J / Flatlands Av"
+  },
+  {
+    "id": "MTA NYCT_Q13",
+    "short_name": "Q13",
+    "long_name": "Fort Totten - Flushing",
+    "color": "EE352E",
+    "description": "via Northern Blvd / Bell Blvd"
+  },
+  {
+    "id": "MTA NYCT_S55",
+    "short_name": "S55",
+    "long_name": "Rossville - Staten Island Mall",
+    "color": "FAA61A",
+    "description": "via Bloomingdale Rd / Annadale Rd / Richmond Av"
+  },
+  {
+    "id": "MTA NYCT_B7",
+    "short_name": "B7",
+    "long_name": "Midwood - Bedford-Stuyvesant",
+    "color": "EE352E",
+    "description": "via Kings Hwy / Saratoga Av"
+  },
+  {
+    "id": "MTA NYCT_Q16",
+    "short_name": "Q16",
+    "long_name": "Fort Totten - Flushing",
+    "color": "EE352E",
+    "description": "via Bayside Av / Utopia Parkway"
+  },
+  {
+    "id": "MTA NYCT_B8",
+    "short_name": "B8",
+    "long_name": "Dyker Heights - East Flatbush",
+    "color": "FAA61A",
+    "description": "via 18th Av / Foster Av / Avenue D"
+  },
+  {
+    "id": "MTA NYCT_Q15",
+    "short_name": "Q15",
+    "long_name": "Flushing - Beechhurst",
+    "color": "FAA61A",
+    "description": "via 150th St / 10th Av"
+  },
+  {
+    "id": "MTA NYCT_S57",
+    "short_name": "S57",
+    "long_name": "Port Richmond - New Dorp",
+    "color": "6CBE45",
+    "description": "via Rockland Av / Brielle Av / Bradley Av"
+  },
+  {
+    "id": "MTA NYCT_B9",
+    "short_name": "B9",
+    "long_name": "Bay Ridge - Kings Plaza",
+    "color": "EE352E",
+    "description": "via 60th St / Avenue M"
+  },
+  {
+    "id": "MTA NYCT_Q17",
+    "short_name": "Q17",
+    "long_name": "Flushing - Jamaica",
+    "color": "EE352E",
+    "description": "via Kissena Blvd / Horace Harding Expwy / 188th St / Hillside Av"
+  },
+  {
+    "id": "MTA NYCT_S59",
+    "short_name": "S59",
+    "long_name": "Port Richmond - Tottenville",
+    "color": "EE352E",
+    "description": "via Richmond Av"
+  },
+  {
+    "id": "MTA NYCT_M96",
+    "short_name": "M96",
+    "long_name": "East Side - West Side",
+    "color": "6CBE45",
+    "description": "via 96th St Crosstown"
+  },
+  {
+    "id": "MTA NYCT_M98",
+    "short_name": "M98",
+    "long_name": "Washington Heights - Upper East Side LTD",
+    "color": "EE352E",
+    "description": "via Harlem River Dr / Lexington / 3rd"
+  },
+  {
+    "id": "MTA NYCT_Q109",
+    "short_name": "Q109",
+    "long_name": "A Shuttle Bus - Howard Beach and Beach 67 Street",
+    "color": "6CBE45",
+    "description": "via Rockaway Beach Blvd"
+  },
+  {
+    "id": "MTA NYCT_B1",
+    "short_name": "B1",
+    "long_name": "Bay Ridge - Manhattan Beach",
+    "color": "00AEEF",
+    "description": "via 86th St / Ocean Pkwy"
+  },
+  {
+    "id": "MTA NYCT_S52",
+    "short_name": "S52",
+    "long_name": "St. George - Staten Island Univ. Hospital",
+    "color": "B933AD",
+    "description": "via Tompkins Av / Cebra Av / Jersey St"
+  },
+  {
+    "id": "MTA NYCT_B2",
+    "short_name": "B2",
+    "long_name": "Kings Hwy Station - Kings Plaza",
+    "color": "006CB7",
+    "description": "via Avenue R / Avenue S"
+  },
+  {
+    "id": "MTA NYCT_S51",
+    "short_name": "S51",
+    "long_name": "St. George - Grant City",
+    "color": "006CB7",
+    "description": "via Bay St / Father Capodanno Blvd"
+  },
+  {
+    "id": "MTA NYCT_Q108",
+    "short_name": "Q108",
+    "long_name": "N Shuttle Bus - 39 Av - Queens Plaza",
+    "color": "6CBE45",
+    "description": "via Jackson Av"
+  },
+  {
+    "id": "MTA NYCT_B32",
+    "short_name": "B32",
+    "long_name": "Williamsburg - Long Island City",
+    "color": "006CB7",
+    "description": "via Kent Av / Wythe Av"
+  },
+  {
+    "id": "MTA NYCT_M90",
+    "short_name": "M90",
+    "long_name": "M Shuttle Bus - Metropolitan Av - Myrtle Av",
+    "color": "EE352E",
+    "description": "via Myrtle Av"
+  },
+  {
+    "id": "MTA NYCT_B35",
+    "short_name": "B35",
+    "long_name": "Brownsville - Sunset Park",
+    "color": "EE352E",
+    "description": "via Church Av / 39th St"
+  },
+  {
+    "id": "MTA NYCT_B37",
+    "short_name": "B37",
+    "long_name": "Downtown Brooklyn - Bay Ridge",
+    "color": "B933AD",
+    "description": "via 3rd Av"
+  },
+  {
+    "id": "MTA NYCT_B36",
+    "short_name": "B36",
+    "long_name": "Sheepshead Bay - Coney Island",
+    "color": "FAA61A",
+    "description": "via Avenue Z / Surf Av"
+  },
+  {
+    "id": "MTA NYCT_B39",
+    "short_name": "B39",
+    "long_name": "Williamsburg Bridge Plaza - Lower East Side",
+    "color": "00AEEF",
+    "description": "via Williamsburg Bridge / Delancey St"
+  },
+  {
+    "id": "MTA NYCT_B38",
+    "short_name": "B38",
+    "long_name": "Ridgewood - Downtown Brooklyn",
+    "color": "00AEEF",
+    "description": "via DeKalb & Lafayette Av"
+  },
+  {
+    "id": "MTABC_Q64",
+    "short_name": "Q64",
+    "long_name": "Electchester - Forest Hills",
+    "color": "FAA61A",
+    "description": "Via Jewel Av"
+  },
+  {
+    "id": "MTABC_Q63",
+    "short_name": "Q63",
+    "long_name": "Flushing - Long Island City Rush",
+    "color": "B933AD",
+    "description": "Via Northern Blvd / Jackson Av"
+  },
+  {
+    "id": "MTABC_Q60",
+    "short_name": "Q60",
+    "long_name": "Queens Blvd. - East Midtown",
+    "color": "FAA61A",
+    "description": "Via Queens Blvd."
+  },
+  {
+    "id": "MTABC_Q69",
+    "short_name": "Q69",
+    "long_name": "East Elmhurst - Long Island City",
+    "color": "FAA61A",
+    "description": "Via 21 St / Ditmars Blvd"
+  },
+  {
+    "id": "MTABC_Q66",
+    "short_name": "Q66",
+    "long_name": "Flushing - Long Island City",
+    "color": "FAA61A",
+    "description": "Via Northern Blvd / 21 St"
+  },
+  {
+    "id": "MTABC_Q65",
+    "short_name": "Q65",
+    "long_name": "Flushing - Jamaica",
+    "color": "FAA61A",
+    "description": "Via Sanford Av / 164 St"
+  },
+  {
+    "id": "MTABC_Q51",
+    "short_name": "Q51",
+    "long_name": "Linden Blvd Limited",
+    "color": "EE352E",
+    "description": "Via Linden Bl."
+  },
+  {
+    "id": "MTABC_Q50",
+    "short_name": "Q50",
+    "long_name": "Co-Op City/Pelham Bay - Flushing Ltd",
+    "color": "EE352E",
+    "description": ""
+  },
+  {
+    "id": "MTABC_BX23",
+    "short_name": "Bx23",
+    "long_name": "Pelham Bay - Co-Op City",
+    "color": "B933AD",
+    "description": ""
+  },
+  {
+    "id": "MTABC_Q40",
+    "short_name": "Q40",
+    "long_name": "South Ozone Park - Jamaica",
+    "color": "B933AD",
+    "description": "Via 142 St."
+  },
+  {
+    "id": "MTABC_Q41",
+    "short_name": "Q41",
+    "long_name": "Jamaica - Howard Beach",
+    "color": "FAA61A",
+    "description": ""
+  },
+  {
+    "id": "MTABC_Q47",
+    "short_name": "Q47",
+    "long_name": "East Elmhurst - Glendale",
+    "color": "FAA61A",
+    "description": "Via 80 St / 74 & 75 Sts / 23 Av"
+  },
+  {
+    "id": "MTABC_Q49",
+    "short_name": "Q49",
+    "long_name": "East Elmhurst - Jackson Heights",
+    "color": "FAA61A",
+    "description": "Via 35 Av / 89 & 92 Sts / Astoria Blvd"
+  },
+  {
+    "id": "MTABC_QM17",
+    "short_name": "QM17",
+    "long_name": "Far Rockaway - Midtown Express",
+    "color": "00933C",
+    "description": ""
+  },
+  {
+    "id": "MTABC_QM18",
+    "short_name": "QM18",
+    "long_name": "South Ozone Park - Midtown Express",
+    "color": "00933C",
+    "description": ""
+  },
+  {
+    "id": "MTABC_QM15",
+    "short_name": "QM15",
+    "long_name": "Lindenwood - Midtown Express",
+    "color": "00933C",
+    "description": ""
+  },
+  {
+    "id": "MTABC_QM16",
+    "short_name": "QM16",
+    "long_name": "Neponsit - Midtown Express",
+    "color": "00933C",
+    "description": ""
+  },
+  {
+    "id": "MTABC_QM10",
+    "short_name": "QM10",
+    "long_name": "Lefrak City - Midtown Express",
+    "color": "00933C",
+    "description": "Via 63 Rd / 57 Av / 6 Av"
+  },
+  {
+    "id": "MTABC_Q52+",
+    "short_name": "Q52+",
+    "long_name": "Elmhurst - Arverne Sbs Vis Woodhaven/Cross Bay",
+    "color": "006CB7",
+    "description": "Via Woodhaven Bl. - Cross Bay Bl."
+  },
+  {
+    "id": "MTABC_QM11",
+    "short_name": "QM11",
+    "long_name": "Forest Hills - Downtown Express",
+    "color": "00933C",
+    "description": "Via Queens Blvd / 63 Rd / 57 Av"
+  },
+  {
+    "id": "MTABC_QM12",
+    "short_name": "QM12",
+    "long_name": "Forest Hills - Midtown Express",
+    "color": "00933C",
+    "description": "Via Yellowstone Blvd / 6 Av"
+  },
+  {
+    "id": "MTABC_Q37",
+    "short_name": "Q37",
+    "long_name": "Kew Gardens - South Ozone Park",
+    "color": "00AEEF",
+    "description": ""
+  },
+  {
+    "id": "MTABC_Q33",
+    "short_name": "Q33",
+    "long_name": "Marine Air Terminal Lga-Jackson Heights",
+    "color": "FAA61A",
+    "description": "Via Roosevelt Av / 82 & 83 Sts"
+  },
+  {
+    "id": "MTABC_Q32",
+    "short_name": "Q32",
+    "long_name": "Jackson Heights - Penn Station (Midtown)",
+    "color": "FAA61A",
+    "description": "Via Roosevelt Av / Queens Blvd / 5 Av / Madison Av"
+  },
+  {
+    "id": "MTABC_Q35",
+    "short_name": "Q35",
+    "long_name": "Rockaway Park - Midwood / Brooklyn Coll.",
+    "color": "006CB7",
+    "description": "Via Rockaway Beach Bl. - Flatbush Av."
+  },
+  {
+    "id": "MTABC_QM20",
+    "short_name": "QM20",
+    "long_name": "Bay Terrace - Midtown Express",
+    "color": "00933C",
+    "description": "Via 26 Av / Utopia Pkwy / Willets Point Blvd / Mitchell Gardens"
+  },
+  {
+    "id": "MTABC_QM21",
+    "short_name": "QM21",
+    "long_name": "Rochdale Village - Midtown Exp.",
+    "color": "00933C",
+    "description": "Via Brewer Bl. / Linden Bl."
+  },
+  {
+    "id": "MTABC_QM24",
+    "short_name": "QM24",
+    "long_name": "Glendale - Midtown Express",
+    "color": "00933C",
+    "description": "Via Myrtle Av / Fresh Pond Rd / Eliot Av"
+  },
+  {
+    "id": "MTABC_Q53+",
+    "short_name": "Q53+",
+    "long_name": "Woodside - Rockaway Park",
+    "color": "006CB7",
+    "description": "Via Broadway / Queens Blvd / Woodhaven Blvd / Cross Bay Blvd"
+  },
+  {
+    "id": "MTABC_QM25",
+    "short_name": "QM25",
+    "long_name": "Glendale - Downtown Express",
+    "color": "00933C",
+    "description": "Via Myrtle Av / Fresh Pond Rd / Eliot Av"
+  },
+  {
+    "id": "MTABC_BXM11",
+    "short_name": "BxM11",
+    "long_name": "Wakefield - Midtown",
+    "color": "00933C",
+    "description": "Via White Plains Rd / 5Th & Madison Av"
+  },
+  {
+    "id": "MTABC_BXM10",
+    "short_name": "BxM10",
+    "long_name": "Williamsbridge/Morris Park - Midtown",
+    "color": "00933C",
+    "description": ""
+  },
+  {
+    "id": "MTABC_BM4",
+    "short_name": "BM4",
+    "long_name": "Gerritsen Beach - Downtown/Midtown",
+    "color": "00933C",
+    "description": ""
+  },
+  {
+    "id": "MTABC_B100",
+    "short_name": "B100",
+    "long_name": "Mill Basin - Midwood",
+    "color": "B933AD",
+    "description": "Via Fillmore Av / Quentin Rd"
+  },
+  {
+    "id": "MTABC_BM3",
+    "short_name": "BM3",
+    "long_name": "Sheepshead Bay - Downtown/Midtown",
+    "color": "00933C",
+    "description": "Via Sheepshead Bay / Ocean Ave / Cortelyou Rd"
+  },
+  {
+    "id": "MTABC_BM5",
+    "short_name": "BM5",
+    "long_name": "Spring Creek - Midtown",
+    "color": "00933C",
+    "description": "Via Pennsylvania Av / Linden Blvd / Woodhaven Blvd"
+  },
+  {
+    "id": "MTABC_B103",
+    "short_name": "B103",
+    "long_name": "Canarsie - Downtown Brooklyn Ltd",
+    "color": "FAA61A",
+    "description": ""
+  },
+  {
+    "id": "MTABC_Q70+",
+    "short_name": "Q70+",
+    "long_name": "LaGuardia Link",
+    "color": "006CB7",
+    "description": "Woodside LIRR, Jackson Heights E F M R 7 Subway, LaGuardia Airport"
+  },
+  {
+    "id": "MTABC_BXM18",
+    "short_name": "BxM18",
+    "long_name": "Riverdale - Downtown",
+    "color": "00933C",
+    "description": "Via Riverdale / H. Hudsn / Bway & Trnty"
+  },
+  {
+    "id": "MTABC_BM2",
+    "short_name": "BM2",
+    "long_name": "Canarsie/Spring Creek - Downtown/Midtown",
+    "color": "00933C",
+    "description": "Via Ave M/ Ave H / Cortelyou Rd"
+  },
+  {
+    "id": "MTABC_BM1",
+    "short_name": "BM1",
+    "long_name": "Mill Basin - Downtown/Midtown",
+    "color": "00933C",
+    "description": "Via E 66 St / Ave K / Ocean Av / Cortelyou Rd"
+  },
+  {
+    "id": "MTABC_Q80",
+    "short_name": "Q80",
+    "long_name": "Jfk Airtrain - Kew Gardens Via Lefferts",
+    "color": "EE352E",
+    "description": ""
+  },
+  {
+    "id": "MTABC_Q72",
+    "short_name": "Q72",
+    "long_name": "LaGuardia Airport - Rego Park",
+    "color": "FAA61A",
+    "description": "Via Junction Blvd"
+  },
+  {
+    "id": "MTABC_Q74",
+    "short_name": "Q74",
+    "long_name": "Forest Hills - Qcc Ltd",
+    "color": "EE352E",
+    "description": "Via Jewel Av / Horace Harding Expwy"
+  },
+  {
+    "id": "MTABC_Q101",
+    "short_name": "Q101",
+    "long_name": "Steinway - Hunters Point",
+    "color": "FAA61A",
+    "description": "Via Steinway St / Jackson Av"
+  },
+  {
+    "id": "MTABC_Q100",
+    "short_name": "Q100",
+    "long_name": "Rikers Island - Long Island City Ltd",
+    "color": "EE352E",
+    "description": "Via 21 St"
+  },
+  {
+    "id": "MTABC_Q103",
+    "short_name": "Q103",
+    "long_name": "Astoria - Hunters Point",
+    "color": "FAA61A",
+    "description": "Via Vernon Blvd / 21 St"
+  },
+  {
+    "id": "MTABC_Q102",
+    "short_name": "Q102",
+    "long_name": "Roosevelt Island - Long Island City",
+    "color": "FAA61A",
+    "description": "Via 36 Av / 31 St / Jackson Av"
+  },
+  {
+    "id": "MTABC_Q104",
+    "short_name": "Q104",
+    "long_name": "Astoria - Sunnyside",
+    "color": "FAA61A",
+    "description": "Via Broadway / 48 St"
+  },
+  {
+    "id": "MTABC_Q112",
+    "short_name": "Q112",
+    "long_name": "Jamaica - East Ny",
+    "color": "EE352E",
+    "description": "Via Liberty Ave."
+  },
+  {
+    "id": "MTABC_Q111",
+    "short_name": "Q111",
+    "long_name": "Rosedale - Jamaica Rush",
+    "color": "B933AD",
+    "description": "Via Brewer Bl. / 147 Av."
+  },
+  {
+    "id": "MTABC_Q114",
+    "short_name": "Q114",
+    "long_name": "Far Rockaway - Jamaica Rush",
+    "color": "B933AD",
+    "description": "Via Brewer Bl. / Rockaway Tpke."
+  },
+  {
+    "id": "MTABC_Q113",
+    "short_name": "Q113",
+    "long_name": "Far Rockaway - Jamaica Limited",
+    "color": "EE352E",
+    "description": "Via Brewer Blvd / Rockaway Blvd / Nassau Expwy"
+  },
+  {
+    "id": "MTABC_Q115",
+    "short_name": "Q115",
+    "long_name": "Brewer Blvd. Local",
+    "color": "EE352E",
+    "description": "Via Brewer Bl."
+  },
+  {
+    "id": "MTABC_Q110",
+    "short_name": "Q110",
+    "long_name": "Jamaica Avenue East",
+    "color": "FAA61A",
+    "description": "Via Jamaica Av."
+  },
+  {
+    "id": "MTABC_QM1",
+    "short_name": "QM1",
+    "long_name": "Fresh Meadows - Midtown Express",
+    "color": "00933C",
+    "description": "Via 188 St / Union Turnpike / 6 Av"
+  },
+  {
+    "id": "MTABC_QM2",
+    "short_name": "QM2",
+    "long_name": "Bay Terrace - Midtown Express",
+    "color": "00933C",
+    "description": "Via Cross Island Pkwy / Whitestone Expwy / 6 Av"
+  },
+  {
+    "id": "MTABC_QM8",
+    "short_name": "QM8",
+    "long_name": "Glen Oaks - Downtown Express",
+    "color": "00933C",
+    "description": "Via Horace Harding Expwy / 73 Av / Union Turnpike"
+  },
+  {
+    "id": "MTABC_QM5",
+    "short_name": "QM5",
+    "long_name": "Glen Oaks - Midtown Express",
+    "color": "00933C",
+    "description": "Via Horace Harding Expwy / 73 Av / Union Turnpike / 6 Av"
+  },
+  {
+    "id": "MTABC_QM4",
+    "short_name": "QM4",
+    "long_name": "Electchester - Midtown Express",
+    "color": "00933C",
+    "description": "Via Jewel Av / 6 Av"
+  },
+  {
+    "id": "MTABC_QM7",
+    "short_name": "QM7",
+    "long_name": "Fresh Meadows - Downtown Express",
+    "color": "00933C",
+    "description": "Via 188 St / Union Turnpike"
+  },
+  {
+    "id": "MTABC_QM6",
+    "short_name": "QM6",
+    "long_name": "Lake Success - Midtown Express",
+    "color": "00933C",
+    "description": "Via North Shore Towers / Union Turnpike / 6 Av"
+  },
+  {
+    "id": "MTABC_BXM2",
+    "short_name": "BxM2",
+    "long_name": "Riverdale - West Midtown",
+    "color": "00933C",
+    "description": "Via Riverdale / H. Hudson / 6Th & 7Th Av"
+  },
+  {
+    "id": "MTABC_BXM1",
+    "short_name": "BxM1",
+    "long_name": "Riverdale - East Midtown",
+    "color": "00933C",
+    "description": "Via Riverdale / H. Hudson / Lex & 3 Av"
+  },
+  {
+    "id": "MTABC_BXM6",
+    "short_name": "BxM6",
+    "long_name": "Parkchester - Midtown",
+    "color": "00933C",
+    "description": ""
+  },
+  {
+    "id": "MTABC_BXM4",
+    "short_name": "BxM4",
+    "long_name": "Woodlawn - Midtown",
+    "color": "00933C",
+    "description": "Via Katonah Av / Grand Concourse"
+  },
+  {
+    "id": "MTABC_BXM3",
+    "short_name": "BxM3",
+    "long_name": "Yonkers - Midtown",
+    "color": "00933C",
+    "description": "Via Bway / Sedgwick Av / 5Th & Madison"
+  },
+  {
+    "id": "MTABC_BXM9",
+    "short_name": "BxM9",
+    "long_name": "Throgs Neck - Midtown Express",
+    "color": "00933C",
+    "description": "Via Edgewater Pk / Throgs Neck / Schuylerville"
+  },
+  {
+    "id": "MTABC_BXM8",
+    "short_name": "BxM8",
+    "long_name": "Pelham Bay/City Island - Midtown",
+    "color": "00933C",
+    "description": ""
+  },
+  {
+    "id": "MTABC_BXM7",
+    "short_name": "BxM7",
+    "long_name": "Co-Op City - Midtown",
+    "color": "00933C",
+    "description": ""
+  },
+  {
+    "id": "MTABC_Q26",
+    "short_name": "Q26",
+    "long_name": "College Point - Fresh Meadows",
+    "color": "FAA61A",
+    "description": "Via College Point Blvd / Parsons Blvd / 46 Av"
+  },
+  {
+    "id": "MTABC_Q25",
+    "short_name": "Q25",
+    "long_name": "College Point - Jamaica",
+    "color": "FAA61A",
+    "description": "Via Parsons Blvd / Kissena Blvd / 127 St"
+  },
+  {
+    "id": "MTABC_Q28",
+    "short_name": "Q28",
+    "long_name": "Flushing - Bay Terrace Rush",
+    "color": "B933AD",
+    "description": "Via Northern Blvd / Francis Lewis Blvd / Crocheron Av"
+  },
+  {
+    "id": "MTABC_Q22",
+    "short_name": "Q22",
+    "long_name": "Rockaway Beach Bl / Beach Channel Dr",
+    "color": "EE352E",
+    "description": "Via Rockaway Beach Bl. - Beach Channel Dr."
+  },
+  {
+    "id": "MTABC_Q23",
+    "short_name": "Q23",
+    "long_name": "East Elmhurst - Forest Hills",
+    "color": "FAA61A",
+    "description": "Via 108 St"
+  },
+  {
+    "id": "MTABC_QM31",
+    "short_name": "QM31",
+    "long_name": "Fresh Meadows - Midtown Express",
+    "color": "00933C",
+    "description": "Via 188 St / Union Turnpike / 3 Av"
+  },
+  {
+    "id": "MTABC_QM32",
+    "short_name": "QM32",
+    "long_name": "Bay Terrace - Midtown Express",
+    "color": "00933C",
+    "description": "Via Cross Island Pkwy / Whitestone Expwy / 3 Av"
+  },
+  {
+    "id": "MTABC_QM35",
+    "short_name": "QM35",
+    "long_name": "Glen Oaks - Midtown Express",
+    "color": "00933C",
+    "description": "Via Horace Harding Expwy / 73 Av / Union Turnpike / 3 Av"
+  },
+  {
+    "id": "MTABC_QM36",
+    "short_name": "QM36",
+    "long_name": "Lake Success - Midtown Express",
+    "color": "00933C",
+    "description": "Via North Shore Towers / Union Turnpike / 3 Av"
+  },
+  {
+    "id": "MTABC_QM34",
+    "short_name": "QM34",
+    "long_name": "Glendale - Midtown Express",
+    "color": "00933C",
+    "description": "Via Myrtle Av / Fresh Pond Rd / Eliot Av"
+  },
+  {
+    "id": "MTABC_Q11",
+    "short_name": "Q11",
+    "long_name": "Howard Beach - Elmhurst",
+    "color": "6CBE45",
+    "description": "Via Cross Bay Bl. - Woodhaven Bl."
+  },
+  {
+    "id": "MTABC_Q10",
+    "short_name": "Q10",
+    "long_name": "Jfk Airtrain - Kew Gardens Via Rockaway",
+    "color": "FAA61A",
+    "description": ""
+  },
+  {
+    "id": "MTABC_Q19",
+    "short_name": "Q19",
+    "long_name": "Flushing - Astoria",
+    "color": "FAA61A",
+    "description": "Via Astoria Blvd"
+  },
+  {
+    "id": "MTABC_Q18",
+    "short_name": "Q18",
+    "long_name": "Astoria - Maspeth",
+    "color": "FAA61A",
+    "description": "Via 30 Av"
+  },
+  {
+    "id": "MTABC_QM42",
+    "short_name": "QM42",
+    "long_name": "Forest Hills - Midtown Express",
+    "color": "00933C",
+    "description": "Via Yellowstone Blvd / 3 Av"
+  },
+  {
+    "id": "MTABC_QM40",
+    "short_name": "QM40",
+    "long_name": "Lefrak City - Midtown Express",
+    "color": "00933C",
+    "description": "Via 63 Rd / 57 Av / 3 Av"
+  },
+  {
+    "id": "MTABC_QM44",
+    "short_name": "QM44",
+    "long_name": "Electchester - Midtown Express",
+    "color": "00933C",
+    "description": "Via Jewel Av / 3 Av"
+  },
+  {
+    "id": "MTABC_Q06",
+    "short_name": "Q6",
+    "long_name": "Jamaica - Sutphin Blvd - Jfk Cargo Area",
+    "color": "EE352E",
+    "description": "Via Sutphin Bl. - Rockaway Bl."
+  },
+  {
+    "id": "MTABC_Q08",
+    "short_name": "Q8",
+    "long_name": "Gateway Mall / East Ny - Jamaica",
+    "color": "EE352E",
+    "description": "Via 101 Av."
+  },
+  {
+    "id": "MTABC_Q07",
+    "short_name": "Q7",
+    "long_name": "Cypress Hills - Rockaway Blvd - Jfk Travel Plz.",
+    "color": "FAA61A",
+    "description": "Via Rockaway Bl."
+  },
+  {
+    "id": "MTABC_Q09",
+    "short_name": "Q9",
+    "long_name": "Jamaica - South Ozone Park",
+    "color": "B933AD",
+    "description": "Via Lincoln St. - 130 St."
+  },
+  {
+    "id": "MTABC_QM65",
+    "short_name": "QM65",
+    "long_name": "Laurelton-Rochdale-Lower Manhattan",
+    "color": "00933C",
+    "description": "Via Merrick Bl. - Brewer Bl. - Linden Bl."
+  }
+]

@@ -1,0 +1,222 @@
+[
+  {
+    "route_id": "1",
+    "display_name": "1",
+    "mode": "subway",
+    "color_hex": "#D82233",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "010"
+  },
+  {
+    "route_id": "2",
+    "display_name": "2",
+    "mode": "subway",
+    "color_hex": "#D82233",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "011"
+  },
+  {
+    "route_id": "3",
+    "display_name": "3",
+    "mode": "subway",
+    "color_hex": "#D82233",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "012"
+  },
+  {
+    "route_id": "4",
+    "display_name": "4",
+    "mode": "subway",
+    "color_hex": "#009952",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "020"
+  },
+  {
+    "route_id": "5",
+    "display_name": "5",
+    "mode": "subway",
+    "color_hex": "#009952",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "021"
+  },
+  {
+    "route_id": "6",
+    "display_name": "6",
+    "mode": "subway",
+    "color_hex": "#009952",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "022"
+  },
+  {
+    "route_id": "6X",
+    "display_name": "6X",
+    "mode": "subway",
+    "color_hex": "#009952",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "023"
+  },
+  {
+    "route_id": "7",
+    "display_name": "7",
+    "mode": "subway",
+    "color_hex": "#9A38A1",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "030"
+  },
+  {
+    "route_id": "7X",
+    "display_name": "7X",
+    "mode": "subway",
+    "color_hex": "#9A38A1",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "031"
+  },
+  {
+    "route_id": "A",
+    "display_name": "A",
+    "mode": "subway",
+    "color_hex": "#0062CF",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "040"
+  },
+  {
+    "route_id": "C",
+    "display_name": "C",
+    "mode": "subway",
+    "color_hex": "#0062CF",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "041"
+  },
+  {
+    "route_id": "E",
+    "display_name": "E",
+    "mode": "subway",
+    "color_hex": "#0062CF",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "042"
+  },
+  {
+    "route_id": "B",
+    "display_name": "B",
+    "mode": "subway",
+    "color_hex": "#EB6800",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "050"
+  },
+  {
+    "route_id": "D",
+    "display_name": "D",
+    "mode": "subway",
+    "color_hex": "#EB6800",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "051"
+  },
+  {
+    "route_id": "F",
+    "display_name": "F",
+    "mode": "subway",
+    "color_hex": "#EB6800",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "052"
+  },
+  {
+    "route_id": "FX",
+    "display_name": "FX",
+    "mode": "subway",
+    "color_hex": "#EB6800",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "053"
+  },
+  {
+    "route_id": "M",
+    "display_name": "M",
+    "mode": "subway",
+    "color_hex": "#EB6800",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "054"
+  },
+  {
+    "route_id": "N",
+    "display_name": "N",
+    "mode": "subway",
+    "color_hex": "#F6BC26",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "090"
+  },
+  {
+    "route_id": "Q",
+    "display_name": "Q",
+    "mode": "subway",
+    "color_hex": "#F6BC26",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "091"
+  },
+  {
+    "route_id": "R",
+    "display_name": "R",
+    "mode": "subway",
+    "color_hex": "#F6BC26",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "092"
+  },
+  {
+    "route_id": "W",
+    "display_name": "W",
+    "mode": "subway",
+    "color_hex": "#F6BC26",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "093"
+  },
+  {
+    "route_id": "GS",
+    "display_name": "S",
+    "mode": "subway",
+    "color_hex": "#7C858C",
+    "text_color_hex": "#FFFFFF",
+    "mode_name": "Subway",
+    "bus_service_type": null,
+    "sorting_key": "100"
+  }
+]

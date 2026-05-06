@@ -138,21 +138,25 @@ struct ArrivalChipView: View {
     private var metadataTags: [MetadataTag] {
         var tags: [MetadataTag] = []
 
-        if chip.serviceVariant.showsPill {
-            tags.append(MetadataTag(
-                id: "variant",
-                label: chip.variantLabel ?? chip.serviceVariant.displayLabel,
-                compactLabel: chip.serviceVariant.displayLabel,
-                color: chip.serviceVariant.tintColor(routeColor: chipAccent)
-            ))
-        } else if chip.isExpress {
-            tags.append(MetadataTag(
-                id: "express",
-                label: "Exp",
-                color: chipAccent
-            ))
+        // Variant / express — only on hero chip; non-first chips stay clean.
+        if isFirst {
+            if chip.serviceVariant.showsPill {
+                tags.append(MetadataTag(
+                    id: "variant",
+                    label: chip.variantLabel ?? chip.serviceVariant.displayLabel,
+                    compactLabel: chip.serviceVariant.displayLabel,
+                    color: chip.serviceVariant.tintColor(routeColor: chipAccent)
+                ))
+            } else if chip.isExpress {
+                tags.append(MetadataTag(
+                    id: "express",
+                    label: "Exp",
+                    color: chipAccent
+                ))
+            }
         }
 
+        // High-signal warnings: stalled / delayed. Worth showing on every chip.
         if chip.isStalled {
             tags.append(MetadataTag(
                 id: "stalled",
@@ -169,31 +173,29 @@ struct ArrivalChipView: View {
             ))
         }
 
-        if chip.isTrackedOnly {
-            tags.append(MetadataTag(
-                id: "tracked",
-                label: "Tracked",
-                compactLabel: "Track",
-                color: AppTheme.Colors.textSecondary
-            ))
-        }
-
-        if let quality = chip.liveQualityBadge {
-            tags.append(MetadataTag(
-                id: "live-quality",
-                label: quality,
-                compactLabel: compactQualityLabel(quality),
-                color: AppTheme.Colors.textSecondary
-            ))
-        }
-
-        if let proximity = chip.arrivalProximityText, !proximity.isEmpty, !chip.isNow {
-            tags.append(MetadataTag(
-                id: "proximity",
-                label: proximity,
-                compactLabel: compactProximityLabel(proximity),
-                color: chipAccent
-            ))
+        // Hero chip: surface proximity ("approaching", "1 stop away") and
+        // genuine quality issues. Drop "Tracked" (redundant with "Live"
+        // status pill) and "Est" (low-confidence noise that clutters the row).
+        if isFirst {
+            if let quality = chip.liveQualityBadge,
+               quality != "Est" {
+                tags.append(MetadataTag(
+                    id: "live-quality",
+                    label: quality,
+                    compactLabel: compactQualityLabel(quality),
+                    color: AppTheme.Colors.textSecondary
+                ))
+            }
+            if let proximity = chip.arrivalProximityText,
+               !proximity.isEmpty,
+               !chip.isNow {
+                tags.append(MetadataTag(
+                    id: "proximity",
+                    label: proximity,
+                    compactLabel: compactProximityLabel(proximity),
+                    color: chipAccent
+                ))
+            }
         }
 
         return tags
@@ -219,12 +221,10 @@ struct ArrivalChipView: View {
 
     private func metadataVisibleCount(for tags: [MetadataTag]) -> Int {
         guard !tags.isEmpty else { return 0 }
-        if isFirst { return min(tags.count, 3) }
-
-        let hasLongTag = tags.contains { $0.compactLabel.count > 5 }
-        let hasOverflow = tags.count > 2
-        if hasLongTag || hasOverflow { return 1 }
-        return min(tags.count, 2)
+        // Hero chip: at most two badges to keep the row breathable.
+        // Up-next chips: a single badge (only ever delay/stalled now).
+        if isFirst { return min(tags.count, 2) }
+        return min(tags.count, 1)
     }
 
     private func metadataToken(_ tag: MetadataTag) -> some View {

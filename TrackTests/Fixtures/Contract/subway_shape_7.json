@@ -1,0 +1,821 @@
+{
+  "route_id": "7",
+  "polylines": [
+    "gcwwF|ntbM{OkKmAkA]g@Yi@e@{AOcBBkBVsBj@}Bv]}gAJk@Bo@WqCH{Ah@_CnBuGXmAbDiKVkApw@seCv@cEtEka@Bs@Cc@_BwKs@eDoCkJ]u@WWWQYI{@DcGjDs@Ni@GeLiCu@Yg@[mMqKe@q@Mm@AeARoA`E{LvBmEjBgCpVkWj@_A^kAPwAbIkvA\\sG@{AQcBqIwa@YyByA}OIcBIoJuZsfGg@cIWkBwa@usBgK{]UuAcAqK]}BcG}VbG|V\\|BbApKTtAfKz]va@tsBVjBf@bItZrfGHnJHbBxA|OXxBpIva@PbBAzA]rGcIjvAQvA_@jAk@~@qVjWkBfCwBlEaEzLSnA@dALl@d@p@lMpKf@Zt@XdLhCh@Fr@ObGkDz@EXHVPVV\\t@nCjJr@dD~AvKBb@Cr@uEja@w@bEqw@reCWjAcDhKYlAoBtGi@~BIzAVpCCn@Kj@w]|gAk@|BWrBCjBNbBd@zAXh@\\f@lAjAzOjK"
+  ],
+  "stops": [
+    {
+      "id": "726N",
+      "name": "34 St-Hudson Yards",
+      "lat": 40.755882,
+      "lon": -74.00191,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "725N",
+      "name": "Times Sq-42 St",
+      "lat": 40.755477,
+      "lon": -73.987691,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "3",
+        "GS",
+        "N",
+        "Q",
+        "R",
+        "W"
+      ]
+    },
+    {
+      "id": "724N",
+      "name": "5 Av",
+      "lat": 40.753821,
+      "lon": -73.981963,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "723N",
+      "name": "Grand Central-42 St",
+      "lat": 40.751431,
+      "lon": -73.976041,
+      "direction": null,
+      "route_ids": [
+        "4",
+        "5",
+        "6",
+        "6X",
+        "GS"
+      ]
+    },
+    {
+      "id": "721N",
+      "name": "Vernon Blvd-Jackson Av",
+      "lat": 40.742626,
+      "lon": -73.953581,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "720N",
+      "name": "Hunters Point Av",
+      "lat": 40.742216,
+      "lon": -73.948916,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "719N",
+      "name": "Court Sq",
+      "lat": 40.747023,
+      "lon": -73.945264,
+      "direction": null,
+      "route_ids": [
+        "E",
+        "F",
+        "FX",
+        "G"
+      ]
+    },
+    {
+      "id": "718N",
+      "name": "Queensboro Plaza",
+      "lat": 40.750582,
+      "lon": -73.940202,
+      "direction": null,
+      "route_ids": [
+        "N",
+        "W"
+      ]
+    },
+    {
+      "id": "716N",
+      "name": "33 St-Rawson St",
+      "lat": 40.744587,
+      "lon": -73.930997,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "715N",
+      "name": "40 St-Lowery St",
+      "lat": 40.743781,
+      "lon": -73.924016,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "714N",
+      "name": "46 St-Bliss St",
+      "lat": 40.743132,
+      "lon": -73.918435,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "713N",
+      "name": "52 St",
+      "lat": 40.744149,
+      "lon": -73.912549,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "712N",
+      "name": "61 St-Woodside",
+      "lat": 40.74563,
+      "lon": -73.902984,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "711N",
+      "name": "69 St",
+      "lat": 40.746325,
+      "lon": -73.896403,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "710N",
+      "name": "74 St-Broadway",
+      "lat": 40.746848,
+      "lon": -73.891394,
+      "direction": null,
+      "route_ids": [
+        "E",
+        "F",
+        "FX",
+        "M",
+        "R"
+      ]
+    },
+    {
+      "id": "709N",
+      "name": "82 St-Jackson Hts",
+      "lat": 40.747659,
+      "lon": -73.883697,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "708N",
+      "name": "90 St-Elmhurst Av",
+      "lat": 40.748408,
+      "lon": -73.876613,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "707N",
+      "name": "Junction Blvd",
+      "lat": 40.749145,
+      "lon": -73.869527,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "706N",
+      "name": "103 St-Corona Plaza",
+      "lat": 40.749865,
+      "lon": -73.8627,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "705N",
+      "name": "111 St",
+      "lat": 40.75173,
+      "lon": -73.855334,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "702N",
+      "name": "Mets-Willets Point",
+      "lat": 40.754622,
+      "lon": -73.845625,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "701N",
+      "name": "Flushing-Main St",
+      "lat": 40.7596,
+      "lon": -73.83003,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "701S",
+      "name": "Flushing-Main St",
+      "lat": 40.7596,
+      "lon": -73.83003,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "702S",
+      "name": "Mets-Willets Point",
+      "lat": 40.754622,
+      "lon": -73.845625,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "705S",
+      "name": "111 St",
+      "lat": 40.75173,
+      "lon": -73.855334,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "706S",
+      "name": "103 St-Corona Plaza",
+      "lat": 40.749865,
+      "lon": -73.8627,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "707S",
+      "name": "Junction Blvd",
+      "lat": 40.749145,
+      "lon": -73.869527,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "708S",
+      "name": "90 St-Elmhurst Av",
+      "lat": 40.748408,
+      "lon": -73.876613,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "709S",
+      "name": "82 St-Jackson Hts",
+      "lat": 40.747659,
+      "lon": -73.883697,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "710S",
+      "name": "74 St-Broadway",
+      "lat": 40.746848,
+      "lon": -73.891394,
+      "direction": null,
+      "route_ids": [
+        "E",
+        "F",
+        "FX",
+        "M",
+        "R"
+      ]
+    },
+    {
+      "id": "712S",
+      "name": "61 St-Woodside",
+      "lat": 40.74563,
+      "lon": -73.902984,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "714S",
+      "name": "46 St-Bliss St",
+      "lat": 40.743132,
+      "lon": -73.918435,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "715S",
+      "name": "40 St-Lowery St",
+      "lat": 40.743781,
+      "lon": -73.924016,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "716S",
+      "name": "33 St-Rawson St",
+      "lat": 40.744587,
+      "lon": -73.930997,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "718S",
+      "name": "Queensboro Plaza",
+      "lat": 40.750582,
+      "lon": -73.940202,
+      "direction": null,
+      "route_ids": [
+        "N",
+        "W"
+      ]
+    },
+    {
+      "id": "719S",
+      "name": "Court Sq",
+      "lat": 40.747023,
+      "lon": -73.945264,
+      "direction": null,
+      "route_ids": [
+        "E",
+        "F",
+        "FX",
+        "G"
+      ]
+    },
+    {
+      "id": "720S",
+      "name": "Hunters Point Av",
+      "lat": 40.742216,
+      "lon": -73.948916,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "721S",
+      "name": "Vernon Blvd-Jackson Av",
+      "lat": 40.742626,
+      "lon": -73.953581,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "723S",
+      "name": "Grand Central-42 St",
+      "lat": 40.751431,
+      "lon": -73.976041,
+      "direction": null,
+      "route_ids": [
+        "4",
+        "5",
+        "6",
+        "6X",
+        "GS"
+      ]
+    },
+    {
+      "id": "724S",
+      "name": "5 Av",
+      "lat": 40.753821,
+      "lon": -73.981963,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "725S",
+      "name": "Times Sq-42 St",
+      "lat": 40.755477,
+      "lon": -73.987691,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "3",
+        "GS",
+        "N",
+        "Q",
+        "R",
+        "W"
+      ]
+    },
+    {
+      "id": "726S",
+      "name": "34 St-Hudson Yards",
+      "lat": 40.755882,
+      "lon": -74.00191,
+      "direction": null,
+      "route_ids": []
+    }
+  ],
+  "directions": [
+    {
+      "direction_id": 0,
+      "headsign": "Flushing-Main St",
+      "polylines": [
+        "gcwwF|ntbM{OkKmAkA]g@Yi@e@{AOcBBkBVsBj@}Bv]}gAJk@Bo@WqCH{Ah@_CnBuGXmAbDiKVkApw@seCv@cEtEka@Bs@Cc@_BwKs@eDoCkJ]u@WWWQYI{@DcGjDs@Ni@GeLiCu@Yg@[mMqKe@q@Mm@AeARoA`E{LvBmEjBgCpVkWj@_A^kAPwAbIkvA\\sG@{AQcBqIwa@YyByA}OIcBIoJuZsfGg@cIWkBwa@usBgK{]UuAcAqK]}BcG}V"
+      ],
+      "stops": [
+        {
+          "id": "726N",
+          "name": "34 St-Hudson Yards",
+          "lat": 40.755882,
+          "lon": -74.00191,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "725N",
+          "name": "Times Sq-42 St",
+          "lat": 40.755477,
+          "lon": -73.987691,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "GS",
+            "N",
+            "Q",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "id": "724N",
+          "name": "5 Av",
+          "lat": 40.753821,
+          "lon": -73.981963,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "723N",
+          "name": "Grand Central-42 St",
+          "lat": 40.751431,
+          "lon": -73.976041,
+          "direction": null,
+          "route_ids": [
+            "4",
+            "5",
+            "6",
+            "6X",
+            "GS"
+          ]
+        },
+        {
+          "id": "721N",
+          "name": "Vernon Blvd-Jackson Av",
+          "lat": 40.742626,
+          "lon": -73.953581,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "720N",
+          "name": "Hunters Point Av",
+          "lat": 40.742216,
+          "lon": -73.948916,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "719N",
+          "name": "Court Sq",
+          "lat": 40.747023,
+          "lon": -73.945264,
+          "direction": null,
+          "route_ids": [
+            "E",
+            "F",
+            "FX",
+            "G"
+          ]
+        },
+        {
+          "id": "718N",
+          "name": "Queensboro Plaza",
+          "lat": 40.750582,
+          "lon": -73.940202,
+          "direction": null,
+          "route_ids": [
+            "N",
+            "W"
+          ]
+        },
+        {
+          "id": "716N",
+          "name": "33 St-Rawson St",
+          "lat": 40.744587,
+          "lon": -73.930997,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "715N",
+          "name": "40 St-Lowery St",
+          "lat": 40.743781,
+          "lon": -73.924016,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "714N",
+          "name": "46 St-Bliss St",
+          "lat": 40.743132,
+          "lon": -73.918435,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "713N",
+          "name": "52 St",
+          "lat": 40.744149,
+          "lon": -73.912549,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "712N",
+          "name": "61 St-Woodside",
+          "lat": 40.74563,
+          "lon": -73.902984,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "711N",
+          "name": "69 St",
+          "lat": 40.746325,
+          "lon": -73.896403,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "710N",
+          "name": "74 St-Broadway",
+          "lat": 40.746848,
+          "lon": -73.891394,
+          "direction": null,
+          "route_ids": [
+            "E",
+            "F",
+            "FX",
+            "M",
+            "R"
+          ]
+        },
+        {
+          "id": "709N",
+          "name": "82 St-Jackson Hts",
+          "lat": 40.747659,
+          "lon": -73.883697,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "708N",
+          "name": "90 St-Elmhurst Av",
+          "lat": 40.748408,
+          "lon": -73.876613,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "707N",
+          "name": "Junction Blvd",
+          "lat": 40.749145,
+          "lon": -73.869527,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "706N",
+          "name": "103 St-Corona Plaza",
+          "lat": 40.749865,
+          "lon": -73.8627,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "705N",
+          "name": "111 St",
+          "lat": 40.75173,
+          "lon": -73.855334,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "702N",
+          "name": "Mets-Willets Point",
+          "lat": 40.754622,
+          "lon": -73.845625,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "701N",
+          "name": "Flushing-Main St",
+          "lat": 40.7596,
+          "lon": -73.83003,
+          "direction": null,
+          "route_ids": []
+        }
+      ],
+      "service_type": "local",
+      "local_only_stop_ids": []
+    },
+    {
+      "direction_id": 1,
+      "headsign": "34 St-Hudson Yards",
+      "polylines": [
+        "ozwwFt|raMbG|V\\|BbApKTtAfKz]va@tsBVjBf@bItZrfGHnJHbBxA|OXxBpIva@PbBAzA]rGcIjvAQvA_@jAk@~@qVjWkBfCwBlEaEzLSnA@dALl@d@p@lMpKf@Zt@XdLhCh@Fr@ObGkDz@EXHVPVV\\t@nCjJr@dD~AvKBb@Cr@uEja@w@bEqw@reCWjAcDhKYlAoBtGi@~BIzAVpCCn@Kj@w]|gAk@|BWrBCjBNbBd@zAXh@\\f@lAjAzOjK"
+      ],
+      "stops": [
+        {
+          "id": "701S",
+          "name": "Flushing-Main St",
+          "lat": 40.7596,
+          "lon": -73.83003,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "702S",
+          "name": "Mets-Willets Point",
+          "lat": 40.754622,
+          "lon": -73.845625,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "705S",
+          "name": "111 St",
+          "lat": 40.75173,
+          "lon": -73.855334,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "706S",
+          "name": "103 St-Corona Plaza",
+          "lat": 40.749865,
+          "lon": -73.8627,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "707S",
+          "name": "Junction Blvd",
+          "lat": 40.749145,
+          "lon": -73.869527,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "708S",
+          "name": "90 St-Elmhurst Av",
+          "lat": 40.748408,
+          "lon": -73.876613,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "709S",
+          "name": "82 St-Jackson Hts",
+          "lat": 40.747659,
+          "lon": -73.883697,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "710S",
+          "name": "74 St-Broadway",
+          "lat": 40.746848,
+          "lon": -73.891394,
+          "direction": null,
+          "route_ids": [
+            "E",
+            "F",
+            "FX",
+            "M",
+            "R"
+          ]
+        },
+        {
+          "id": "712S",
+          "name": "61 St-Woodside",
+          "lat": 40.74563,
+          "lon": -73.902984,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "714S",
+          "name": "46 St-Bliss St",
+          "lat": 40.743132,
+          "lon": -73.918435,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "715S",
+          "name": "40 St-Lowery St",
+          "lat": 40.743781,
+          "lon": -73.924016,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "716S",
+          "name": "33 St-Rawson St",
+          "lat": 40.744587,
+          "lon": -73.930997,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "718S",
+          "name": "Queensboro Plaza",
+          "lat": 40.750582,
+          "lon": -73.940202,
+          "direction": null,
+          "route_ids": [
+            "N",
+            "W"
+          ]
+        },
+        {
+          "id": "719S",
+          "name": "Court Sq",
+          "lat": 40.747023,
+          "lon": -73.945264,
+          "direction": null,
+          "route_ids": [
+            "E",
+            "F",
+            "FX",
+            "G"
+          ]
+        },
+        {
+          "id": "720S",
+          "name": "Hunters Point Av",
+          "lat": 40.742216,
+          "lon": -73.948916,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "721S",
+          "name": "Vernon Blvd-Jackson Av",
+          "lat": 40.742626,
+          "lon": -73.953581,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "723S",
+          "name": "Grand Central-42 St",
+          "lat": 40.751431,
+          "lon": -73.976041,
+          "direction": null,
+          "route_ids": [
+            "4",
+            "5",
+            "6",
+            "6X",
+            "GS"
+          ]
+        },
+        {
+          "id": "724S",
+          "name": "5 Av",
+          "lat": 40.753821,
+          "lon": -73.981963,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "725S",
+          "name": "Times Sq-42 St",
+          "lat": 40.755477,
+          "lon": -73.987691,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "GS",
+            "N",
+            "Q",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "id": "726S",
+          "name": "34 St-Hudson Yards",
+          "lat": 40.755882,
+          "lon": -74.00191,
+          "direction": null,
+          "route_ids": []
+        }
+      ],
+      "service_type": "local",
+      "local_only_stop_ids": []
+    }
+  ],
+  "service_type": "local"
+}

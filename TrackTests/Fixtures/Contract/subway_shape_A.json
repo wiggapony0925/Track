@@ -1,0 +1,3758 @@
+{
+  "route_id": "A",
+  "polylines": [
+    "iplxFl|ebMjCpGfDfHn@bAj@l@|ZxTpRnMxAr@jVpFf_@~K`@F~@?v@Up@g@|@qAp@q@bAc@v@KvGx@fG`@rIvAlBPfLd@`AEhHk@v@@t@JzHhCjPzD~YvIz@`@hJfGdAh@hu@hXt@`@nH~E~I|I`Av@pDzBn@Pv@BvIQ`ANr@XtsFtqD~pDn`C\\Ln@Jl@An@M`\\gPfAWdABv@XdMfItK|ElPpFhU`HbAPhAB`FMtJKx@DdAXt@^xb@d[b@T`@L^@l@Oh@e@Xc@lKqWd@aAj@y@|@{@b`@{X~A}AxAiBxBuDjBoEzAkF|EiWTgBLoBPsMJmBHq@ZwAh@gAX]ZY`Ai@lAYxAIjPZtDRpLTxAVvBbAf@Ld@@b@G^Oj@k@Xi@|GcVvDiOn@eDNiBB{AEcBk@_K@kAL{A`@mBzPqk@b@kBxQoxAVkEnMohGBuHc@w_@DkBj@{IJgFJsBTgBp@_Cl@cAt@w@`Ag@b@M~ReDf@KfAa@\\Sp@s@d@}@TiAHsAKsCaKwpAwKewAUmAi@oAkKiQc@aAs@_CeAqGeEo`BO{BeBuOEy@DgB`@sAh@q@d@[fIaEtAm@z}Bi|@lEqApCm@bdHkkAxCq@|C{@|yA}e@hCa@l@AxADfCd@xAn@xA|@hB~AbB~BbAxBzCzJzQ`o@|AbHtI~d@nBtIpGh^qGi^oBuIuI_e@w@wDaBeGaTmt@s@gBiAsBuAeBwAmAyA}@yAo@gCe@yAE{AH{AX}yA|e@cG|AweHzkAqCl@mEpA{}Bh|@uAl@gI`Ee@Zi@p@a@rAEfBDx@dBtONzBdEn`BdApGr@~Bb@`AjKhQh@nATlAvKdwA`KvpAJrCIrAUhAe@|@q@r@]RgA`@g@J_SdDc@LaAf@u@v@m@bAq@~BUfBKrBKfFk@zIEjBb@v_@CtHoMnhGWjEyQnxAc@jB{Ppk@a@lBMzAAjAj@~JDbBCzAOhBo@dDwDhO}GbVYh@k@j@_@Nc@Fe@Ag@MwBcAyAWqLUuDSkP[yAHmAXaAh@[XY\\i@fA[vAIp@KlBQrMMnBUfB}EhW{AjFkBnEyBtDyAhB_B|Ac`@zX}@z@k@x@e@`AmKpWg@r@i@\\_@F_@Aa@Mc@Uyb@e[u@_@eAYy@EuJJaFLiACcAQiUaHmPqFuK}EeMgIw@YeACgAVa\\fPo@Lm@@o@K]M_qDo`CisFmqD_Aa@aAOcJPu@Eo@SgDwBaAw@_J}ImIsFav@wXeAi@iJgG{@a@_ZwIkP{DuIqCsAEeJp@mLe@mBQsIwAgGa@wGy@w@JcAb@q@p@}@pAq@f@w@T_A?a@Gg_@_LiTwEuBs@wSiNyYySu@q@i@q@gEuImBsEs@oB_Lcc@mAkGlAjG~Kbc@r@nBlBrEfEtIh@p@t@p@xYxSvShNtBr@hTvEf_@~K`@F~@?v@Up@g@|@qAp@q@bAc@v@KvGx@fG`@rIvAlBPlLd@dJq@rADtIpCjPzD~YvIz@`@hJfGdAh@`v@vXlIrF~I|I`Av@fDvBn@Rt@DbJQ`AN~@`@hsFlqD~pDn`C\\Ln@Jl@An@M`\\gPfAWdABv@XdMfItK|ElPpFhU`HbAPhAB`FMtJKx@DdAXt@^xb@d[b@T`@L^@l@Oh@e@Xc@lKqWd@aAj@y@|@{@b`@{X~A}AxAiBxBuDjBoEzAkF|EiWTgBLoBPsMJmBHq@ZwAh@gAX]ZY`Ai@lAYxAIjPZtDRpLTxAVvBbAf@Ld@@b@G^Oj@k@Xi@|GcVvDiOn@eDNiBB{AEcBk@_K@kAL{A`@mBzPqk@b@kBxQoxAVkEnMohGBuHc@w_@DkBj@{IJgFJsBTgBp@_Cl@cAt@w@`Ag@b@M~ReDf@KfAa@\\Sp@s@d@}@TiAHsAKsCaKwpAwKewAUmAi@oAkKiQc@aAs@_CeAqGeEo`BO{BeBuOEy@DgBV_Ad@u@r@k@fIaEtAm@z}Bi|@tDiAhDu@veH{kAbG}An{Aqf@bCkAnBiB|@uAr@aBh@mBrB{MRuCBiCaEop@e@}DiD_TSwBK}CCuEDuDb@wM@cDGgD{EacASiBYcBa@}Ai@uAu\\mp@o@aAs@y@}EaE{AyAqCmDqAwBmAaC{IaSzI`SlA`CpAvBtAjBxA`BdHfGr@x@l@bA~[bo@bApCn@`DVnCxE|bABhHc@vMEtD@pDHbDVtChD~Sd@|D`Enp@ChCStCsBzMi@lBs@`B}@tAoBhBcCjAo{Apf@cG|AweHzkAiDt@uDhA{}Bh|@uAl@gI`Es@j@e@t@W~@EfBDx@dBtONzBdEn`BdApGr@~Bb@`AjKhQh@nATlAvKdwA`KvpAJrCIrAUhAe@|@q@r@]RgA`@g@J_SdDc@LaAf@u@v@m@bAq@~BUfBKrBKfFk@zIEjBb@v_@CtHoMnhGWjEyQnxAc@jB{Ppk@a@lBMzAAjAj@~JDbBCzAOhBo@dDwDhO}GbVYh@k@j@_@Nc@Fe@Ag@MwBcAyAWqLUuDSkP[yAHmAXaAh@[XY\\i@fA[vAIp@KlBQrMMnBUfB}EhW{AjFkBnEyBtDyAhB_B|Ac`@zX}@z@k@x@e@`AmKpWYb@i@d@m@N_@Aa@Mc@Uyb@e[u@_@eAYy@EuJJaFLiACcAQiUaHmPqFuK}EeMgIw@YeACgAVa\\fPo@Lm@@o@K]M_qDo`CisFmqD_Aa@aAOcJPu@Eo@SgDwBaAw@_J}ImIsFav@wXeAi@iJgG{@a@_ZwIkP{DuIqCsAEeJp@mLe@mBQsIwAgGa@wGy@w@JcAb@q@p@}@pAq@f@w@T_A?a@Gg_@_LiTwEuBs@wSiNyYySu@q@i@q@gEuImBsEs@oB_Lcc@mAkGlAjG~Kbc@r@nBlBrEfEtIh@p@t@p@xYxSvShNtBr@hTvEf_@~K`@F~@?v@Up@g@|@qAp@q@bAc@v@KvGx@fG`@rIvAlBPlLd@dJq@rADtIpCjPzD~YvIz@`@hJfGdAh@`v@vXlIrF~I|I`Av@fDvBn@Rt@DbJQ`AN~@`@hsFlqD~pDn`C\\Ln@Jl@An@M`\\gPfAWdABv@XdMfItK|ElPpFhU`HbAPhAB`FMtJKx@DdAXt@^xb@d[b@T`@L^@l@Oh@e@Xc@lKqWd@aAj@y@|@{@b`@{X~A}AxAiBxBuDjBoEzAkF|EiWTgBLoBPsMJmBHq@ZwAh@gAX]ZY`Ai@lAYxAIjPZtDRpLTxAVbBx@f@Px@Fr@Ml@e@f@y@lGwT`EePx@kENaCCwBm@yK@kAL{A`@mBzPqk@b@kBlQmvAZkDxMklG@{Gc@w_@DkBj@{IJgFJsBTgBp@_Cl@cAt@w@`Ag@b@M~ReDlA[~@e@p@s@d@}@TiAFg@@yAKeBaKwpAwKewAUmAi@oAkKiQc@aAs@_CcA_GiEoaBSiCqE{`@i@eD}@iD{@}ByFgMk@_BeJi[a@wCy@oOx@nO`@vCdJh[j@~AxFfMz@|B|@hDh@dDpEz`@RhChEnaBbA~Fr@~Bb@`AjKhQh@nATlAvKdwA`KvpAJdBAxAGf@UhAe@|@q@r@_Ad@mAZ_SdDc@LaAf@u@v@m@bAq@~BUfBKrBKfFk@zIEjBb@v_@AzGyMjlG[jDmQlvAc@jB{Ppk@a@lBMzAAjAl@xKBvBO`Cy@jEaEdPmGvTg@x@m@d@s@Ly@Gg@QcBy@yAWqLUuDSkP[yAHmAXaAh@[XY\\i@fA[vAIp@KlBQrMMnBUfB}EhW{AjFkBnEyBtDyAhB_B|Ac`@zX}@z@k@x@e@`AmKpWYb@i@d@m@N_@Aa@Mc@Uyb@e[u@_@eAYy@EuJJaFLiACcAQiUaHmPqFuK}EeMgIw@YeACgAVa\\fPo@Lm@@o@K]M_qDo`CisFmqD_Aa@aAOcJPu@Eo@SgDwBaAw@_J}ImIsFav@wXeAi@iJgG{@a@_ZwIkP{DuIqCsAEeJp@mLe@mBQsIwAgGa@wGy@w@JcAb@q@p@}@pAq@f@w@T_A?a@Gg_@_LiTwEuBs@wSiNyYySu@q@i@q@gEuImBsEs@oB_Lcc@mAkG"
+  ],
+  "stops": [
+    {
+      "id": "H11N",
+      "name": "Far Rockaway-Mott Av",
+      "lat": 40.603995,
+      "lon": -73.755405,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H10N",
+      "name": "Beach 25 St",
+      "lat": 40.600066,
+      "lon": -73.761353,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H09N",
+      "name": "Beach 36 St",
+      "lat": 40.595398,
+      "lon": -73.768175,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H08N",
+      "name": "Beach 44 St",
+      "lat": 40.592943,
+      "lon": -73.776013,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H07N",
+      "name": "Beach 60 St",
+      "lat": 40.592374,
+      "lon": -73.788522,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H06N",
+      "name": "Beach 67 St",
+      "lat": 40.590927,
+      "lon": -73.796924,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H04N",
+      "name": "Broad Channel",
+      "lat": 40.608382,
+      "lon": -73.815925,
+      "direction": null,
+      "route_ids": [
+        "H"
+      ]
+    },
+    {
+      "id": "H03N",
+      "name": "Howard Beach-JFK Airport",
+      "lat": 40.660476,
+      "lon": -73.830301,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H02N",
+      "name": "Aqueduct-N Conduit Av",
+      "lat": 40.668234,
+      "lon": -73.834058,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H01N",
+      "name": "Aqueduct Racetrack",
+      "lat": 40.672097,
+      "lon": -73.835919,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A61N",
+      "name": "Rockaway Blvd",
+      "lat": 40.680429,
+      "lon": -73.843853,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A60N",
+      "name": "88 St",
+      "lat": 40.679843,
+      "lon": -73.85147,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A59N",
+      "name": "80 St",
+      "lat": 40.679371,
+      "lon": -73.858992,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A57N",
+      "name": "Grant Av",
+      "lat": 40.677044,
+      "lon": -73.86505,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A55N",
+      "name": "Euclid Av",
+      "lat": 40.675377,
+      "lon": -73.872106,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A54N",
+      "name": "Shepherd Av",
+      "lat": 40.67413,
+      "lon": -73.88075,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A53N",
+      "name": "Van Siclen Av",
+      "lat": 40.67271,
+      "lon": -73.890358,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A52N",
+      "name": "Liberty Av",
+      "lat": 40.674542,
+      "lon": -73.896548,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A51N",
+      "name": "Broadway Junction",
+      "lat": 40.678334,
+      "lon": -73.905316,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "J",
+        "L",
+        "Z"
+      ]
+    },
+    {
+      "id": "A50N",
+      "name": "Rockaway Av",
+      "lat": 40.67834,
+      "lon": -73.911946,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A49N",
+      "name": "Ralph Av",
+      "lat": 40.678822,
+      "lon": -73.920786,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A48N",
+      "name": "Utica Av",
+      "lat": 40.679364,
+      "lon": -73.930729,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A47N",
+      "name": "Kingston-Throop Avs",
+      "lat": 40.679921,
+      "lon": -73.940858,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A46N",
+      "name": "Nostrand Av",
+      "lat": 40.680438,
+      "lon": -73.950426,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A45N",
+      "name": "Franklin Av",
+      "lat": 40.68138,
+      "lon": -73.956848,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "FS"
+      ]
+    },
+    {
+      "id": "A44N",
+      "name": "Clinton-Washington Avs",
+      "lat": 40.683263,
+      "lon": -73.965838,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A43N",
+      "name": "Lafayette Av",
+      "lat": 40.686113,
+      "lon": -73.973946,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "G"
+      ]
+    },
+    {
+      "id": "A42N",
+      "name": "Hoyt-Schermerhorn Sts",
+      "lat": 40.688484,
+      "lon": -73.985001,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "G"
+      ]
+    },
+    {
+      "id": "A41N",
+      "name": "Jay St-MetroTech",
+      "lat": 40.692338,
+      "lon": -73.987342,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "F",
+        "FX",
+        "N",
+        "R",
+        "W"
+      ]
+    },
+    {
+      "id": "A40N",
+      "name": "High St",
+      "lat": 40.699337,
+      "lon": -73.990531,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A38N",
+      "name": "Fulton St",
+      "lat": 40.710197,
+      "lon": -74.007691,
+      "direction": null,
+      "route_ids": [
+        "2",
+        "3",
+        "4",
+        "5",
+        "C",
+        "J",
+        "Z"
+      ]
+    },
+    {
+      "id": "A36N",
+      "name": "Chambers St",
+      "lat": 40.714111,
+      "lon": -74.008585,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "3",
+        "C",
+        "E",
+        "J",
+        "N",
+        "R",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "id": "A34N",
+      "name": "Canal St",
+      "lat": 40.720824,
+      "lon": -74.005229,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "4",
+        "6",
+        "6X",
+        "C",
+        "E",
+        "N",
+        "Q",
+        "R",
+        "W"
+      ]
+    },
+    {
+      "id": "A33N",
+      "name": "Spring St",
+      "lat": 40.726227,
+      "lon": -74.003739,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "E"
+      ]
+    },
+    {
+      "id": "A32N",
+      "name": "W 4 St-Wash Sq",
+      "lat": 40.732338,
+      "lon": -74.000495,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "FX",
+        "M"
+      ]
+    },
+    {
+      "id": "A31N",
+      "name": "14 St",
+      "lat": 40.740893,
+      "lon": -74.00169,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "3",
+        "C",
+        "E",
+        "L"
+      ]
+    },
+    {
+      "id": "A30N",
+      "name": "23 St",
+      "lat": 40.745906,
+      "lon": -73.998041,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "C",
+        "E"
+      ]
+    },
+    {
+      "id": "A28N",
+      "name": "34 St-Penn Station",
+      "lat": 40.752287,
+      "lon": -73.993391,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "3",
+        "C",
+        "E"
+      ]
+    },
+    {
+      "id": "A27N",
+      "name": "42 St-Port Authority Bus Terminal",
+      "lat": 40.757308,
+      "lon": -73.989735,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "E"
+      ]
+    },
+    {
+      "id": "A25N",
+      "name": "50 St",
+      "lat": 40.762456,
+      "lon": -73.985984,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "C",
+        "E"
+      ]
+    },
+    {
+      "id": "A24N",
+      "name": "59 St-Columbus Circle",
+      "lat": 40.768296,
+      "lon": -73.981736,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    {
+      "id": "A22N",
+      "name": "72 St",
+      "lat": 40.775594,
+      "lon": -73.97641,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A21N",
+      "name": "81 St-Museum of Natural History",
+      "lat": 40.781433,
+      "lon": -73.972143,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A20N",
+      "name": "86 St",
+      "lat": 40.785868,
+      "lon": -73.968916,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A19N",
+      "name": "96 St",
+      "lat": 40.791642,
+      "lon": -73.964696,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A18N",
+      "name": "103 St",
+      "lat": 40.796092,
+      "lon": -73.961454,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A17N",
+      "name": "Cathedral Pkwy (110 St)",
+      "lat": 40.800603,
+      "lon": -73.958161,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A16N",
+      "name": "116 St",
+      "lat": 40.805085,
+      "lon": -73.954882,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A15N",
+      "name": "125 St",
+      "lat": 40.811109,
+      "lon": -73.952343,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    {
+      "id": "A14N",
+      "name": "135 St",
+      "lat": 40.817894,
+      "lon": -73.947649,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A12N",
+      "name": "145 St",
+      "lat": 40.824783,
+      "lon": -73.944216,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    {
+      "id": "A11N",
+      "name": "155 St",
+      "lat": 40.830518,
+      "lon": -73.941514,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    {
+      "id": "A10N",
+      "name": "163 St-Amsterdam Av",
+      "lat": 40.836013,
+      "lon": -73.939892,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A09N",
+      "name": "168 St",
+      "lat": 40.840719,
+      "lon": -73.939561,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "C"
+      ]
+    },
+    {
+      "id": "A07N",
+      "name": "175 St",
+      "lat": 40.847391,
+      "lon": -73.939704,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A06N",
+      "name": "181 St",
+      "lat": 40.851695,
+      "lon": -73.937969,
+      "direction": null,
+      "route_ids": [
+        "1"
+      ]
+    },
+    {
+      "id": "A05N",
+      "name": "190 St",
+      "lat": 40.859022,
+      "lon": -73.93418,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A03N",
+      "name": "Dyckman St",
+      "lat": 40.865491,
+      "lon": -73.927271,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A02N",
+      "name": "Inwood-207 St",
+      "lat": 40.868072,
+      "lon": -73.919899,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A65N",
+      "name": "Ozone Park-Lefferts Blvd",
+      "lat": 40.685951,
+      "lon": -73.825798,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A64N",
+      "name": "111 St",
+      "lat": 40.684331,
+      "lon": -73.832163,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A63N",
+      "name": "104 St",
+      "lat": 40.681711,
+      "lon": -73.837683,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H15N",
+      "name": "Rockaway Park-Beach 116 St",
+      "lat": 40.580903,
+      "lon": -73.835592,
+      "direction": null,
+      "route_ids": [
+        "H"
+      ]
+    },
+    {
+      "id": "H14N",
+      "name": "Beach 105 St",
+      "lat": 40.583209,
+      "lon": -73.827559,
+      "direction": null,
+      "route_ids": [
+        "H"
+      ]
+    },
+    {
+      "id": "H13N",
+      "name": "Beach 98 St",
+      "lat": 40.585307,
+      "lon": -73.820558,
+      "direction": null,
+      "route_ids": [
+        "H"
+      ]
+    },
+    {
+      "id": "H12N",
+      "name": "Beach 90 St",
+      "lat": 40.588034,
+      "lon": -73.813641,
+      "direction": null,
+      "route_ids": [
+        "H"
+      ]
+    },
+    {
+      "id": "A02S",
+      "name": "Inwood-207 St",
+      "lat": 40.868072,
+      "lon": -73.919899,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A03S",
+      "name": "Dyckman St",
+      "lat": 40.865491,
+      "lon": -73.927271,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A05S",
+      "name": "190 St",
+      "lat": 40.859022,
+      "lon": -73.93418,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A06S",
+      "name": "181 St",
+      "lat": 40.851695,
+      "lon": -73.937969,
+      "direction": null,
+      "route_ids": [
+        "1"
+      ]
+    },
+    {
+      "id": "A07S",
+      "name": "175 St",
+      "lat": 40.847391,
+      "lon": -73.939704,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A09S",
+      "name": "168 St",
+      "lat": 40.840719,
+      "lon": -73.939561,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "C"
+      ]
+    },
+    {
+      "id": "A10S",
+      "name": "163 St-Amsterdam Av",
+      "lat": 40.836013,
+      "lon": -73.939892,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A11S",
+      "name": "155 St",
+      "lat": 40.830518,
+      "lon": -73.941514,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    {
+      "id": "A12S",
+      "name": "145 St",
+      "lat": 40.824783,
+      "lon": -73.944216,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    {
+      "id": "A14S",
+      "name": "135 St",
+      "lat": 40.817894,
+      "lon": -73.947649,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A15S",
+      "name": "125 St",
+      "lat": 40.811109,
+      "lon": -73.952343,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    {
+      "id": "A16S",
+      "name": "116 St",
+      "lat": 40.805085,
+      "lon": -73.954882,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A17S",
+      "name": "Cathedral Pkwy (110 St)",
+      "lat": 40.800603,
+      "lon": -73.958161,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A18S",
+      "name": "103 St",
+      "lat": 40.796092,
+      "lon": -73.961454,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A19S",
+      "name": "96 St",
+      "lat": 40.791642,
+      "lon": -73.964696,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A20S",
+      "name": "86 St",
+      "lat": 40.785868,
+      "lon": -73.968916,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A21S",
+      "name": "81 St-Museum of Natural History",
+      "lat": 40.781433,
+      "lon": -73.972143,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A22S",
+      "name": "72 St",
+      "lat": 40.775594,
+      "lon": -73.97641,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C"
+      ]
+    },
+    {
+      "id": "A24S",
+      "name": "59 St-Columbus Circle",
+      "lat": 40.768296,
+      "lon": -73.981736,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "B",
+        "C",
+        "D"
+      ]
+    },
+    {
+      "id": "A25S",
+      "name": "50 St",
+      "lat": 40.762456,
+      "lon": -73.985984,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "C",
+        "E"
+      ]
+    },
+    {
+      "id": "A27S",
+      "name": "42 St-Port Authority Bus Terminal",
+      "lat": 40.757308,
+      "lon": -73.989735,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "E"
+      ]
+    },
+    {
+      "id": "A28S",
+      "name": "34 St-Penn Station",
+      "lat": 40.752287,
+      "lon": -73.993391,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "3",
+        "C",
+        "E"
+      ]
+    },
+    {
+      "id": "A30S",
+      "name": "23 St",
+      "lat": 40.745906,
+      "lon": -73.998041,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "C",
+        "E"
+      ]
+    },
+    {
+      "id": "A31S",
+      "name": "14 St",
+      "lat": 40.740893,
+      "lon": -74.00169,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "3",
+        "C",
+        "E",
+        "L"
+      ]
+    },
+    {
+      "id": "A32S",
+      "name": "W 4 St-Wash Sq",
+      "lat": 40.732338,
+      "lon": -74.000495,
+      "direction": null,
+      "route_ids": [
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "FX",
+        "M"
+      ]
+    },
+    {
+      "id": "A33S",
+      "name": "Spring St",
+      "lat": 40.726227,
+      "lon": -74.003739,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "E"
+      ]
+    },
+    {
+      "id": "A34S",
+      "name": "Canal St",
+      "lat": 40.720824,
+      "lon": -74.005229,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "4",
+        "6",
+        "6X",
+        "C",
+        "E",
+        "N",
+        "Q",
+        "R",
+        "W"
+      ]
+    },
+    {
+      "id": "A36S",
+      "name": "Chambers St",
+      "lat": 40.714111,
+      "lon": -74.008585,
+      "direction": null,
+      "route_ids": [
+        "1",
+        "2",
+        "3",
+        "C",
+        "E",
+        "J",
+        "N",
+        "R",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "id": "A38S",
+      "name": "Fulton St",
+      "lat": 40.710197,
+      "lon": -74.007691,
+      "direction": null,
+      "route_ids": [
+        "2",
+        "3",
+        "4",
+        "5",
+        "C",
+        "J",
+        "Z"
+      ]
+    },
+    {
+      "id": "A40S",
+      "name": "High St",
+      "lat": 40.699337,
+      "lon": -73.990531,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A41S",
+      "name": "Jay St-MetroTech",
+      "lat": 40.692338,
+      "lon": -73.987342,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "F",
+        "FX",
+        "N",
+        "R",
+        "W"
+      ]
+    },
+    {
+      "id": "A42S",
+      "name": "Hoyt-Schermerhorn Sts",
+      "lat": 40.688484,
+      "lon": -73.985001,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "G"
+      ]
+    },
+    {
+      "id": "A43S",
+      "name": "Lafayette Av",
+      "lat": 40.686113,
+      "lon": -73.973946,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "G"
+      ]
+    },
+    {
+      "id": "A44S",
+      "name": "Clinton-Washington Avs",
+      "lat": 40.683263,
+      "lon": -73.965838,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A45S",
+      "name": "Franklin Av",
+      "lat": 40.68138,
+      "lon": -73.956848,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "FS"
+      ]
+    },
+    {
+      "id": "A46S",
+      "name": "Nostrand Av",
+      "lat": 40.680438,
+      "lon": -73.950426,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A47S",
+      "name": "Kingston-Throop Avs",
+      "lat": 40.679921,
+      "lon": -73.940858,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A48S",
+      "name": "Utica Av",
+      "lat": 40.679364,
+      "lon": -73.930729,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A49S",
+      "name": "Ralph Av",
+      "lat": 40.678822,
+      "lon": -73.920786,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A50S",
+      "name": "Rockaway Av",
+      "lat": 40.67834,
+      "lon": -73.911946,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A51S",
+      "name": "Broadway Junction",
+      "lat": 40.678334,
+      "lon": -73.905316,
+      "direction": null,
+      "route_ids": [
+        "C",
+        "J",
+        "L",
+        "Z"
+      ]
+    },
+    {
+      "id": "A52S",
+      "name": "Liberty Av",
+      "lat": 40.674542,
+      "lon": -73.896548,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A53S",
+      "name": "Van Siclen Av",
+      "lat": 40.67271,
+      "lon": -73.890358,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A54S",
+      "name": "Shepherd Av",
+      "lat": 40.67413,
+      "lon": -73.88075,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A55S",
+      "name": "Euclid Av",
+      "lat": 40.675377,
+      "lon": -73.872106,
+      "direction": null,
+      "route_ids": [
+        "C"
+      ]
+    },
+    {
+      "id": "A57S",
+      "name": "Grant Av",
+      "lat": 40.677044,
+      "lon": -73.86505,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A59S",
+      "name": "80 St",
+      "lat": 40.679371,
+      "lon": -73.858992,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A60S",
+      "name": "88 St",
+      "lat": 40.679843,
+      "lon": -73.85147,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A61S",
+      "name": "Rockaway Blvd",
+      "lat": 40.680429,
+      "lon": -73.843853,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H02S",
+      "name": "Aqueduct-N Conduit Av",
+      "lat": 40.668234,
+      "lon": -73.834058,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H03S",
+      "name": "Howard Beach-JFK Airport",
+      "lat": 40.660476,
+      "lon": -73.830301,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H04S",
+      "name": "Broad Channel",
+      "lat": 40.608382,
+      "lon": -73.815925,
+      "direction": null,
+      "route_ids": [
+        "H"
+      ]
+    },
+    {
+      "id": "H06S",
+      "name": "Beach 67 St",
+      "lat": 40.590927,
+      "lon": -73.796924,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H07S",
+      "name": "Beach 60 St",
+      "lat": 40.592374,
+      "lon": -73.788522,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H08S",
+      "name": "Beach 44 St",
+      "lat": 40.592943,
+      "lon": -73.776013,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H09S",
+      "name": "Beach 36 St",
+      "lat": 40.595398,
+      "lon": -73.768175,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H10S",
+      "name": "Beach 25 St",
+      "lat": 40.600066,
+      "lon": -73.761353,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H11S",
+      "name": "Far Rockaway-Mott Av",
+      "lat": 40.603995,
+      "lon": -73.755405,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A63S",
+      "name": "104 St",
+      "lat": 40.681711,
+      "lon": -73.837683,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A64S",
+      "name": "111 St",
+      "lat": 40.684331,
+      "lon": -73.832163,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "A65S",
+      "name": "Ozone Park-Lefferts Blvd",
+      "lat": 40.685951,
+      "lon": -73.825798,
+      "direction": null,
+      "route_ids": []
+    },
+    {
+      "id": "H12S",
+      "name": "Beach 90 St",
+      "lat": 40.588034,
+      "lon": -73.813641,
+      "direction": null,
+      "route_ids": [
+        "H"
+      ]
+    },
+    {
+      "id": "H13S",
+      "name": "Beach 98 St",
+      "lat": 40.585307,
+      "lon": -73.820558,
+      "direction": null,
+      "route_ids": [
+        "H"
+      ]
+    },
+    {
+      "id": "H14S",
+      "name": "Beach 105 St",
+      "lat": 40.583209,
+      "lon": -73.827559,
+      "direction": null,
+      "route_ids": [
+        "H"
+      ]
+    },
+    {
+      "id": "H15S",
+      "name": "Rockaway Park-Beach 116 St",
+      "lat": 40.580903,
+      "lon": -73.835592,
+      "direction": null,
+      "route_ids": [
+        "H"
+      ]
+    }
+  ],
+  "directions": [
+    {
+      "direction_id": 0,
+      "headsign": "Inwood-207 St",
+      "polylines": [
+        "}myvFfjdaMzI`SlA`CpAvBtAjBxA`BdHfGr@x@l@bA~[bo@bApCn@`DVnCxE|bABhHc@vMEtD@pDHbDVtChD~Sd@|D`Enp@AlBQrCeB~Le@rBm@fByAbCoBhBcCjAo{Apf@_FpA{fHflAiDt@uDhA{}Bh|@uAl@gI`EaAz@a@x@S|A@pAhBrPRfD`Eb_BdApGr@~Bb@`AjKhQh@nATlAvKdwA`KvpAJrCIrAUhAe@|@q@r@]RgA`@g@J_SdDc@LaAf@u@v@m@bAq@~BUfBKrBKfFk@zIEjBb@v_@CtHoMnhGWjEyQnxAc@jB{Ppk@a@lBMzAAjAj@~JDbBCzAOhBo@dDwDhO}GbVYh@k@j@_@Nc@Fe@Ag@MwBcAyAWqLUuDSkP[yAHmAXaAh@[XY\\i@fA[vAIp@KlBQrMMnBUfB}EhW{AjFkBnEyBtDyAhB_B|Ac`@zX}@z@k@x@e@`AmKpWYb@i@d@m@N_@Aa@Mc@Uyb@e[u@_@eAYy@EuJJaFLiACcAQiUaHmPqFuK}EeMgIw@YeACgAVa\\fPo@Lm@@o@K]M_qDo`CctF}qDs@Us@KwIPw@Co@QqD{BaAw@_J}IoH_Fu@a@iu@iXeAi@iJgG{@a@_ZwIkP{D{HiCu@Kw@AiHj@aADgLe@mBQsIwAgGa@wGy@w@JcAb@q@p@}@pAq@f@w@T_A?a@Gg_@_LwUgFmB}@qRoMyYySeAcAy@mAgDgHmBsE}@kCuKgb@mAkGlAjG~Kbc@r@nBlBrEfEtIh@p@t@p@xYxSvShNtBr@hTvEf_@~K`@F~@?v@Up@g@|@qAp@q@bAc@v@KvGx@fG`@rIvAlBPlLd@dJq@rADtIpCjPzD~YvIz@`@hJfGdAh@`v@vXlIrF~I|I`Av@fDvBn@Rt@DbJQ`AN~@`@hsFlqD~pDn`C\\Ln@Jl@An@M`\\gPfAWdABv@XdMfItK|ElPpFhU`HbAPhAB`FMtJKx@DdAXt@^xb@d[b@T`@L^@l@Oh@e@Xc@lKqWd@aAj@y@|@{@b`@{X~A}AxAiBxBuDjBoEzAkF|EiWTgBLoBPsMJmBHq@ZwAh@gAX]ZY`Ai@lAYxAIjPZtDRpLTxAVbBx@f@Px@Fr@Ml@e@f@y@lGwT`EePx@kENaCCwBm@yK@kAL{A`@mBzPqk@b@kBlQmvAZkDxMklG@{Gc@w_@DkBj@{IJgFJsBTgBp@_Cl@cAt@w@`Ag@b@M~ReDlA[~@e@p@s@d@}@TiAFg@@yAKeBaKwpAwKewAUmAi@oAkKiQc@aAs@_CcA_GiEoaBSiCqE{`@i@eD}@iD{@}ByFgMk@_BeJi[a@wCy@oO",
+        "s}tvFl_taMqGi^oBuIuI_e@w@wDaBeGaTmt@s@gBiAsBuAeBwAmAyA}@yAo@gCe@yAE{AH{AX}yA|e@cG|AweHzkAqCl@mEpAg}B~{@iBv@gI`EaAz@Wd@W~@EfBDx@dBtONzBdEn`BdApGr@~Bb@`AjKhQh@nATlAvKdwA`KvpAJrCIrAUhAe@|@q@r@]RgA`@g@J_SdDc@LaAf@u@v@m@bAq@~BUfBKrBKfFk@zIEjBb@v_@CtHoMnhGWjEyQnxAc@jB{Ppk@a@lBMzAAjAj@~JDbBCzAOhBo@dDwDhO}GbVYh@k@j@_@Nc@Fe@Ag@MwBcAyAWqLUuDSkP[yAHmAXaAh@[XY\\i@fA[vAIp@KlBQrMMnBUfB}EhW{AjFkBnEyBtDyAhB_B|Ac`@zX}@z@k@x@e@`AmKpWu@~@k@To@@a@Mc@Uyb@e[u@_@eAYy@EuJJaFLiACcAQiUaHmPqFuK}EeMgIw@YeACgAVa\\fPo@Lm@@o@K]M_qDo`CisFmqD_Aa@aAOcJPu@Eo@SgDwBaAw@_J}ImIsFav@wXeAi@iJgG{@a@_ZwIkP{DuIqCsAEeJp@mLe@mBQsIwAgGa@wGy@w@JcAb@q@p@}@pAq@f@w@T_A?a@Gg_@_LiTwEuBs@wSiNyYySu@q@i@q@gEuImBsEs@oB_Lcc@mAkG"
+      ],
+      "stops": [
+        {
+          "id": "H11N",
+          "name": "Far Rockaway-Mott Av",
+          "lat": 40.603995,
+          "lon": -73.755405,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H10N",
+          "name": "Beach 25 St",
+          "lat": 40.600066,
+          "lon": -73.761353,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H09N",
+          "name": "Beach 36 St",
+          "lat": 40.595398,
+          "lon": -73.768175,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H08N",
+          "name": "Beach 44 St",
+          "lat": 40.592943,
+          "lon": -73.776013,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H07N",
+          "name": "Beach 60 St",
+          "lat": 40.592374,
+          "lon": -73.788522,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H06N",
+          "name": "Beach 67 St",
+          "lat": 40.590927,
+          "lon": -73.796924,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H04N",
+          "name": "Broad Channel",
+          "lat": 40.608382,
+          "lon": -73.815925,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        },
+        {
+          "id": "H03N",
+          "name": "Howard Beach-JFK Airport",
+          "lat": 40.660476,
+          "lon": -73.830301,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H02N",
+          "name": "Aqueduct-N Conduit Av",
+          "lat": 40.668234,
+          "lon": -73.834058,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H01N",
+          "name": "Aqueduct Racetrack",
+          "lat": 40.672097,
+          "lon": -73.835919,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A61N",
+          "name": "Rockaway Blvd",
+          "lat": 40.680429,
+          "lon": -73.843853,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A60N",
+          "name": "88 St",
+          "lat": 40.679843,
+          "lon": -73.85147,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A59N",
+          "name": "80 St",
+          "lat": 40.679371,
+          "lon": -73.858992,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A57N",
+          "name": "Grant Av",
+          "lat": 40.677044,
+          "lon": -73.86505,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A55N",
+          "name": "Euclid Av",
+          "lat": 40.675377,
+          "lon": -73.872106,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A54N",
+          "name": "Shepherd Av",
+          "lat": 40.67413,
+          "lon": -73.88075,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A53N",
+          "name": "Van Siclen Av",
+          "lat": 40.67271,
+          "lon": -73.890358,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A52N",
+          "name": "Liberty Av",
+          "lat": 40.674542,
+          "lon": -73.896548,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A51N",
+          "name": "Broadway Junction",
+          "lat": 40.678334,
+          "lon": -73.905316,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "J",
+            "L",
+            "Z"
+          ]
+        },
+        {
+          "id": "A50N",
+          "name": "Rockaway Av",
+          "lat": 40.67834,
+          "lon": -73.911946,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A49N",
+          "name": "Ralph Av",
+          "lat": 40.678822,
+          "lon": -73.920786,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A48N",
+          "name": "Utica Av",
+          "lat": 40.679364,
+          "lon": -73.930729,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A47N",
+          "name": "Kingston-Throop Avs",
+          "lat": 40.679921,
+          "lon": -73.940858,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A46N",
+          "name": "Nostrand Av",
+          "lat": 40.680438,
+          "lon": -73.950426,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A45N",
+          "name": "Franklin Av",
+          "lat": 40.68138,
+          "lon": -73.956848,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "FS"
+          ]
+        },
+        {
+          "id": "A44N",
+          "name": "Clinton-Washington Avs",
+          "lat": 40.683263,
+          "lon": -73.965838,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A43N",
+          "name": "Lafayette Av",
+          "lat": 40.686113,
+          "lon": -73.973946,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "G"
+          ]
+        },
+        {
+          "id": "A42N",
+          "name": "Hoyt-Schermerhorn Sts",
+          "lat": 40.688484,
+          "lon": -73.985001,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "G"
+          ]
+        },
+        {
+          "id": "A41N",
+          "name": "Jay St-MetroTech",
+          "lat": 40.692338,
+          "lon": -73.987342,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "F",
+            "FX",
+            "N",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "id": "A40N",
+          "name": "High St",
+          "lat": 40.699337,
+          "lon": -73.990531,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A38N",
+          "name": "Fulton St",
+          "lat": 40.710197,
+          "lon": -74.007691,
+          "direction": null,
+          "route_ids": [
+            "2",
+            "3",
+            "4",
+            "5",
+            "C",
+            "J",
+            "Z"
+          ]
+        },
+        {
+          "id": "A36N",
+          "name": "Chambers St",
+          "lat": 40.714111,
+          "lon": -74.008585,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E",
+            "J",
+            "N",
+            "R",
+            "W",
+            "Z"
+          ]
+        },
+        {
+          "id": "A34N",
+          "name": "Canal St",
+          "lat": 40.720824,
+          "lon": -74.005229,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "4",
+            "6",
+            "6X",
+            "C",
+            "E",
+            "N",
+            "Q",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "id": "A33N",
+          "name": "Spring St",
+          "lat": 40.726227,
+          "lon": -74.003739,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A32N",
+          "name": "W 4 St-Wash Sq",
+          "lat": 40.732338,
+          "lon": -74.000495,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "FX",
+            "M"
+          ]
+        },
+        {
+          "id": "A31N",
+          "name": "14 St",
+          "lat": 40.740893,
+          "lon": -74.00169,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E",
+            "L"
+          ]
+        },
+        {
+          "id": "A30N",
+          "name": "23 St",
+          "lat": 40.745906,
+          "lon": -73.998041,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A28N",
+          "name": "34 St-Penn Station",
+          "lat": 40.752287,
+          "lon": -73.993391,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A27N",
+          "name": "42 St-Port Authority Bus Terminal",
+          "lat": 40.757308,
+          "lon": -73.989735,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A25N",
+          "name": "50 St",
+          "lat": 40.762456,
+          "lon": -73.985984,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A24N",
+          "name": "59 St-Columbus Circle",
+          "lat": 40.768296,
+          "lon": -73.981736,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A22N",
+          "name": "72 St",
+          "lat": 40.775594,
+          "lon": -73.97641,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A21N",
+          "name": "81 St-Museum of Natural History",
+          "lat": 40.781433,
+          "lon": -73.972143,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A20N",
+          "name": "86 St",
+          "lat": 40.785868,
+          "lon": -73.968916,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A19N",
+          "name": "96 St",
+          "lat": 40.791642,
+          "lon": -73.964696,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A18N",
+          "name": "103 St",
+          "lat": 40.796092,
+          "lon": -73.961454,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A17N",
+          "name": "Cathedral Pkwy (110 St)",
+          "lat": 40.800603,
+          "lon": -73.958161,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A16N",
+          "name": "116 St",
+          "lat": 40.805085,
+          "lon": -73.954882,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A15N",
+          "name": "125 St",
+          "lat": 40.811109,
+          "lon": -73.952343,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A14N",
+          "name": "135 St",
+          "lat": 40.817894,
+          "lon": -73.947649,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A12N",
+          "name": "145 St",
+          "lat": 40.824783,
+          "lon": -73.944216,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A11N",
+          "name": "155 St",
+          "lat": 40.830518,
+          "lon": -73.941514,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A10N",
+          "name": "163 St-Amsterdam Av",
+          "lat": 40.836013,
+          "lon": -73.939892,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A09N",
+          "name": "168 St",
+          "lat": 40.840719,
+          "lon": -73.939561,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "C"
+          ]
+        },
+        {
+          "id": "A07N",
+          "name": "175 St",
+          "lat": 40.847391,
+          "lon": -73.939704,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A06N",
+          "name": "181 St",
+          "lat": 40.851695,
+          "lon": -73.937969,
+          "direction": null,
+          "route_ids": [
+            "1"
+          ]
+        },
+        {
+          "id": "A05N",
+          "name": "190 St",
+          "lat": 40.859022,
+          "lon": -73.93418,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A03N",
+          "name": "Dyckman St",
+          "lat": 40.865491,
+          "lon": -73.927271,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A02N",
+          "name": "Inwood-207 St",
+          "lat": 40.868072,
+          "lon": -73.919899,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A65N",
+          "name": "Ozone Park-Lefferts Blvd",
+          "lat": 40.685951,
+          "lon": -73.825798,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A64N",
+          "name": "111 St",
+          "lat": 40.684331,
+          "lon": -73.832163,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A63N",
+          "name": "104 St",
+          "lat": 40.681711,
+          "lon": -73.837683,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H15N",
+          "name": "Rockaway Park-Beach 116 St",
+          "lat": 40.580903,
+          "lon": -73.835592,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        },
+        {
+          "id": "H14N",
+          "name": "Beach 105 St",
+          "lat": 40.583209,
+          "lon": -73.827559,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        },
+        {
+          "id": "H13N",
+          "name": "Beach 98 St",
+          "lat": 40.585307,
+          "lon": -73.820558,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        },
+        {
+          "id": "H12N",
+          "name": "Beach 90 St",
+          "lat": 40.588034,
+          "lon": -73.813641,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        }
+      ],
+      "service_type": "express",
+      "local_only_stop_ids": [
+        "H11N",
+        "H10N",
+        "H09N",
+        "H08N",
+        "H07N",
+        "H06N",
+        "A54N",
+        "A53N",
+        "A52N",
+        "A50N",
+        "A49N",
+        "A47N",
+        "A45N",
+        "A44N",
+        "A43N",
+        "A33N",
+        "A30N",
+        "A25N",
+        "A22N",
+        "A21N",
+        "A20N",
+        "A19N",
+        "A18N",
+        "A17N",
+        "A16N",
+        "A14N",
+        "A11N",
+        "A10N",
+        "A65N",
+        "A64N",
+        "A63N"
+      ]
+    },
+    {
+      "direction_id": 1,
+      "headsign": "Far Rockaway-Mott Av",
+      "polylines": [
+        "m`mxFjndbMlAjG~Kbc@r@nBlBrEfEtIh@p@t@p@xYxSvShNtBr@hTvEf_@~K`@F~@?v@Up@g@|@qAp@q@bAc@v@KvGx@fG`@rIvAlBPlLd@dJq@rADtIpCjPzD~YvIz@`@hJfGdAh@`v@vXlIrF~I|I`Av@fDvBn@Rt@DbJQ`AN~@`@hsFlqD~pDn`C\\Ln@Jl@An@M`\\gPfAWdABv@XdMfItK|ElPpFhU`HbAPhAB`FMtJKx@DdAXt@^xb@d[b@T`@L^@l@Oh@e@Xc@lKqWd@aAj@y@|@{@b`@{X~A}AxAiBxBuDjBoEzAkF|EiWTgBLoBPsMJmBHq@ZwAh@gAX]ZY`Ai@lAYxAIjPZtDRpLTxAVvBbAf@Ld@@b@G^Oj@k@Xi@|GcVvDiOn@eDNiBB{AEcBk@_K@kAL{A`@mBzPqk@b@kBxQoxAVkEnMohGBuHc@w_@DkBj@{IJgFJsBTgBp@_Cl@cAt@w@`Ag@b@M~ReDf@KfAa@\\Sp@s@d@}@TiAHsAKsCaKwpAwKewAUmAi@oAkKiQc@aAs@_CeAqGaEc_BSgDiBsPAqAR}A`@y@`A{@fIaEtAm@z}Bi|@tDiAhDu@zfHglA~EqAn{Aqf@bCkAnBiBxAcCl@gBd@sBdB_MPsC@mBaEop@e@}DiD_TWuCIcDAqDDuDb@wMCiHyE}bAWoCo@aDcAqC_\\co@m@cAs@y@eHgGyAaBuAkBqAwBmAaC{IaS"
+      ],
+      "stops": [
+        {
+          "id": "A02S",
+          "name": "Inwood-207 St",
+          "lat": 40.868072,
+          "lon": -73.919899,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A03S",
+          "name": "Dyckman St",
+          "lat": 40.865491,
+          "lon": -73.927271,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A05S",
+          "name": "190 St",
+          "lat": 40.859022,
+          "lon": -73.93418,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A06S",
+          "name": "181 St",
+          "lat": 40.851695,
+          "lon": -73.937969,
+          "direction": null,
+          "route_ids": [
+            "1"
+          ]
+        },
+        {
+          "id": "A07S",
+          "name": "175 St",
+          "lat": 40.847391,
+          "lon": -73.939704,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A09S",
+          "name": "168 St",
+          "lat": 40.840719,
+          "lon": -73.939561,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "C"
+          ]
+        },
+        {
+          "id": "A10S",
+          "name": "163 St-Amsterdam Av",
+          "lat": 40.836013,
+          "lon": -73.939892,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A11S",
+          "name": "155 St",
+          "lat": 40.830518,
+          "lon": -73.941514,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A12S",
+          "name": "145 St",
+          "lat": 40.824783,
+          "lon": -73.944216,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A14S",
+          "name": "135 St",
+          "lat": 40.817894,
+          "lon": -73.947649,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A15S",
+          "name": "125 St",
+          "lat": 40.811109,
+          "lon": -73.952343,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A16S",
+          "name": "116 St",
+          "lat": 40.805085,
+          "lon": -73.954882,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A17S",
+          "name": "Cathedral Pkwy (110 St)",
+          "lat": 40.800603,
+          "lon": -73.958161,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A18S",
+          "name": "103 St",
+          "lat": 40.796092,
+          "lon": -73.961454,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A19S",
+          "name": "96 St",
+          "lat": 40.791642,
+          "lon": -73.964696,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A20S",
+          "name": "86 St",
+          "lat": 40.785868,
+          "lon": -73.968916,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A21S",
+          "name": "81 St-Museum of Natural History",
+          "lat": 40.781433,
+          "lon": -73.972143,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A22S",
+          "name": "72 St",
+          "lat": 40.775594,
+          "lon": -73.97641,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A24S",
+          "name": "59 St-Columbus Circle",
+          "lat": 40.768296,
+          "lon": -73.981736,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A25S",
+          "name": "50 St",
+          "lat": 40.762456,
+          "lon": -73.985984,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A27S",
+          "name": "42 St-Port Authority Bus Terminal",
+          "lat": 40.757308,
+          "lon": -73.989735,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A28S",
+          "name": "34 St-Penn Station",
+          "lat": 40.752287,
+          "lon": -73.993391,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A30S",
+          "name": "23 St",
+          "lat": 40.745906,
+          "lon": -73.998041,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A31S",
+          "name": "14 St",
+          "lat": 40.740893,
+          "lon": -74.00169,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E",
+            "L"
+          ]
+        },
+        {
+          "id": "A32S",
+          "name": "W 4 St-Wash Sq",
+          "lat": 40.732338,
+          "lon": -74.000495,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "FX",
+            "M"
+          ]
+        },
+        {
+          "id": "A33S",
+          "name": "Spring St",
+          "lat": 40.726227,
+          "lon": -74.003739,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A34S",
+          "name": "Canal St",
+          "lat": 40.720824,
+          "lon": -74.005229,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "4",
+            "6",
+            "6X",
+            "C",
+            "E",
+            "N",
+            "Q",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "id": "A36S",
+          "name": "Chambers St",
+          "lat": 40.714111,
+          "lon": -74.008585,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E",
+            "J",
+            "N",
+            "R",
+            "W",
+            "Z"
+          ]
+        },
+        {
+          "id": "A38S",
+          "name": "Fulton St",
+          "lat": 40.710197,
+          "lon": -74.007691,
+          "direction": null,
+          "route_ids": [
+            "2",
+            "3",
+            "4",
+            "5",
+            "C",
+            "J",
+            "Z"
+          ]
+        },
+        {
+          "id": "A40S",
+          "name": "High St",
+          "lat": 40.699337,
+          "lon": -73.990531,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A41S",
+          "name": "Jay St-MetroTech",
+          "lat": 40.692338,
+          "lon": -73.987342,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "F",
+            "FX",
+            "N",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "id": "A42S",
+          "name": "Hoyt-Schermerhorn Sts",
+          "lat": 40.688484,
+          "lon": -73.985001,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "G"
+          ]
+        },
+        {
+          "id": "A43S",
+          "name": "Lafayette Av",
+          "lat": 40.686113,
+          "lon": -73.973946,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "G"
+          ]
+        },
+        {
+          "id": "A44S",
+          "name": "Clinton-Washington Avs",
+          "lat": 40.683263,
+          "lon": -73.965838,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A45S",
+          "name": "Franklin Av",
+          "lat": 40.68138,
+          "lon": -73.956848,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "FS"
+          ]
+        },
+        {
+          "id": "A46S",
+          "name": "Nostrand Av",
+          "lat": 40.680438,
+          "lon": -73.950426,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A47S",
+          "name": "Kingston-Throop Avs",
+          "lat": 40.679921,
+          "lon": -73.940858,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A48S",
+          "name": "Utica Av",
+          "lat": 40.679364,
+          "lon": -73.930729,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A49S",
+          "name": "Ralph Av",
+          "lat": 40.678822,
+          "lon": -73.920786,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A50S",
+          "name": "Rockaway Av",
+          "lat": 40.67834,
+          "lon": -73.911946,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A51S",
+          "name": "Broadway Junction",
+          "lat": 40.678334,
+          "lon": -73.905316,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "J",
+            "L",
+            "Z"
+          ]
+        },
+        {
+          "id": "A52S",
+          "name": "Liberty Av",
+          "lat": 40.674542,
+          "lon": -73.896548,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A53S",
+          "name": "Van Siclen Av",
+          "lat": 40.67271,
+          "lon": -73.890358,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A54S",
+          "name": "Shepherd Av",
+          "lat": 40.67413,
+          "lon": -73.88075,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A55S",
+          "name": "Euclid Av",
+          "lat": 40.675377,
+          "lon": -73.872106,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A57S",
+          "name": "Grant Av",
+          "lat": 40.677044,
+          "lon": -73.86505,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A59S",
+          "name": "80 St",
+          "lat": 40.679371,
+          "lon": -73.858992,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A60S",
+          "name": "88 St",
+          "lat": 40.679843,
+          "lon": -73.85147,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A61S",
+          "name": "Rockaway Blvd",
+          "lat": 40.680429,
+          "lon": -73.843853,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H02S",
+          "name": "Aqueduct-N Conduit Av",
+          "lat": 40.668234,
+          "lon": -73.834058,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H03S",
+          "name": "Howard Beach-JFK Airport",
+          "lat": 40.660476,
+          "lon": -73.830301,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H04S",
+          "name": "Broad Channel",
+          "lat": 40.608382,
+          "lon": -73.815925,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        },
+        {
+          "id": "H06S",
+          "name": "Beach 67 St",
+          "lat": 40.590927,
+          "lon": -73.796924,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H07S",
+          "name": "Beach 60 St",
+          "lat": 40.592374,
+          "lon": -73.788522,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H08S",
+          "name": "Beach 44 St",
+          "lat": 40.592943,
+          "lon": -73.776013,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H09S",
+          "name": "Beach 36 St",
+          "lat": 40.595398,
+          "lon": -73.768175,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H10S",
+          "name": "Beach 25 St",
+          "lat": 40.600066,
+          "lon": -73.761353,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H11S",
+          "name": "Far Rockaway-Mott Av",
+          "lat": 40.603995,
+          "lon": -73.755405,
+          "direction": null,
+          "route_ids": []
+        }
+      ],
+      "service_type": "express",
+      "local_only_stop_ids": []
+    },
+    {
+      "direction_id": 1,
+      "headsign": "Ozone Park-Lefferts Blvd",
+      "polylines": [
+        "m`mxFjndbMlAjG~Kbc@r@nBlBrEfEtIh@p@t@p@xYxSvShNtBr@hTvEf_@~K`@F~@?v@Up@g@|@qAp@q@bAc@v@KvGx@fG`@rIvAlBPlLd@dJq@rADtIpCjPzD~YvIz@`@hJfGdAh@`v@vXlIrF~I|I`Av@fDvBn@Rt@DbJQ`AN~@`@hsFlqD~pDn`C\\Ln@Jl@An@M`\\gPfAWdABv@XdMfItK|ElPpFhU`HbAPhAB`FMtJKx@DdAXt@^xb@d[b@T`@L^@l@Oh@e@Xc@lKqWd@aAj@y@|@{@b`@{X~A}AxAiBxBuDjBoEzAkF|EiWTgBLoBPsMJmBHq@ZwAh@gAX]ZY`Ai@lAYxAIjPZtDRpLTxAVbBx@f@Px@Fr@Ml@e@f@y@lGwT`EePx@kENaCCwBm@yK@kAL{A`@mBzPqk@b@kBlQmvAZkDxMklG@{Gc@w_@DkBj@{IJgFJsBTgBp@_Cl@cAt@w@`Ag@b@M~ReDlA[~@e@p@s@d@}@TiAFg@@yAKeBaKwpAwKewAUmAi@oAkKiQc@aAs@_CcA_GiEoaBSiCqE{`@i@eD}@iD{@}ByFgMk@_BeJi[a@wCy@oO"
+      ],
+      "stops": [
+        {
+          "id": "A02S",
+          "name": "Inwood-207 St",
+          "lat": 40.868072,
+          "lon": -73.919899,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A03S",
+          "name": "Dyckman St",
+          "lat": 40.865491,
+          "lon": -73.927271,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A05S",
+          "name": "190 St",
+          "lat": 40.859022,
+          "lon": -73.93418,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A06S",
+          "name": "181 St",
+          "lat": 40.851695,
+          "lon": -73.937969,
+          "direction": null,
+          "route_ids": [
+            "1"
+          ]
+        },
+        {
+          "id": "A07S",
+          "name": "175 St",
+          "lat": 40.847391,
+          "lon": -73.939704,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A09S",
+          "name": "168 St",
+          "lat": 40.840719,
+          "lon": -73.939561,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "C"
+          ]
+        },
+        {
+          "id": "A10S",
+          "name": "163 St-Amsterdam Av",
+          "lat": 40.836013,
+          "lon": -73.939892,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A11S",
+          "name": "155 St",
+          "lat": 40.830518,
+          "lon": -73.941514,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A12S",
+          "name": "145 St",
+          "lat": 40.824783,
+          "lon": -73.944216,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A14S",
+          "name": "135 St",
+          "lat": 40.817894,
+          "lon": -73.947649,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A15S",
+          "name": "125 St",
+          "lat": 40.811109,
+          "lon": -73.952343,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A16S",
+          "name": "116 St",
+          "lat": 40.805085,
+          "lon": -73.954882,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A17S",
+          "name": "Cathedral Pkwy (110 St)",
+          "lat": 40.800603,
+          "lon": -73.958161,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A18S",
+          "name": "103 St",
+          "lat": 40.796092,
+          "lon": -73.961454,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A19S",
+          "name": "96 St",
+          "lat": 40.791642,
+          "lon": -73.964696,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A20S",
+          "name": "86 St",
+          "lat": 40.785868,
+          "lon": -73.968916,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A21S",
+          "name": "81 St-Museum of Natural History",
+          "lat": 40.781433,
+          "lon": -73.972143,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A22S",
+          "name": "72 St",
+          "lat": 40.775594,
+          "lon": -73.97641,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A24S",
+          "name": "59 St-Columbus Circle",
+          "lat": 40.768296,
+          "lon": -73.981736,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A25S",
+          "name": "50 St",
+          "lat": 40.762456,
+          "lon": -73.985984,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A27S",
+          "name": "42 St-Port Authority Bus Terminal",
+          "lat": 40.757308,
+          "lon": -73.989735,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A28S",
+          "name": "34 St-Penn Station",
+          "lat": 40.752287,
+          "lon": -73.993391,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A30S",
+          "name": "23 St",
+          "lat": 40.745906,
+          "lon": -73.998041,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A31S",
+          "name": "14 St",
+          "lat": 40.740893,
+          "lon": -74.00169,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E",
+            "L"
+          ]
+        },
+        {
+          "id": "A32S",
+          "name": "W 4 St-Wash Sq",
+          "lat": 40.732338,
+          "lon": -74.000495,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "FX",
+            "M"
+          ]
+        },
+        {
+          "id": "A33S",
+          "name": "Spring St",
+          "lat": 40.726227,
+          "lon": -74.003739,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A34S",
+          "name": "Canal St",
+          "lat": 40.720824,
+          "lon": -74.005229,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "4",
+            "6",
+            "6X",
+            "C",
+            "E",
+            "N",
+            "Q",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "id": "A36S",
+          "name": "Chambers St",
+          "lat": 40.714111,
+          "lon": -74.008585,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E",
+            "J",
+            "N",
+            "R",
+            "W",
+            "Z"
+          ]
+        },
+        {
+          "id": "A38S",
+          "name": "Fulton St",
+          "lat": 40.710197,
+          "lon": -74.007691,
+          "direction": null,
+          "route_ids": [
+            "2",
+            "3",
+            "4",
+            "5",
+            "C",
+            "J",
+            "Z"
+          ]
+        },
+        {
+          "id": "A40S",
+          "name": "High St",
+          "lat": 40.699337,
+          "lon": -73.990531,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A41S",
+          "name": "Jay St-MetroTech",
+          "lat": 40.692338,
+          "lon": -73.987342,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "F",
+            "FX",
+            "N",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "id": "A42S",
+          "name": "Hoyt-Schermerhorn Sts",
+          "lat": 40.688484,
+          "lon": -73.985001,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "G"
+          ]
+        },
+        {
+          "id": "A43S",
+          "name": "Lafayette Av",
+          "lat": 40.686113,
+          "lon": -73.973946,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "G"
+          ]
+        },
+        {
+          "id": "A44S",
+          "name": "Clinton-Washington Avs",
+          "lat": 40.683263,
+          "lon": -73.965838,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A45S",
+          "name": "Franklin Av",
+          "lat": 40.68138,
+          "lon": -73.956848,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "FS"
+          ]
+        },
+        {
+          "id": "A46S",
+          "name": "Nostrand Av",
+          "lat": 40.680438,
+          "lon": -73.950426,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A47S",
+          "name": "Kingston-Throop Avs",
+          "lat": 40.679921,
+          "lon": -73.940858,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A48S",
+          "name": "Utica Av",
+          "lat": 40.679364,
+          "lon": -73.930729,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A49S",
+          "name": "Ralph Av",
+          "lat": 40.678822,
+          "lon": -73.920786,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A50S",
+          "name": "Rockaway Av",
+          "lat": 40.67834,
+          "lon": -73.911946,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A51S",
+          "name": "Broadway Junction",
+          "lat": 40.678334,
+          "lon": -73.905316,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "J",
+            "L",
+            "Z"
+          ]
+        },
+        {
+          "id": "A52S",
+          "name": "Liberty Av",
+          "lat": 40.674542,
+          "lon": -73.896548,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A53S",
+          "name": "Van Siclen Av",
+          "lat": 40.67271,
+          "lon": -73.890358,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A54S",
+          "name": "Shepherd Av",
+          "lat": 40.67413,
+          "lon": -73.88075,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A55S",
+          "name": "Euclid Av",
+          "lat": 40.675377,
+          "lon": -73.872106,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A57S",
+          "name": "Grant Av",
+          "lat": 40.677044,
+          "lon": -73.86505,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A59S",
+          "name": "80 St",
+          "lat": 40.679371,
+          "lon": -73.858992,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A60S",
+          "name": "88 St",
+          "lat": 40.679843,
+          "lon": -73.85147,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A61S",
+          "name": "Rockaway Blvd",
+          "lat": 40.680429,
+          "lon": -73.843853,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A63S",
+          "name": "104 St",
+          "lat": 40.681711,
+          "lon": -73.837683,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A64S",
+          "name": "111 St",
+          "lat": 40.684331,
+          "lon": -73.832163,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A65S",
+          "name": "Ozone Park-Lefferts Blvd",
+          "lat": 40.685951,
+          "lon": -73.825798,
+          "direction": null,
+          "route_ids": []
+        }
+      ],
+      "service_type": "express",
+      "local_only_stop_ids": []
+    },
+    {
+      "direction_id": 1,
+      "headsign": "Rockaway Park-Beach 116 St",
+      "polylines": [
+        "iplxFl|ebMjCpGfDfHn@bAj@l@|ZxTpRnMxAr@jVpFf_@~K`@F~@?v@Up@g@|@qAp@q@bAc@v@KvGx@fG`@rIvAlBPfLd@`AEhHk@v@@t@JzHhCjPzD~YvIz@`@hJfGdAh@hu@hXt@`@nH~E~I|I`Av@pDzBn@Pv@BvIQ`ANr@XtsFtqD~pDn`C\\Ln@Jl@An@M`\\gPfAWdABv@XdMfItK|ElPpFhU`HbAPhAB`FMtJKx@DdAXt@^xb@d[b@T`@Ln@Aj@Ut@_AlKqWd@aAj@y@|@{@b`@{X~A}AxAiBxBuDjBoEzAkF|EiWTgBLoBPsMJmBHq@ZwAh@gAX]ZY`Ai@lAYxAIjPZtDRpLTxAVvBbAf@Ld@@b@G^Oj@k@Xi@|GcVvDiOn@eDNiBB{AEcBk@_K@kAL{A`@mBzPqk@b@kBxQoxAVkEnMohGBuHc@w_@DkBj@{IJgFJsBTgBp@_Cl@cAt@w@`Ag@b@M~ReDf@KfAa@\\Sp@s@d@}@TiAHsAKsCaKwpAwKewAUmAi@oAkKiQc@aAs@_CeAqGeEo`BO{BeBuOEy@DgBV_AVe@`A{@fIaEhBw@f}B_|@lEqApCm@veH{kAbG}A|yA}e@zAYzAIxADfCd@xAn@xA|@vAlAtAdBhArBr@fB`Tlt@`BdGv@vDtI~d@nBtIpGh^"
+      ],
+      "stops": [
+        {
+          "id": "A03S",
+          "name": "Dyckman St",
+          "lat": 40.865491,
+          "lon": -73.927271,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A05S",
+          "name": "190 St",
+          "lat": 40.859022,
+          "lon": -73.93418,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A06S",
+          "name": "181 St",
+          "lat": 40.851695,
+          "lon": -73.937969,
+          "direction": null,
+          "route_ids": [
+            "1"
+          ]
+        },
+        {
+          "id": "A07S",
+          "name": "175 St",
+          "lat": 40.847391,
+          "lon": -73.939704,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A09S",
+          "name": "168 St",
+          "lat": 40.840719,
+          "lon": -73.939561,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "C"
+          ]
+        },
+        {
+          "id": "A12S",
+          "name": "145 St",
+          "lat": 40.824783,
+          "lon": -73.944216,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A14S",
+          "name": "135 St",
+          "lat": 40.817894,
+          "lon": -73.947649,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C"
+          ]
+        },
+        {
+          "id": "A15S",
+          "name": "125 St",
+          "lat": 40.811109,
+          "lon": -73.952343,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A24S",
+          "name": "59 St-Columbus Circle",
+          "lat": 40.768296,
+          "lon": -73.981736,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "B",
+            "C",
+            "D"
+          ]
+        },
+        {
+          "id": "A27S",
+          "name": "42 St-Port Authority Bus Terminal",
+          "lat": 40.757308,
+          "lon": -73.989735,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A28S",
+          "name": "34 St-Penn Station",
+          "lat": 40.752287,
+          "lon": -73.993391,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E"
+          ]
+        },
+        {
+          "id": "A31S",
+          "name": "14 St",
+          "lat": 40.740893,
+          "lon": -74.00169,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E",
+            "L"
+          ]
+        },
+        {
+          "id": "A32S",
+          "name": "W 4 St-Wash Sq",
+          "lat": 40.732338,
+          "lon": -74.000495,
+          "direction": null,
+          "route_ids": [
+            "B",
+            "C",
+            "D",
+            "E",
+            "F",
+            "FX",
+            "M"
+          ]
+        },
+        {
+          "id": "A34S",
+          "name": "Canal St",
+          "lat": 40.720824,
+          "lon": -74.005229,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "4",
+            "6",
+            "6X",
+            "C",
+            "E",
+            "N",
+            "Q",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "id": "A36S",
+          "name": "Chambers St",
+          "lat": 40.714111,
+          "lon": -74.008585,
+          "direction": null,
+          "route_ids": [
+            "1",
+            "2",
+            "3",
+            "C",
+            "E",
+            "J",
+            "N",
+            "R",
+            "W",
+            "Z"
+          ]
+        },
+        {
+          "id": "A38S",
+          "name": "Fulton St",
+          "lat": 40.710197,
+          "lon": -74.007691,
+          "direction": null,
+          "route_ids": [
+            "2",
+            "3",
+            "4",
+            "5",
+            "C",
+            "J",
+            "Z"
+          ]
+        },
+        {
+          "id": "A40S",
+          "name": "High St",
+          "lat": 40.699337,
+          "lon": -73.990531,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A41S",
+          "name": "Jay St-MetroTech",
+          "lat": 40.692338,
+          "lon": -73.987342,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "F",
+            "FX",
+            "N",
+            "R",
+            "W"
+          ]
+        },
+        {
+          "id": "A42S",
+          "name": "Hoyt-Schermerhorn Sts",
+          "lat": 40.688484,
+          "lon": -73.985001,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "G"
+          ]
+        },
+        {
+          "id": "A46S",
+          "name": "Nostrand Av",
+          "lat": 40.680438,
+          "lon": -73.950426,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A48S",
+          "name": "Utica Av",
+          "lat": 40.679364,
+          "lon": -73.930729,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A51S",
+          "name": "Broadway Junction",
+          "lat": 40.678334,
+          "lon": -73.905316,
+          "direction": null,
+          "route_ids": [
+            "C",
+            "J",
+            "L",
+            "Z"
+          ]
+        },
+        {
+          "id": "A55S",
+          "name": "Euclid Av",
+          "lat": 40.675377,
+          "lon": -73.872106,
+          "direction": null,
+          "route_ids": [
+            "C"
+          ]
+        },
+        {
+          "id": "A57S",
+          "name": "Grant Av",
+          "lat": 40.677044,
+          "lon": -73.86505,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A59S",
+          "name": "80 St",
+          "lat": 40.679371,
+          "lon": -73.858992,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A60S",
+          "name": "88 St",
+          "lat": 40.679843,
+          "lon": -73.85147,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "A61S",
+          "name": "Rockaway Blvd",
+          "lat": 40.680429,
+          "lon": -73.843853,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H02S",
+          "name": "Aqueduct-N Conduit Av",
+          "lat": 40.668234,
+          "lon": -73.834058,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H03S",
+          "name": "Howard Beach-JFK Airport",
+          "lat": 40.660476,
+          "lon": -73.830301,
+          "direction": null,
+          "route_ids": []
+        },
+        {
+          "id": "H04S",
+          "name": "Broad Channel",
+          "lat": 40.608382,
+          "lon": -73.815925,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        },
+        {
+          "id": "H12S",
+          "name": "Beach 90 St",
+          "lat": 40.588034,
+          "lon": -73.813641,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        },
+        {
+          "id": "H13S",
+          "name": "Beach 98 St",
+          "lat": 40.585307,
+          "lon": -73.820558,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        },
+        {
+          "id": "H14S",
+          "name": "Beach 105 St",
+          "lat": 40.583209,
+          "lon": -73.827559,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        },
+        {
+          "id": "H15S",
+          "name": "Rockaway Park-Beach 116 St",
+          "lat": 40.580903,
+          "lon": -73.835592,
+          "direction": null,
+          "route_ids": [
+            "H"
+          ]
+        }
+      ],
+      "service_type": "express",
+      "local_only_stop_ids": []
+    }
+  ],
+  "service_type": "express"
+}

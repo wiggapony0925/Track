@@ -1106,6 +1106,12 @@ final class HomeViewModel {
             schedulePolylineRebuild()
             if oldValue != selectedDirectionIndex,
                selectedRouteId != nil {
+                // Resolve the new direction's nearest stop synchronously so
+                // `nearestStopCoordinate` / `selectedStopId` are populated
+                // *before* the async polyline rebuild completes — otherwise
+                // its trailing `rebuildDirectionalSplit()` runs against nil
+                // inputs and the behind-stop opacity fade fails to apply.
+                updateNearestStop(userLocation: lastKnownUserLocation)
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     await self.refreshWalkingState(userLocation: self.lastKnownUserLocation)
@@ -2104,22 +2110,14 @@ final class HomeViewModel {
                     ?? directionStops.first(where: {
                         normalizeStopId($0.id) == normalizedSelected
                     })
+                // Always honor the explicitly selected stop when it exists in
+                // the active direction. Earlier code required it to be within
+                // 45 m of the GPS-nearest coord, which silently dropped
+                // user-tapped stops on long routes (e.g. tap a downtown stop
+                // while standing uptown) and broke the behind-stop opacity
+                // fade after a direction change.
                 if let selected {
-                    if let nearestCoord = nearestStopCoordinate {
-                        let selectedLoc = CLLocation(
-                            latitude: selected.lat,
-                            longitude: selected.lon
-                        )
-                        let nearestLoc = CLLocation(
-                            latitude: nearestCoord.latitude,
-                            longitude: nearestCoord.longitude
-                        )
-                        if selectedLoc.distance(from: nearestLoc) <= 45 {
-                            return selected
-                        }
-                    } else {
-                        return selected
-                    }
+                    return selected
                 }
             }
 

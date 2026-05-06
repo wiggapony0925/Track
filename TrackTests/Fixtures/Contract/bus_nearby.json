@@ -1,0 +1,1146 @@
+[
+  {
+    "id": "MTA_400323",
+    "name": "5 AV/W 36 ST",
+    "lat": 40.749477,
+    "lon": -73.983921,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M1",
+      "MTA NYCT_M2",
+      "MTA NYCT_M3",
+      "MTA NYCT_M4",
+      "MTA NYCT_M5",
+      "MTA NYCT_M55",
+      "MTA NYCT_SIM10",
+      "MTA NYCT_SIM31"
+    ]
+  },
+  {
+    "id": "MTA_400324",
+    "name": "5 AV/W 33 ST",
+    "lat": 40.747494,
+    "lon": -73.985338,
+    "direction": "SW",
+    "route_ids": [
+      "MTABC_BXM3",
+      "MTABC_BXM4",
+      "MTA NYCT_M1",
+      "MTA NYCT_M2",
+      "MTA NYCT_M3",
+      "MTA NYCT_M5",
+      "MTA NYCT_M55"
+    ]
+  },
+  {
+    "id": "MTA_400325",
+    "name": "5 AV/W 31 ST",
+    "lat": 40.746263,
+    "lon": -73.986268,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M1",
+      "MTA NYCT_M2",
+      "MTA NYCT_M3",
+      "MTA NYCT_M55"
+    ]
+  },
+  {
+    "id": "MTA_400327",
+    "name": "5 AV/W 26 ST",
+    "lat": 40.743534,
+    "lon": -73.988188,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M1",
+      "MTA NYCT_M2",
+      "MTA NYCT_M3",
+      "MTA NYCT_M55"
+    ]
+  },
+  {
+    "id": "MTA_400352",
+    "name": "MADISON AV/E 30 ST",
+    "lat": 40.74551,
+    "lon": -73.984493,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M1",
+      "MTA NYCT_M2",
+      "MTA NYCT_M3"
+    ]
+  },
+  {
+    "id": "MTA_400552",
+    "name": "W 32 ST/7 AV",
+    "lat": 40.748909,
+    "lon": -73.989861,
+    "direction": "SE",
+    "route_ids": [
+      "MTABC_Q32"
+    ]
+  },
+  {
+    "id": "MTA_400715",
+    "name": "W 34 ST/6 AV",
+    "lat": 40.749773,
+    "lon": -73.98753,
+    "direction": "W",
+    "route_ids": [
+      "MTA NYCT_SIM23",
+      "MTA NYCT_SIM24"
+    ]
+  },
+  {
+    "id": "MTA_400731",
+    "name": "6 AV/W 27 ST",
+    "lat": 40.745283,
+    "lon": -73.990927,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M7",
+      "MTA NYCT_M55"
+    ]
+  },
+  {
+    "id": "MTA_400732",
+    "name": "6 AV/W 29 ST",
+    "lat": 40.746542,
+    "lon": -73.990097,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M7",
+      "MTA NYCT_M55"
+    ]
+  },
+  {
+    "id": "MTA_401225",
+    "name": "8 AV/W 20 ST",
+    "lat": 40.743642,
+    "lon": -73.999538,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_401226",
+    "name": "8 AV/W 23 ST",
+    "lat": 40.745586,
+    "lon": -73.998123,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_401227",
+    "name": "8 AV/W 25 ST",
+    "lat": 40.746845,
+    "lon": -73.997203,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_401229",
+    "name": "8 AV/W 28 ST",
+    "lat": 40.748684,
+    "lon": -73.995864,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_401231",
+    "name": "8 AV/W 34 ST",
+    "lat": 40.752329,
+    "lon": -73.993258,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M20",
+      "MTA NYCT_M34A+"
+    ]
+  },
+  {
+    "id": "MTA_401232",
+    "name": "8 AV/W 37 ST",
+    "lat": 40.75396,
+    "lon": -73.992034,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M20",
+      "MTA NYCT_M34A+"
+    ]
+  },
+  {
+    "id": "MTA_401359",
+    "name": "7 AV/W 37 ST",
+    "lat": 40.752568,
+    "lon": -73.989494,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M7",
+      "MTA NYCT_M20",
+      "MTABC_Q32"
+    ]
+  },
+  {
+    "id": "MTA_401360",
+    "name": "7 AV/W 34 ST",
+    "lat": 40.750627,
+    "lon": -73.99102,
+    "direction": "SW",
+    "route_ids": [
+      "MTABC_BXM2",
+      "MTA NYCT_M7",
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_401361",
+    "name": "7 AV/W 31 ST",
+    "lat": 40.74886,
+    "lon": -73.992309,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M7",
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_401363",
+    "name": "7 AV/W 28 ST",
+    "lat": 40.747035,
+    "lon": -73.993637,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M7",
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_401364",
+    "name": "7 AV/W 25 ST",
+    "lat": 40.745177,
+    "lon": -73.994994,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M7",
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_401402",
+    "name": "10 AV/W 30 ST",
+    "lat": 40.752373,
+    "lon": -74.000606,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M11"
+    ]
+  },
+  {
+    "id": "MTA_401404",
+    "name": "10 AV/W 34 ST",
+    "lat": 40.754475,
+    "lon": -73.999157,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M11"
+    ]
+  },
+  {
+    "id": "MTA_401500",
+    "name": "9 AV/W 35 ST",
+    "lat": 40.754199,
+    "lon": -73.995867,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M11"
+    ]
+  },
+  {
+    "id": "MTA_401501",
+    "name": "9 AV/W 34 ST",
+    "lat": 40.753153,
+    "lon": -73.996625,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M11"
+    ]
+  },
+  {
+    "id": "MTA_401502",
+    "name": "9 AV/W 30 ST",
+    "lat": 40.75072,
+    "lon": -73.998371,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M11"
+    ]
+  },
+  {
+    "id": "MTA_401503",
+    "name": "9 AV/W 28 ST",
+    "lat": 40.749425,
+    "lon": -73.999343,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M11"
+    ]
+  },
+  {
+    "id": "MTA_401818",
+    "name": "W 34 ST/9 AV",
+    "lat": 40.753106,
+    "lon": -73.995857,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_M34A+",
+      "MTA NYCT_M34+",
+      "MTA NYCT_SIM23",
+      "MTA NYCT_SIM24"
+    ]
+  },
+  {
+    "id": "MTA_401819",
+    "name": "W 34 ST/8 AV",
+    "lat": 40.751988,
+    "lon": -73.993312,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_M34A+",
+      "MTA NYCT_M34+",
+      "MTA NYCT_SIM23",
+      "MTA NYCT_SIM24"
+    ]
+  },
+  {
+    "id": "MTA_401821",
+    "name": "W 34 ST/BROADWAY",
+    "lat": 40.749624,
+    "lon": -73.987617,
+    "direction": "E",
+    "route_ids": [
+      "MTA NYCT_M34A+",
+      "MTA NYCT_M34+",
+      "MTA NYCT_SIM23",
+      "MTA NYCT_SIM24"
+    ]
+  },
+  {
+    "id": "MTA_401822",
+    "name": "E 34 ST/5 AV",
+    "lat": 40.748192,
+    "lon": -73.984134,
+    "direction": "SE",
+    "route_ids": [
+      "MTABC_BM5",
+      "MTA NYCT_M34A+",
+      "MTA NYCT_M34+",
+      "MTA NYCT_SIM23",
+      "MTA NYCT_SIM24"
+    ]
+  },
+  {
+    "id": "MTA_401844",
+    "name": "W 34 ST/5 AV",
+    "lat": 40.748672,
+    "lon": -73.98491,
+    "direction": "W",
+    "route_ids": [
+      "MTA NYCT_SIM23",
+      "MTA NYCT_SIM24"
+    ]
+  },
+  {
+    "id": "MTA_401847",
+    "name": "W 34 ST/7 AV",
+    "lat": 40.75125,
+    "lon": -73.991027,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M34A+",
+      "MTA NYCT_M34+",
+      "MTA NYCT_SIM23",
+      "MTA NYCT_SIM24"
+    ]
+  },
+  {
+    "id": "MTA_401848",
+    "name": "W 34 ST/8 AV",
+    "lat": 40.752301,
+    "lon": -73.993588,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M34+"
+    ]
+  },
+  {
+    "id": "MTA_401850",
+    "name": "8 AV/W 40 ST",
+    "lat": 40.756261,
+    "lon": -73.990408,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M34A+"
+    ]
+  },
+  {
+    "id": "MTA_401851",
+    "name": "W 42 ST/8 AV",
+    "lat": 40.757575,
+    "lon": -73.990464,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M42",
+      "MTA NYCT_SIM8",
+      "MTA NYCT_SIM22",
+      "MTA NYCT_SIM25",
+      "MTA NYCT_SIM26",
+      "MTA NYCT_SIM30"
+    ]
+  },
+  {
+    "id": "MTA_402125",
+    "name": "W 23 ST/9 AV",
+    "lat": 40.746244,
+    "lon": -74.000956,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_M23+"
+    ]
+  },
+  {
+    "id": "MTA_402126",
+    "name": "W 23 ST/8 AV",
+    "lat": 40.745059,
+    "lon": -73.998141,
+    "direction": "E",
+    "route_ids": [
+      "MTA NYCT_M23+"
+    ]
+  },
+  {
+    "id": "MTA_402127",
+    "name": "W 23 ST/7 AV",
+    "lat": 40.743952,
+    "lon": -73.995493,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_M23+"
+    ]
+  },
+  {
+    "id": "MTA_402153",
+    "name": "W 23 ST/7 AV",
+    "lat": 40.744403,
+    "lon": -73.996167,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M23+"
+    ]
+  },
+  {
+    "id": "MTA_402154",
+    "name": "W 23 ST/8 AV",
+    "lat": 40.745547,
+    "lon": -73.998888,
+    "direction": "W",
+    "route_ids": [
+      "MTA NYCT_M23+"
+    ]
+  },
+  {
+    "id": "MTA_402155",
+    "name": "W 23 ST/9 AV",
+    "lat": 40.746716,
+    "lon": -74.001653,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M23+"
+    ]
+  },
+  {
+    "id": "MTA_403239",
+    "name": "W 42 ST/8 AV",
+    "lat": 40.757191,
+    "lon": -73.989904,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_M42",
+      "MTA NYCT_SIM8",
+      "MTA NYCT_SIM22",
+      "MTA NYCT_SIM25",
+      "MTA NYCT_SIM26",
+      "MTA NYCT_SIM30"
+    ]
+  },
+  {
+    "id": "MTA_403241",
+    "name": "W 42 ST/BROADWAY",
+    "lat": 40.755466,
+    "lon": -73.985721,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_M42"
+    ]
+  },
+  {
+    "id": "MTA_403259",
+    "name": "W 42 ST/7 AV",
+    "lat": 40.756311,
+    "lon": -73.98737,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_SIM8",
+      "MTA NYCT_SIM22",
+      "MTA NYCT_SIM25",
+      "MTA NYCT_SIM26",
+      "MTA NYCT_SIM30",
+      "MTA NYCT_T260"
+    ]
+  },
+  {
+    "id": "MTA_403528",
+    "name": "W 34 ST/9 AV",
+    "lat": 40.753361,
+    "lon": -73.996044,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M34+",
+      "MTA NYCT_SIM23",
+      "MTA NYCT_SIM24"
+    ]
+  },
+  {
+    "id": "MTA_403530",
+    "name": "W 34 ST/DYER AV",
+    "lat": 40.754416,
+    "lon": -73.998474,
+    "direction": "W",
+    "route_ids": [
+      "MTA NYCT_M34+"
+    ]
+  },
+  {
+    "id": "MTA_403552",
+    "name": "8 AV/W 39 ST",
+    "lat": 40.755175,
+    "lon": -73.991135,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_403769",
+    "name": "6 AV/W 31 ST",
+    "lat": 40.748017,
+    "lon": -73.98901,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M5",
+      "MTA NYCT_M7",
+      "MTA NYCT_M55"
+    ]
+  },
+  {
+    "id": "MTA_403830",
+    "name": "W 42 ST/AV OF THE AMERICAS",
+    "lat": 40.754994,
+    "lon": -73.984277,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M42",
+      "MTA NYCT_SIM8",
+      "MTA NYCT_SIM22",
+      "MTA NYCT_SIM25",
+      "MTA NYCT_SIM26",
+      "MTA NYCT_SIM30"
+    ]
+  },
+  {
+    "id": "MTA_404039",
+    "name": "6 AV/W 38 ST",
+    "lat": 40.752139,
+    "lon": -73.985967,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M5",
+      "MTA NYCT_M7",
+      "MTA NYCT_M55"
+    ]
+  },
+  {
+    "id": "MTA_404040",
+    "name": "6 AV/W 40 ST",
+    "lat": 40.753709,
+    "lon": -73.984732,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_BXM2",
+      "MTA NYCT_M5",
+      "MTA NYCT_M7",
+      "MTA NYCT_M55"
+    ]
+  },
+  {
+    "id": "MTA_404153",
+    "name": "7 AV/W 42 ST",
+    "lat": 40.755694,
+    "lon": -73.987208,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M104"
+    ]
+  },
+  {
+    "id": "MTA_404183",
+    "name": "5 AV/W 30 ST",
+    "lat": 40.745638,
+    "lon": -73.986682,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_X27",
+      "MTA NYCT_X28",
+      "MTA NYCT_X37",
+      "MTA NYCT_X38"
+    ]
+  },
+  {
+    "id": "MTA_404206",
+    "name": "5 AV/W 32 ST",
+    "lat": 40.747215,
+    "lon": -73.985526,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_SIM1C",
+      "MTA NYCT_SIM3",
+      "MTA NYCT_SIM3C",
+      "MTA NYCT_SIM4C",
+      "MTA NYCT_SIM33C"
+    ]
+  },
+  {
+    "id": "MTA_404211",
+    "name": "5 AV/W 28 ST",
+    "lat": 40.744396,
+    "lon": -73.987625,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M1",
+      "MTA NYCT_M2",
+      "MTA NYCT_M3",
+      "MTA NYCT_M55"
+    ]
+  },
+  {
+    "id": "MTA_404279",
+    "name": "10 AV/W 37 ST",
+    "lat": 40.756715,
+    "lon": -73.997444,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M11"
+    ]
+  },
+  {
+    "id": "MTA_404280",
+    "name": "W 34 ST/7 AV",
+    "lat": 40.751046,
+    "lon": -73.990911,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_M34A+",
+      "MTA NYCT_M34+",
+      "MTA NYCT_SIM23",
+      "MTA NYCT_SIM24"
+    ]
+  },
+  {
+    "id": "MTA_404847",
+    "name": "8 AV/W 31 ST",
+    "lat": 40.749952,
+    "lon": -73.994947,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_404870",
+    "name": "8 AV/W 42 ST",
+    "lat": 40.757537,
+    "lon": -73.98947,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_M20",
+      "MTA NYCT_M104"
+    ]
+  },
+  {
+    "id": "MTA_404881",
+    "name": "9 AV/W 23 ST",
+    "lat": 40.746264,
+    "lon": -74.001642,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M11"
+    ]
+  },
+  {
+    "id": "MTA_405026",
+    "name": "9 AV/W 40 ST",
+    "lat": 40.756899,
+    "lon": -73.993896,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M11"
+    ]
+  },
+  {
+    "id": "MTA_405049",
+    "name": "5 AV/W 35 ST",
+    "lat": 40.748922,
+    "lon": -73.984296,
+    "direction": "SW",
+    "route_ids": [
+      "MTABC_BXM9",
+      "MTABC_BXM10",
+      "MTABC_BXM11",
+      "MTA NYCT_X27",
+      "MTA NYCT_X28",
+      "MTA NYCT_X37",
+      "MTA NYCT_X38"
+    ]
+  },
+  {
+    "id": "MTA_405166",
+    "name": "W 34 ST/8 AV",
+    "lat": 40.752353,
+    "lon": -73.993674,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_SIM23",
+      "MTA NYCT_SIM24"
+    ]
+  },
+  {
+    "id": "MTA_405285",
+    "name": "11 AV/W 34 ST",
+    "lat": 40.755629,
+    "lon": -74.002186,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M12",
+      "MTA NYCT_M34+"
+    ]
+  },
+  {
+    "id": "MTA_405297",
+    "name": "7 AV/W 44 ST",
+    "lat": 40.757476,
+    "lon": -73.985927,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M7",
+      "MTA NYCT_M20",
+      "MTA NYCT_M104"
+    ]
+  },
+  {
+    "id": "MTA_405316",
+    "name": "9 AV/W 25 ST",
+    "lat": 40.747568,
+    "lon": -74.000712,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M11"
+    ]
+  },
+  {
+    "id": "MTA_405374",
+    "name": "W 41 ST/8 AV",
+    "lat": 40.756549,
+    "lon": -73.990123,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M104"
+    ]
+  },
+  {
+    "id": "MTA_405375",
+    "name": "E 34 ST/5 AV",
+    "lat": 40.748399,
+    "lon": -73.98435,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M34A+",
+      "MTA NYCT_M34+"
+    ]
+  },
+  {
+    "id": "MTA_405380",
+    "name": "MADISON AV/E 28 ST",
+    "lat": 40.744189,
+    "lon": -73.985425,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_BM1",
+      "MTABC_BM2",
+      "MTABC_BM3",
+      "MTABC_BM4",
+      "MTA NYCT_M1",
+      "MTA NYCT_M2",
+      "MTA NYCT_M3"
+    ]
+  },
+  {
+    "id": "MTA_405485",
+    "name": "W 34 ST/HUDSON BLVD E",
+    "lat": 40.755349,
+    "lon": -74.000813,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M34+"
+    ]
+  },
+  {
+    "id": "MTA_405487",
+    "name": "W 37 ST/BROADWAY",
+    "lat": 40.752202,
+    "lon": -73.987383,
+    "direction": "W",
+    "route_ids": [
+      "MTABC_Q32"
+    ]
+  },
+  {
+    "id": "MTA_405505",
+    "name": "W 31 ST/6 AV",
+    "lat": 40.747801,
+    "lon": -73.988889,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M5"
+    ]
+  },
+  {
+    "id": "MTA_405540",
+    "name": "9 AV/W 40 ST",
+    "lat": 40.756938,
+    "lon": -73.993896,
+    "direction": "SW",
+    "route_ids": [
+      "MTA NYCT_M34A+"
+    ]
+  },
+  {
+    "id": "MTA_405548",
+    "name": "E 32 ST/5 AV",
+    "lat": 40.746891,
+    "lon": -73.984976,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_M4"
+    ]
+  },
+  {
+    "id": "MTA_405549",
+    "name": "W 42 ST/7 AV",
+    "lat": 40.756311,
+    "lon": -73.987403,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M42"
+    ]
+  },
+  {
+    "id": "MTA_405578",
+    "name": "W 32 ST/BROADWAY",
+    "lat": 40.747965,
+    "lon": -73.987615,
+    "direction": "SE",
+    "route_ids": [
+      "MTABC_Q32"
+    ]
+  },
+  {
+    "id": "MTA_405587",
+    "name": "W 34 ST/11 AV",
+    "lat": 40.755718,
+    "lon": -74.001884,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_M34+"
+    ]
+  },
+  {
+    "id": "MTA_450011",
+    "name": "6 AV/W 36 ST",
+    "lat": 40.751003,
+    "lon": -73.98679,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_QM4"
+    ]
+  },
+  {
+    "id": "MTA_450012",
+    "name": "6 AV/W 37 ST",
+    "lat": 40.751612,
+    "lon": -73.986325,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_QM1",
+      "MTABC_QM5"
+    ]
+  },
+  {
+    "id": "MTA_450013",
+    "name": "6 AV/W 37 ST",
+    "lat": 40.751742,
+    "lon": -73.98619,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_QM10",
+      "MTABC_QM12",
+      "MTABC_QM24"
+    ]
+  },
+  {
+    "id": "MTA_450014",
+    "name": "6 AV/W 42 ST",
+    "lat": 40.75459,
+    "lon": -73.984193,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_QM2",
+      "MTABC_QM4",
+      "MTABC_QM20"
+    ]
+  },
+  {
+    "id": "MTA_450015",
+    "name": "6 AV/W 42 ST",
+    "lat": 40.754737,
+    "lon": -73.984088,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_QM1",
+      "MTABC_QM5",
+      "MTABC_QM6"
+    ]
+  },
+  {
+    "id": "MTA_450045",
+    "name": "7 AV/W 41 ST",
+    "lat": 40.755498,
+    "lon": -73.987324,
+    "direction": "SW",
+    "route_ids": [
+      "MTABC_BXM2",
+      "MTA NYCT_M7",
+      "MTA NYCT_M20"
+    ]
+  },
+  {
+    "id": "MTA_450054",
+    "name": "5 AV/W 26 ST",
+    "lat": 40.743613,
+    "lon": -73.988216,
+    "direction": "SW",
+    "route_ids": [
+      "MTABC_BM3",
+      "MTABC_BM4"
+    ]
+  },
+  {
+    "id": "MTA_450066",
+    "name": "6 AV/W 35 ST",
+    "lat": 40.750341,
+    "lon": -73.987222,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_BXM2",
+      "MTABC_QM10",
+      "MTABC_QM12",
+      "MTABC_QM24"
+    ]
+  },
+  {
+    "id": "MTA_450087",
+    "name": "MADISON AV/E 31 ST",
+    "lat": 40.745963,
+    "lon": -73.984146,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_BXM3",
+      "MTABC_BXM4"
+    ]
+  },
+  {
+    "id": "MTA_450157",
+    "name": "5 AV/W 30 ST",
+    "lat": 40.746027,
+    "lon": -73.986439,
+    "direction": "SW",
+    "route_ids": [
+      "MTABC_BM1",
+      "MTABC_BM2",
+      "MTABC_BM3",
+      "MTABC_BM4"
+    ]
+  },
+  {
+    "id": "MTA_450392",
+    "name": "6 AV/W 35 ST",
+    "lat": 40.750759,
+    "lon": -73.986967,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_QM2",
+      "MTABC_QM20"
+    ]
+  },
+  {
+    "id": "MTA_450453",
+    "name": "6 AV/W 37 ST",
+    "lat": 40.751378,
+    "lon": -73.986524,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_QM6"
+    ]
+  },
+  {
+    "id": "MTA_450457",
+    "name": "MADISON AV/E 29 ST",
+    "lat": 40.7444,
+    "lon": -73.985316,
+    "direction": "NE",
+    "route_ids": [
+      "MTABC_BXM3",
+      "MTABC_BXM4",
+      "MTABC_BXM11",
+      "MTABC_BXM18"
+    ]
+  },
+  {
+    "id": "MTA_450538",
+    "name": "W 34 ST/5 AV",
+    "lat": 40.748974,
+    "lon": -73.9855,
+    "direction": "NW",
+    "route_ids": [
+      "MTABC_QM15",
+      "MTABC_QM16",
+      "MTABC_QM17",
+      "MTABC_QM18",
+      "MTABC_QM24"
+    ]
+  },
+  {
+    "id": "MTA_450539",
+    "name": "W 34 ST/5 AV",
+    "lat": 40.749084,
+    "lon": -73.985736,
+    "direction": "NW",
+    "route_ids": [
+      "MTABC_QM1",
+      "MTABC_QM2",
+      "MTABC_QM4",
+      "MTABC_QM5",
+      "MTABC_QM6",
+      "MTABC_QM10",
+      "MTABC_QM12",
+      "MTABC_QM15",
+      "MTABC_QM16",
+      "MTABC_QM17",
+      "MTABC_QM18",
+      "MTABC_QM20"
+    ]
+  },
+  {
+    "id": "MTA_803082",
+    "name": "W 31 ST/6 AV",
+    "lat": 40.747777,
+    "lon": -73.988823,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_M5"
+    ]
+  },
+  {
+    "id": "MTA_903037",
+    "name": "AVENUE OF THE AMERICAS/W 41 ST",
+    "lat": 40.754307,
+    "lon": -73.984397,
+    "direction": "NE",
+    "route_ids": [
+      "MTA NYCT_SIM1C",
+      "MTA NYCT_SIM3",
+      "MTA NYCT_SIM3C",
+      "MTA NYCT_SIM10"
+    ]
+  },
+  {
+    "id": "MTA_903085",
+    "name": "W 32 ST/7 AV",
+    "lat": 40.749226,
+    "lon": -73.990607,
+    "direction": "SE",
+    "route_ids": [
+      "MTABC_Q32"
+    ]
+  },
+  {
+    "id": "MTA_903292",
+    "name": "W 34 ST/HUDSON BLVD EAST",
+    "lat": 40.755158,
+    "lon": -74.000668,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_T260"
+    ]
+  },
+  {
+    "id": "MTA_903293",
+    "name": "W 34 ST/HUDSON BLVD EAST",
+    "lat": 40.755143,
+    "lon": -74.000609,
+    "direction": "SE",
+    "route_ids": [
+      "MTA NYCT_T260"
+    ]
+  },
+  {
+    "id": "MTA_903295",
+    "name": "W 42 ST/7 AV",
+    "lat": 40.756191,
+    "lon": -73.98719,
+    "direction": "NW",
+    "route_ids": [
+      "MTA NYCT_T260"
+    ]
+  },
+  {
+    "id": "MTA_981012",
+    "name": "5 AV/W 27 ST",
+    "lat": 40.743842,
+    "lon": -73.988048,
+    "direction": "SW",
+    "route_ids": [
+      "MTABC_BM1",
+      "MTABC_BM2",
+      "MTABC_BXM3",
+      "MTABC_BXM4",
+      "MTABC_BXM11",
+      "MTABC_BXM18"
+    ]
+  }
+]

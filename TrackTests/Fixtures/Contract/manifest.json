@@ -1,0 +1,442 @@
+{
+  "captured_at": "2026-05-06T01:27:22.639231+00:00",
+  "base_url": "https://track-vkrr.onrender.com",
+  "entries": [
+    {
+      "slug": "config",
+      "path": "/config",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/config",
+      "status": 200,
+      "swift_type": "__rawJSON__",
+      "fixture_file": "config.json",
+      "bytes": 642,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_A",
+      "path": "/subway/A",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/A",
+      "status": 200,
+      "swift_type": "[TransitArrivalResponse]",
+      "fixture_file": "subway_A.json",
+      "bytes": 156252,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_1",
+      "path": "/subway/1",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/1",
+      "status": 200,
+      "swift_type": "[TransitArrivalResponse]",
+      "fixture_file": "subway_1.json",
+      "bytes": 155826,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_7",
+      "path": "/subway/7",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/7",
+      "status": 200,
+      "swift_type": "[TransitArrivalResponse]",
+      "fixture_file": "subway_7.json",
+      "bytes": 156833,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_L",
+      "path": "/subway/L",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/L",
+      "status": 200,
+      "swift_type": "[TransitArrivalResponse]",
+      "fixture_file": "subway_L.json",
+      "bytes": 153823,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_shapes_all",
+      "path": "/subway/shapes/all",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/shapes/all",
+      "status": 200,
+      "swift_type": "AllSubwayLinesResponse",
+      "fixture_file": "subway_shapes_all.json",
+      "bytes": 262878,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_stations_all",
+      "path": "/subway/stations/all",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/stations/all",
+      "status": 200,
+      "swift_type": "AllSubwayStationsResponse",
+      "fixture_file": "subway_stations_all.json",
+      "bytes": 43068,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_stations_processed",
+      "path": "/subway/stations/processed",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/stations/processed",
+      "status": 200,
+      "swift_type": "ProcessedStationsResponse",
+      "fixture_file": "subway_stations_processed.json",
+      "bytes": 88901,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_stations_nearby",
+      "path": "/subway/stations/nearby",
+      "params": {
+        "lat": 40.7505,
+        "lon": -73.9934,
+        "radius": 800
+      },
+      "url": "https://track-vkrr.onrender.com/subway/stations/nearby?lat=40.7505&lon=-73.9934&radius=800",
+      "status": 200,
+      "swift_type": "AllSubwayStationsResponse",
+      "fixture_file": "subway_stations_nearby.json",
+      "bytes": 1019,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_shape_A",
+      "path": "/subway/shape/A",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/shape/A",
+      "status": 200,
+      "swift_type": "RouteShapeResponse",
+      "fixture_file": "subway_shape_A.json",
+      "bytes": 45696,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_shape_7",
+      "path": "/subway/shape/7",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/shape/7",
+      "status": 200,
+      "swift_type": "RouteShapeResponse",
+      "fixture_file": "subway_shape_7.json",
+      "bytes": 10367,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_vehicles_A",
+      "path": "/subway/vehicles/A",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/vehicles/A",
+      "status": 200,
+      "swift_type": "[TrainVehicle]",
+      "fixture_file": "subway_vehicles_A.json",
+      "bytes": 11057,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "subway_live_vehicles_A",
+      "path": "/subway/live-vehicles/A",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/subway/live-vehicles/A",
+      "status": 200,
+      "swift_type": "[LiveVehicleDetailResponse]",
+      "fixture_file": "subway_live_vehicles_A.json",
+      "bytes": 25550,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "bus_routes",
+      "path": "/bus/routes",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/bus/routes",
+      "status": 200,
+      "swift_type": "[BusRoute]",
+      "fixture_file": "bus_routes.json",
+      "bytes": 55889,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "bus_nearby",
+      "path": "/bus/nearby",
+      "params": {
+        "lat": 40.7505,
+        "lon": -73.9934,
+        "radius": 800
+      },
+      "url": "https://track-vkrr.onrender.com/bus/nearby?lat=40.7505&lon=-73.9934&radius=800",
+      "status": 200,
+      "swift_type": "[BusStop]",
+      "fixture_file": "bus_nearby.json",
+      "bytes": 14309,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "bus_live_stop",
+      "path": "/bus/live/MTA_305168",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/bus/live/MTA_305168",
+      "status": 200,
+      "swift_type": "[BusArrival]",
+      "fixture_file": "bus_live_stop.json",
+      "bytes": 2,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "bus_vehicles_M15",
+      "path": "/bus/vehicles/MTA NYCT_M15",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/bus/vehicles/MTA NYCT_M15",
+      "status": 200,
+      "swift_type": "[BusVehicleResponse]",
+      "fixture_file": "bus_vehicles_M15.json",
+      "bytes": 276585,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "bus_live_vehicles_M15",
+      "path": "/bus/live-vehicles/MTA NYCT_M15",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/bus/live-vehicles/MTA NYCT_M15",
+      "status": 200,
+      "swift_type": "[LiveVehicleDetailResponse]",
+      "fixture_file": "bus_live_vehicles_M15.json",
+      "bytes": 289410,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "bus_route_shape_M15",
+      "path": "/bus/route-shape/MTA NYCT_M15",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/bus/route-shape/MTA NYCT_M15",
+      "status": 200,
+      "swift_type": "RouteShapeResponse",
+      "fixture_file": "bus_route_shape_M15.json",
+      "bytes": 35693,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "bus_schedule_M15",
+      "path": "/bus/schedule/MTA NYCT_M15",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/bus/schedule/MTA NYCT_M15",
+      "status": 200,
+      "swift_type": "BusScheduleResponse",
+      "fixture_file": "bus_schedule_M15.json",
+      "bytes": 46228,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "bus_tile_data",
+      "path": "/bus/tile-data",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/bus/tile-data",
+      "status": 200,
+      "swift_type": "BusTileDataResponse",
+      "fixture_file": "bus_tile_data.json",
+      "bytes": 3227020,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "lirr",
+      "path": "/lirr",
+      "params": {
+        "lat": 40.7505,
+        "lon": -73.9934
+      },
+      "url": "https://track-vkrr.onrender.com/lirr?lat=40.7505&lon=-73.9934",
+      "status": 200,
+      "swift_type": "[TransitArrivalResponse]",
+      "fixture_file": "lirr.json",
+      "bytes": 2411479,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "lirr_shapes_all",
+      "path": "/lirr/shapes/all",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/lirr/shapes/all",
+      "status": 200,
+      "swift_type": "AllCommuterRailLinesResponse",
+      "fixture_file": "lirr_shapes_all.json",
+      "bytes": 101968,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "mnr",
+      "path": "/mnr",
+      "params": {
+        "lat": 40.7505,
+        "lon": -73.9934
+      },
+      "url": "https://track-vkrr.onrender.com/mnr?lat=40.7505&lon=-73.9934",
+      "status": 200,
+      "swift_type": "[TransitArrivalResponse]",
+      "fixture_file": "mnr.json",
+      "bytes": 1633090,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "mnr_shapes_all",
+      "path": "/mnr/shapes/all",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/mnr/shapes/all",
+      "status": 200,
+      "swift_type": "AllCommuterRailLinesResponse",
+      "fixture_file": "mnr_shapes_all.json",
+      "bytes": 83993,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "nearby",
+      "path": "/nearby",
+      "params": {
+        "lat": 40.7505,
+        "lon": -73.9934,
+        "radius": 800
+      },
+      "url": "https://track-vkrr.onrender.com/nearby?lat=40.7505&lon=-73.9934&radius=800",
+      "status": 200,
+      "swift_type": "[NearbyTransitResponse]",
+      "fixture_file": "nearby.json",
+      "bytes": 478612,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "nearby_grouped",
+      "path": "/nearby/grouped",
+      "params": {
+        "lat": 40.7505,
+        "lon": -73.9934,
+        "radius": 800
+      },
+      "url": "https://track-vkrr.onrender.com/nearby/grouped?lat=40.7505&lon=-73.9934&radius=800",
+      "status": 200,
+      "swift_type": "[GroupedNearbyTransitResponse]",
+      "fixture_file": "nearby_grouped.json",
+      "bytes": 250713,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "nearby_grouped_subway",
+      "path": "/nearby/grouped",
+      "params": {
+        "lat": 40.7505,
+        "lon": -73.9934,
+        "radius": 800,
+        "mode": "subway"
+      },
+      "url": "https://track-vkrr.onrender.com/nearby/grouped?lat=40.7505&lon=-73.9934&radius=800&mode=subway",
+      "status": 200,
+      "swift_type": "[GroupedNearbyTransitResponse]",
+      "fixture_file": "nearby_grouped_subway.json",
+      "bytes": 133940,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "nearby_grouped_bus",
+      "path": "/nearby/grouped",
+      "params": {
+        "lat": 40.7505,
+        "lon": -73.9934,
+        "radius": 800,
+        "mode": "bus"
+      },
+      "url": "https://track-vkrr.onrender.com/nearby/grouped?lat=40.7505&lon=-73.9934&radius=800&mode=bus",
+      "status": 200,
+      "swift_type": "[GroupedNearbyTransitResponse]",
+      "fixture_file": "nearby_grouped_bus.json",
+      "bytes": 80775,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "nearby_inactive",
+      "path": "/nearby/inactive",
+      "params": {
+        "lat": 40.758,
+        "lon": -73.9855,
+        "radius": 800
+      },
+      "url": "https://track-vkrr.onrender.com/nearby/inactive?lat=40.758&lon=-73.9855&radius=800",
+      "status": 200,
+      "swift_type": "[InactiveRouteResponse]",
+      "fixture_file": "nearby_inactive.json",
+      "bytes": 3660,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "alerts",
+      "path": "/alerts",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/alerts",
+      "status": 200,
+      "swift_type": "[TransitAlert]",
+      "fixture_file": "alerts.json",
+      "bytes": 60891,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "accessibility",
+      "path": "/accessibility",
+      "params": {},
+      "url": "https://track-vkrr.onrender.com/accessibility",
+      "status": 200,
+      "swift_type": "[ElevatorStatus]",
+      "fixture_file": "accessibility.json",
+      "bytes": 2,
+      "skipped": false,
+      "reason": null
+    },
+    {
+      "slug": "predict_delay",
+      "path": "/predict/delay",
+      "params": {
+        "minutes_away": 5,
+        "route_id": "A",
+        "hour": 8
+      },
+      "url": "https://track-vkrr.onrender.com/predict/delay?minutes_away=5&route_id=A&hour=8",
+      "status": 422,
+      "swift_type": "DelayPrediction",
+      "fixture_file": null,
+      "bytes": 97,
+      "skipped": true,
+      "reason": "status 422"
+    }
+  ]
+}

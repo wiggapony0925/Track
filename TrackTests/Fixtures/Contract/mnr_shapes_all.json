@@ -1,0 +1,702 @@
+{
+  "lines": [
+    {
+      "route_id": "MNR_3",
+      "name": "New Haven",
+      "color_hex": "EE0034",
+      "polylines": [
+        "gkb{Flpa|Lp@\\p@^n@\\p@^p@^p@^p@\\p@\\p@Zr@Tt@Pt@Lt@Lt@Ht@Jt@Ht@Jt@Lr@Pt@Tp@Zp@^l@b@l@f@l@h@l@f@j@j@l@f@j@h@l@f@j@j@l@f@j@h@l@h@j@h@l@h@j@f@j@j@j@l@f@n@f@r@b@r@b@x@`@v@b@v@`@v@`@v@b@v@`@v@`@x@b@v@`@v@b@v@`@v@`@x@`@v@b@v@`@v@b@x@`@v@`@v@b@v@`@x@`@v@b@t@`@v@b@x@`@v@`@v@`@v@b@x@`@v@`@v@b@v@`@v@`@x@b@v@`@v@`@v@b@x@`@v@`@v@b@v@`@x@`@v@b@v@`@v@b@v@`@x@`@v@`@v@b@v@`@x@b@v@`@v@`@v@b@v@`@v@b@v@b@v@Zf@\\j@d@r@f@p@f@p@f@n@h@n@f@n@h@l@h@n@h@n@h@l@h@n@h@n@h@l@h@n@f@n@h@l@h@n@h@l@h@n@h@n@h@l@f@n@h@n@h@l@h@n@h@n@h@l@h@n@f@n@h@l@h@n@h@n@h@l@h@n@f@n@h@l@h@n@h@l@h@n@h@n@h@l@h@n@h@n@f@l@h@n@h@n@h@l@h@n@h@n@h@l@f@n@h@n@f@n@f@p@f@p@b@t@b@v@`@x@`@x@\\x@\\~@Z|@X~@V~@X`AV`AV~@T`AX~@T`AX`AV`AT~@X`AT`AX`AT`AX~@T~@V`AV`AV`AX`AT`AX~@X~@X~@Z~@Z|@Z|@\\z@\\|@^x@^z@^x@`@v@b@v@`@x@b@t@d@t@d@t@d@r@d@p@f@r@d@p@f@p@f@p@f@p@f@r@f@p@d@p@f@p@f@p@f@p@d@r@f@p@f@p@f@p@f@p@f@p@d@r@f@p@f@p@f@p@f@p@f@r@d@p@f@p@f@p@f@p@d@p@f@r@f@p@f@p@f@p@f@p@d@p@f@r@f@p@f@p@d@p@f@p@f@r@f@p@f@p@f@p@d@p@f@p@f@r@f@p@f@p@d@p@f@p@f@r@f@p@f@p@d@p@f@p@f@p@f@r@f@p@f@p@d@p@f@p@f@p@f@r@d@p@f@p@f@p@f@p@f@r@f@p@d@p@f@p@f@p@f@p@f@r@d@p@f@p@f@p@f@p@f@p@d@r@f@p@f@p@f@p@f@p@f@r@d@p@f@p@f@p@f@p@f@p@d@r@f@p@f@p@f@p@f@p@d@p@f@r@f@p@f@p@f@p@f@p@d@r@f@p@f@p@f@p@d@p@f@p@f@r@d@r@f@p@d@r@d@r@d@r@b@t@d@t@b@t@d@v@b@t@`@v@b@v@`@v@b@v@`@v@`@x@`@v@`@v@`@x@b@v@`@x@`@v@`@v@`@x@`@v@b@x@`@v@`@v@`@x@`@v@`@v@b@x@`@v@`@x@`@v@`@v@`@x@b@v@`@x@`@v@`@v@`@v@`@x@b@v@`@x@`@v@`@v@`@x@`@v@`@x@b@v@`@v@`@x@`@v@`@x@`@v@b@v@`@v@`@x@`@v@`@x@`@v@b@v@`@x@`@v@`@x@`@v@`@v@b@v@`@x@`@x@`@v@`@v@`@v@b@x@`@x@`@v@`@v@`@v@`@x@`@x@^x@^z@\\z@\\z@\\|@^z@Z|@\\z@\\|@\\z@\\|@\\z@\\z@\\|@\\z@\\|@\\z@\\|@\\z@\\|@\\z@\\|@\\z@\\|@\\z@\\|@\\z@Z|@\\z@\\|@\\z@\\~@X|@Z|@X~@V`AV`AT`AT`ARbARbAPdANbANdALdALdAJdAJfAHfAFfAFfADfABfABhABfA@fA@fA@hA@fA@fA@hA@fA@fA@hA@fA@fA@hA@fA@hA@dA@hA@hA@fA@fA@hA@fA@fA@fA@hA@fA@fA@hA@fA@fA@hA@fA?fABhA@fA@hA@dADhADfAFfAHfALdALdANdANbAPdARbAR`ATbAT`AV`AX~@V~@Z~@Z~@Zz@\\|@\\z@^z@^x@b@v@`@x@`@v@b@v@`@t@b@x@`@v@b@t@b@x@`@t@b@v@`@x@b@t@`@x@^x@`@x@\\z@\\|@Z|@X~@X~@V~@TbARbAT`ARbARbARbAR`ARdAR`ARbARbATbAP`ATbARbARbARbAR`ARbARbAT`AVbAT`AV~@V~@X~@Z`AX|@\\|@Z|@\\z@^|@\\x@\\z@^|@\\x@^z@\\|@\\z@\\|@X|@Z~@X~@V`AV`AT~@RbARbARdAP`APdAPdAPbAPbAPdANbAPbAPdAPbAPbAPdAPbAPbAPdAPbANbARdANdAPbAPbAPdAPbAPbAPdANbARbANdAPbAPbAPdAPbAPbAPfANbAPbANdAPdAPbAPbANdARbARbAPbAPbAPdAPbAPbANdAPbAPbAPdAPbAPdAPbAPdAPbAPbAPdAP`ARdAPbARbAPbAPbAPbAPdAPdAPbAPdANbARbANdAPbAPbAPdAPbAPbAPdAPbAPbANbARdANbAPbAPfAPbAPbAPdAPbAPbAPdAPbANbAPdAPbAPbARdAT`AT`AV~@Z~@Z|@Z|@^z@^x@b@x@b@t@b@t@d@r@d@r@d@r@d@t@d@r@d@t@b@r@d@r@f@r@b@t@d@r@d@t@d@r@d@r@d@r@d@t@d@r@d@t@d@p@d@t@d@r@d@t@d@r@b@r@d@t@b@t@d@t@b@t@d@t@b@r@b@v@d@t@b@r@d@v@b@r@d@t@b@v@d@r@b@t@b@t@d@t@b@t@d@t@b@t@d@t@b@t@b@t@d@t@b@r@b@t@d@v@b@r@d@t@b@t@d@t@b@t@b@t@d@t@b@t@d@t@b@t@d@t@b@r@b@v@d@r@b@t@d@v@b@r@d@t@b@t@d@t@b@t@b@t@d@t@b@t@d@r@b@v@b@t@d@r@b@v@`@v@`@v@`@z@\\z@\\z@Z~@X~@V~@V`AT`ARbAPbAPdALdALdAJdAHfAFfADfABfABfA?hA?hAAdAChACfAAhACdAChACfAAhACdAChACfACfAChAAfAChACdAChACfAChAAdAChACfACfACfAChAAfACfACfAChAAfACfACfAChACfACfAAfAChACfACfAChACfACfAAfAChACfACfACfAAhACfACfACfAAhACfACfACfAChACfACfAAfAChACfACfACfAChAAfACfACfAChAAfACfAAhACfA?fAAfA?hA?fA@fA@hABfABfADfADhADfAFdAHfAHfAJdAJfALdALdANdAT`AV`AZ|@^x@b@x@d@p@f@n@l@j@l@d@n@b@n@`@p@^n@`@n@`@p@\\r@\\p@Vr@Tt@Nt@Lt@Hv@Dt@?v@?t@Et@Gt@Iv@Gt@It@It@Gv@It@Gt@It@Iv@Gt@It@Gt@It@Gt@Iv@It@It@Gv@It@It@Gt@Iv@Gt@Ct@Bt@Ft@Pr@Vp@Zn@d@j@f@h@p@`@t@^|@Z|@V`AT`ARbANbALdAJdAJfAFfAFfADfAFfADfADfADhADfADdADhADfADfAFfADfADfADfADhADdADfADhAFfADfADfADfADfADfADhADdAFfADhADfADfADfADfADfADfAFfADfADfADhADfADdADhADfADfAFfADfADfADfADhADdADfADhAFfADfADfADfADfADfADfADfAFfADhADfADfADfADfADfADfAFfADfADfADhADfADdADhAFfADfADfAFdAFhAFfAHdAJfAJfAJdALdANdALbANdANfANbANdANbANdANdANdANbANdANdAPdAP`ARdAT`AT`AX~@\\|@Z|@^z@`@v@`@v@b@t@d@r@d@t@f@r@d@r@d@r@d@p@f@r@d@r@d@r@d@r@f@r@d@r@d@r@d@r@f@r@d@r@d@p@d@r@f@r@d@r@d@p@d@r@f@r@d@r@d@r@d@r@f@r@d@r@d@r@d@r@f@p@d@r@d@r@f@r@d@r@d@r@d@r@f@r@d@r@d@r@d@p@f@r@d@r@d@r@d@p@f@r@d@r@d@r@d@r@f@r@d@r@d@r@d@p@f@r@d@r@f@r@d@p@f@p@h@n@h@n@h@l@h@j@j@l@j@j@j@h@j@h@l@j@j@f@j@j@j@h@j@j@l@h@j@h@j@j@l@h@j@h@j@j@j@h@l@h@j@h@j@h@j@j@j@j@j@j@h@j@j@n@f@l@h@n@f@p@f@p@d@r@f@r@b@r@d@t@b@t@b@v@`@v@`@v@`@x@^z@^x@\\|@\\z@\\|@Z|@Z|@X|@X`AX~@V~@V`AT`ATbAR`ARbARbAPbAPdANbANdALdALdALdAJfAJdAHfAFfAFfADfADfADfABfA@hABfA@fABhA@fA@fABfA@hABfA@fABfA@hA@fABfA@fABhA@fABfA@fA@hABfA@fABhA@fA@fABfA@hABfABfABfAFfAFfAJfAJdANdANbARbARbAV`AV~@Z~@Zz@\\|@^z@`@v@`@v@b@v@`@x@`@v@b@v@`@v@b@v@`@v@`@v@b@v@`@x@b@t@`@v@`@x@b@v@`@v@`@v@b@v@`@v@b@v@`@v@`@v@b@v@`@v@b@x@`@v@`@t@b@x@`@v@b@v@`@v@`@v@b@v@b@v@`@v@`@x@`@t@b@v@`@x@b@v@`@v@`@t@b@x@`@v@b@v@`@v@b@v@`@v@`@v@b@x@`@v@b@t@`@v@`@x@b@v@`@v@b@v@`@v@`@v@b@v@`@x@b@t@`@v@`@v@b@x@`@v@`@x@^x@^x@^z@^z@Z|@\\z@Z|@X~@Z~@X~@V~@V`AV~@TbAT`AT`AT`ATbAT`AT`ATbAT`AT`ATbAT`AT`AT`AT`ATbAT`AT`AT`ATbAT`AT`ATbAT`AT`ATbAT~@TbAT`AT`AT`ATbAT`AT`ATbAT`AT`ATbAT~@TbAT`AT`ATbAT`AT`AT`ARbARbARbAPbALdANdAJdAJdAHfAHfADfADhABdABhA?fA?hA?dAChACfAEfAGfAGfAKdAKfAKdAOdAOdAObAQdAObAOdAOdAQbAQdAOdAObAQbAOdAQdAObAObAQdAOdAObAQbAOfAQbAObAOdAQdAMdAOdAKdAKdAIfAGfAGfAEfAEfAAfAAhA?fA?fABhABfABdADhADfADfADfADfABfADhADfAFdADfADhABfADfADfADfAFfADhADdABfADfADhADfADdAFhABfADfADfADfADfADfADhADdADfADhADfADfADfAFfAFfAHdAHfAJfAJdALdALdAJdALfALdALdALdALdALfALdALdALdALdALdALdALdALdALdALdALfALdALdALdALdAJdANdALdAJdALdALfALdALdALdALdALdALdALdALdALdALdALfALdALdANdALdANbAPdAPbARbARbAR`ATbAV`AV~@X`AV~@Z|@Z|@Z~@\\z@\\z@\\z@^x@`@z@^z@^x@^z@^x@^x@^z@^x@^z@^x@^z@^x@^x@^z@^z@^x@^z@^x@^x@^z@^x@^z@^x@^z@^x@^x@^z@^z@`@x@^z@^x@^x@^z@^x@^z@^x@^z@^x@^x@^z@^z@^x@^z@^x@^x@^z@^x@^z@^z@^x@^x@^x@^z@^z@\\z@\\z@\\|@Z|@Z|@Z~@X|@X`AV~@V`AV~@V`AX~@V`AV`AX~@V`AV~@V~@V`AX~@V`AV~@V`AV`AV~@X`AV~@V~@V`AV~@X`AV~@V`AV`AV~@X`AV~@V~@V`AV~@X`AV~@V`AX`AT~@X`AT~@V`ARbAPbANdANbANfALdANdALbANdALdALdANdALdAPdAP`ATbAX~@Z|@`@x@`@v@f@r@f@l@j@l@h@j@l@h@j@h@l@f@l@h@l@f@j@f@l@h@l@f@j@h@l@h@j@f@l@f@l@h@j@f@l@h@l@f@l@f@j@h@l@h@l@f@j@h@l@f@j@f@l@h@l@f@j@h@l@h@l@d@l@h@j@h@l@f@l@h@j@f@l@f@l@d@n@d@n@`@n@`@p@\\r@Zr@Vr@Vp@Vr@Tt@Vr@Tr@Vr@Tr@Tr@Tr@Vr@Tr@Tr@Vr@Tr@Vt@Rp@Vt@Tr@Vr@Tr@Vp@Xr@Xp@\\p@^n@`@l@b@n@f@l@f@j@j@h@j@h@n@f@n@f@p@d@t@b@t@b@v@^v@^z@^z@Z|@Z~@V~@V`AT`ARbAPbANdALdALdAJfAHdAHfAHdAJfAFdAJfAHdAHfAHfAHdAHfAJfAHfAHdAHfAHfAHdAJdAHfAHfAHdAHfAHfAHdAHfAHfAHfAHdAHfADdADhABfABhA@dA?hA?fAAhAAdAChAAfACfACfAAfAChACfACfAAfAChACfACfAAfAChAAfACfACfAAfAChACdAAhACfAChACdAAhACfACfACfAAfAChACfAAfACfAAhACfAAfAAfA?hA@fA@fA@fADhADfADdADfAFhAFfADfAFdAFfADfAFfADfAFhAFdADfAFfAFfADfAFfADfAFfAFfADfAFfAFfAFdAHfAJdAJfANdANdANbARbARbAT`AT`AX~@V~@Z~@Z|@\\z@^z@^z@`@v@`@v@b@v@b@t@b@v@b@t@b@v@`@t@b@v@b@t@b@v@d@t@`@v@b@t@b@t@b@v@b@t@b@v@b@t@b@t@b@v@b@t@b@t@b@v@`@v@`@v@^z@^z@Z|@Z|@V~@V`ATbARbANdANbALdAJfAFfAFfABdABhA?fAAfAAfAEfAEhAGfAGfAGdAGfAGfAIfAGfAGfAGfAGdAGfAGfAIfAGfAGfAGfAGdAGfAGfAGfAGfAIfAGfAGdAGfAGfAGfAGfAGfAGfAIdAGfAGfAGfAGfAGfAGfAGdAGfAGfAChACfAAfA@fA@hADfADdAFfAJfAJdANdANdAPbATbAT~@V`AV~@\\~@Zz@^z@^z@`@v@b@t@d@t@d@p@f@p@h@n@h@l@j@h@l@h@l@f@n@b@n@`@p@^n@\\r@Xr@Vr@Vr@Rt@Nt@Nt@Nr@Nt@Lt@Nt@Lt@Nt@Nr@Nt@Nt@Lt@Nt@Nt@Lr@Nt@Nt@Lt@Nr@Nv@Nr@Lt@Rr@Pt@Rr@Xp@Xp@Zp@\\n@`@p@b@l@d@l@f@l@f@h@j@h@l@h@n@f@p@d@r@d@t@d@r@d@r@b@t@d@r@d@t@d@r@b@r@d@t@d@t@d@r@d@r@b@t@d@t@d@r@b@r@d@v@`@t@`@x@^x@^|@Zz@Z~@Z|@V~@V`AX~@V`AV~@X~@V`AV~@X~@V`AV~@V`AV~@X`AV~@V`AX~@V`AV~@V~@X~@V`AV`AX~@V`AV~@X`AV~@V`AV~@X~@V`AV~@V~@X`AV~@V`AX~@V`AV~@V`AX~@V`AX~@X|@\\z@\\|@^x@`@x@`@v@d@t@d@r@d@p@h@n@h@n@h@j@j@j@l@f@l@f@n@b@l@d@n@d@n@b@l@b@n@d@n@b@l@b@n@d@n@d@l@b@n@d@l@d@l@h@j@f@j@j@h@l@h@l@h@n@f@p@f@p@d@r@b@t@b@t@b@v@`@x@^x@^z@\\z@Z|@Z~@X|@X~@V`AT~@TbARbAPbAPbAPdANdANbANbANdAPdANbANdANdAPbANdANbANdANdANbAPbANfANbANbAPdANdANdANbANbAPdANdANbANdAPdANbANdANbANdALdALdAJfAJdAJfAHdAFfAFdADfADhABfABfABfA?fA@hA@fA@fA@fA@hA@fA@fA@fA@hA?fA@fA@fA@hA@dA@hA@fA@hA@dA?hA@fA@hA@dA@hA@fA@hA@dA@hA?fABfA?fA@hA@fA@fA@fA@hA@fA?fABfA@hABfADfAFdAHfAJdAJdALfANdAJdALdANdAJdALdANdAJdALdANfAJdANdALdALdALdAJbANdALfALdALdALdALdALdALdALdANdAPbARbAT`AT`AX~@X~@Z|@X~@Z|@Z~@X|@Z|@Z~@X~@Z|@Z|@Z~@X|@Z|@Z~@Z|@X~@Z|@Z|@Z~@X~@Z|@Z|@X|@Z~@Z|@Z~@X|@Z~@X|@Z|@Z|@Z~@X~@Z|@Z|@Z~@X|@Z|@X~@X~@V`AV`AT`AR`ARbARbARbAR`ARdAR`APbARbARbAPbARbANdAJdALdAHfAFfAFdABfABhABfABfADfABfABhABfABdABhABfABfABfADfABfAFhAHdAHfALdALdANbAPbATbARbAX~@V~@Z~@Zz@\\|@^x@`@x@b@t@b@v@d@r@f@p@f@n@h@p@f@l@h@n@h@n@h@l@f@n@h@n@h@l@h@n@h@n@h@l@f@n@h@l@h@n@h@n@f@l@h@n@h@n@h@l@f@n@h@n@h@l@h@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@n@h@n@h@l@h@n@f@n@h@l@h@n@h@n@f@l@h@n@h@l@h@n@f@n@h@n@f@p@d@r@d@p@b@v@b@v@^x@^z@\\z@Z|@Z~@V~@V`AV`AV~@T`AV`AV`AT~@V`AV`AT~@V`AVbAR`ARbAPbANdAJdAHdAHfAFfADfAFfAFfADfADdAHfAFfAJdANdAPdAR`AV`AX~@\\|@\\x@`@x@b@t@d@r@f@n@j@n@j@h@l@f@l@f@l@d@l@d@l@f@n@d@l@d@l@f@l@d@l@f@n@d@l@d@l@f@l@d@n@d@l@f@l@d@l@d@l@d@n@f@l@d@l@d@l@d@n@f@l@d@l@d@n@d@l@f@l@d@l@d@n@d@l@d@l@f@l@d@n@d@l@f@l@d@l@d@n@d@l@f@l@d@l@d@l@f@n@d@l@d@l@f@n@d@l@d@l@f@l@d@n@d@l@f@l@d@l@d@l@d@n@f@l@d@j@f@l@j@j@j@h@l@f@n@f@n@d@r@d@t@`@v@`@x@`@x@\\x@\\|@Z|@X~@V`AT`AT`ARbANbANdALdAJdAJfAJdAJfAHdAJdALfANdANbAPbARbAT`AV`AV~@X~@Z|@^z@^x@`@x@b@t@d@v@`@r@d@v@b@r@b@v@b@t@d@t@b@v@b@r@b@v@d@r@`@v@d@t@b@t@b@v@b@r@d@v@b@r@b@v@b@t@b@t@b@t@d@t@b@v@b@r@b@v@b@t@d@t@b@t@b@t@b@v@b@r@d@v@b@t@b@t@b@t@b@t@b@v@d@r@b@v@b@r@b@v@b@t@d@t@b@t@b@t@b@v@b@r@b@v@d@t@b@t@b@t@b@t@d@v@`@r@d@v@b@t@b@t@b@t@d@t@b@t@b@t@b@v@b@t@b@t@d@t@b@t@b@t@b@t@b@v@`@v@^x@^|@\\x@Z~@X~@V~@V`ARbAP`APdANdANbALdALdALdANfAJbANdALdALdALdALdALdANdALdALdALdALdANbALfAPbAPbARbAT`AV~@X~@X`A\\z@\\|@^x@^x@^x@`@x@`@x@^v@`@x@`@x@`@v@`@x@`@v@`@v@b@v@b@t@d@r@d@r@f@p@f@p@h@n@f@n@h@n@h@l@h@n@f@l@h@n@h@n@h@l@f@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@p@h@l@f@n@h@n@h@l@f@n@h@n@h@n@h@n@h@l@f@n@h@n@h@l@f@n@h@n@h@l@h@p@f@l@h@n@h@n@f@l@h@n@h@n@f@n@h@n@h@l@h@n@f@n@h@n@h@n@f@l@h@n@h@n@h@l@f@p@h@l@h@n@f@n@h@l@h@n@h@n@f@l@h@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@n@h@n@h@l@f@n@h@n@h@n@f@n@h@l@h@n@h@n@h@l@f@n@h@l@h@n@f@n@h@l@h@n@h@p@h@l@f@n@h@l@h@n@f@n@h@l@h@n@f@n@h@n@h@n@h@l@h@n@f@n@h@l@h@n@f@n@h@n@h@n@h@l@f@n@h@n@h@l@f@n@h@n@h@l@h@p@h@l@f@n@h@n@h@l@f@n@h@n@h@l@h@n@f@n@h@n@h@n@f@l@h@n@h@n@f@l@h@n@h@n@h@n@h@n@f@l@h@n@h@n@f@l@h@n@h@n@h@l@f@p@h@l@h@n@h@n@f@l@h@n@h@n@h@l@f@n@h@n@f@n@h@n@f@p@f@n@f@p@f@p@d@r@f@p@f@r@d@p@d@r@d@t@d@r@d@r@b@r@f@t@b@r@d@t@d@p@d@t@b@r@d@t@d@r@d@r@d@r@d@t@b@t@d@r@d@r@d@r@d@t@d@r@b@t@d@r@d@r@d@r@d@t@b@r@d@t@d@r@d@r@d@t@d@r@b@t@d@r@d@r@d@r@d@t@d@r@d@t@b@p@d@t@d@r@d@t@d@r@d@r@d@p@h@p@f@n@h@l@j@l@j@h@l@f@j@f@n@d@l@d@n@b@n@b@l@d@n@b@n@b@l@d@n@b@n@b@l@b@n@f@n@b@l@b@n@b@n@d@n@b@l@b@n@d@l@b@n@b@l@d@n@b@n@d@l@b@n@d@n@b@l@b@n@d@n@b@n@b@l@d@n@b@n@b@l@b@n@d@n@b@l@d@n@b@l@d@n@b@n@b@l@d@l@f@l@h@h@j@h@n@f@p@d@r@b@t@`@v@\\z@\\|@Z|@X|@V`ATbAP`ANdALdAJfAHdAFfAFfADfAFfADfADfADdA@fA@hACfAAfAGfAGdAIfAMdAMdAOdAMdAObAOdAMdAOdAOdAObAMdAOdAMdAObAOdAObAMdAOdAOdAObAMdAOdAOdAMbAOdAOdAMdAOdAObAMdAObAOfAObAMdAObAMdAOdAOdAMbAOdAOdAOdAMdAObAOdAOdAMdAObAMdAObAOfAObAMdAObAOdAMdAOdAOdAMbAOdAOdAMdAObAKfAKdAGfAGfAEfACdAAhAAfA@fABfABfADfAFfAHfALdAJdAJdALdAJdAJfAHdAHfAFfABfABfA?fA?fAAhAEfAEfAGdAIfAIdAIfAKdAIfAIfAKdAIfAIdAKfAIdAGfAGfAEfAAfA?fA@fABhADdADfAJdAJfALdANdAP`ATbAT`AX~@V~@X~@X`AV~@T`ARbAPbANbALdAJfAHdAHfAJdAHfAJdAHfAHdAJfAHdAJfAHdAHfAJdALdALdAPdAP`ARbAT`AT`AX`AV~@Z|@X~@\\|@\\z@\\z@^x@`@x@`@v@b@v@b@t@d@r@d@r@f@p@f@p@j@j@j@h@l@h@l@f@j@f@n@d@l@d@j@f@l@f@n@f@l@f@j@f@n@d@l@f@j@f@l@f@j@h@j@j@j@j@j@j@j@j@j@h@j@l@h@j@l@h@j@h@j@j@l@f@l@d@n@b@n@b@l@b@p@`@n@b@l@b@n@d@n@b@l@b@m@i@`B~@d@XJFpC~Ap@^n@`@p@^n@^p@`@n@^p@^n@`@p@^n@^p@`@n@^p@^n@`@p@^p@^n@^p@\\p@\\p@\\p@\\p@Zr@Zp@Zr@Xp@Vr@Vr@Vr@Tr@Vr@Tt@Tr@Tr@Vr@Tr@Tr@Tr@Vr@Tr@Tr@Tt@Vr@Rr@Vr@Tr@Vr@Rr@Vr@Tr@Tt@Tr@Vp@Tt@Tr@Tr@Vr@Tr@Tr@Tr@Vt@Rp@Vt@Tr@Vr@Tr@Tr@Tr@Tr@Vt@Tp@Tr@Tt@Vr@Tr@Tr@Tr@Vr@Tr@Vr@Vp@Zp@\\p@\\p@^n@`@n@`@n@d@n@`@n@b@n@`@n@b@l@b@p@b@n@`@l@b@n@b@n@b@n@`@n@b@n@d@j@f@l@f@h@l@h@n@d@r@d@r@`@x@^x@`@x@^x@^x@\\z@^x@^z@^x@^z@^x@`@x@^z@^x@^z@\\x@^z@^x@^x@^x@^z@^x@^z@^z@^x@^x@^x@^z@^x@^z@^x@^z@^x@^x@^x@^z@`@x@^v@b@v@d@r@d@r@f@p@h@l@j@l@j@h@l@f@l@f@l@b@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@`@n@b@p@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@`@p@^p@^n@\\r@\\p@Zp@Zp@\\p@Zr@\\p@Xp@\\p@Zr@Zp@\\p@Zp@\\p@Xr@\\p@Zp@Zp@Zr@\\p@Zp@Zp@\\r@Zp@Zp@Zp@\\p@Zr@Zp@\\p@Xp@\\r@Zp@Zp@\\p@Zr@Zp@Zp@\\p@Zp@Zr@Zp@Zp@\\r@Xp@\\p@Zp@Zr@\\p@Xp@\\p@Zp@Zr@\\p@Zp@Zp@Zr@Zp@\\p@Zr@Zp@Zp@Zp@\\r@Zp@Zp@Zp@\\p@Zr@Zp@Zp@Zp@\\r@Xp@\\p@Zp@Zr@\\p@Xp@\\r@Zp@Zp@\\p@Xp@\\r@Zp@Zp@\\p@Xr@\\p@Zp@Zp@\\r@Xp@\\p@Zp@\\p@^n@`@n@`@n@d@l@f@j@h@j@j@h@l@h@l@f@p@d@r@d@r@d@r@b@v@b@r@b@x@`@t@b@v@`@t@b@v@b@v@`@t@b@v@b@v@`@t@b@v@b@t@`@x@b@t@b@v@`@v@b@t@b@v@`@t@b@v@b@v@b@t@`@v@b@t@b@v@`@v@b@t@b@v@`@v@b@v@b@t@b@t@b@v@b@t@d@r@b@r@f@r@f@p@f@p@f@n@h@n@f@n@h@j@j@l@h@j@j@l@j@h@l@h@j@h@l@f@l@f@l@d@f@~@p@^p@\\n@`@n@`@p@^n@`@n@b@n@`@n@b@n@`@n@`@p@^p@\\n@^p@b@l@`@n@f@h@j@h@n@d@r@b@t@^x@\\z@Z~@V~@X~@V~@X`AV~@V~@X~@V~@X`AV~@X~@Z|@b@v@d@p@j@j@l@d@n@d@n@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@p@`@n@b@n@`@l@b@n@`@n@b@n@`@n@b@n@`@p@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@^n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@`@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@p@b@n@b@n@`@n@b@n@^l@b@n@b@n@`@n@b@n@`@n@b@n@`@p@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@`@n@`@n@b@n@b@n@`@n@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@n@d@l@b@n@b@l@d@n@d@n@b@l@b@n@d@n@b@l@d@n@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@n@d@l@b@n@d@"
+      ],
+      "mode": "mnr",
+      "stops": [
+        {
+          "stop_id": "151",
+          "name": "New Haven-State St",
+          "lat": 41.304979,
+          "lon": -72.921747
+        },
+        {
+          "stop_id": "149",
+          "name": "New Haven",
+          "lat": 41.296501,
+          "lon": -72.92829
+        },
+        {
+          "stop_id": "190",
+          "name": "West Haven",
+          "lat": 41.27142,
+          "lon": -72.963488
+        },
+        {
+          "stop_id": "145",
+          "name": "Milford",
+          "lat": 41.223231,
+          "lon": -73.057647
+        },
+        {
+          "stop_id": "143",
+          "name": "Stratford",
+          "lat": 41.194255,
+          "lon": -73.131532
+        },
+        {
+          "stop_id": "140",
+          "name": "Bridgeport",
+          "lat": 41.178677,
+          "lon": -73.187076
+        },
+        {
+          "stop_id": "188",
+          "name": "Fairfield-Black Rock",
+          "lat": 41.161,
+          "lon": -73.234336
+        },
+        {
+          "stop_id": "138",
+          "name": "Fairfield",
+          "lat": 41.143077,
+          "lon": -73.257742
+        },
+        {
+          "stop_id": "137",
+          "name": "Southport",
+          "lat": 41.134844,
+          "lon": -73.28897
+        },
+        {
+          "stop_id": "136",
+          "name": "Green's Farms",
+          "lat": 41.122265,
+          "lon": -73.315408
+        },
+        {
+          "stop_id": "134",
+          "name": "Westport",
+          "lat": 41.118928,
+          "lon": -73.371413
+        },
+        {
+          "stop_id": "133",
+          "name": "East Norwalk",
+          "lat": 41.103996,
+          "lon": -73.404588
+        },
+        {
+          "stop_id": "131",
+          "name": "South Norwalk",
+          "lat": 41.09673,
+          "lon": -73.421132
+        },
+        {
+          "stop_id": "129",
+          "name": "Rowayton",
+          "lat": 41.077456,
+          "lon": -73.445527
+        },
+        {
+          "stop_id": "128",
+          "name": "Darien",
+          "lat": 41.076913,
+          "lon": -73.472966
+        },
+        {
+          "stop_id": "127",
+          "name": "Noroton Heights",
+          "lat": 41.069041,
+          "lon": -73.49788
+        },
+        {
+          "stop_id": "124",
+          "name": "Stamford",
+          "lat": 41.046611,
+          "lon": -73.542846
+        },
+        {
+          "stop_id": "116",
+          "name": "Greenwich",
+          "lat": 41.021277,
+          "lon": -73.624621
+        },
+        {
+          "stop_id": "114",
+          "name": "Rye",
+          "lat": 40.985922,
+          "lon": -73.682553
+        },
+        {
+          "stop_id": "56",
+          "name": "Fordham",
+          "lat": 40.8615,
+          "lon": -73.89058
+        },
+        {
+          "stop_id": "4",
+          "name": "Harlem-125 St",
+          "lat": 40.805157,
+          "lon": -73.939149
+        },
+        {
+          "stop_id": "1",
+          "name": "Grand Central",
+          "lat": 40.752998,
+          "lon": -73.977056
+        }
+      ]
+    },
+    {
+      "route_id": "MNR_4",
+      "name": "New Canaan",
+      "color_hex": "EE0034",
+      "polylines": [
+        "ervwFruobMo@e@m@c@o@e@m@c@o@c@o@e@m@e@o@c@o@c@m@e@m@c@o@c@o@e@m@e@o@c@o@c@m@e@o@c@m@e@o@c@o@e@m@c@o@c@o@e@m@e@o@c@m@c@o@e@m@c@o@c@o@e@m@e@o@c@o@c@m@e@o@c@o@a@o@c@o@c@o@a@o@a@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@q@c@o@a@o@c@o@a@o@c@o@a@o@c@m@c@o@_@o@c@o@a@o@c@q@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@a@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@_@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@a@o@c@o@a@q@c@o@a@o@c@o@a@o@c@o@a@m@c@o@a@o@c@q@a@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@a@o@c@o@a@o@c@o@a@o@e@m@e@k@k@e@q@c@w@[}@Y_AW_AYaAW_AY_AW_AW_AYaAW_AY_AW_A[_A]{@_@y@c@u@e@s@i@o@i@k@o@g@m@a@q@c@o@_@q@]q@_@o@a@o@a@o@c@o@a@o@c@o@a@q@_@o@a@o@a@q@]q@_@g@_Am@e@m@g@m@g@k@i@m@i@k@i@k@m@i@k@k@m@i@k@g@o@i@o@g@o@g@q@g@q@g@s@c@s@e@s@c@u@c@w@c@u@c@u@c@w@a@w@c@w@c@u@a@w@c@w@c@u@a@w@c@u@c@w@c@w@a@u@c@w@c@u@a@w@c@w@c@u@a@y@c@u@c@w@a@u@c@w@c@w@a@u@c@w@c@w@a@u@c@w@a@u@c@y@c@s@c@w@e@s@e@s@e@s@g@q@i@m@i@m@k@k@k@i@m@g@o@e@o@a@o@a@q@_@q@]q@[q@]s@Yq@]q@[q@[s@]q@Yq@]q@[s@[q@]q@Yq@]q@[s@[q@]q@Ys@]q@[q@[q@]s@Yq@]q@[q@[s@[q@[q@]q@[q@[s@[q@]q@[q@[s@[q@[q@]s@[q@[q@[q@[s@]q@[q@[q@]q@Ys@]q@[q@[q@]s@Yq@]q@[s@[q@[q@[q@]q@[s@[q@[q@]q@[s@[q@]q@Yq@]s@[q@[q@]q@[q@[s@[q@]q@[q@[s@]q@[q@[q@[s@]q@Yq@]q@[q@]s@[q@[q@]q@Ys@]q@[q@]q@[q@[s@]o@]q@_@q@_@o@a@o@a@o@c@o@a@o@c@o@a@o@a@o@c@o@a@o@c@q@a@o@c@o@a@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@m@c@m@g@m@g@k@i@k@m@i@m@g@q@e@s@e@s@c@w@_@w@a@y@_@{@_@y@_@y@_@y@_@{@_@y@_@{@_@y@_@{@_@y@_@y@_@y@_@{@_@{@_@y@_@{@_@y@_@y@_@y@_@{@]y@_@{@_@y@_@{@a@y@_@y@_@{@_@y@_@{@_@y@]{@_@y@_@y@a@y@_@y@a@y@e@s@e@s@i@o@i@m@m@g@k@g@o@e@o@c@o@a@o@c@o@c@m@c@o@a@q@c@m@c@o@c@o@a@o@c@o@a@o@e@o@a@o@a@q@_@q@]q@]q@[s@Ws@Ws@Us@Ws@Us@Us@Uu@Ws@Uq@Uu@Us@Ws@Us@Us@Us@Us@Wu@Uq@Wu@Ss@Ws@Us@Us@Us@Ws@Uu@Uq@Us@Wu@Us@Us@Us@Ws@Ss@Ws@Us@Ws@Su@Ws@Us@Us@Us@Ws@Us@Us@Us@Ws@Uu@Us@Us@Ws@Us@Ws@Wq@Ws@Yq@[s@[q@[q@]q@]q@]q@]o@_@q@_@q@_@o@a@q@_@o@_@q@a@o@_@q@_@o@a@q@_@o@_@q@a@o@_@q@_@o@a@q@_@qC_BKGe@YaB_Al@h@m@c@o@c@o@e@m@c@o@c@q@a@m@c@o@c@o@c@m@e@m@g@k@k@k@i@m@i@i@k@k@m@k@i@k@k@k@k@k@k@k@k@k@i@m@g@k@g@m@g@o@e@k@g@m@g@o@g@m@g@k@g@m@e@o@e@k@g@m@g@m@i@k@i@k@k@g@q@g@q@e@s@e@s@c@u@c@w@a@w@a@y@_@y@]{@]{@]}@Y_A[}@W_AYaAUaAUaAScAQaAQeAMeAMeAKeAIgAIeAKgAIeAKgAIeAIgAKeAIgAKeAIgAIeAKgAMeAOcAQcAScAUaAW_AYaAY_AW_AY_AUaAUcAQaAOeAMeAKgAKeAEgAEeACiAAgA?gA@gADgAFgAFgAHeAJgAHeAHgAJeAHgAHgAJeAHgAHeAHgAFeADgADgA@iA?gA?gACgACgAGgAIgAIeAKgAKeAMeAKeAKeAMeAIgAGgAEgACgACgAAgA@gA@iABeADgAFgAFgAJeAJgANcALeANeANeALcANeANeALeANeANcALeANcANgANcALeANcALeANeANeANcALeANeANeANeALcANeANeALeANcALeANcANgANcALeANcANeALeANeANeALcANeANeALeANcANeANeALeANcANeANcALeANeALeANcANeANeALeANeANcALeANeALeALeAHgAFeAFgA@gABgAAiAAgAEeAEgAEgAGgAEgAGgAGgAIeAKgAMeAOeAQaAUcAWaAY}@[}@]}@]{@a@w@c@u@e@s@g@q@i@o@i@k@m@i@m@g@m@e@o@c@o@c@m@e@o@c@m@e@o@c@o@e@m@c@o@c@o@c@m@e@o@c@o@c@o@e@m@c@o@c@o@e@m@c@o@e@o@c@m@e@o@c@m@c@o@e@m@c@o@c@o@e@o@c@m@c@o@c@o@g@m@c@o@c@o@c@m@e@o@c@o@c@m@e@o@c@o@c@m@e@o@e@k@g@m@g@k@i@k@m@i@m@g@o@i@q@e@q@e@s@e@s@e@u@e@s@e@u@c@q@e@u@e@s@e@u@e@s@e@s@e@s@c@u@e@s@e@u@e@s@e@s@e@u@c@s@e@u@e@s@e@s@e@s@c@u@e@s@e@u@e@s@e@s@e@s@c@u@e@u@e@s@e@s@e@s@e@u@c@s@e@u@e@q@e@u@c@s@g@u@c@s@e@s@e@s@e@u@e@s@e@q@g@s@g@q@e@s@g@q@g@q@g@o@g@q@i@o@g@o@i@o@g@o@i@m@i@o@i@o@g@m@i@o@i@o@i@m@g@q@i@m@i@o@i@o@g@m@i@o@i@o@g@m@i@o@i@o@i@o@i@o@g@m@i@o@i@o@g@m@i@o@i@o@g@o@i@o@i@m@i@o@g@o@i@m@i@o@g@o@i@m@i@q@i@m@i@o@g@o@i@m@i@o@g@o@i@m@i@o@i@o@g@o@i@o@i@m@g@o@i@o@i@m@i@o@i@o@g@o@i@o@i@m@g@o@i@o@i@m@g@o@i@m@i@q@i@o@i@m@g@o@i@o@i@m@g@o@i@m@i@o@i@o@i@m@g@o@i@o@i@o@g@o@i@m@i@o@i@o@i@m@g@o@i@o@i@m@g@o@i@o@i@m@i@q@g@m@i@o@i@o@i@m@g@o@i@o@i@m@g@q@i@m@i@o@i@o@g@m@i@o@i@o@g@o@i@o@i@m@i@o@g@o@i@o@i@o@g@m@i@o@i@o@g@m@i@q@i@m@i@o@g@o@i@m@i@o@g@o@i@m@i@o@i@o@i@o@g@o@i@m@i@o@g@o@i@m@i@q@i@m@g@o@i@o@i@m@g@o@i@o@i@m@i@q@i@m@g@o@i@o@i@m@g@o@i@o@i@m@g@q@i@m@i@o@i@o@g@m@i@o@i@m@i@o@g@o@i@o@g@q@g@q@e@s@e@s@c@u@c@w@a@w@a@w@a@y@a@w@a@y@a@y@_@w@a@y@a@y@_@y@_@y@_@y@]}@]{@YaAY_AW_AUaAScAQcAQcAMgAOcAMeAMeAMeAMeAOeAMeAMeAMeAMeAMeAOeAKcAOgAMeAMeAMeAOcAOeAQeAQaAScAWaAW_AY_A[_A]y@_@}@_@y@a@w@c@w@c@u@c@u@c@u@e@u@c@u@c@u@c@w@c@u@c@u@e@u@c@u@c@u@c@u@e@w@a@s@e@w@c@u@c@u@c@u@e@u@c@w@c@s@c@w@c@u@c@u@e@u@c@u@c@w@c@s@c@w@e@s@c@w@c@u@c@u@c@u@c@u@e@w@c@s@c@w@c@u@c@u@e@u@c@u@c@w@c@s@c@w@e@u@c@u@c@u@c@u@c@w@c@s@e@w@c@s@c@w@c@u@e@u@a@w@e@s@c@w@c@s@c@w@e@u@c@u@c@w@c@s@e@w@a@s@e@w@c@u@a@y@_@y@_@{@[}@Y_AW_AWaAUaAScAQcAOcAOeAMgAKeAIeAKgAKeAKgAKeAMeAOeAOcAScAUaAUaAWaAY_A[}@]}@]y@a@y@a@y@a@w@e@u@e@s@g@o@g@o@i@m@k@k@m@k@k@g@m@e@o@g@m@e@m@e@m@e@m@g@o@e@m@e@m@g@m@e@o@e@m@g@m@e@o@e@m@g@m@e@m@e@m@g@o@e@m@e@m@e@m@g@o@e@m@e@m@g@m@e@o@e@m@e@m@e@m@g@o@e@m@e@m@e@o@g@m@e@m@e@m@e@o@g@m@e@m@e@m@e@m@g@o@e@m@e@m@g@m@e@o@e@m@g@m@e@m@g@m@e@o@e@m@g@m@e@m@e@m@g@m@g@k@i@k@o@g@o@e@s@c@u@a@y@]y@]}@Y_AWaASaAQeAOeAKeAGgAIgAEeAEgAGgAGgAEgAGgAIgAIeAKeAOeAQcAScASaAWcAWaAU_AWaAWaAU_AWaAWaAUaAW_AWaAWaAW_A[_A[}@]{@_@{@_@y@c@w@c@w@e@q@e@s@g@q@i@o@g@o@i@o@i@m@i@o@g@m@i@o@i@o@i@m@g@o@i@o@i@m@i@o@i@o@i@m@g@o@i@o@i@m@g@o@i@o@i@m@i@q@i@m@i@o@g@o@i@m@i@o@i@o@g@m@i@o@i@o@i@m@g@o@i@m@i@o@i@o@i@m@i@o@g@o@i@m@i@o@i@o@g@m@i@q@g@o@g@q@e@s@c@w@c@u@a@y@_@y@]}@[{@[_AW_AY_AScAUcAQcAOcAMeAMeAIgAIeAGiACgAEgACgACgACgACiACeACgACiACgAEgACgACgACiACgAGeAGgAIgAMeAKeAOeAScAQcAScAScAQcASaASeASaAScAScAScASaAUaAWaAWaAY_AY_A[}@Y}@[_A[}@[}@Y_A[_A[}@[}@Y}@[_AY}@[_A[}@[_AY}@[}@[}@Y_A[_A[}@[}@Y_A[}@[_A[}@Y}@[_A[}@[}@Y_A[_A[}@Y}@[_A[}@Y_A[}@Y_AY_AUaAUaAScAQcAOeAMeAMeAMeAMeAMeAMeAMeAMgAOeAKcAMeAMeAMeAOeAKeAOgAMeAKeAOeAMeAKeAOeAMeAKeAOeAMgAKeAKeAIgAGeAEgACgAAiACgA?gAAgAAiAAgAAgAAgAAiA?gACgA?gAAiAAeAAiAAgAAiAAeAAiAAgA?iAAeAAiAAgAAiAAeAAiAAgAAgA?gAAiAAgAAgAAgAAiAAgAAgAAgAAiA?gACgACgACgAEiAEgAGeAGgAIeAKgAKeAKgAMeAMeAOeAOcAOeAOcAQeAOeAOcAOeAQeAOcAOcAOeAOeAQeAOcAOcAOgAQcAOcAOeAOeAOcAOeAQcAOeAOeAOcAQeAOeAOcAOcAOeAQeAQcAQcAScAUcAU_AWaAY_AY}@[_A[}@]{@_@{@_@y@a@y@c@w@c@u@c@u@e@s@g@q@g@q@i@o@i@m@i@m@k@k@k@g@m@i@m@e@o@e@m@c@o@e@o@e@m@c@o@c@o@e@m@c@o@c@o@e@m@e@o@c@m@g@m@g@k@k@i@k@i@o@i@o@e@q@e@s@e@u@a@w@a@y@_@y@]}@]{@Y}@Y_AWaAY_AWaAW_AWaAY_AWaAW_AYaAW_AW_AWaAY_AW_AWaAW_AYaAW_AWaAY_AWaAWaAY_AW_AW_AWaAY_AWaAW_AYaAW_AWaAW_AWaAY_AW_AWaAY_AW_AWaAY_AWaAW_A[}@[_A[{@_@}@_@y@a@y@a@u@e@w@c@s@e@s@e@u@c@u@e@s@e@s@e@u@e@u@c@s@e@s@e@u@e@s@c@u@e@s@e@s@e@u@e@s@g@q@i@o@i@m@i@k@m@g@m@g@m@e@q@c@o@a@q@]q@[q@Ys@Yu@Ss@Qu@Ss@Mw@Os@Ou@Ou@Mu@Os@Ou@Mu@Ou@Ou@Mu@Os@Ou@Ou@Ou@Mu@Ou@Ms@Ou@OkK{Aw@Os@Mu@Mu@Kw@Mu@Ku@Iu@Gu@Cw@?u@@u@Fw@Ju@Ju@Ju@Ju@Hu@Ju@Ju@Lu@Ju@Hw@Ju@Ju@Ju@Ju@Ju@Ju@Hu@Ju@Ju@Lu@Ju@Hw@Hu@Ju@Du@Dw@?u@?w@Au@Cu@Iw@Is@Ku@Ou@Qs@Su@Ss@Ss@Su@Ss@Su@Ss@Qs@Su@Ss@Su@Ss@Ss@Su@Ss@Su@Ss@Qu@Qu@Ou@Mu@Mu@Ms@Mu@Mu@Mu@Mu@Mu@Mu@Mu@Mu@Mu@Ku@Mu@Mu@Mu@Mu@Mu@Ms@Mu@Qs@Ws@Yo@_@o@c@m@g@k@k@g@q@e@s@c@u@c@w@_@y@a@w@_@y@c@y@c@s@g@s@k@k@k@k@m@e@q@_@q@[q@Ys@Wu@Us@Ws@Ws@Uq@Ws@Wu@Us@Ws@Ws@Wq@Ws@Yq@]q@]q@]o@a@o@e@o@c@m@e@m@g@k@i@k@k@k@k@i@m@g@o@i@q@e@q@e@s@e@u@c@u@c@w@c@w@a@w@a@y@a@w@a@w@a@w@a@w@c@y@a@w@a@y@a@w@a@w@a@y@c@w@a@u@e@w@c@s@g@s@g@o@i@m@k@m@k@k@i@k@k@i@k@m@k@k@k@k@k@i@k@k@k@k@k@k@k@i@m@i@m@c@q@a@o@]s@Ys@Wu@Qs@Ou@Iw@Iu@Cw@?u@Bu@Bw@Bu@Bw@Bu@Bw@Bu@Du@@w@Bu@Dw@Bu@@w@Du@Bu@Bw@?u@@w@Au@?u@Cw@Cu@Eu@Ew@Eu@Ew@Gu@Cu@Aw@Au@@w@Du@Fu@Hu@Hu@Lu@Lu@Lu@Lu@Lu@Ju@Lu@Lu@Lu@Ju@Hu@Fw@Du@@w@?u@?w@Au@?w@Au@Aw@Au@Au@?w@?u@Bu@Bw@Fu@Hu@Ju@Ju@Ju@Ju@Jw@Ju@Fu@Fw@Bu@@u@?w@Cu@Eu@Gw@Iu@Gu@Gu@Iw@Gu@Gu@Iu@Gu@Ku@Ku@Qu@Sq@Ws@Ws@Ys@Ws@Ys@Ss@Su@Qu@Mu@Mu@Iw@Cu@@u@Dw@Hs@Nu@Rq@Xq@\\o@b@o@b@m@f@o@b@o@^s@Vu@Nu@Fu@Aw@Is@Sq@]o@a@k@k@g@q@g@s@c@u@e@s@e@s@e@s@e@s@",
+        "kkczFtrq_Mh|DvNhiD~yBxpBtLrtCtmC|nAxnCjLljClHj~@pv@lcDl_CnyFp{ApnB`fB`}D`_BvoCd`C|rCdgCbuC~FddDoJbhCr{H~kJb_JpnH~dI|kF"
+      ],
+      "mode": "mnr",
+      "stops": [
+        {
+          "stop_id": "1",
+          "name": "Grand Central",
+          "lat": 40.752998,
+          "lon": -73.977056
+        },
+        {
+          "stop_id": "4",
+          "name": "Harlem-125 St",
+          "lat": 40.805157,
+          "lon": -73.939149
+        },
+        {
+          "stop_id": "56",
+          "name": "Fordham",
+          "lat": 40.8615,
+          "lon": -73.89058
+        },
+        {
+          "stop_id": "105",
+          "name": "Mt Vernon East",
+          "lat": 40.912161,
+          "lon": -73.832185
+        },
+        {
+          "stop_id": "106",
+          "name": "Pelham",
+          "lat": 40.910321,
+          "lon": -73.810242
+        },
+        {
+          "stop_id": "108",
+          "name": "New Rochelle",
+          "lat": 40.911605,
+          "lon": -73.783807
+        },
+        {
+          "stop_id": "110",
+          "name": "Larchmont",
+          "lat": 40.933394,
+          "lon": -73.759792
+        },
+        {
+          "stop_id": "111",
+          "name": "Mamaroneck",
+          "lat": 40.954061,
+          "lon": -73.736125
+        },
+        {
+          "stop_id": "112",
+          "name": "Harrison",
+          "lat": 40.969432,
+          "lon": -73.712964
+        },
+        {
+          "stop_id": "114",
+          "name": "Rye",
+          "lat": 40.985922,
+          "lon": -73.682553
+        },
+        {
+          "stop_id": "115",
+          "name": "Port Chester",
+          "lat": 41.000732,
+          "lon": -73.6647
+        },
+        {
+          "stop_id": "116",
+          "name": "Greenwich",
+          "lat": 41.021277,
+          "lon": -73.624621
+        },
+        {
+          "stop_id": "118",
+          "name": "Cos Cob",
+          "lat": 41.030171,
+          "lon": -73.598306
+        },
+        {
+          "stop_id": "120",
+          "name": "Riverside",
+          "lat": 41.031682,
+          "lon": -73.588173
+        },
+        {
+          "stop_id": "121",
+          "name": "Old Greenwich",
+          "lat": 41.033817,
+          "lon": -73.565859
+        },
+        {
+          "stop_id": "124",
+          "name": "Stamford",
+          "lat": 41.046611,
+          "lon": -73.542846
+        },
+        {
+          "stop_id": "153",
+          "name": "Glenbrook",
+          "lat": 41.070547,
+          "lon": -73.520021
+        },
+        {
+          "stop_id": "154",
+          "name": "Springdale",
+          "lat": 41.08876,
+          "lon": -73.517828
+        },
+        {
+          "stop_id": "155",
+          "name": "Talmadge Hill",
+          "lat": 41.116012,
+          "lon": -73.498149
+        },
+        {
+          "stop_id": "157",
+          "name": "New Canaan",
+          "lat": 41.146305,
+          "lon": -73.495626
+        }
+      ]
+    },
+    {
+      "route_id": "MNR_5",
+      "name": "Danbury",
+      "color_hex": "EE0034",
+      "polylines": [
+        "cdt{Fnkh_MCgAGgAIgAMeAOeAQeASaASeASaAQeAKeAIgAGiACgA?gA?iA@gAFgAFgAHgALeALeANeAPeARcATcAT_AVaAVaAZ}@Z_A\\{@\\}@`@y@`@y@b@u@b@w@d@s@d@s@f@q@f@o@j@m@j@m@j@i@j@i@j@i@l@i@j@k@j@g@l@k@j@g@l@k@j@g@l@k@j@i@l@i@j@i@j@i@l@i@j@i@j@i@l@i@j@i@j@i@l@i@j@i@l@k@j@g@l@k@j@g@l@k@j@i@j@g@l@k@j@g@j@k@l@i@j@i@l@i@j@i@l@i@j@i@j@i@l@i@j@i@l@i@j@i@j@i@l@k@j@g@l@k@j@g@j@k@l@i@j@i@l@i@j@i@l@i@j@i@j@i@l@i@j@i@j@i@l@k@j@g@l@k@j@g@l@i@j@i@l@i@j@k@j@g@l@k@j@g@j@k@l@i@j@i@l@i@j@i@l@i@j@i@j@i@l@i@j@i@l@i@j@k@j@g@l@k@j@g@j@k@l@g@l@g@n@c@n@a@p@]r@Yr@St@Qt@Mt@Gv@Ct@?v@Bt@Ft@Ht@Jt@Nr@Pt@Rr@Rt@Rr@Rr@Rt@Rr@Rt@Tr@Rr@Rt@Rr@Rr@Rt@Rr@Rt@Rr@Pt@Nt@Pr@Nt@Jv@Jt@Lt@Ht@Ht@Jt@Jt@Ht@Ht@Jv@Jt@Ht@Jt@Ht@Jt@Ht@Jv@Ht@Ht@Jt@Jt@Ht@Ht@Jv@Ht@Ht@Ft@Fv@Bt@Dt@?v@?t@?v@At@Cv@?t@Cv@At@At@Av@At@Av@Ct@At@Av@At@Av@?t@@v@Dt@Jt@Nr@Rt@Rr@Rr@Rt@Rr@Rt@Pr@Rt@Pr@Nt@Nt@Nt@Nr@Nt@Nt@Lt@Pt@Lr@Nt@Nt@Nt@Nt@Lt@Jt@Hv@Dt@Bt@@v@Bt@@v@Bt@@t@@v@Bt@Bt@Bv@Dt@Ht@Lt@Lr@Pt@Rr@Tr@Xp@Xp@\\p@\\p@^p@^p@\\n@^p@\\p@^p@^p@^n@\\p@^p@\\n@`@n@d@j@h@h@n@f@p@b@t@b@v@^x@`@x@^x@`@x@`@v@b@x@`@v@b@t@d@t@d@r@j@l@j@h@l@d@n@b@n@^p@^p@`@n@^p@`@n@^p@`@n@^n@`@n@d@l@d@l@f@j@l@h@l@d@r@d@r@b@v@b@v@`@v@`@v@`@v@b@x@^x@b@v@`@x@`@v@`@v@`@x@`@x@`@v@`@x@b@v@`@v@`@x@`@x@`@v@`@x@^x@\\z@Z~@X~@Z~@X~@Z|@Z|@^z@`@v@d@r@f@p@j@l@j@h@n@d@l@b@n@b@n@d@n@b@l@b@n@b@n@b@n@d@l@b@n@b@n@d@l@b@n@b@n@b@n@d@l@b@n@b@n@b@n@b@l@d@n@b@n@b@n@b@l@d@n@b@n@b@n@d@l@b@n@b@n@d@n@b@l@b@n@b@n@b@n@b@l@d@n@b@n@b@n@d@l@b@n@b@n@d@n@b@l@b@n@d@n@^p@^r@Xr@Tt@Nt@Jt@Dv@@t@Ct@Gt@Iv@Mt@Mr@Ot@Qr@Sr@Ur@Ur@Yt@Ur@St@Mt@Gt@Av@@t@Dt@Dv@Dt@Ft@Dv@Dt@Dv@Dt@@t@@v@?t@Cv@Et@Gt@Ev@Gt@Et@Gv@Et@Gt@Gt@Or@Qr@Wr@]n@a@j@g@j@o@d@q@d@u@d@s@d@s@f@s@h@k@j@i@n@e@p@_@p@]r@Yp@Wr@Wr@Wr@Wr@Yr@Wp@Yr@Ut@Sr@Qv@It@Ct@?v@Bt@Ht@Jt@Lt@Lt@Jt@Lt@Lt@Lt@Lt@Lt@Jt@Ht@Dv@@t@Cv@Et@Gt@Gt@Gv@Gt@Et@Ev@Gt@Gt@Gt@Gv@Gt@Et@Ev@Gt@Gt@Iv@Mr@Mt@Qr@Qt@St@Or@Ot@Iv@Et@?v@@t@@v@?t@Bv@@t@?v@At@Et@Kr@Mt@St@Up@Ur@Wr@Yr@Yp@Yr@[p@Yr@[p@[r@Yp@Wr@Yr@Ut@Ur@Ur@St@Sr@Ur@St@Sr@Ur@Sr@Ur@St@Sr@Ur@Ut@Sr@Sr@Ut@Sr@Ur@Sr@Wr@Ur@Wr@[p@[p@[n@a@p@c@j@g@l@k@h@k@j@k@j@m@h@k@j@m@h@k@j@m@h@m@f@q@b@s@`@y@`@y@^{@^y@^{@^{@^y@^y@^{@^{@^y@^{@^y@^y@^{@`@y@`@w@b@w@f@q@h@m@l@i@l@e@p@_@p@]r@Ur@St@Mt@Iv@Et@?v@Dt@Dt@Fv@Ft@Ft@Ft@Dv@Ft@Ft@Ft@Fv@Ft@Jt@Jt@Lr@Pt@Rr@Xp@Zn@^n@b@n@d@n@b@l@b@p@`@n@\\r@Xr@Vr@Rt@Rt@Pr@Lt@Lv@Ft@Ft@Bv@Bt@?v@?t@Et@Cv@Gt@It@Kt@Mr@Qt@Qt@Up@Ut@Sr@Ur@Ur@Ut@Ur@Sr@Ur@Ut@Ur@Sr@Ur@Ur@Ur@Ur@Yr@Wr@[p@Yr@[p@[p@[p@]p@[p@]r@[p@]p@[p@[p@]r@[p@]p@[p@[r@]p@[p@]p@[p@_@p@]n@a@n@c@l@e@l@g@j@i@j@m@j@k@h@m@h@m@h@m@j@m@j@k@j@i@n@c@p@_@p@Yt@Ur@Qt@Kt@Gv@?t@@t@Fv@Jr@Nt@Nt@Nt@Nr@Nt@Pt@Lt@Pr@Nt@Pt@Lt@Lt@Jt@Ht@Fv@Bt@@v@Bt@@v@@t@Bt@@v@Bt@Bv@Dt@Ht@Lt@Lr@Pt@Rr@Pr@Tt@Tr@Rr@Tt@Tp@Tt@Rr@Tr@Tr@Rt@Tr@Tr@Rt@Tr@Tr@Rr@Tt@Tr@Rr@Tr@Tr@Rt@Tr@Tr@Rr@Tt@Tr@Rt@Pr@Nt@Jv@Jt@Ft@Dv@Dt@Dt@Dv@Dt@Dt@Dv@Dt@Dv@Bt@Dt@Dv@Dt@Ft@Dv@Dt@Ft@Ht@Ht@Ht@Lt@Nt@Pr@Tp@Zp@Zp@b@l@b@l@f@j@l@h@j@h@n@f@p@h@n@f@n@h@n@h@l@j@h@l@h@l@f@n@`@p@Zt@Tr@Lv@Ft@?t@Gt@Mr@Up@[p@c@j@i@h@m@j@k@h@m@j@k@h@m@j@m@h@m@h@m@h@m@j@m@j@i@l@g@n@c@p@]p@Wt@Ur@Sr@Ut@Sr@St@Sr@Sr@St@Sr@Sr@St@Sr@St@Sr@Ur@Qt@Sr@St@Sr@Sr@Ut@Sr@Up@[p@[p@a@l@e@l@g@j@k@h@m@h@o@h@m@h@m@h@o@h@o@f@m@h@o@h@o@h@m@h@o@h@o@h@m@h@o@h@m@h@m@h@k@j@k@n@g@n@a@n@_@p@]r@Yt@Sr@St@Or@Ot@Qt@Or@Qt@Qt@Ot@Or@Qt@Ot@Qr@Ot@Mt@Kv@It@Et@Av@At@?v@?t@?t@?v@?t@?v@?t@?v@@t@?v@?t@?v@?t@?v@?t@?v@?t@?t@?v@?t@?t@?v@?t@?v@?t@@v@?t@?v@?t@?v@?t@?v@?t@?v@?t@?t@?v@?t@?v@?t@@t@Bv@Ft@Jt@Pr@Rr@Vp@Zr@Zn@\\p@^p@Zp@\\p@^p@\\p@\\p@\\p@^p@\\p@\\p@\\p@\\p@\\p@\\p@^n@\\r@\\n@\\p@\\p@\\p@\\p@^r@Xr@Xp@Tt@Pt@Jt@Jv@Ft@Ft@Ht@Fv@Ht@Ht@Pr@Rr@Vn@^n@b@l@d@j@h@l@l@j@h@l@h@l@`@p@\\r@Xt@Pr@Lv@Ft@Bt@Bv@Bt@Bv@@t@Bv@@t@Dv@@t@Bt@@v@Dt@@v@Bt@@t@Bv@Bt@@t@Bv@Bt@Bv@@t@Bv@@t@Bv@?t@Ct@It@Or@Sr@Wr@Yr@Wr@Ur@Qt@Ov@It@Kt@Mr@Qr@Wp@]n@_@p@a@n@_@r@[r@Ut@Qt@Kt@Kt@Kt@It@Kt@Kt@Kt@It@Kt@Kv@Kt@It@Kt@Kt@Kt@It@Kv@It@Mt@It@Kt@Mt@Mr@Qt@Qr@St@Ur@Up@Wr@[p@[p@[p@_@p@_@n@_@n@e@l@e@l@g@l@e@l@g@l@i@l@g@l@e@l@g@j@i@l@g@l@g@l@g@l@g@l@i@l@e@l@g@l@g@j@i@l@g@l@e@l@i@l@g@j@g@l@g@l@i@j@i@j@k@h@o@f@o@f@s@d@s@d@s@`@w@b@u@b@w@b@u@b@w@b@w@b@u@b@w@b@u@b@u@d@s@h@o@h@m@h@m@h@o@h@m@h@m@h@o@h@m@h@m@l@i@n@_@t@Ut@Gt@@t@Jt@Rp@Zp@\\l@d@l@f@l@d@p@`@p@\\r@Vr@Rt@Rr@Tr@Vp@Zp@\\p@\\n@`@p@`@n@b@l@b@n@b@n@b@n@b@n@b@n@b@n@`@l@d@n@b@n@b@l@d@l@f@j@j@j@h@l@h@j@j@j@j@j@f@l@h@l@d@n@`@p@^p@Zr@Vr@Tt@Pt@Lt@Ht@Fv@Bt@?v@At@Gt@It@Gv@Gt@At@Ht@Tn@^l@f@t@r@f@l@j@l@h@j@l@h@j@h@l@f@l@h@l@f@j@f@l@h@l@f@j@h@l@h@j@f@l@f@l@h@j@f@l@h@l@f@l@f@j@h@l@h@l@f@j@h@l@f@j@f@l@h@l@f@j@h@l@h@l@d@l@h@j@h@l@f@l@h@j@f@l@f@l@d@n@d@n@`@n@`@p@\\r@Zr@Vr@Vp@Vr@Tt@Vr@Tr@Vr@Tr@Tr@Tr@Vr@Tr@Tr@Vr@Tr@Vt@Rp@Vt@Tr@Vr@Tr@Vp@Xr@Xp@\\p@^n@`@l@b@n@f@l@f@j@j@h@j@h@n@f@n@f@p@d@t@b@t@b@v@^v@^z@^z@Z|@Z~@V~@V`AT`ARbAPbANdALdALdAJfAHdAHfAHdAJfAFdAJfAHdAHfAHfAHdAHfAJfAHfAHdAHfAHfAHdAJdAHfAHfAHdAHfAHfAHdAHfAHfAHfAHdAHfADdADhABfABhA@dA?hA?fAAhAAdAChAAfACfACfAAfAChACfACfAAfAChACfACfAAfAChAAfACfACfAAfAChACdAAhACfAChACdAAhACfACfACfAAfAChACfAAfACfAAhACfAAfAAfA?hA@fA@fA@fADhADfADdADfAFhAFfADfAFdAFfADfAFfADfAFhAFdADfAFfAFfADfAFfADfAFfAFfADfAFfAFfAFdAHfAJdAJfANdANdANbARbARbAT`AT`AX~@V~@Z~@Z|@\\z@^z@^z@`@v@`@v@b@v@b@t@b@v@b@t@b@v@`@t@b@v@b@t@b@v@d@t@`@v@b@t@b@t@b@v@b@t@b@v@b@t@b@t@b@v@b@t@b@t@b@v@`@v@`@v@^z@^z@Z|@Z|@V~@V`ATbARbANdANbALdAJfAFfAFfABdABhA?fAAfAAfAEfAEhAGfAGfAGdAGfAGfAIfAGfAGfAGfAGdAGfAGfAIfAGfAGfAGfAGdAGfAGfAGfAGfAIfAGfAGdAGfAGfAGfAGfAGfAGfAIdAGfAGfAGfAGfAGfAGfAGdAGfAGfAChACfAAfA@fA@hADfADdAFfAJfAJdANdANdAPbATbAT~@V`AV~@\\~@Zz@^z@^z@`@v@b@t@d@t@d@p@f@p@h@n@h@l@j@h@l@h@l@f@n@b@n@`@p@^n@\\r@Xr@Vr@Vr@Rt@Nt@Nt@Nr@Nt@Lt@Nt@Lt@Nt@Nr@Nt@Nt@Lt@Nt@Nt@Lr@Nt@Nt@Lt@Nr@Nv@Nr@Lt@Rr@Pt@Rr@Xp@Xp@Zp@\\n@`@p@b@l@d@l@f@l@f@h@j@h@l@h@n@f@p@d@r@d@t@d@r@d@r@b@t@d@r@d@t@d@r@b@r@d@t@d@t@d@r@d@r@b@t@d@t@d@r@b@r@d@v@`@t@`@x@^x@^|@Zz@Z~@Z|@V~@V`AX~@V`AV~@X~@V`AV~@X~@V`AV~@V`AV~@X`AV~@V`AX~@V`AV~@V~@X~@V`AV`AX~@V`AV~@X`AV~@V`AV~@X~@V`AV~@V~@X`AV~@V`AX~@V`AV~@V`AX~@V`AX~@X|@\\z@\\|@^x@`@x@`@v@d@t@d@r@d@p@h@n@h@n@h@j@j@j@l@f@l@f@n@b@l@d@n@d@n@b@l@b@n@d@n@b@l@b@n@d@n@d@l@b@n@d@l@d@l@h@j@f@j@j@h@l@h@l@h@n@f@p@f@p@d@r@b@t@b@t@b@v@`@x@^x@^z@\\z@Z|@Z~@X|@X~@V`AT~@TbARbAPbAPbAPdANdANbANbANdAPdANbANdANdAPbANdANbANdANdANbAPbANfANbANbAPdANdANdANbANbAPdANdANbANdAPdANbANdANbANdALdALdAJfAJdAJfAHdAFfAFdADfADhABfABfABfA?fA@hA@fA@fA@fA@hA@fA@fA@fA@hA?fA@fA@fA@hA@dA@hA@fA@hA@dA?hA@fA@hA@dA@hA@fA@hA@dA@hA?fABfA?fA@hA@fA@fA@fA@hA@fA?fABfA@hABfADfAFdAHfAJdAJdALfANdAJdALdANdAJdALdANdAJdALdANfAJdANdALdALdALdAJbANdALfALdALdALdALdALdALdALdANdAPbARbAT`AT`AX~@X~@Z|@X~@Z|@Z~@X|@Z|@Z~@X~@Z|@Z|@Z~@X|@Z|@Z~@Z|@X~@Z|@Z|@Z~@X~@Z|@Z|@X|@Z~@Z|@Z~@X|@Z~@X|@Z|@Z|@Z~@X~@Z|@Z|@Z~@X|@Z|@X~@X~@V`AV`AT`AR`ARbARbARbAR`ARdAR`APbARbARbAPbARbANdAJdALdAHfAFfAFdABfABhABfABfADfABfABhABfABdABhABfABfABfADfABfAFhAHdAHfALdALdANbAPbATbARbAX~@V~@Z~@Zz@\\|@^x@`@x@b@t@b@v@d@r@f@p@f@n@h@p@f@l@h@n@h@n@h@l@f@n@h@n@h@l@h@n@h@n@h@l@f@n@h@l@h@n@h@n@f@l@h@n@h@n@h@l@f@n@h@n@h@l@h@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@n@h@n@h@l@h@n@f@n@h@l@h@n@h@n@f@l@h@n@h@l@h@n@f@n@h@n@f@p@d@r@d@p@b@v@b@v@^x@^z@\\z@Z|@Z~@V~@V`AV`AV~@T`AV`AV`AT~@V`AV`AT~@V`AVbAR`ARbAPbANdAJdAHdAHfAFfADfAFfAFfADfADdAHfAFfAJdANdAPdAR`AV`AX~@\\|@\\x@`@x@b@t@d@r@f@n@j@n@j@h@l@f@l@f@l@d@l@d@l@f@n@d@l@d@l@f@l@d@l@f@n@d@l@d@l@f@l@d@n@d@l@f@l@d@l@d@l@d@n@f@l@d@l@d@l@d@n@f@l@d@l@d@n@d@l@f@l@d@l@d@n@d@l@d@l@f@l@d@n@d@l@f@l@d@l@d@n@d@l@f@l@d@l@d@l@f@n@d@l@d@l@f@n@d@l@d@l@f@l@d@n@d@l@f@l@d@l@d@l@d@n@f@l@d@j@f@l@j@j@j@h@l@f@n@f@n@d@r@d@t@`@v@`@x@`@x@\\x@\\|@Z|@X~@V`AT`AT`ARbANbANdALdAJdAJfAJdAJfAHdAJdALfANdANbAPbARbAT`AV`AV~@X~@Z|@^z@^x@`@x@b@t@d@v@`@r@d@v@b@r@b@v@b@t@d@t@b@v@b@r@b@v@d@r@`@v@d@t@b@t@b@v@b@r@d@v@b@r@b@v@b@t@b@t@b@t@d@t@b@v@b@r@b@v@b@t@d@t@b@t@b@t@b@v@b@r@d@v@b@t@b@t@b@t@b@t@b@v@d@r@b@v@b@r@b@v@b@t@d@t@b@t@b@t@b@v@b@r@b@v@d@t@b@t@b@t@b@t@d@v@`@r@d@v@b@t@b@t@b@t@d@t@b@t@b@t@b@v@b@t@b@t@d@t@b@t@b@t@b@t@b@v@`@v@^x@^|@\\x@Z~@X~@V~@V`ARbAP`APdANdANbALdALdALdANfAJbANdALdALdALdALdALdANdALdALdALdALdANbALfAPbAPbARbAT`AV~@X~@X`A\\z@\\|@^x@^x@^x@`@x@`@x@^v@`@x@`@x@`@v@`@x@`@v@`@v@b@v@b@t@d@r@d@r@f@p@f@p@h@n@f@n@h@n@h@l@h@n@f@l@h@n@h@n@h@l@f@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@p@h@l@f@n@h@n@h@l@f@n@h@n@h@n@h@n@h@l@f@n@h@n@h@l@f@n@h@n@h@l@h@p@f@l@h@n@h@n@f@l@h@n@h@n@f@n@h@n@h@l@h@n@f@n@h@n@h@n@f@l@h@n@h@n@h@l@f@p@h@l@h@n@f@n@h@l@h@n@h@n@f@l@h@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@n@h@n@h@l@f@n@h@n@h@n@f@n@h@l@h@n@h@n@h@l@f@n@h@l@h@n@f@n@h@l@h@n@h@p@h@l@f@n@h@l@h@n@f@n@h@l@h@n@f@n@h@n@h@n@h@l@h@n@f@n@h@l@h@n@f@n@h@n@h@n@h@l@f@n@h@n@h@l@f@n@h@n@h@l@h@p@h@l@f@n@h@n@h@l@f@n@h@n@h@l@h@n@f@n@h@n@h@n@f@l@h@n@h@n@f@l@h@n@h@n@h@n@h@n@f@l@h@n@h@n@f@l@h@n@h@n@h@l@f@p@h@l@h@n@h@n@f@l@h@n@h@n@h@l@f@n@h@n@f@n@h@n@f@p@f@n@f@p@f@p@d@r@f@p@f@r@d@p@d@r@d@t@d@r@d@r@b@r@f@t@b@r@d@t@d@p@d@t@b@r@d@t@d@r@d@r@d@r@d@t@b@t@d@r@d@r@d@r@d@t@d@r@b@t@d@r@d@r@d@r@d@t@b@r@d@t@d@r@d@r@d@t@d@r@b@t@d@r@d@r@d@r@d@t@d@r@d@t@b@p@d@t@d@r@d@t@d@r@d@r@d@p@h@p@f@n@h@l@j@l@j@h@l@f@j@f@n@d@l@d@n@b@n@b@l@d@n@b@n@b@l@d@n@b@n@b@l@b@n@f@n@b@l@b@n@b@n@d@n@b@l@b@n@d@l@b@n@b@l@d@n@b@n@d@l@b@n@d@n@b@l@b@n@d@n@b@n@b@l@d@n@b@n@b@l@b@n@d@n@b@l@d@n@b@l@d@n@b@n@b@l@d@l@f@l@h@h@j@h@n@f@p@d@r@b@t@`@v@\\z@\\|@Z|@X|@V`ATbAP`ANdALdAJfAHdAFfAFfADfAFfADfADfADdA@fA@hACfAAfAGfAGdAIfAMdAMdAOdAMdAObAOdAMdAOdAOdAObAMdAOdAMdAObAOdAObAMdAOdAOdAObAMdAOdAOdAMbAOdAOdAMdAOdAObAMdAObAOfAObAMdAObAMdAOdAOdAMbAOdAOdAOdAMdAObAOdAOdAMdAObAMdAObAOfAObAMdAObAOdAMdAOdAOdAMbAOdAOdAMdAObAKfAKdAGfAGfAEfACdAAhAAfA@fABfABfADfAFfAHfALdAJdAJdALdAJdAJfAHdAHfAFfABfABfA?fA?fAAhAEfAEfAGdAIfAIdAIfAKdAIfAIfAKdAIfAIdAKfAIdAGfAGfAEfAAfA?fA@fABhADdADfAJdAJfALdANdAP`ATbAT`AX~@V~@X~@X`AV~@T`ARbAPbANbALdAJfAHdAHfAJdAHfAJdAHfAHdAJfAHdAJfAHdAHfAJdALdALdAPdAP`ARbAT`AT`AX`AV~@Z|@X~@\\|@\\z@\\z@^x@`@x@`@v@b@v@b@t@d@r@d@r@f@p@f@p@j@j@j@h@l@h@l@f@j@f@n@d@l@d@j@f@l@f@n@f@l@f@j@f@n@d@l@f@j@f@l@f@j@h@j@j@j@j@j@j@j@j@j@h@j@l@h@j@l@h@j@h@j@j@l@f@l@d@n@b@n@b@l@b@p@`@n@b@l@b@n@d@n@b@l@b@m@i@`B~@d@XJFpC~Ap@^n@`@p@^n@^p@`@n@^p@^n@`@p@^n@^p@`@n@^p@^n@`@p@^p@^n@^p@\\p@\\p@\\p@\\p@Zr@Zp@Zr@Xp@Vr@Vr@Vr@Tr@Vr@Tt@Tr@Tr@Vr@Tr@Tr@Tr@Vr@Tr@Tr@Tt@Vr@Rr@Vr@Tr@Vr@Rr@Vr@Tr@Tt@Tr@Vp@Tt@Tr@Tr@Vr@Tr@Tr@Tr@Vt@Rp@Vt@Tr@Vr@Tr@Tr@Tr@Tr@Vt@Tp@Tr@Tt@Vr@Tr@Tr@Tr@Vr@Tr@Vr@Vp@Zp@\\p@\\p@^n@`@n@`@n@d@n@`@n@b@n@`@n@b@l@b@p@b@n@`@l@b@n@b@n@b@n@`@n@b@n@d@j@f@l@f@h@l@h@n@d@r@d@r@`@x@^x@`@x@^x@^x@\\z@^x@^z@^x@^z@^x@`@x@^z@^x@^z@\\x@^z@^x@^x@^x@^z@^x@^z@^z@^x@^x@^x@^z@^x@^z@^x@^z@^x@^x@^x@^z@`@x@^v@b@v@d@r@d@r@f@p@h@l@j@l@j@h@l@f@l@f@l@b@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@`@n@b@p@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@`@p@^p@^n@\\r@\\p@Zp@Zp@\\p@Zr@\\p@Xp@\\p@Zr@Zp@\\p@Zp@\\p@Xr@\\p@Zp@Zp@Zr@\\p@Zp@Zp@\\r@Zp@Zp@Zp@\\p@Zr@Zp@\\p@Xp@\\r@Zp@Zp@\\p@Zr@Zp@Zp@\\p@Zp@Zr@Zp@Zp@\\r@Xp@\\p@Zp@Zr@\\p@Xp@\\p@Zp@Zr@\\p@Zp@Zp@Zr@Zp@\\p@Zr@Zp@Zp@Zp@\\r@Zp@Zp@Zp@\\p@Zr@Zp@Zp@Zp@\\r@Xp@\\p@Zp@Zr@\\p@Xp@\\r@Zp@Zp@\\p@Xp@\\r@Zp@Zp@\\p@Xr@\\p@Zp@Zp@\\r@Xp@\\p@Zp@\\p@^n@`@n@`@n@d@l@f@j@h@j@j@h@l@h@l@f@p@d@r@d@r@d@r@b@v@b@r@b@x@`@t@b@v@`@t@b@v@b@v@`@t@b@v@b@v@`@t@b@v@b@t@`@x@b@t@b@v@`@v@b@t@b@v@`@t@b@v@b@v@b@t@`@v@b@t@b@v@`@v@b@t@b@v@`@v@b@v@b@t@b@t@b@v@b@t@d@r@b@r@f@r@f@p@f@p@f@n@h@n@f@n@h@j@j@l@h@j@j@l@j@h@l@h@j@h@l@f@l@f@l@d@f@~@p@^p@\\n@`@n@`@p@^n@`@n@b@n@`@n@b@n@`@n@`@p@^p@\\n@^p@b@l@`@n@f@h@j@h@n@d@r@b@t@^x@\\z@Z~@V~@X~@V~@X`AV~@V~@X~@V~@X`AV~@X~@Z|@b@v@d@p@j@j@l@d@n@d@n@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@p@`@n@b@n@`@l@b@n@`@n@b@n@`@n@b@n@`@p@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@^n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@`@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@p@b@n@b@n@`@n@b@n@^l@b@n@b@n@`@n@b@n@`@n@b@n@`@p@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@`@n@`@n@b@n@b@n@`@n@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@n@d@l@b@n@b@l@d@n@d@n@b@l@b@n@d@n@b@l@d@n@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@n@d@l@b@n@d@"
+      ],
+      "mode": "mnr",
+      "stops": [
+        {
+          "stop_id": "165",
+          "name": "Danbury",
+          "lat": 41.396146,
+          "lon": -73.44879
+        },
+        {
+          "stop_id": "164",
+          "name": "Bethel",
+          "lat": 41.376225,
+          "lon": -73.418171
+        },
+        {
+          "stop_id": "163",
+          "name": "Redding",
+          "lat": 41.325684,
+          "lon": -73.4338
+        },
+        {
+          "stop_id": "162",
+          "name": "Branchville",
+          "lat": 41.26763,
+          "lon": -73.441421
+        },
+        {
+          "stop_id": "161",
+          "name": "Cannondale",
+          "lat": 41.21662,
+          "lon": -73.426703
+        },
+        {
+          "stop_id": "160",
+          "name": "Wilton",
+          "lat": 41.196202,
+          "lon": -73.432434
+        },
+        {
+          "stop_id": "158",
+          "name": "Merritt 7",
+          "lat": 41.146618,
+          "lon": -73.427859
+        },
+        {
+          "stop_id": "131",
+          "name": "South Norwalk",
+          "lat": 41.09673,
+          "lon": -73.421132
+        },
+        {
+          "stop_id": "129",
+          "name": "Rowayton",
+          "lat": 41.077456,
+          "lon": -73.445527
+        },
+        {
+          "stop_id": "128",
+          "name": "Darien",
+          "lat": 41.076913,
+          "lon": -73.472966
+        },
+        {
+          "stop_id": "127",
+          "name": "Noroton Heights",
+          "lat": 41.069041,
+          "lon": -73.49788
+        },
+        {
+          "stop_id": "124",
+          "name": "Stamford",
+          "lat": 41.046611,
+          "lon": -73.542846
+        },
+        {
+          "stop_id": "4",
+          "name": "Harlem-125 St",
+          "lat": 40.805157,
+          "lon": -73.939149
+        },
+        {
+          "stop_id": "1",
+          "name": "Grand Central",
+          "lat": 40.752998,
+          "lon": -73.977056
+        }
+      ]
+    },
+    {
+      "route_id": "MNR_6",
+      "name": "Waterbury",
+      "color_hex": "EE0034",
+      "polylines": [
+        "eas|Fp~y|Lp@Yr@]p@[p@Yp@[r@[r@[p@[p@[r@Yp@Yr@Yr@Ur@Wt@Ur@Sr@St@Sr@Ot@Ot@Ot@Or@Mv@Kt@Mt@It@It@Gv@Gt@Gt@Gt@Et@Kt@Sr@Wp@]n@c@j@i@h@o@h@m@j@k@l@g@n@_@r@Yt@Qt@Mt@It@It@Gv@Ct@Bv@Bt@?v@At@Gt@Mr@Up@[n@c@j@k@h@o@h@o@h@i@p@c@p@]r@St@Kv@Ct@Dt@Lr@Rr@Rr@Vt@Rr@Tr@Tt@Pr@Nt@Nt@Jv@Jt@Ht@Lt@Jt@Jt@Jt@Jt@Jt@Ht@Lt@Jt@Jt@Jt@Jt@Ht@Jv@Jt@Lt@Jt@Jt@Jt@Jt@Lt@Nr@Rr@Vr@Xp@Xp@^n@`@n@d@l@f@j@h@j@l@h@l@f@p@d@r@b@v@`@v@`@x@^z@\\z@\\z@^|@\\z@^z@\\z@\\|@^z@\\z@^|@\\x@\\|@\\z@^z@\\|@^x@`@x@`@x@b@t@d@t@d@t@d@p@f@r@f@p@f@p@d@r@f@p@f@p@f@p@h@l@j@j@n@d@n@`@p@^r@Vr@Rt@Lt@Jt@Dv@?t@Et@Kt@Or@Sr@Ur@[p@]n@a@n@e@l@g@j@i@h@o@f@q@d@q@b@w@b@w@^{@\\{@\\{@^}@\\{@^{@^{@^y@b@w@b@u@h@q@h@m@j@i@l@e@p@c@n@[r@Yr@Ut@Ot@Ot@Kt@Mt@Kt@Kt@Kt@Kt@Kt@Kv@Mt@Gt@Cv@?t@Bt@Ht@Nt@Rp@Vp@\\n@`@n@f@j@h@h@n@d@p@d@t@b@v@`@v@`@v@`@x@b@x@`@v@`@x@`@v@`@v@b@x@b@v@b@r@f@r@h@l@j@j@n@b@n@^r@Zr@Rt@Pt@Ft@Dv@?t@Et@Kt@Sr@Up@[p@]p@_@p@]n@_@p@_@p@]r@[p@Yr@Ut@Ot@Kv@Et@At@Dv@Fr@Lt@Pr@Vr@Vr@Vr@Vr@Xp@Vr@Vr@Vr@Vr@Vr@Vr@Vr@Vp@Xr@Vt@Tr@Nv@Jt@Ft@@v@?t@Gt@Kr@Qt@Up@[p@]n@c@l@g@l@i@j@g@l@i@j@i@n@e@n@a@p@[r@Yt@Sr@Ot@Qt@Mt@Kt@Mt@Kt@Kt@Mt@Kt@Kt@Mt@Kt@Kt@Kt@Iv@Gt@Ct@Av@@t@Dt@Dv@Jr@Lv@Jt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Lt@Lt@Jt@Lt@Lt@Lt@Lr@Lt@Rr@Vp@\\p@\\n@^p@\\p@^r@Xr@Vr@Pt@Jv@Ft@?t@Cv@Et@Ev@Et@Et@Av@?t@Ft@Jt@Rr@Tp@Xp@^n@b@l@f@j@j@f@p@d@r@b@v@`@x@Zz@X~@VbATbAR`ATbAV~@X`A\\z@`@x@b@t@f@r@f@l@l@j@l@d@n@b@n@b@n@`@n@b@n@^p@`@n@`@p@`@n@`@n@^n@b@l@f@l@f@j@j@h@l@h@l@f@p@d@t@b@v@b@t@b@v@b@v@b@t@`@v@d@t@d@r@h@p@h@j@j@j@n@d@n@`@n@^r@Xr@Vr@Tt@Nt@Pr@Nt@Pt@Nr@Pt@Pt@Nt@Pr@Nt@Nt@Nt@Jt@Dt@Av@Gt@Op@Ur@]l@g@h@k@d@s@b@y@^y@X_AX_AVaAVaAVaAVaAZ_AZ{@`@y@b@u@f@q@l@k@j@e@p@a@p@[r@Ut@Ov@It@Gt@Gt@Gv@Gt@Et@Gv@Gt@Et@Cv@@t@Dt@Ht@Lt@Rr@Tp@Zp@\\n@b@l@d@j@j@h@l@h@p@b@t@b@v@`@x@\\z@\\x@^|@\\z@^z@\\|@^x@\\|@\\z@^z@^x@b@v@d@t@d@p@h@p@j@l@j@f@l@f@n@b@n@^r@\\p@Vr@Tt@Tr@Rr@Rt@Rr@Rt@Rr@Rt@Rr@Rr@Pt@Rt@Nr@Lv@Ht@Fv@Bt@@t@Bv@?t@Bt@@v@@t@@v@@t@@v@Bt@@v@@t@@v@@t@Bt@Dv@Ft@Ft@Ht@Ft@Hv@Ht@Ft@Ht@Hv@Ht@Ft@Ht@Fv@Ht@Ht@Ft@Ht@Ht@Hv@Lr@Nt@Nr@Rt@Pr@Rt@Pr@Rt@Lt@Jv@Ft@Bv@Bt@At@Av@Et@Ct@Cv@Ct@Cv@Ct@Et@Av@Ct@Ev@Ct@Cv@Et@Et@Kt@Or@Sr@Ur@[p@]n@c@l@e@l@g@j@i@l@i@j@g@l@i@l@g@n@a@p@a@p@[r@Wr@Ut@Ot@Kt@It@Cv@?t@@v@Ht@Jr@Nt@Rr@Rr@Tr@Tt@Tr@Tr@Pt@Lt@Lv@Ft@Dt@Bv@?t@?v@At@?t@Av@Bt@Jr@Rr@Vr@Vr@Vr@Xr@Tr@Rt@Jv@Dt@Bt@@v@Bt@Dv@Ht@Jt@Lr@Nt@Rr@Tr@Tr@Vr@Tr@Xr@Tr@Tt@Pr@Nv@Jt@Jt@Ft@Jt@Ht@Hv@Ht@Ht@Jt@Ht@Lt@Pr@Rr@Vr@Xn@\\p@^p@`@n@`@n@`@p@^n@^r@Zp@Zr@Vr@Vp@Xr@Vr@Xr@Vr@Xp@Vr@Vr@Vr@Xr@Xr@Vp@Vr@Xp@Zr@Zn@^p@^p@^p@^n@^p@^p@^p@\\n@^p@^p@\\p@\\r@Xr@Vr@Tr@Rt@Pr@Rt@Rr@Pt@Rr@Pr@Tr@Vr@Xp@Zp@\\p@^n@^p@`@n@^p@`@n@^p@`@n@^p@`@n@^p@^n@^p@`@n@^p@`@n@b@n@`@l@b@n@d@l@f@l@d@n@f@l@d@l@f@l@d@l@f@l@h@h@l@h@l@f@p@h@n@h@n@j@h@l@d@n@b@n@`@p@\\p@^p@\\p@Zr@Zr@Vt@Pr@Jv@Ft@@v@At@Gt@Kt@Qr@Up@[p@_@n@c@l@e@l@e@l@g@n@e@l@g@l@e@l@i@j@i@h@m@j@m@h@m@h@m@j@k@j@m@j@g@l@g@n@c@n@a@p@_@p@]p@]p@[p@]r@[p@_@n@[r@]n@_@p@_@n@a@n@c@n@c@n@c@n@e@l@c@n@c@n@e@n@c@l@a@n@e@n@a@p@a@n@a@n@a@n@a@p@c@n@a@n@_@p@_@p@Yr@Yt@Sr@Ur@St@Qt@Kt@Ev@@t@Dt@Jt@Lt@Jt@Lt@Lt@Nt@Lt@Lr@Jt@Nv@Lr@Lt@Lt@Lt@Lt@Lt@Nt@Lt@Jt@Lt@Nt@Lt@Lr@Lt@Jt@Nt@Lt@Lt@Lt@Lt@Lt@Lt@Lt@Lt@Lr@Lv@Lr@Lt@Nt@Jt@Lt@Lt@Nt@Lt@Lt@Jt@Nt@Lt@Lt@Lr@Jv@Lt@Jt@Jt@Ft@Fv@Ft@Bt@Dv@@t@@v@?t@?v@At@Cv@Ct@At@Cv@Ct@Ct@Av@Ct@Ct@Av@Ct@Cv@Ct@Av@Et@Av@Ct@Ct@Av@Ct@Cv@Ct@Av@Ct@Ct@Cv@Ct@Cv@Gt@Et@Gt@It@Qp@[l@e@h@m@d@u@d@u@f@q@h@m@f@q@h@m@f@o@j@o@h@k@j@k@j@k@j@k@j@k@j@i@l@i@l@e@n@e@l@a@n@e@n@c@n@a@n@c@p@[r@Wt@Ot@Gv@Gt@Or@Up@[p@_@p@]p@]p@]p@]p@]p@]p@]p@]p@_@n@_@n@a@n@c@l@i@j@i@h@m@h@o@f@q@d@s@b@w@`@y@^y@`@w@^y@`@{@^y@^y@^{@`@y@^y@`@{@^y@^y@`@y@^y@^y@`@{@^y@`@y@^y@`@y@`@w@d@u@d@s@f@o@h@o@j@m@j@i@l@g@n@c@n@c@n@_@p@]r@Yr@Yr@Qt@Sr@Kv@Mt@Ev@Et@?t@?v@@t@Bt@Dv@Ft@Ft@Ht@Jt@Lt@Lt@Pr@Rr@Tr@Vr@Vp@Zr@\\n@\\p@\\p@^p@\\p@^p@\\p@\\p@\\n@`@p@\\p@\\n@`@p@`@l@d@l@f@l@f@j@h@h@l@h@n@f@p@f@p@b@t@b@v@b@v@^x@^z@\\z@\\|@\\z@\\|@\\|@Zz@\\|@\\z@\\|@\\|@\\|@Zz@^z@^z@`@v@b@t@b@t@f@p@h@p@h@l@j@h@l@h@l@d@n@b@l@b@n@d@n@b@n@b@n@d@n@`@n@`@p@^p@\\p@\\p@Zp@Xr@Xr@Vr@Vr@Xr@Vr@Vr@Vp@Vr@Vr@Vr@Vr@Vr@Vr@Vr@Vr@Rr@Rt@Pr@Rv@Lr@Nt@Lt@Nt@Lt@Nt@Jt@Nr@Lt@Nt@Jt@Nt@Lt@Nt@Jt@Lt@Ht@Fv@@t@Av@Ct@Gt@It@Ot@Or@Qt@Qr@Qt@Sr@St@Qr@St@Qr@Qt@Qr@St@Qr@Qt@Qt@Sr@St@Qr@Qt@Sr@Qt@Qr@Qt@Qt@Kt@Mt@Gv@Et@Ct@Cv@@t@@v@Dt@Dt@Jt@Jt@Lt@Pr@Rr@Rr@Xr@Xp@Zp@^n@`@n@`@n@f@l@d@l@d@l@h@j@f@l@f@l@f@l@f@l@f@l@h@l@d@l@f@l@f@j@h@l@f@l@d@l@f@l@h@l@f@l@d@l@h@l@f@j@f@l@f@l@f@l@f@l@f@l@f@l@f@l@f@l@f@j@h@l@d@l@f@l@h@l@f@l@f@l@f@l@f@l@f@j@f@l@f@l@f@l@f@l@f@l@f@l@f@n@b@n@b@n@^p@\\r@Xr@Vr@Rt@Nt@Nt@Lt@Jt@Lt@Lr@Pt@Pr@Vr@Xp@Zn@^p@^p@^n@^p@^p@^n@^p@`@p@^n@^p@^p@^n@^p@^n@^p@^p@^n@^p@^p@^n@^p@^p@^n@^p@^p@\\n@\\r@^p@Zp@Zp@Zr@Xr@Xp@Xr@Xr@Vr@Vp@Vr@Vr@Xr@Xr@Vp@Vr@Vr@Xr@Vr@Xr@Vp@Vr@Xr@Vr@Vr@Xr@Vr@Xp@Vr@Vr@Vr@Xr@Vp@Xr@Vr@Vr@Vp@Xr@Xr@Vr@Vr@Vr@Vp@Xr@Xr@Vr@Vr@Vr@Vp@Xr@Xr@Vr@Vr@Vr@Vp@Xr@Xr@Vr@Vp@Vr@Vr@Xr@Xr@Vr@Vp@Vr@Xr@Vr@Xr@Vr@Vp@Vr@Xr@Vr@Vr@Rt@Pt@Nt@Lt@Ht@Ft@Dv@Dt@?v@At@Ct@Gt@Gv@It@Mr@Qt@Sr@Sr@Ut@Ur@Sr@Ur@Ut@Ot@Ev@Bt@Np@Xn@b@h@l@b@t@\\z@NHPdAPbAPdANbARbANdAPbAPbAPdAPbAPbAPdAPbAPbANbARdANbAPbAPfAPbAPbAPdAPbAPbAPdAPbANbAPdAPbAPbARdAT`AT`AV~@Z~@Z|@Z|@^z@^x@b@x@b@t@b@t@d@r@d@r@d@r@d@t@d@r@d@t@b@r@d@r@f@r@b@t@d@r@d@t@d@r@d@r@d@r@d@t@d@r@d@t@d@p@d@t@d@r@d@t@d@r@b@r@d@t@b@t@d@t@b@t@d@t@b@r@b@v@d@t@b@r@d@v@b@r@d@t@b@v@d@r@b@t@b@t@d@t@b@t@d@t@b@t@d@t@b@t@b@t@d@t@b@r@b@t@d@v@b@r@d@t@b@t@d@t@b@t@b@t@d@t@b@t@d@t@b@t@d@t@b@r@b@v@d@r@b@t@d@v@b@r@d@t@b@t@d@t@b@t@b@t@d@t@b@t@d@r@b@v@b@t@d@r@b@v@`@v@`@v@`@z@\\z@\\z@Z~@X~@V~@V`AT`ARbAPbAPdALdALdAJdAHfAFfADfABfABfA?hA?hAAdAChACfAAhACdAChACfAAhACdAChACfACfAChAAfAChACdAChACfAChAAdAChACfACfACfAChAAfACfACfAChAAfACfACfAChACfACfAAfAChACfACfAChACfACfAAfAChACfACfACfAAhACfACfACfAAhACfACfACfAChACfACfAAfAChACfACfACfAChAAfACfACfAChAAfACfAAhACfA?fAAfA?hA?fA@fA@hABfABfADfADhADfAFdAHfAHfAJdAJfALdALdANdAT`AV`AZ|@^x@b@x@d@p@f@n@l@j@l@d@n@b@n@`@p@^n@`@n@`@p@\\r@\\p@Vr@Tt@Nt@Lt@Hv@Dt@?v@?t@Et@Gt@Iv@Gt@It@It@Gv@It@Gt@It@Iv@Gt@It@Gt@It@Gt@Iv@It@It@Gv@It@It@Gt@Iv@Gt@Ct@Bt@Ft@Pr@Vp@Zn@d@j@f@h@p@`@t@^|@Z|@V`AT`ARbANbALdAJdAJfAFfAFfADfAFfADfADfADhADfADdADhADfADfAFfADfADfADfADhADdADfADhAFfADfADfADfADfADfADhADdAFfADhADfADfADfADfADfADfAFfADfADfADhADfADdADhADfADfAFfADfADfADfADhADdADfADhAFfADfADfADfADfADfADfADfAFfADhADfADfADfADfADfADfAFfADfADfADhADfADdADhAFfADfADfAFdAFhAFfAHdAJfAJfAJdALdANdALbANdANfANbANdANbANdANdANdANbANdANdAPdAP`ARdAT`AT`AX~@\\|@Z|@^z@`@v@`@v@b@t@d@r@d@t@f@r@d@r@d@r@d@p@f@r@d@r@d@r@d@r@f@r@d@r@d@r@d@r@f@r@d@r@d@p@d@r@f@r@d@r@d@p@d@r@f@r@d@r@d@r@d@r@f@r@d@r@d@r@d@r@f@p@d@r@d@r@f@r@d@r@d@r@d@r@f@r@d@r@d@r@d@p@f@r@d@r@d@r@d@p@f@r@d@r@d@r@d@r@f@r@d@r@d@r@d@p@f@r@d@r@f@r@d@p@f@p@h@n@h@n@h@l@h@j@j@l@j@j@j@h@j@h@l@j@j@f@j@j@j@h@j@j@l@h@j@h@j@j@l@h@j@h@j@j@j@h@l@h@j@h@j@h@j@j@j@j@j@j@h@j@j@n@f@l@h@n@f@p@f@p@d@r@f@r@b@r@d@t@b@t@b@v@`@v@`@v@`@x@^z@^x@\\|@\\z@\\|@Z|@Z|@X|@X`AX~@V~@V`AT`ATbAR`ARbARbAPbAPdANbANdALdALdALdAJfAJdAHfAFfAFfADfADfADfABfA@hABfA@fABhA@fA@fABfA@hABfA@fABfA@hA@fABfA@fABhA@fABfA@fA@hABfA@fABhA@fA@fABfA@hABfABfABfAFfAFfAJfAJdANdANbARbARbAV`AV~@Z~@Zz@\\|@^z@`@v@`@v@b@v@`@x@`@v@b@v@`@v@b@v@`@v@`@v@b@v@`@x@b@t@`@v@`@x@b@v@`@v@`@v@b@v@`@v@b@v@`@v@`@v@b@v@`@v@b@x@`@v@`@t@b@x@`@v@b@v@`@v@`@v@b@v@b@v@`@v@`@x@`@t@b@v@`@x@b@v@`@v@`@t@b@x@`@v@b@v@`@v@b@v@`@v@`@v@b@x@`@v@b@t@`@v@`@x@b@v@`@v@b@v@`@v@`@v@b@v@`@x@b@t@`@v@`@v@b@x@`@v@`@x@^x@^x@^z@^z@Z|@\\z@Z|@X~@Z~@X~@V~@V`AV~@TbAT`AT`AT`ATbAT`AT`ATbAT`AT`ATbAT`AT`AT`AT`ATbAT`AT`AT`ATbAT`AT`ATbAT`AT`ATbAT~@TbAT`AT`AT`ATbAT`AT`ATbAT`AT`ATbAT~@TbAT`AT`ATbAT`AT`AT`ARbARbARbAPbALdANdAJdAJdAHfAHfADfADhABdABhA?fA?hA?dAChACfAEfAGfAGfAKdAKfAKdAOdAOdAObAQdAObAOdAOdAQbAQdAOdAObAQbAOdAQdAObAObAQdAOdAObAQbAOfAQbAObAOdAQdAMdAOdAKdAKdAIfAGfAGfAEfAEfAAfAAhA?fA?fABhABfABdADhADfADfADfADfABfADhADfAFdADfADhABfADfADfADfAFfADhADdABfADfADhADfADdAFhABfADfADfADfADfADfADhADdADfADhADfADfADfAFfAFfAHdAHfAJfAJdALdALdAJdALfALdALdALdALdALfALdALdALdALdALdALdALdALdALdALdALfALdALdALdALdAJdANdALdAJdALdALfALdALdALdALdALdALdALdALdALdALdALfALdALdANdALdANbAPdAPbARbARbAR`ATbAV`AV~@X`AV~@Z|@Z|@Z~@\\z@\\z@\\z@^x@`@z@^z@^x@^z@^x@^x@^z@^x@^z@^x@^z@^x@^x@^z@^z@^x@^z@^x@^x@^z@^x@^z@^x@^z@^x@^x@^z@^z@`@x@^z@^x@^x@^z@^x@^z@^x@^z@^x@^x@^z@^z@^x@^z@^x@^x@^z@^x@^z@^z@^x@^x@^x@^z@^z@\\z@\\z@\\|@Z|@Z|@Z~@X|@X`AV~@V`AV~@V`AX~@V`AV`AX~@V`AV~@V~@V`AX~@V`AV~@V`AV`AV~@X`AV~@V~@V`AV~@X`AV~@V`AV`AV~@X`AV~@V~@V`AV~@X`AV~@V`AX`AT~@X`AT~@V`ARbAPbANdANbANfALdANdALbANdALdALdANdALdAPdAP`ATbAX~@Z|@`@x@`@v@f@r@f@l@j@l@h@j@l@h@j@h@l@f@l@h@l@f@j@f@l@h@l@f@j@h@l@h@j@f@l@f@l@h@j@f@l@h@l@f@l@f@j@h@l@h@l@f@j@h@l@f@j@f@l@h@l@f@j@h@l@h@l@d@l@h@j@h@l@f@l@h@j@f@l@f@l@d@n@d@n@`@n@`@p@\\r@Zr@Vr@Vp@Vr@Tt@Vr@Tr@Vr@Tr@Tr@Tr@Vr@Tr@Tr@Vr@Tr@Vt@Rp@Vt@Tr@Vr@Tr@Vp@Xr@Xp@\\p@^n@`@l@b@n@f@l@f@j@j@h@j@h@n@f@n@f@p@d@t@b@t@b@v@^v@^z@^z@Z|@Z~@V~@V`AT`ARbAPbANdALdALdAJfAHdAHfAHdAJfAFdAJfAHdAHfAHfAHdAHfAJfAHfAHdAHfAHfAHdAJdAHfAHfAHdAHfAHfAHdAHfAHfAHfAHdAHfADdADhABfABhA@dA?hA?fAAhAAdAChAAfACfACfAAfAChACfACfAAfAChACfACfAAfAChAAfACfACfAAfAChACdAAhACfAChACdAAhACfACfACfAAfAChACfAAfACfAAhACfAAfAAfA?hA@fA@fA@fADhADfADdADfAFhAFfADfAFdAFfADfAFfADfAFhAFdADfAFfAFfADfAFfADfAFfAFfADfAFfAFfAFdAHfAJdAJfANdANdANbARbARbAT`AT`AX~@V~@Z~@Z|@\\z@^z@^z@`@v@`@v@b@v@b@t@b@v@b@t@b@v@`@t@b@v@b@t@b@v@d@t@`@v@b@t@b@t@b@v@b@t@b@v@b@t@b@t@b@v@b@t@b@t@b@v@`@v@`@v@^z@^z@Z|@Z|@V~@V`ATbARbANdANbALdAJfAFfAFfABdABhA?fAAfAAfAEfAEhAGfAGfAGdAGfAGfAIfAGfAGfAGfAGdAGfAGfAIfAGfAGfAGfAGdAGfAGfAGfAGfAIfAGfAGdAGfAGfAGfAGfAGfAGfAIdAGfAGfAGfAGfAGfAGfAGdAGfAGfAChACfAAfA@fA@hADfADdAFfAJfAJdANdANdAPbATbAT~@V`AV~@\\~@Zz@^z@^z@`@v@b@t@d@t@d@p@f@p@h@n@h@l@j@h@l@h@l@f@n@b@n@`@p@^n@\\r@Xr@Vr@Vr@Rt@Nt@Nt@Nr@Nt@Lt@Nt@Lt@Nt@Nr@Nt@Nt@Lt@Nt@Nt@Lr@Nt@Nt@Lt@Nr@Nv@Nr@Lt@Rr@Pt@Rr@Xp@Xp@Zp@\\n@`@p@b@l@d@l@f@l@f@h@j@h@l@h@n@f@p@d@r@d@t@d@r@d@r@b@t@d@r@d@t@d@r@b@r@d@t@d@t@d@r@d@r@b@t@d@t@d@r@b@r@d@v@`@t@`@x@^x@^|@Zz@Z~@Z|@V~@V`AX~@V`AV~@X~@V`AV~@X~@V`AV~@V`AV~@X`AV~@V`AX~@V`AV~@V~@X~@V`AV`AX~@V`AV~@X`AV~@V`AV~@X~@V`AV~@V~@X`AV~@V`AX~@V`AV~@V`AX~@V`AX~@X|@\\z@\\|@^x@`@x@`@v@d@t@d@r@d@p@h@n@h@n@h@j@j@j@l@f@l@f@n@b@l@d@n@d@n@b@l@b@n@d@n@b@l@b@n@d@n@d@l@b@n@d@l@d@l@h@j@f@j@j@h@l@h@l@h@n@f@p@f@p@d@r@b@t@b@t@b@v@`@x@^x@^z@\\z@Z|@Z~@X|@X~@V`AT~@TbARbAPbAPbAPdANdANbANbANdAPdANbANdANdAPbANdANbANdANdANbAPbANfANbANbAPdANdANdANbANbAPdANdANbANdAPdANbANdANbANdALdALdAJfAJdAJfAHdAFfAFdADfADhABfABfABfA?fA@hA@fA@fA@fA@hA@fA@fA@fA@hA?fA@fA@fA@hA@dA@hA@fA@hA@dA?hA@fA@hA@dA@hA@fA@hA@dA@hA?fABfA?fA@hA@fA@fA@fA@hA@fA?fABfA@hABfADfAFdAHfAJdAJdALfANdAJdALdANdAJdALdANdAJdALdANfAJdANdALdALdALdAJbANdALfALdALdALdALdALdALdALdANdAPbARbAT`AT`AX~@X~@Z|@X~@Z|@Z~@X|@Z|@Z~@X~@Z|@Z|@Z~@X|@Z|@Z~@Z|@X~@Z|@Z|@Z~@X~@Z|@Z|@X|@Z~@Z|@Z~@X|@Z~@X|@Z|@Z|@Z~@X~@Z|@Z|@Z~@X|@Z|@X~@X~@V`AV`AT`AR`ARbARbARbAR`ARdAR`APbARbARbAPbARbANdAJdALdAHfAFfAFdABfABhABfABfADfABfABhABfABdABhABfABfABfADfABfAFhAHdAHfALdALdANbAPbATbARbAX~@V~@Z~@Zz@\\|@^x@`@x@b@t@b@v@d@r@f@p@f@n@h@p@f@l@h@n@h@n@h@l@f@n@h@n@h@l@h@n@h@n@h@l@f@n@h@l@h@n@h@n@f@l@h@n@h@n@h@l@f@n@h@n@h@l@h@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@n@h@n@h@l@h@n@f@n@h@l@h@n@h@n@f@l@h@n@h@l@h@n@f@n@h@n@f@p@d@r@d@p@b@v@b@v@^x@^z@\\z@Z|@Z~@V~@V`AV`AV~@T`AV`AV`AT~@V`AV`AT~@V`AVbAR`ARbAPbANdAJdAHdAHfAFfADfAFfAFfADfADdAHfAFfAJdANdAPdAR`AV`AX~@\\|@\\x@`@x@b@t@d@r@f@n@j@n@j@h@l@f@l@f@l@d@l@d@l@f@n@d@l@d@l@f@l@d@l@f@n@d@l@d@l@f@l@d@n@d@l@f@l@d@l@d@l@d@n@f@l@d@l@d@l@d@n@f@l@d@l@d@n@d@l@f@l@d@l@d@n@d@l@d@l@f@l@d@n@d@l@f@l@d@l@d@n@d@l@f@l@d@l@d@l@f@n@d@l@d@l@f@n@d@l@d@l@f@l@d@n@d@l@f@l@d@l@d@l@d@n@f@l@d@j@f@l@j@j@j@h@l@f@n@f@n@d@r@d@t@`@v@`@x@`@x@\\x@\\|@Z|@X~@V`AT`AT`ARbANbANdALdAJdAJfAJdAJfAHdAJdALfANdANbAPbARbAT`AV`AV~@X~@Z|@^z@^x@`@x@b@t@d@v@`@r@d@v@b@r@b@v@b@t@d@t@b@v@b@r@b@v@d@r@`@v@d@t@b@t@b@v@b@r@d@v@b@r@b@v@b@t@b@t@b@t@d@t@b@v@b@r@b@v@b@t@d@t@b@t@b@t@b@v@b@r@d@v@b@t@b@t@b@t@b@t@b@v@d@r@b@v@b@r@b@v@b@t@d@t@b@t@b@t@b@v@b@r@b@v@d@t@b@t@b@t@b@t@d@v@`@r@d@v@b@t@b@t@b@t@d@t@b@t@b@t@b@v@b@t@b@t@d@t@b@t@b@t@b@t@b@v@`@v@^x@^|@\\x@Z~@X~@V~@V`ARbAP`APdANdANbALdALdALdANfAJbANdALdALdALdALdALdANdALdALdALdALdANbALfAPbAPbARbAT`AV~@X~@X`A\\z@\\|@^x@^x@^x@`@x@`@x@^v@`@x@`@x@`@v@`@x@`@v@`@v@b@v@b@t@d@r@d@r@f@p@f@p@h@n@f@n@h@n@h@l@h@n@f@l@h@n@h@n@h@l@f@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@p@h@l@f@n@h@n@h@l@f@n@h@n@h@n@h@n@h@l@f@n@h@n@h@l@f@n@h@n@h@l@h@p@f@l@h@n@h@n@f@l@h@n@h@n@f@n@h@n@h@l@h@n@f@n@h@n@h@n@f@l@h@n@h@n@h@l@f@p@h@l@h@n@f@n@h@l@h@n@h@n@f@l@h@p@h@l@h@n@f@n@h@l@h@n@f@n@h@l@h@n@h@n@h@l@f@n@h@n@h@n@f@n@h@l@h@n@h@n@h@l@f@n@h@l@h@n@f@n@h@l@h@n@h@p@h@l@f@n@h@l@h@n@f@n@h@l@h@n@f@n@h@n@h@n@h@l@h@n@f@n@h@l@h@n@f@n@h@n@h@n@h@l@f@n@h@n@h@l@f@n@h@n@h@l@h@p@h@l@f@n@h@n@h@l@f@n@h@n@h@l@h@n@f@n@h@n@h@n@f@l@h@n@h@n@f@l@h@n@h@n@h@n@h@n@f@l@h@n@h@n@f@l@h@n@h@n@h@l@f@p@h@l@h@n@h@n@f@l@h@n@h@n@h@l@f@n@h@n@f@n@h@n@f@p@f@n@f@p@f@p@d@r@f@p@f@r@d@p@d@r@d@t@d@r@d@r@b@r@f@t@b@r@d@t@d@p@d@t@b@r@d@t@d@r@d@r@d@r@d@t@b@t@d@r@d@r@d@r@d@t@d@r@b@t@d@r@d@r@d@r@d@t@b@r@d@t@d@r@d@r@d@t@d@r@b@t@d@r@d@r@d@r@d@t@d@r@d@t@b@p@d@t@d@r@d@t@d@r@d@r@d@p@h@p@f@n@h@l@j@l@j@h@l@f@j@f@n@d@l@d@n@b@n@b@l@d@n@b@n@b@l@d@n@b@n@b@l@b@n@f@n@b@l@b@n@b@n@d@n@b@l@b@n@d@l@b@n@b@l@d@n@b@n@d@l@b@n@d@n@b@l@b@n@d@n@b@n@b@l@d@n@b@n@b@l@b@n@d@n@b@l@d@n@b@l@d@n@b@n@b@l@d@l@f@l@h@h@j@h@n@f@p@d@r@b@t@`@v@\\z@\\|@Z|@X|@V`ATbAP`ANdALdAJfAHdAFfAFfADfAFfADfADfADdA@fA@hACfAAfAGfAGdAIfAMdAMdAOdAMdAObAOdAMdAOdAOdAObAMdAOdAMdAObAOdAObAMdAOdAOdAObAMdAOdAOdAMbAOdAOdAMdAOdAObAMdAObAOfAObAMdAObAMdAOdAOdAMbAOdAOdAOdAMdAObAOdAOdAMdAObAMdAObAOfAObAMdAObAOdAMdAOdAOdAMbAOdAOdAMdAObAKfAKdAGfAGfAEfACdAAhAAfA@fABfABfADfAFfAHfALdAJdAJdALdAJdAJfAHdAHfAFfABfABfA?fA?fAAhAEfAEfAGdAIfAIdAIfAKdAIfAIfAKdAIfAIdAKfAIdAGfAGfAEfAAfA?fA@fABhADdADfAJdAJfALdANdAP`ATbAT`AX~@V~@X~@X`AV~@T`ARbAPbANbALdAJfAHdAHfAJdAHfAJdAHfAHdAJfAHdAJfAHdAHfAJdALdALdAPdAP`ARbAT`AT`AX`AV~@Z|@X~@\\|@\\z@\\z@^x@`@x@`@v@b@v@b@t@d@r@d@r@f@p@f@p@j@j@j@h@l@h@l@f@j@f@n@d@l@d@j@f@l@f@n@f@l@f@j@f@n@d@l@f@j@f@l@f@j@h@j@j@j@j@j@j@j@j@j@h@j@l@h@j@l@h@j@h@j@j@l@f@l@d@n@b@n@b@l@b@p@`@n@b@l@b@n@d@n@b@l@b@m@i@`B~@d@XJFpC~Ap@^n@`@p@^n@^p@`@n@^p@^n@`@p@^n@^p@`@n@^p@^n@`@p@^p@^n@^p@\\p@\\p@\\p@\\p@Zr@Zp@Zr@Xp@Vr@Vr@Vr@Tr@Vr@Tt@Tr@Tr@Vr@Tr@Tr@Tr@Vr@Tr@Tr@Tt@Vr@Rr@Vr@Tr@Vr@Rr@Vr@Tr@Tt@Tr@Vp@Tt@Tr@Tr@Vr@Tr@Tr@Tr@Vt@Rp@Vt@Tr@Vr@Tr@Tr@Tr@Tr@Vt@Tp@Tr@Tt@Vr@Tr@Tr@Tr@Vr@Tr@Vr@Vp@Zp@\\p@\\p@^n@`@n@`@n@d@n@`@n@b@n@`@n@b@l@b@p@b@n@`@l@b@n@b@n@b@n@`@n@b@n@d@j@f@l@f@h@l@h@n@d@r@d@r@`@x@^x@`@x@^x@^x@\\z@^x@^z@^x@^z@^x@`@x@^z@^x@^z@\\x@^z@^x@^x@^x@^z@^x@^z@^z@^x@^x@^x@^z@^x@^z@^x@^z@^x@^x@^x@^z@`@x@^v@b@v@d@r@d@r@f@p@h@l@j@l@j@h@l@f@l@f@l@b@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@`@n@b@p@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@`@p@^p@^n@\\r@\\p@Zp@Zp@\\p@Zr@\\p@Xp@\\p@Zr@Zp@\\p@Zp@\\p@Xr@\\p@Zp@Zp@Zr@\\p@Zp@Zp@\\r@Zp@Zp@Zp@\\p@Zr@Zp@\\p@Xp@\\r@Zp@Zp@\\p@Zr@Zp@Zp@\\p@Zp@Zr@Zp@Zp@\\r@Xp@\\p@Zp@Zr@\\p@Xp@\\p@Zp@Zr@\\p@Zp@Zp@Zr@Zp@\\p@Zr@Zp@Zp@Zp@\\r@Zp@Zp@Zp@\\p@Zr@Zp@Zp@Zp@\\r@Xp@\\p@Zp@Zr@\\p@Xp@\\r@Zp@Zp@\\p@Xp@\\r@Zp@Zp@\\p@Xr@\\p@Zp@Zp@\\r@Xp@\\p@Zp@\\p@^n@`@n@`@n@d@l@f@j@h@j@j@h@l@h@l@f@p@d@r@d@r@d@r@b@v@b@r@b@x@`@t@b@v@`@t@b@v@b@v@`@t@b@v@b@v@`@t@b@v@b@t@`@x@b@t@b@v@`@v@b@t@b@v@`@t@b@v@b@v@b@t@`@v@b@t@b@v@`@v@b@t@b@v@`@v@b@v@b@t@b@t@b@v@b@t@d@r@b@r@f@r@f@p@f@p@f@n@h@n@f@n@h@j@j@l@h@j@j@l@j@h@l@h@j@h@l@f@l@f@l@d@f@~@p@^p@\\n@`@n@`@p@^n@`@n@b@n@`@n@b@n@`@n@`@p@^p@\\n@^p@b@l@`@n@f@h@j@h@n@d@r@b@t@^x@\\z@Z~@V~@X~@V~@X`AV~@V~@X~@V~@X`AV~@X~@Z|@b@v@d@p@j@j@l@d@n@d@n@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@p@`@n@b@n@`@l@b@n@`@n@b@n@`@n@b@n@`@p@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@^n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@`@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@p@b@n@b@n@`@n@b@n@^l@b@n@b@n@`@n@b@n@`@n@b@n@`@p@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@`@n@`@n@b@n@b@n@`@n@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@n@d@l@b@n@b@l@d@n@d@n@b@l@b@n@d@n@b@l@d@n@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@n@d@l@b@n@d@",
+        "i|oyFxyz_MmxXqndAk`BezIcoW{jHwwC{Us}Hem@ibHuv@yfIicAylJyg@"
+      ],
+      "mode": "mnr",
+      "stops": [
+        {
+          "stop_id": "172",
+          "name": "Waterbury",
+          "lat": 41.552728,
+          "lon": -73.046126
+        },
+        {
+          "stop_id": "171",
+          "name": "Naugatuck",
+          "lat": 41.494204,
+          "lon": -73.052655
+        },
+        {
+          "stop_id": "170",
+          "name": "Beacon Falls",
+          "lat": 41.441752,
+          "lon": -73.06359
+        },
+        {
+          "stop_id": "169",
+          "name": "Seymour",
+          "lat": 41.395139,
+          "lon": -73.072499
+        },
+        {
+          "stop_id": "168",
+          "name": "Ansonia",
+          "lat": 41.344156,
+          "lon": -73.079892
+        },
+        {
+          "stop_id": "167",
+          "name": "Derby-Shelton",
+          "lat": 41.319718,
+          "lon": -73.083548
+        },
+        {
+          "stop_id": "143",
+          "name": "Stratford",
+          "lat": 41.194255,
+          "lon": -73.131532
+        },
+        {
+          "stop_id": "140",
+          "name": "Bridgeport",
+          "lat": 41.178677,
+          "lon": -73.187076
+        }
+      ]
+    },
+    {
+      "route_id": "MNR_1",
+      "name": "Hudson",
+      "color_hex": "009B3A",
+      "polylines": [
+        "ervwFruobMo@e@m@c@o@e@m@c@o@c@o@e@m@e@o@c@o@c@m@e@m@c@o@c@o@e@m@e@o@c@o@c@m@e@o@c@m@e@o@c@o@e@m@c@o@c@o@e@m@e@o@c@m@c@o@e@m@c@o@c@o@e@m@e@o@c@o@c@m@e@o@c@o@a@o@c@o@c@o@a@o@a@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@q@c@o@a@o@c@o@a@o@c@o@a@o@c@m@c@o@_@o@c@o@a@o@c@q@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@a@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@_@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@a@o@c@o@a@q@c@o@a@o@c@o@a@o@c@o@a@m@c@o@a@o@c@q@a@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@a@o@c@o@c@o@a@o@c@o@a@o@c@o@a@o@a@o@c@o@a@o@c@o@a@o@e@m@e@k@k@e@q@c@w@[}@Y_AW_AYaAW_AY_AW_AW_AYaAW_AY_AW_A[_A]{@_@y@c@u@e@s@i@o@i@k@o@g@m@a@q@c@o@_@q@]q@_@o@a@o@a@o@c@o@a@o@c@o@a@q@_@o@a@o@a@q@]q@_@q@[s@Ys@Qw@Gu@Cu@Du@Ls@Zq@Zo@`@o@`@o@b@o@b@o@b@o@`@o@b@o@`@o@b@o@b@o@b@o@`@o@b@m@`@o@b@o@b@o@b@o@`@o@b@o@`@o@d@o@`@o@b@o@`@o@b@o@b@o@b@o@`@o@b@m@`@o@d@o@`@o@b@o@`@o@b@q@`@q@\\q@Vu@Ru@Lu@Fu@@w@Au@Gu@Iu@Ku@Kw@Iu@Mu@Ks@Mu@Mw@Os@Mu@Ou@Mu@Ms@Ow@Os@Mu@Ou@Mu@Ou@Ou@Mu@Os@Mu@Mu@Qu@Ou@Os@Qu@Qs@Ss@Us@Su@Ss@Ws@Us@Su@Us@Us@Us@Us@Us@Wq@[s@[q@[q@[s@[q@[q@[q@]s@Yq@]q@Yq@]s@[q@[q@]s@Yq@]q@[q@]q@]o@a@o@e@m@e@k@i@m@i@k@i@k@i@m@i@k@i@k@i@m@i@k@i@k@i@k@i@m@k@m@g@k@k@k@g@k@k@m@i@k@i@k@i@m@g@k@k@k@g@m@k@k@i@k@i@m@i@k@i@k@i@m@i@k@g@m@i@m@e@m@e@q@c@o@a@o@]s@]q@[s@Ws@Us@Us@Uu@Ss@Us@Uq@[q@]o@a@o@e@m@g@i@k@i@m@i@q@g@q@e@q@g@q@g@q@e@q@g@s@g@q@g@q@e@q@g@q@g@q@g@q@e@q@g@q@g@q@g@s@i@m@i@m@k@k@m@e@o@c@q@_@q@[q@Ys@Ws@Ws@Ws@Ws@Ws@Ws@Ws@Ws@Wq@Us@Ys@Ws@Ws@Uu@Us@Qu@Ou@Iu@Gw@Cu@@w@Bu@Hu@Ls@Nu@Rs@Vq@\\q@\\o@b@m@f@k@f@k@l@g@n@e@r@c@v@_@v@]|@[~@U~@SbASbAS`ASbASbASbAQ`ASdAS`ASbAQbAObAKdAChAAfA?fA?fAEfAKdAQdAW~@_@z@c@v@e@n@i@n@k@l@i@l@i@j@i@l@i@l@i@n@k@l@i@l@i@j@k@l@k@h@o@b@q@Zs@Tw@Ju@@u@Au@Ku@Qs@Us@Ws@Ws@Us@Ws@Ws@Ws@Ws@Ws@Ws@Us@Ys@Uq@Ws@Ws@Ws@Us@Ys@Us@Ws@Ws@Ws@Us@Ys@Us@Us@Us@Uu@Ss@Ss@Su@Qs@Su@Ss@Us@Su@Ss@Su@Ss@Ss@Qu@Ss@Su@Ss@Ss@Su@Ss@Su@Ss@Ss@Su@Ss@Su@Ss@Ss@Su@Ss@Su@Ss@Ss@Su@Qs@Ss@Su@Ss@Su@Ss@Us@Su@Ss@Su@Qs@Ss@Su@Ss@Su@Ss@Ss@Su@Ss@Su@Ss@Ss@Su@Ss@Su@Ss@Ss@Su@Ss@Su@Ss@Qs@Ss@Su@Su@Ss@Ss@Ss@Su@Su@Qs@Ou@Ou@Ou@Mu@Ku@Mu@Mu@Ou@Ms@Kw@Mu@Ms@Mu@Mu@Mu@Mu@Mu@Mu@Qs@Qu@Ss@Ss@Us@Uu@Us@Ws@Ss@Ws@Ss@Ws@Us@Uu@Us@Us@Ws@Ss@Ws@Us@Ws@Yq@Yq@]s@[o@]q@_@q@a@o@c@m@a@o@e@o@e@m@c@m@e@o@e@m@e@o@e@m@e@o@e@m@c@o@c@o@_@q@_@q@]s@Ys@Ws@Us@Su@Mu@Mu@Ku@Iw@Gu@Eu@Ew@Cu@Cw@Cu@Cu@Cw@Cu@Cw@Cu@Aw@Eu@Cu@Aw@Eu@Aw@Eu@Aw@Cu@Cu@Cw@Cu@Eu@Gw@Gu@Ms@Ou@Qs@Ss@Ws@Yq@[q@_@q@_@o@_@o@c@o@c@o@_@o@c@q@a@o@a@o@c@o@a@o@_@q@_@q@_@q@[q@[s@Ys@Uu@Ss@Qu@Ou@Ku@Iu@Gw@Cu@Cw@Au@Bw@@u@Du@Dw@Du@Du@Dw@Du@Dw@Du@Bu@Dw@@u@@w@?u@Au@Aw@Cu@Eu@Gw@Gu@Iu@Ku@Mu@Mu@Os@Ou@Ou@Qu@Os@Ou@Ou@Ou@Qs@Ou@Qu@Os@Ou@Ou@Ou@Qs@Ou@Qu@Ss@Qs@Su@Ws@Uq@Ys@Ws@Yq@Yq@]q@[q@_@q@_@o@_@q@_@o@c@o@c@o@c@m@c@o@e@m@e@m@e@o@e@m@e@o@e@m@e@o@e@m@c@o@e@m@e@m@e@o@c@o@c@q@_@o@_@q@]s@[q@Ys@Ws@Us@Su@Su@Qu@Mu@Mu@Ku@Iu@Mu@Ku@Iu@Ku@Ku@Ku@Ku@Iw@Ku@Ku@Ku@Ku@Ku@Iu@Ku@Ku@Mu@Mu@Ou@Os@Ou@Qu@Ou@Qs@Ou@Qu@Qs@Ou@Os@Su@Ou@Os@Qu@Qu@Ou@Qs@Ou@Qu@Qs@Ou@Os@Su@Ou@Ou@Qs@Qu@Ou@Qs@Qu@Ou@Qs@Qu@Os@Qu@Qu@Ou@Os@Qu@Qu@Os@Qu@Ou@Qs@Qu@Ou@Qs@Qu@Ou@Os@Qu@Qu@Os@Qu@Ou@Qu@Mu@Ku@Ku@Gu@Ew@Eu@Cw@Au@Cw@Au@Cw@Au@Cu@Cw@Au@Cu@Cw@Au@Cw@Au@Cw@Cu@Au@Cw@Cu@Aw@Cu@Aw@Cu@Aw@Cu@Cu@Cw@Au@Cw@Au@Cu@Aw@Eu@Cw@Cu@Eu@Ew@Eu@Eu@Cw@Eu@Eu@Ew@Cu@Gw@Eu@Cu@Ew@Eu@Eu@Cw@Eu@Ew@Eu@Gu@Ew@Eu@Gu@Ku@Iu@Ku@Ku@Ou@Mu@Qs@Ou@Qs@Uu@Ss@Us@Ws@Ws@Wq@[q@[q@Ys@]q@]q@]q@[q@]q@]q@[s@]q@[q@[q@[s@Ys@Ws@Ws@Ws@Us@Uu@Ss@Ss@Qu@Ou@Qu@Mu@Ou@Mu@Ku@Ku@Iu@Ku@Iu@Iw@Ku@Gu@Ku@Iu@Iu@Iw@Iu@Iu@Iu@Iu@Ku@Iw@Iu@Iu@Iu@Ku@Iw@Iu@Iu@Iu@Ku@Gu@Kw@Iu@Iu@Iu@Iu@Iu@Kw@Gu@Ku@Iu@Iw@Eu@Gu@Ew@Eu@Au@Aw@Au@Aw@Au@Aw@?u@Cu@Cw@Eu@Eu@Ew@Ku@Iu@Ku@Mu@Os@Mu@Ss@Qu@Ss@Ss@Uu@Ss@Us@Qu@Us@Ss@Uu@Ss@Ss@Uu@Ss@Us@Su@Ss@Us@Su@Us@Qs@Su@Qu@Qs@Ou@Kw@Mu@Ku@Ku@Iu@Iu@Ku@Iu@Iw@Ku@Iu@Ku@Ku@Ou@Os@Ou@Qs@Us@Ss@Ws@Us@Ys@Ys@Yq@Ws@Ws@Uu@Ss@Ss@Su@Qu@Ou@Ou@Mu@Ku@Ku@Ku@Gu@Iu@Gw@Eu@Cw@Cu@Aw@Cu@?w@Au@Cu@?w@Au@Cw@?u@Aw@Au@Cw@?u@Au@Cw@?u@Aw@Cu@?w@Eu@Au@Cw@Gu@Iu@Gu@Mu@Ku@Mu@Ku@Mu@Mu@Mu@Ku@Mu@Mu@Mu@Mu@Ku@Mu@Mu@Mu@Mu@Mu@Mu@Ku@Mu@Ku@Mu@Ms@Mw@Mu@Ms@Mu@Mu@Ku@Mu@Mu@Mu@Mu@Ku@Mu@Mu@Mu@Ku@Mu@Mu@Mu@Mu@Mu@Mu@Mu@Ku@Ku@Mu@Mu@Mu@Mu@Ms@Mw@Mu@Ks@Mu@Mu@Mu@Mu@Mu@Ku@Mu@Mu@Ku@Mu@Mu@Mu@Mu@Ku@Iu@Kw@Gu@Gu@Gw@Gu@Eu@Aw@?u@?u@Dw@Fu@Fu@Lu@Nu@Ns@Rs@Ts@Vs@Xq@Xs@Zq@\\q@Zq@\\q@\\q@\\q@Zs@\\o@Zs@\\q@Zq@Zs@Xq@Xs@Xs@Vs@Tu@Ts@Ts@Ru@Rs@Pu@Ps@Nu@Nu@Lu@Lu@Lu@Ju@Jw@Hu@Hu@Hu@Fu@Hu@Fw@Fu@Du@Fw@Du@Dw@Bu@@u@Bw@@u@@w@?u@?w@?u@Aw@Au@Cu@Aw@Cu@Aw@Au@Au@Cw@Au@Cw@Au@Aw@Cu@Aw@Cu@Aw@Cu@Aw@Au@Cu@Aw@Cu@Au@Aw@Cu@Aw@Cu@Aw@Cu@Cu@Cw@Gu@Gu@Ku@Iu@Mu@Mu@Mu@Mu@Mu@Mu@Ku@Mu@Mu@Mu@Mu@Mu@Mu@Ku@Iu@Iu@Ew@Cu@Aw@?u@@w@Bu@Dw@Du@Du@Dw@Du@Du@Dw@Du@Du@Dw@Du@Du@Dw@Du@Dw@Du@Du@Dw@Du@Du@Dw@Du@Bw@Bu@@u@Aw@Eu@Eu@Gw@Iu@Iu@Iu@Ku@Iu@Iw@Iu@Iu@Ku@Gu@Ku@Iw@Iu@Iu@Iu@Ku@Gw@Gu@Gu@Ew@Eu@Cw@Cu@?u@Aw@Au@@w@@u@?w@Bu@@u@@w@Bu@?w@Bu@@w@@u@@w@Bu@?w@?u@Au@Aw@Cu@Eu@Ew@Eu@Gu@Kw@Iu@Ks@Ku@Ou@Mu@Mu@Ou@Ou@Ms@Ow@Ms@Ou@Ou@Mu@Ku@Mu@Iu@Gw@Cu@Aw@?u@@w@Bu@Fu@Hu@Ju@Lu@Ps@Rs@Rs@Vu@Ts@Xq@Ts@Ts@Xs@Tu@Ts@Ru@Nu@Ls@Jw@Hu@Du@Dw@Bu@Du@Bw@Du@Dw@Du@Bu@Dw@Bu@Dw@Du@Du@Bw@Bu@Dw@Du@Du@Bw@Du@Bu@Dw@Du@Bw@Du@Bu@Dw@Du@Dw@Bu@Du@Bw@Du@Du@Dw@Du@Dw@Bu@Du@Dw@Du@Du@Dw@Bu@@w@@u@Aw@?u@Cu@Cw@Cu@Au@Cw@Au@Ew@Au@Cw@Cu@Aw@Cu@Aw@@u@@u@@w@Du@Du@Fw@Ju@Hu@Lu@Ls@Nu@Ps@Ru@Rs@Ru@Rs@Rs@Tu@Ps@Rs@Tu@Rs@Ru@Rs@Rs@Ru@Rs@Ts@Ru@Rs@Rs@Ru@Rs@Ts@Ts@Ts@Vs@Xs@Xq@Xs@Vs@Xq@Xs@Xs@Xq@Xs@Xs@Xq@Vs@Xq@Xs@Xs@Xq@Xs@Xs@Xq@Xs@Xs@Xq@Xs@Xs@Xq@Xs@Xq@Xs@Xs@Zq@Vs@Xs@Xq@Xs@Zs@Xq@Vs@Xs@Xq@Xs@Xq@Xs@Xs@Xq@Xs@Xq@Xs@Xs@Xs@Xq@Xs@Xs@Xq@Xs@Xq@Xs@Xs@Xq@Xs@Xs@Xq@Xs@Xq@Xs@Xs@Xs@Xq@Xs@Xs@Xq@Vs@Xq@Xs@Xs@Xq@Xs@Xq@Xs@Xs@Xs@Xq@Xs@Xs@Xq@Xs@Xq@Xs@Xs@Xs@Vs@Ts@Pu@Ps@Pu@Ps@Ts@Vs@Vs@Xq@Xs@Xs@Xq@Xs@Xs@Xq@Xs@Xq@Xq@\\q@^q@^o@^q@^q@\\q@\\q@^q@\\o@`@o@b@m@b@o@d@o@d@m@d@m@d@o@d@m@d@o@d@m@d@m@d@o@d@m@d@o@d@m@d@m@f@m@d@o@d@m@d@o@f@m@d@k@f@m@j@k@h@i@l@i@l@i@l@g@r@g@p@e@r@e@r@c@t@e@t@c@t@c@x@a@v@a@v@a@x@a@v@_@x@a@x@a@v@a@x@_@x@a@x@a@x@a@x@a@x@_@v@a@x@a@x@a@v@a@x@_@x@a@x@_@x@_@z@]z@]|@[|@[|@Y~@W`AW~@WbAU`ASbAUbAS`ASbAU`AUbAU`AU`AW~@Y~@[~@[|@]z@_@z@a@x@a@v@c@v@e@r@e@r@g@p@g@n@k@l@k@l@k@h@k@f@m@f@o@d@m@d@o@d@o@`@o@b@m@d@o@b@o@b@m@d@o@d@m@d@m@f@m@h@k@h@k@j@k@j@i@l@i@l@i@p@g@n@g@p@e@r@e@r@e@r@e@t@e@t@c@r@e@t@c@t@e@r@e@t@c@t@e@t@e@r@c@t@e@t@c@r@e@t@e@t@e@r@c@t@e@t@e@t@c@r@c@t@c@t@c@v@c@v@a@v@c@v@c@v@c@t@c@t@c@v@e@r@c@t@e@t@e@r@c@t@e@r@g@r@g@n@i@p@i@l@k@h@m@h@m@f@o@`@o@b@q@\\q@Zs@Xs@Ru@Pu@Lu@Ju@Du@Dw@@u@Cw@Eu@Iu@Ku@Qs@Us@Uq@[s@[o@a@o@c@m@e@k@k@k@k@g@o@g@q@e@s@e@u@a@w@c@y@a@w@a@u@c@y@a@w@c@w@c@u@a@y@c@s@e@u@g@s@g@o@i@o@k@i@k@i@o@e@o@c@q@]q@[s@Ys@Su@Qu@Mu@Ku@Gu@Ew@?u@@w@Du@Ju@Ju@Ns@Rs@Vq@Zq@\\o@b@o@d@k@f@m@j@i@h@k@j@k@j@k@l@k@j@k@j@k@j@i@j@k@j@k@j@k@j@k@l@i@j@k@h@k@j@k@j@k@j@k@j@m@f@m@f@m@d@o@b@o@`@o@`@q@^q@\\s@Zq@Xs@Xs@Xs@Vq@Xs@Vs@Xs@Vq@Vs@Xs@Vs@Vq@Xs@Xs@Vs@Vs@Xs@Vq@Vs@Xs@Xs@Vs@Vq@Xs@Vs@Vs@Xs@Xs@Vq@Vs@Xs@Vs@Vs@Xq@Xq@Zq@\\q@^q@\\q@`@o@^q@^o@^q@`@q@^o@^o@^q@^q@^o@^q@`@o@^q@^q@^o@`@q@^o@^q@^o@`@q@^q@\\q@^q@\\q@Xs@Xs@Vs@Tu@Ps@Nu@Nu@Jw@Hu@Hu@Fu@Dw@Fu@Fu@Fw@Fu@Du@Dw@Fu@Bu@@w@?u@?w@Au@Cw@Gu@Eu@Ku@Iu@Mu@Ou@Os@Qs@Uu@Ss@Ys@Wq@Ys@[q@Yq@]q@]q@_@o@_@q@_@o@a@q@a@o@_@o@a@q@a@o@c@m@e@m@e@m@k@i@i@k@m@i@o@g@q@g@o@g@s@e@s@e@s@g@s@e@s@e@q@g@s@e@q@i@q@k@i@m@e@q@_@s@Ws@Sw@Ku@Cu@?w@Hs@Ju@Ru@Ps@Rs@Pu@Rs@Rs@Vq@Zo@d@k@h@i@n@c@t@c@v@_@x@_@z@a@x@_@x@a@x@_@z@_@x@a@x@_@z@]z@]|@Y|@Y`AW`AS`ASbAQdAObAOdAOdAOdAMdAOdAObAOdAOdAOdAMdAOdAOdAOdAObAMfAOdAOdAObAOdAOdAMdAOdAOdAOdAObAQdAOdASbAS`AQdAU`ASbASbASbAU`AQbAUbASbAU`AW`AW`A[|@[~@]x@a@z@a@v@c@v@e@r@e@r@i@l@i@n@k@j@i@j@k@j@k@l@i@l@g@p@g@r@e@r@a@v@c@v@_@x@]z@]|@[~@W~@W`AU`ASdAQ`ASdASbAQbASbASbAQbAW`AU`AY~@[|@_@z@_@z@c@t@c@v@c@t@e@t@e@t@c@t@e@p@e@t@e@t@e@p@i@n@k@j@m@f@o@b@o@`@q@\\q@\\q@^q@Zq@\\q@^o@`@o@b@m@d@k@j@k@l@g@l@g@r@g@p@e@r@g@r@e@r@e@p@g@r@e@r@ORRYe@p@g@r@e@r@e@r@g@p@e@r@e@r@g@r@e@p@g@r@g@p@i@l@i@l@k@j@k@j@k@j@k@j@k@h@k@l@k@h@k@j@k@j@k@j@k@j@k@h@k@j@k@j@k@j@k@f@m@f@o@b@o@b@q@\\q@Zs@Vu@Ts@Pu@Nu@Fw@Bu@Dw@@u@?u@Gw@Gu@Ms@Ou@Qs@Ws@Yq@Ys@Yq@[s@Yq@Ys@[q@Ys@[q@Ys@[q@[q@[s@[o@]q@_@q@a@m@c@o@e@m@e@m@i@m@g@k@k@i@k@i@m@i@o@i@o@i@o@i@o@i@m@g@o@i@o@i@o@i@o@g@m@i@o@i@o@i@o@i@o@g@m@i@o@i@o@i@o@g@o@i@m@i@o@g@o@i@o@i@o@i@m@i@o@i@o@g@o@i@o@g@o@i@q@e@q@g@s@e@s@g@s@e@q@e@s@e@s@g@s@e@s@e@s@e@s@g@s@e@s@e@s@g@s@e@s@e@s@g@q@g@q@g@q@i@m@i@o@k@k@k@k@k@i@m@g@m@e@o@e@o@a@q@a@o@_@q@]q@]q@[q@]q@[s@]q@[q@]q@[s@]q@[q@]q@[q@]s@Yq@[s@Ys@Ws@Us@Uu@Qu@Os@Mw@Mu@Ku@Iu@Ku@Iu@Iu@Ku@Iw@Iu@Ku@Iu@Ku@Iu@Iu@Iw@Iu@Iu@Iw@Iu@Eu@Ew@Cu@Cw@Cu@Au@Ew@Au@Cu@Cw@Au@Cw@Cu@Aw@Cu@?u@Aw@?u@?w@Au@?w@?u@Aw@?u@?w@?u@Au@Aw@Au@?w@Au@Aw@Au@?w@Au@?w@Au@Aw@Au@Au@Cw@Eu@Gu@Iu@Ku@Ou@Os@Qu@Ss@Ss@Uu@Ss@Ss@Su@Us@Ss@Su@Us@Ss@Uu@Ss@Ss@Us@Su@Us@Ss@Su@Us@Us@Su@Us@Uq@Ys@Yq@]q@_@o@a@o@c@m@g@m@g@k@i@m@i@i@k@k@k@k@k@k@k@k@i@m@k@k@i@m@g@m@e@o@c@o@c@q@_@q@[q@Ys@Ys@Uu@Us@Qu@Ss@Qu@Qs@Qu@Qu@Ss@Qu@Qu@Qs@Qu@Qs@Qu@Qs@Qu@Qs@Qu@Su@Qs@Qu@Mu@Ou@Iu@Ku@Gw@Eu@Ew@Eu@Gu@Ew@Eu@Eu@Gw@Eu@Gu@Ew@Gu@Gu@Ku@Mu@Os@Ss@Ws@Yq@]o@_@q@a@o@a@o@c@o@a@o@a@q@_@q@]s@Ws@Ws@Qu@Mw@Iu@Gu@Cw@@u@Bu@Hu@Ju@Ns@Ru@Ts@Vs@Ts@Vs@Vs@Ts@Vs@Ts@Ts@Xs@Ts@Ts@Vs@Ts@Xs@Ts@Ts@Vs@Ts@Xs@Ts@Ts@Vs@Ts@Xs@Ts@Tu@Vs@Ts@Xq@Ts@Tu@Vs@Ts@Xs@Vq@Vs@Zq@Zq@\\o@`@o@b@o@b@m@f@m@h@k@h@k@j@i@l@k@l@i@l@k@l@i@j@i@l@i@l@k@l@i@l@i@l@k@l@i@l@i@l@k@l@i@l@k@l@i@l@i@l@i@l@k@l@i@j@i@l@k@l@i@l@i@l@k@n@i@j@k@l@i@l@i@l@i@l@k@l@i@l@i@l@k@l@i@l@i@l@k@l@i@l@i@l@k@j@k@j@k@j@k@h@m@f@m@h@m@d@o@d@m@b@o@d@o@`@q@^o@^q@^q@^o@^q@^q@\\q@^q@\\q@^q@\\o@^q@^q@\\q@^q@\\o@^q@^q@\\q@^q@\\o@^q@\\q@^q@^q@^o@\\q@^q@\\q@^q@^q@\\o@^q@\\q@^q@\\q@^o@^q@\\q@\\q@\\q@^q@\\q@\\q@\\q@^q@\\q@\\q@\\q@\\q@\\q@\\q@^q@\\q@\\q@\\q@\\q@\\q@^q@Zq@\\q@^q@\\q@Zq@^q@\\o@\\s@\\o@^q@\\q@^q@^o@`@o@`@o@d@o@b@m@f@m@f@k@f@m@h@k@j@k@j@k@h@k@l@i@j@k@j@k@l@i@j@k@l@k@j@k@j@i@l@k@j@k@j@k@j@k@h@m@f@m@f@k@h@m@f@m@f@o@b@q@`@q@^o@\\q@\\s@\\q@Zq@Zs@Zq@Zq@\\q@Xs@Zq@Zq@\\s@Zq@Xq@\\q@Zs@Zq@Zq@Zs@Zq@\\s@Xq@\\q@Zs@Zq@Zq@Zs@Xq@Xs@Vs@Xs@Tu@Rs@Ru@Ps@Pu@Pu@Ls@Pu@Nu@Nu@Pu@Ls@Pu@Nu@Ju@Lu@Ju@Ju@Hw@Hu@Du@Hw@Fu@Fu@Du@Hw@Fu@Fu@Du@Fw@Hu@Fu@Dw@Du@Du@Bw@@u@@w@?u@Cw@Au@Ew@Eu@Gu@Eu@Gw@Gu@Gu@Gw@Eu@Gu@Gu@Gw@Gu@Gu@Ew@Gu@Gu@Gu@Gw@Eu@Gu@Iw@Eu@Gu@Gw@Gu@Gu@Gw@Gu@Eu@Gw@Gu@Gu@Gu@Ew@Gu@Iu@Gu@Iu@Iw@Iu@Iu@Ku@Iu@Iu@Kw@Ku@Iu@Iu@Ku@Iw@Iu@Ku@Iu@Iu@Ku@Iu@Iw@Ku@Iu@Iu@Ku@Iu@Iu@Kw@Ku@Iu@Ku@Iu@Iu@Iu@Gw@Iu@Iu@Gw@Ku@Gu@Iu@Mu@Iu@Iu@Ku@Iw@Iu@Ku@Gw@Gu@Eu@Ew@Cu@Cw@Au@?u@?w@?u@Bu@@w@Du@Fu@Fw@Hu@Ju@Ju@Ju@Lu@Lu@Lu@Ju@Lu@Ju@Lu@Ju@Lu@Lu@Ju@Lu@Lu@Ju@Lu@Lu@Lu@Ju@Lu@Ju@Lu@Ju@Lu@Lu@Lu@Ju@Lu@Lu@Ju@Lu@Lu@Lu@Ju@Lu@Ju@Lu@Ju@Lu@Lu@Ju@Lu@Hu@Lu@Fw@Fu@Fu@Dw@Du@Bu@Dw@Bu@Fw@Du@Bu@Dw@Bu@Du@Dw@Du@Bu@Dw@Bu@Bw@@u@Du@@w@Bu@Bw@@u@Du@Bw@Du@Bw@Du@Du@Bw@Du@Bw@Du@Du@Bw@Du@Bu@Dw@Du@Bw@Du@Bu@Dw@@u@@w@?u@Cw@Eu@Eu@Gu@Iw@Iu@Gu@Iu@Iu@Iu@Iw@Gu@Ku@Iu@Ku@Mu@Qs@Qu@Ss@Us@Ws@Wq@Ys@Ys@Yq@[s@Yq@Ys@Ys@[q@Ys@Yq@Ys@Ws@Wu@Us@Su@Qs@Ou@Mu@Mu@Iw@Ku@Iu@Iu@Ku@Gu@Kw@Ks@Mu@Ou@Qs@Ss@Us@Yq@Ys@]o@]q@a@q@a@o@a@o@_@o@a@q@a@o@a@o@a@q@a@o@a@q@a@o@_@o@a@q@_@q@_@q@]q@[q@[s@[s@Ws@Ws@Us@Ss@Uu@Qu@Qu@Os@Mu@Ou@Ku@Ou@Mu@Mu@Mu@Mu@Mu@Ou@Ms@Ku@Ou@Mu@Ou@Mu@Ou@Qs@Qs@Su@Us@Us@Wq@Ys@Ys@Ws@Ws@Yq@Ws@Ys@Ws@Ys@Yq@Ws@Ys@Ws@Ys@Wq@Ws@Ys@Ws@Ys@Yq@Ys@Yq@Ys@[q@]q@_@o@_@q@_@m@e@o@c@o@e@m@e@m@g@m@g@m@g@o@e@m@g@k@g@o@g@m@g@m@g@m@g@m@e@k@i@m@i@k@k@i@m@k@k@g@o@i@q@g@q@e@s@g@s@e@s@e@q@e@u@e@s@g@u@e@s@e@q@g@q@i@q@g@m@i@o@k@m@i@m@i@m@k@m@i@o@i@m@i@m@k@k@i@o@i@m@k@m@i@o@i@k@i@m@k@m@i@o@i@m@i@m@k@m@i@m@k@m@i@m@i@m@i@m@k@m@i@m@i@m@k@m@i@k@k@k@m@k@k@i@m@i@m@e@m@g@o@e@m@c@o@c@o@e@o@a@o@c@o@c@o@c@m@c@o@c@o@c@o@c@o@a@o@c@o@c@o@c@o@c@o@c@o@a@o@c@o@a@q@_@o@_@q@_@q@_@q@]q@]q@]q@]q@]q@_@q@[q@]s@_@o@[q@]q@_@q@[s@]q@[q@Ys@Ys@Ws@Wu@Ss@Qu@Su@Ms@Ou@Mu@Iw@Iu@Gu@Gw@Cu@Cw@Au@?u@?w@@u@Bw@Bu@@u@Bw@Bu@@w@Bu@Bw@@u@Bw@@u@Du@@w@Bu@@w@Bu@@w@Du@@u@Bw@@u@Bu@@w@Bu@Bw@@u@@w@?u@?w@?u@Cu@Cw@Gu@Iu@Iu@Mu@Mu@Qs@Ss@Su@Us@Wq@Ys@Yq@[s@[q@[q@]q@[s@]q@[q@[s@[q@Ys@Ys@Ys@Us@Uu@Qs@Ou@Ou@Ku@Iw@Gu@Eu@Cw@Cu@Aw@?u@?w@@u@@u@?w@@u@?w@?u@@w@@u@@w@?u@?w@@u@?w@@u@@u@?w@?u@@w@@u@@u@?w@?u@@w@?u@@w@@u@@w@?u@?w@@u@@w@@u@?u@Dw@@u@Dw@Fu@Hu@Hu@Ls@Lu@Pu@Pu@Ps@Ts@Ru@Rq@Tu@Ts@Ts@Ts@Tu@Rs@Ts@Ts@Tu@Ts@Rs@Tu@Rs@Ru@Ns@Pu@Nu@Lu@Ju@Ju@Jw@Fu@Fu@Fu@Dw@Du@Dw@Du@Du@Dw@Du@Du@Fw@Du@Du@Dw@Bu@Du@Dw@Bu@@w@@u@?w@?u@Cw@Cu@Eu@Ew@Gu@Iu@Gu@Ku@Kw@Iu@Ku@Ku@Ku@Iu@Ku@Iu@Mw@Iu@Iu@Ku@Ku@Ku@Ku@Ku@Ku@Mu@Mu@Mu@Os@Ou@Ou@Ou@Ss@Su@Qs@Su@Ss@Qs@Su@Ss@Su@Ss@Su@Ss@Ss@Qu@Ss@Qu@Qu@Mu@Ou@Mu@Iu@Iu@Iw@Gu@Gu@Ew@Cu@Aw@Au@Au@Aw@?u@?w@Au@?w@Au@Aw@?u@Aw@?u@?u@Aw@Au@?w@Au@?w@?u@Au@Aw@?u@Aw@?u@Cw@Cu@Cu@Gw@Eu@Iu@Iu@Ku@Ku@Mu@Ou@Ou@Qs@Ou@Qu@Ou@Os@Qu@Ou@Os@Qu@Ou@Qs@Ou@Ou@Qu@Ou@Os@Mu@Kw@Ku@Iu@Ew@Eu@Au@?w@?u@Bu@Bw@Fu@Fu@Hw@Hu@Hu@Ju@Hu@Hu@Ju@Hw@Ju@Hu@Ju@Hu@Hu@Ju@Hw@Ju@Fu@Hw@Fu@Du@Dw@?u@@u@Aw@Cu@Eu@Iw@Iu@Ku@Mu@Mu@Os@Ou@Ou@Qs@Ou@Ou@Qu@Mu@Qs@Ou@Qu@Os@Ou@Qu@Os@Ou@Ou@Qu@Ou@Os@Ou@Ou@Mu@Mu@Iu@Mu@Gw@Iu@Iu@Iu@Iw@Gu@Ku@Gu@Iu@Iu@Iw@Gu@Iu@Iw@Iu@Iu@Ku@Iu@Ku@Mu@Ms@Ou@Qs@Su@Us@Us@Ws@Ws@Ws@Ws@Ys@Uq@Ws@Ys@Ws@Ws@Us@Wu@Ss@Ou@Ow@Iu@Iu@Ew@Cu@Au@?w@Bu@Du@Fw@Hu@Ju@Ls@Lw@Ls@Lu@Nu@Lu@Lu@Lu@Nu@Lu@Lu@Ns@Lw@Ls@Lu@Nu@Nu@Ju@Lu@Ju@Ju@Fw@Du@@w@@u@?u@Cw@Eu@Eu@Kw@Ku@Ms@Ou@Ou@Os@Qu@Ou@Ou@Ou@Ou@Ku@Ku@Iu@Iu@Gw@Eu@Cw@Au@Au@?w@@u@@w@Bu@Dw@Du@Fu@Fu@Fw@Fu@Fu@Du@Hw@Fu@Fu@Dw@Fu@Fu@D"
+      ],
+      "mode": "mnr",
+      "stops": [
+        {
+          "stop_id": "622",
+          "name": "Yankees-E 153 St",
+          "lat": 40.8253,
+          "lon": -73.9299
+        },
+        {
+          "stop_id": "11",
+          "name": "Marble Hill",
+          "lat": 40.874333,
+          "lon": -73.910941
+        },
+        {
+          "stop_id": "14",
+          "name": "Spuyten Duyvil",
+          "lat": 40.878245,
+          "lon": -73.921455
+        },
+        {
+          "stop_id": "16",
+          "name": "Riverdale",
+          "lat": 40.903981,
+          "lon": -73.914126
+        },
+        {
+          "stop_id": "17",
+          "name": "Ludlow",
+          "lat": 40.924972,
+          "lon": -73.904612
+        },
+        {
+          "stop_id": "18",
+          "name": "Yonkers",
+          "lat": 40.935795,
+          "lon": -73.902668
+        },
+        {
+          "stop_id": "19",
+          "name": "Glenwood",
+          "lat": 40.950496,
+          "lon": -73.899062
+        },
+        {
+          "stop_id": "20",
+          "name": "Greystone",
+          "lat": 40.972705,
+          "lon": -73.889069
+        },
+        {
+          "stop_id": "22",
+          "name": "Hastings-on-Hudson",
+          "lat": 40.994109,
+          "lon": -73.884512
+        },
+        {
+          "stop_id": "23",
+          "name": "Dobbs Ferry",
+          "lat": 41.012459,
+          "lon": -73.87949
+        },
+        {
+          "stop_id": "24",
+          "name": "Ardsley-on-Hudson",
+          "lat": 41.026198,
+          "lon": -73.876543
+        },
+        {
+          "stop_id": "25",
+          "name": "Irvington",
+          "lat": 41.039993,
+          "lon": -73.873083
+        },
+        {
+          "stop_id": "27",
+          "name": "Tarrytown",
+          "lat": 41.076473,
+          "lon": -73.864563
+        },
+        {
+          "stop_id": "29",
+          "name": "Philipse Manor",
+          "lat": 41.09492,
+          "lon": -73.869755
+        },
+        {
+          "stop_id": "30",
+          "name": "Scarborough",
+          "lat": 41.135763,
+          "lon": -73.866163
+        },
+        {
+          "stop_id": "31",
+          "name": "Ossining",
+          "lat": 41.157663,
+          "lon": -73.869281
+        },
+        {
+          "stop_id": "33",
+          "name": "Croton-Harmon",
+          "lat": 41.189903,
+          "lon": -73.882394
+        }
+      ]
+    },
+    {
+      "route_id": "MNR_2",
+      "name": "Harlem",
+      "color_hex": "0039A6",
+      "polylines": [
+        "o|e~Frs~_Mt@Iv@It@It@Iv@Gt@Kt@Gt@It@It@It@Iv@It@Kt@Kt@Kt@Mt@Mt@Mt@Mt@Ot@Mt@Mr@Mt@Ot@Mt@Mt@Ot@Mt@Ot@Kr@Ov@Mr@Ot@Mt@Mt@Ot@Mt@Mt@Ot@Mr@Mt@Ot@Mt@Mt@Mt@Kt@Mt@Qr@Sr@Wr@Yp@_@n@a@n@e@j@e@l@m@h@k@j@m@h@k@j@m@h@m@h@m@j@m@j@m@h@m@h@m@j@m@h@k@j@m@h@m@j@m@h@k@j@k@j@m@l@g@l@g@n@e@n@c@n@]r@[r@Yr@St@Qt@Kt@Kt@Gv@At@?v@Bt@Ft@Ht@Lt@Pr@Pr@Rr@Tt@Tr@Rr@Vr@Tt@Rr@Tr@Tr@Rt@Tr@Tr@Rt@Tp@Tt@Tr@Tr@Rr@Vr@Tr@Xr@Xp@Xr@\\p@Zp@^p@^n@^n@b@n@`@n@d@n@b@l@f@l@d@n@d@l@f@l@d@n@f@l@d@l@d@l@f@n@d@l@f@n@d@l@d@l@f@l@d@n@f@l@d@l@d@l@f@n@d@l@d@n@f@l@d@l@d@l@f@n@d@l@d@l@f@l@d@n@d@l@d@n@f@l@d@l@d@l@f@n@d@l@f@l@d@n@d@l@f@l@d@n@f@l@d@l@d@n@f@l@d@l@f@l@d@n@d@l@f@n@d@l@d@l@f@l@d@n@d@l@d@n@d@n@b@n@`@n@`@p@`@p@\\n@\\r@\\p@Zr@Xr@Xp@Xr@Vr@Vr@Xr@Vr@Vp@Xr@Xr@Vr@Vp@Vr@Xr@Vr@Xr@Xr@Vr@Vp@Vr@Xr@Vr@Xr@Vr@Tr@Rt@Rr@Nt@Nt@Lt@Jt@Jt@Jt@Jv@Jt@Jt@Jt@Jt@Jt@Ht@Lt@Jt@Jt@Jt@Ht@Jv@Jt@Jt@Lt@Ht@Jt@Jt@Jt@Jt@Jt@Jt@Jt@Jv@Ht@Jt@Lt@Jt@Jt@Ht@Jt@Jt@Jt@Lt@Ht@Jv@Jt@Jt@Jt@Jt@Jt@Jt@Jt@Ht@Jt@Jt@Lt@Jv@Ht@Jt@Jt@Jt@Jt@Jt@Jt@Jt@Jt@Ht@Lv@Jt@Jt@Jt@Ht@Jt@Jt@Jt@Lt@Jt@Jt@Ht@Jv@Jt@Jt@Lt@Jt@Jt@Lt@Jt@Lt@Nt@Nr@Nt@Nt@Rr@Pt@Pr@Rr@Rt@Rr@Tr@Tr@Tt@Vp@Vr@Tr@Vt@Tr@Vr@Vp@Tt@Vr@Tr@Vr@Vr@Tr@Vr@Tr@Vr@Vr@Tr@Vr@Tr@Vr@Vr@Tr@Vr@Tr@Vr@Vt@Tr@Vp@Tr@Vt@Vr@Tr@Vr@Tr@Vr@Vr@Tr@Vr@Tr@Vr@Vr@Tr@Vr@Tr@Tr@Xr@Tr@Vr@Tr@Vr@Vr@Tr@Vr@Tt@Vp@Vr@Tr@Vt@Tr@Vr@Vr@Tr@Vr@Tr@Vr@Vr@Tr@Vr@Tr@Vr@Vr@Tr@Vr@Tr@Vr@Vr@Tr@Tr@Vr@Vr@Vt@Tr@Tp@Xr@Tt@Vr@Rr@Tr@Rt@Pt@Nt@Lt@Jt@Jt@Fv@Dt@Dt@@v@@t@?v@At@At@Av@At@Av@Ct@Cv@Et@Et@Ev@Gt@It@Gt@Kt@Iv@Kt@Mr@Kt@Ot@Mt@Ot@Ot@Or@Ot@Mt@Qt@Mt@Ot@Or@Ot@Ot@Ot@Ot@Mr@Qt@Mt@Ot@Or@Ot@Ot@Ot@Ot@Mt@Or@Ot@Ot@Mt@Qt@Or@Mt@Qt@Mt@Ot@Mt@Qr@Mt@Ot@Ot@Or@Ov@Or@Ot@Mt@Ot@Or@Ot@Ot@Ot@Ot@Mr@Qt@Mt@Ot@Ot@Ot@Or@Mt@Qt@Mt@Ot@Or@Ot@Ot@Mt@Ot@Mt@Mt@Kt@Kt@It@Kt@Kt@It@Iv@Kt@Kt@It@It@Kt@Kt@Iv@It@Kt@Kt@It@Kt@Kt@It@Iv@Kt@Kt@It@It@Kt@Kt@Iv@Kt@It@Kt@It@Kt@It@Kv@Kt@It@Kt@It@Kt@It@It@Kv@Kt@It@It@Mt@It@It@Kv@Kt@Mr@Mt@Ot@Mt@Ot@Ot@Qr@Ot@Qr@St@Sr@Sr@St@Ur@Ur@Wr@Ur@Wr@Ur@Wr@Wr@Ur@Wr@Wr@Ur@Wr@Wr@Ur@Wr@Wr@Ur@Wr@Wr@Ur@Wr@Ur@Yr@Ur@Ur@Yr@Ur@Wt@Up@Wr@Wr@Yr@Yp@Yr@[p@]p@_@n@_@p@_@n@a@n@c@n@a@n@e@l@e@l@g@l@g@l@i@j@i@l@i@j@g@l@i@l@g@j@k@l@g@l@i@j@i@l@g@j@k@l@g@l@i@j@g@l@i@l@i@l@e@l@g@n@c@n@a@p@_@p@]p@[r@Wt@Sr@St@Sr@Mt@Kt@Iv@Gt@Cv@At@?v@@t@Dt@Ft@Ht@Jt@Pt@Nr@Tr@Tr@Xr@Xp@Zp@Zr@Xp@\\r@Zp@Xp@\\r@Zp@Zp@Zr@Zp@Zp@Zr@Zp@Zr@Zp@Zp@Zp@Zr@Xp@\\r@Zp@Xp@\\r@Zp@Xp@\\r@Zp@Zr@Zp@Zp@Zr@Zp@Zp@Zr@Zp@Zp@Zr@Zp@Xr@\\p@Zp@Xp@\\r@Zp@Xr@\\p@Zp@Xr@Zr@Xr@Vr@Rt@Rr@Nt@Lt@Jv@Ft@Dt@Bv@@t@At@Cv@Et@Cv@Et@Et@Ev@Ct@Gt@Ev@Et@Et@Cv@Et@Ev@Et@Ct@Ev@Et@Cv@At@@t@Bv@Dt@Ft@Ht@Lt@Nr@Pt@Tr@Tr@Vr@Xr@Xp@Vr@Xr@Vr@Xp@Vr@Xr@Vr@Xp@Xr@Xr@Vr@Xp@Vr@Xr@Vr@Xp@Vr@Xr@Vr@Xr@Xp@Xr@Vr@Xr@Vp@Xr@Vr@Xr@Vr@Xp@Vr@Xr@Xr@Xp@Vr@Xr@Vr@Xr@Vp@Xr@Vr@Xr@Xr@Xp@Vr@Vr@Xr@Vp@Xr@Vr@Xr@Vr@Xp@Xr@Vr@Tt@Rr@Rr@Tt@Rr@Rt@Rr@Rr@Rt@Rr@Tr@Rt@Rr@Rt@Pr@Tr@Rt@Rr@Tt@Rr@Pr@Rt@Tr@Rr@Rt@Rr@Tt@Pr@Rr@Rt@Tr@Rt@Rr@Rr@Rt@Rr@Rr@Rt@Tr@Rt@Rr@Rr@Rt@Rr@Rt@Rr@Tr@Rt@Rr@Pr@Tr@Rt@Rt@Rr@Tr@Pr@Rt@Tr@Rr@Rt@Tr@Rt@Pr@Rr@Tt@Rr@Rt@Tr@Pr@Rt@Tr@Rr@Rt@Rr@Tt@Pr@Rr@Rt@Tr@Rr@Rt@Rr@Pt@Nt@Pt@Lt@Lt@Lt@Lt@Lt@Lt@Jt@Lr@Lt@Lv@Lr@Lt@Lt@Lt@Lt@Pt@Nr@Pt@Rr@Rr@Tr@Tr@Vr@Vr@Xp@Xr@\\p@Zp@\\p@\\p@\\p@\\p@Zp@^p@\\p@Zp@^p@\\p@Zp@^r@Zn@\\r@^p@Zp@\\p@\\p@\\p@\\p@\\p@\\p@\\p@\\p@\\p@\\p@\\p@\\p@\\p@\\p@\\p@\\r@\\p@\\p@Xp@Zr@Xr@Vr@Vr@Rr@Rt@Pt@Pt@Nt@Lr@Lt@Lv@Lt@Jt@Jt@Ft@Jt@Ft@Fv@Ft@Ht@Dv@Ft@Ft@Fv@Dt@Dt@@v@Bt@@v@?t@Av@Ct@?t@Cv@At@Av@At@Av@Ct@Av@At@Av@Ct@?t@Cv@At@Av@Ct@At@Av@At@Av@Ct@Av@At@At@Av@Ct@Av@At@Av@At@Av@Ct@Av@At@Ct@?v@Ct@At@Av@Ct@?v@Ct@Av@At@Av@Ct@Av@At@At@Av@Ct@Av@At@Av@At@Ct@Av@At@Cv@?t@Ct@Av@At@Cv@?t@?v@@t@Bv@Bt@Dt@Fv@Ft@Ht@Jt@Jt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Lt@Jt@Jt@Lt@Jt@Lv@Jr@Lt@Jt@Lt@Jv@Lt@Jr@Lt@Jv@Lt@Jt@Lr@Jt@Jv@Jt@Ht@Fv@Ht@Dt@Dv@Bt@@v@@t@@t@Av@At@At@?v@Ct@Av@At@Av@At@Av@?t@Av@Ct@?v@At@Av@At@At@Av@At@At@Av@At@Av@?t@Cv@At@?v@At@Av@?t@?v@@t@@t@?v@Bt@Bv@Bt@Bt@Dv@Dt@Dv@Ft@Ht@Dt@Ht@Ht@Jv@Ht@Ht@Jt@Ht@Ht@Jv@Ht@Ht@Jt@Jt@Ht@Jv@Ht@Ht@Jt@Ht@Ht@Jt@Hv@Ht@Jt@Jt@Ht@Ht@Jt@Ht@Hv@Jt@Ht@Ht@Jt@Jt@Ht@Jv@Ht@Ht@Jt@Ht@Ht@Jt@Hv@Ht@Jt@Jt@Ht@Ht@Jt@Jt@Lt@Lt@Lt@Pr@Pt@Rr@Rr@Tt@Tr@Rr@Vr@Tr@Rr@Vt@Rr@Tr@Tr@Tt@Tr@Tr@Tr@Tr@Tt@Tr@Tr@Tr@Tr@Tr@Tt@Rr@Vr@Rr@Rt@Rt@Nt@Lt@Ht@Ht@Dv@Bt@?v@At@At@Ev@Gt@It@Et@Iv@It@Et@Iv@Gt@Gt@It@Gv@Gt@It@Gt@Gv@Gt@It@Gt@Gv@It@Gt@Gt@Iv@Gt@Gt@Gv@Gt@Gt@It@Gv@Et@Cv@Ct@Av@At@?t@@v@@t@Bt@Bv@Ft@Ft@Fv@Ht@Jt@Jt@Lt@Lt@Nr@Jt@Nt@Lt@Nt@Jt@Nt@Lt@Nt@Jt@Nt@Lr@Nt@Jt@Lt@Nt@Lt@Lt@Lt@Nr@Lv@Lr@Lt@Nt@Lt@Lt@Lt@Nt@Lt@Lt@Lt@Nt@Lr@Lt@Lt@Lt@Nt@Lt@Lt@Lt@Nt@Lt@Lt@Lr@Nt@Lt@Lt@Lt@Lt@Nt@Jt@Nt@Lt@Nt@Jr@Nt@Lt@Nt@Jt@Nt@Lt@Nt@Jr@Lv@Nt@Lr@Lt@Lt@Lt@Jv@Jt@Ft@Ht@Ft@Dv@Dt@Bv@@t@@v@?t@Av@At@Ct@Ev@Et@Ev@Et@Et@Ev@Et@Et@Ev@Et@Et@Cv@Ct@Av@?t@?v@Dt@Bt@Dv@Ft@Ht@Ht@Lt@Nr@Nt@Pr@Rt@Tp@Vt@Tr@Vr@Vr@Tr@Vr@Vp@Vr@Tt@Xr@Tr@Tr@Xp@Tt@Tr@Rt@Pt@Nr@Pt@Lt@Lt@Nt@Lt@Lt@Lr@Nt@Lt@Lt@Nt@Nt@Jt@Nr@Nt@Pt@Rr@Tr@Vp@Xr@Zp@Xr@Zp@Zr@Vp@Zr@Zp@Zr@Xp@Vt@Tr@Pt@Lt@Jv@Dt@Bv@?t@Av@At@Et@Av@Ct@?t@?v@Bt@Bv@Ft@Ht@Ht@Jt@Nt@Lt@Lt@Lr@Nt@Lt@Lt@Nt@Lt@Lt@Nt@Lt@Lt@Lr@Nt@Nt@Lt@Lt@Nt@Lt@Lt@Nt@Lt@Lr@Lt@Lt@Hv@Ft@Bt@Bv@@t@Cv@Ct@Et@Iv@Mr@Kt@Qt@Mt@Or@Ot@Ot@Ot@Ot@Ot@Or@Ot@Ot@Or@Mv@Qr@Mt@Qt@Mt@Or@Qt@Mt@Ot@Mt@Ot@Kt@Kt@It@Gt@Iv@Gt@Gt@Gv@Gt@Gt@Gv@Gt@Gt@Iv@Et@Gt@Gt@Ev@Et@Ev@Ct@Et@Cv@Ct@Ev@Ct@Ct@Cv@Ct@Cv@Et@Ct@Av@Et@Ct@Cv@Et@Av@Ct@Et@Cv@At@Ev@Ct@Cv@Ct@Ct@Cv@At@?v@Dt@Ft@Jt@Nr@Rr@Vr@Vp@^n@`@n@b@l@f@j@h@j@j@h@l@h@n@h@l@h@n@f@r@b@t@`@v@`@x@\\z@Z~@X~@T`ARbAPbANdANdANdAPdAT`AV`AV~@Z~@Z~@\\z@\\|@^x@`@x@b@t@d@t@d@p@h@n@j@j@j@j@j@f@l@h@j@h@l@h@l@h@j@f@l@j@j@f@j@h@l@l@h@j@h@n@d@r@d@r@b@t@b@x@`@v@b@v@b@t@d@t@d@r@f@n@h@n@h@l@j@j@j@j@j@j@j@h@j@j@j@j@j@j@j@h@j@j@j@j@l@j@j@h@h@j@j@j@l@h@j@j@j@h@j@h@l@h@n@b@n@b@p@\\p@Zr@Vr@Tt@Pr@Rt@Jt@Jt@Jv@Dt@Bv@Bt@Bt@Bv@Bt@@v@Bt@Bv@Bt@Bt@@v@Dt@@v@Bt@Bv@Bt@Bt@Bv@Bt@Ht@Jt@Nr@Rr@Vr@Xp@\\n@`@n@d@j@f@j@j@j@l@d@p@f@r@d@r@d@r@d@t@d@r@d@r@d@r@d@t@d@r@d@r@d@r@d@r@d@t@d@r@f@t@b@r@d@r@d@r@d@r@d@t@f@r@d@t@b@r@d@r@d@r@f@t@d@r@d@r@b@r@d@r@f@t@b@t@b@v@`@v@^z@^z@Zz@Z~@X~@V~@VbATbAP`ARbARbARbATbAT`AX~@Z|@^|@^x@b@v@d@r@f@p@f@n@j@j@j@h@l@h@l@d@l@h@l@f@l@d@n@b@n@b@p@Zr@Zr@Vr@Pt@Lt@Jv@Dt@Bt@?v@Et@Gt@Mt@Mt@Qr@Ot@Qr@St@Sr@Qt@Ot@Ot@Mr@Qt@Qt@Qt@Or@Qt@Qr@Ot@Qt@Qr@Qt@Ot@Qr@Qt@Qr@Ot@Sr@Ur@Ur@Yr@Yp@]p@_@n@]p@]p@_@p@_@p@]p@]p@_@n@]r@[p@Wt@Ur@Qv@Mt@It@Et@Av@?t@Fv@Dr@Lt@Pr@Pr@Xr@Xp@^n@^p@\\p@\\p@\\p@Zr@Xr@Vt@Pt@Lt@Ht@Fv@@t@?v@Et@Gt@Ev@It@Gt@It@Gt@Gv@It@It@Gt@It@Gv@Gt@It@Gv@It@It@Kt@It@It@Iv@Gt@Et@Av@At@?v@Bt@Dt@Jt@Lt@Rr@Vp@Xp@\\n@`@n@d@l@f@j@j@h@l@f@p@d@r@d@r@d@t@d@r@d@t@b@r@d@t@d@t@d@r@f@p@d@r@f@n@f@r@h@l@h@n@h@l@h@l@j@l@h@j@l@j@h@j@j@h@l@j@j@j@j@j@j@h@j@j@j@j@j@h@j@j@j@j@j@j@j@h@j@j@j@j@j@h@j@j@j@h@j@l@j@h@j@j@j@h@l@j@j@j@h@h@l@j@j@j@j@j@j@h@j@j@j@j@j@h@j@j@j@j@j@h@l@f@n@d@n@`@p@^p@Xr@Xr@Pt@Rr@Pt@Pt@Nt@Pr@Pt@Nt@Nt@Jt@Ht@Dt@Dv@@t@@v@@t@?v@?t@Dv@Dt@Jr@Lt@Pt@Tp@Vr@Xr@Xp@Zp@Xr@Zp@Xr@Zp@Xr@Xr@Xr@Vr@Rt@Nt@Jt@Ht@Fv@@t@?v@At@Av@At@Av@@t@Bt@@v@Bt@Bt@Bv@Dt@Ft@Fv@Ft@Ht@Ht@Lt@Jt@Jt@Nt@Nt@Lt@Rr@Nt@Rr@Pt@Pr@Rt@Pr@Rt@Pr@Pt@Rr@Rt@Pr@Rt@Pr@Rt@Pr@Pt@Rr@Pt@Rr@Pt@Pr@Rt@Pr@Rt@Pr@Rt@Rr@Pt@Rr@Pt@Pr@Rt@Pr@Pt@Rr@Pt@Rr@Pt@Pr@Rt@Pr@Rt@Rr@Pt@Rr@Pt@Rr@Rr@Vr@Tr@Vr@Vr@Xp@Xr@Zp@Xr@\\n@\\r@\\n@^p@^n@^p@`@n@`@n@`@p@^p@\\p@Zr@Vr@Tt@Rt@Lt@Jt@Ht@Dv@@t@?v@At@Gt@Gt@Mt@Kt@Ot@Mt@Ot@Kt@Ot@Mr@Ot@Kt@Ot@Mt@Ot@Kt@Ot@Mr@Ov@Kt@Or@Mt@Ot@Kt@Ot@Mt@Mt@Mt@Ot@Or@Ot@Ot@Mt@Mt@Mt@Ot@Kt@Mr@Mt@Mv@Mr@Ot@Kt@Ot@Mt@Ot@Kt@Ot@Mr@Ot@Kt@Ot@Mt@Ot@Kt@Ot@Ot@Mt@Mt@Mr@Ot@Mt@Kt@Mt@Iv@Gt@Cv@At@@t@Bv@Ft@Jt@Lr@Pt@Tr@Tp@Zp@\\p@\\p@^n@^p@^p@^n@^p@^n@^p@b@n@b@j@f@l@h@j@j@h@j@j@j@j@l@h@l@f@p@f@p@d@t@b@t@`@t@b@v@b@v@b@v@`@v@b@v@^x@`@x@^x@^z@\\z@\\z@\\|@Z~@Z|@X|@X~@X~@X`AV~@X`AV~@X`AV~@X`AV~@X~@V`AX~@V~@V~@X`AX~@V`AX~@V~@X~@Z|@\\~@\\z@`@x@^x@b@v@`@v@b@v@`@v@b@v@`@v@b@v@`@v@b@v@`@v@b@x@`@t@`@v@b@v@b@x@`@v@`@t@b@x@`@v@b@v@`@v@b@v@`@v@b@v@`@v@`@v@b@v@b@v@`@v@b@v@`@v@`@v@b@x@`@t@b@v@`@x@b@v@`@t@b@x@`@v@`@v@b@v@b@v@`@v@`@v@b@v@`@v@b@v@`@v@b@x@`@v@b@t@`@v@`@x@b@v@b@t@`@x@d@r@b@t@f@p@f@p@h@n@j@j@j@j@l@f@l@f@l@b@n@b@p@^p@^n@^p@^p@\\n@^p@^p@^n@^p@^p@^p@^n@\\p@^p@^p@\\n@^p@^p@^n@\\p@^p@^n@`@p@\\p@^p@^p@\\n@^p@^p@^n@\\p@^p@^n@^p@^p@^p@^n@^p@\\p@^p@^n@\\p@^p@^n@^p@^p@^n@^p@^p@\\n@`@n@`@n@d@l@f@j@j@j@j@j@j@j@j@j@j@h@h@j@l@l@f@l@f@n@b@n@b@n@^p@^p@Zp@Zr@Zp@Zp@^n@`@n@d@j@h@j@h@j@l@h@l@h@l@h@n@j@j@h@l@h@n@h@l@h@l@h@l@j@l@h@l@h@j@j@l@h@l@j@l@h@j@j@l@h@l@j@l@h@j@h@l@j@l@j@j@h@l@h@l@j@j@h@l@j@j@h@l@j@j@h@l@j@l@h@j@j@l@h@l@h@l@j@j@j@l@h@l@h@j@j@l@h@l@j@l@h@j@h@l@j@l@j@j@h@l@h@l@j@j@h@l@j@j@h@l@h@j@j@l@j@l@h@l@h@j@j@l@h@l@j@j@h@l@j@l@h@l@j@j@h@l@j@l@h@j@h@l@j@l@j@j@h@l@h@l@j@j@h@l@j@j@h@l@h@l@j@j@j@l@h@l@j@j@h@l@h@l@j@j@j@l@h@l@h@j@j@l@h@l@j@l@h@j@h@l@j@l@j@j@h@l@j@j@j@j@j@f@j@j@l@f@n@d@l@f@l@d@n@b@n@`@n@d@n@`@l@b@p@`@n@d@n@`@n@b@l@b@n@b@n@`@n@b@n@b@n@b@n@`@n@d@n@`@n@b@n@`@n@b@n@b@n@b@n@`@n@b@n@b@n@b@n@`@l@b@n@b@n@`@n@b@n@b@n@b@n@`@n@d@n@`@n@b@n@`@n@d@n@`@n@b@n@b@n@b@n@`@n@b@l@b@n@b@n@`@p@b@n@b@l@b@n@`@n@b@n@b@n@b@n@`@n@b@n@b@n@`@n@b@n@b@n@b@n@`@n@d@n@`@n@b@n@`@n@d@n@`@l@b@n@`@n@d@n@`@n@b@n@`@n@d@n@`@n@b@n@`@n@d@n@`@n@b@n@b@n@b@l@d@n@d@l@d@l@d@l@f@l@d@l@f@l@h@l@f@j@h@l@h@j@h@j@h@j@j@l@f@j@j@j@h@l@h@j@h@l@h@j@j@j@f@j@j@l@f@j@j@j@h@l@h@j@h@l@h@j@h@j@h@j@j@l@f@j@j@j@h@l@h@j@h@l@h@j@h@j@h@l@h@j@h@j@j@l@f@j@j@l@h@j@h@j@h@l@h@j@h@j@h@l@h@j@h@j@j@l@f@j@j@l@h@j@h@j@h@j@f@l@j@j@h@j@h@l@h@j@j@l@f@j@h@j@j@l@f@j@j@j@h@l@j@j@f@j@h@l@j@j@h@j@j@j@h@j@j@j@j@j@j@h@j@l@j@h@h@j@j@j@j@j@j@j@j@j@j@j@h@j@l@j@j@h@h@l@j@h@j@j@j@l@f@l@h@l@d@n@b@l@d@p@^n@^p@^r@Zp@Zr@Vr@Vr@Tr@Rt@Pt@Nr@Lv@Jt@Jt@Fv@Dt@Dt@@v@@t@Ct@Ev@Kr@Ot@Ur@Up@Yr@[p@]p@]n@a@l@i@h@i@j@m@h@o@h@m@h@m@h@k@j@o@h@m@h@m@h@m@h@m@j@m@h@m@h@m@h@m@h@o@h@m@j@k@h@m@h@o@h@m@h@m@j@m@h@m@h@m@j@m@f@m@j@o@h@k@h@m@j@m@h@m@j@k@j@i@l@e@n@c@p@]r@[p@Wt@Ur@Qv@Kt@Kt@Ev@At@@t@Bv@Hr@Lt@Nt@Rr@Vp@Xp@Xp@^p@^n@b@n@b@j@f@l@h@j@j@h@l@h@l@f@p@f@r@b@r@d@t@`@v@`@x@b@v@^v@b@v@`@x@`@x@`@v@`@v@`@x@`@v@`@v@b@x@^x@`@v@b@v@`@v@`@x@`@x@`@v@`@v@`@v@`@v@b@x@b@t@b@t@f@r@f@n@h@n@j@j@j@h@l@f@n@d@n@^n@^r@\\p@Xr@Vr@Tt@Rr@Rt@Pt@Nr@Lt@Lt@Jt@Hv@Ht@Fv@Dt@Dt@@v@@t@?t@?v@Ct@Av@Et@Et@It@Gv@Kt@Mt@Kr@Ov@Or@Ot@Ot@Mr@Qt@Mt@Qt@Mt@Qt@Mr@Ot@Ot@Or@Ov@Or@Ot@Ot@Or@Ot@Ot@Ot@Ot@Ot@Or@Ot@Ot@Mr@Qt@Mt@Qt@Mt@Qr@Mt@Qt@Mt@Or@Ot@Qt@Qr@Qt@Ur@Ur@Ur@Wp@Yr@[p@[p@]p@]p@]n@a@p@c@l@a@n@e@n@e@j@g@l@g@j@i@l@k@h@k@h@m@h@o@h@o@h@o@f@o@f@o@h@o@h@o@f@o@h@o@f@o@h@o@h@o@f@o@h@o@f@o@h@o@f@o@h@o@f@o@h@o@h@m@j@m@j@k@j@i@j@i@l@e@l@i@l@i@l@e@j@i@l@i@l@g@j@g@l@g@l@i@l@g@l@g@j@i@l@g@l@g@j@i@l@g@l@g@l@i@l@e@j@i@l@i@l@g@j@g@l@i@l@g@l@g@j@i@j@i@j@m@f@o@d@u@`@w@^{@Z}@V_AVaAV_AXaAX}@Z_A\\{@^{@b@u@d@s@d@s@h@m@j@k@l@i@l@e@n@c@p@_@p@Yr@Wr@Ut@Qt@Kt@Iv@Et@At@@v@Dt@Ht@Jr@Pt@Rr@Tr@Vr@Xp@Xr@Xr@Xr@Vp@Xr@Vr@Xp@Xr@Vr@Vr@Rt@Pt@Lt@Jt@Dv@@t@At@Ev@Gt@Kt@Qr@Sr@Ur@Ur@Ur@Wr@Ur@Wt@Ur@Ur@St@Ot@Ot@It@Gt@Cv@At@@v@@t@Bv@@t@Dv@@t@Bv@@t@Bt@@v@Ft@Jr@Nt@Nt@Nt@Nt@Nr@Nt@Nt@Nt@Nr@Nt@Nt@Nt@Nt@Nr@Lt@Pt@Lt@Pt@Lr@Pt@Lt@Nt@Nr@Nt@Nt@Nt@Nt@Nr@Nt@Nt@Pt@Lt@Nr@Nt@Nt@Nt@Nr@Lt@Pt@Lt@Pt@Lr@Pt@Nt@Nt@Nr@Lt@Pt@Lt@Lt@Jv@Ft@Bt@@v@At@Ct@Cv@Et@Ev@Et@Ct@Ev@Et@Et@Gv@It@Gt@It@Gv@Gt@Gt@Ev@Et@Ct@Ev@Et@Ev@Ct@Ct@Cv@Ct@Cv@At@@t@Dv@Jr@Nt@Tp@Xp@\\n@b@l@f@j@j@f@n@f@r@b@t@`@v@`@v@`@v@`@x@`@x@b@v@`@v@`@v@`@v@`@x@`@v@b@t@d@v@b@r@f@r@f@p@f@n@f@n@j@l@h@l@j@l@h@j@j@l@h@j@j@l@h@l@h@j@h@l@h@n@h@n@h@l@h@j@j@l@j@j@j@j@h@j@j@j@j@j@j@j@h@j@j@l@j@j@j@j@j@h@j@h@l@h@j@h@j@h@l@h@j@h@j@h@l@h@j@h@l@h@j@h@l@h@j@h@j@h@l@f@j@j@j@f@l@j@j@f@l@j@j@f@l@j@j@f@j@j@l@f@l@h@j@f@l@f@l@d@l@f@l@h@l@f@j@h@l@h@j@f@l@j@j@f@j@j@l@f@j@j@j@f@l@h@j@h@j@h@l@h@j@h@l@h@j@h@l@h@j@h@l@f@l@d@n@d@n@`@n@`@n@`@p@^n@^p@`@n@`@n@`@p@^n@`@p@^n@^p@`@n@`@p@`@n@^n@`@p@^n@^n@`@p@`@n@`@p@^n@`@p@^n@^p@\\r@Zp@Xr@Xr@Xr@Vp@Xr@Vr@Xp@Xr@Xp@Zr@Zp@Zp@Zp@Zr@Zp@Zp@Zr@Zp@Zp@Zr@Zp@Zp@\\r@Xp@Zp@\\r@Xp@Zp@\\r@Xp@Zr@Xr@Vr@Rr@Pt@Nt@Jv@Jt@Jt@Jt@Jt@Jt@Jt@Ht@Jt@Jt@Jt@Jt@Jv@Ht@Jt@Jt@Jt@Jt@Jt@Lt@Lr@Lt@Rt@Pr@Pt@Tr@Rr@Tr@Tr@Tt@Tr@Rr@Vr@Tr@Rt@Vr@Rr@Tr@Tr@Tr@Tr@Tt@Tr@Tr@Tr@Tr@Rt@Vr@Tr@Rr@Vr@Rr@Tt@Vr@Rr@Tr@Tr@Tt@Tp@Tt@Tr@Rr@Vr@Tr@Rt@Vr@Rr@Tr@Vr@Rt@Tr@Tr@Tr@Tr@Tr@Tt@Tr@Tr@Tr@Rr@Vt@Rp@Tt@Vr@Rr@Tr@Tr@Tt@Tr@Tr@Tr@Tt@Tp@Tt@Rr@Vr@Rr@Tr@Vt@Rr@Tr@Tr@Tr@Tr@Tr@Tt@Tr@Tr@Tr@Rt@Vr@Tr@Rr@Vr@Rr@Xr@Xp@Xp@\\n@`@n@`@n@b@l@d@n@f@l@d@n@d@l@d@l@d@l@d@n@d@l@f@n@d@l@d@l@d@l@d@n@d@l@d@l@d@l@d@n@d@l@f@n@d@l@d@l@d@l@d@n@d@l@d@n@f@l@d@l@d@l@d@l@h@j@h@j@j@h@l@h@n@f@n@f@p@f@p@f@n@h@p@f@p@f@n@f@n@f@r@f@n@f@p@f@p@f@n@f@p@h@p@d@n@h@p@f@p@f@n@f@p@f@p@f@l@h@p@h@l@j@h@l@h@n@b@n@`@p@^p@Xr@Xr@Rt@Pt@Jt@Hv@Ft@Dt@Bv@Dt@Dt@Dv@Dt@Ft@Dv@Dt@Ft@Dv@Dt@Ft@Ft@Hv@Dt@Ht@Fv@Dt@Ft@Dv@Ft@Dt@Dt@Dv@Ft@Ft@Dv@Ft@Dt@Dv@Ft@Dt@Fv@Ft@Ft@Jt@Pr@Rr@Xp@Xp@\\p@^p@\\p@^p@\\n@^p@\\p@^p@\\p@\\n@^p@^p@\\p@\\p@^p@\\n@^p@\\p@^p@\\p@\\n@^p@^p@\\p@\\p@^n@^r@\\n@\\p@^p@\\p@^p@^n@\\p@\\p@\\p@^p@^n@\\p@\\p@^p@\\p@^p@^n@\\p@`@n@`@n@`@n@b@l@d@n@d@l@f@l@d@l@f@l@d@n@f@j@d@n@d@l@d@l@f@l@d@l@d@n@f@l@d@l@f@l@d@l@f@l@d@n@f@l@d@l@d@l@f@l@d@l@f@n@d@l@f@l@d@l@f@l@d@l@f@n@d@l@d@l@f@l@d@l@f@n@d@j@d@n@f@l@d@l@d@n@f@j@d@n@d@l@f@l@d@n@d@l@d@l@d@n@`@n@b@p@^n@`@p@^p@`@n@^n@^p@^n@`@p@^n@^p@`@n@^p@`@n@^p@^n@`@p@^n@^p@^n@^p@`@p@^n@^n@`@p@^p@^n@`@n@^p@^p@`@n@^n@`@p@^p@^n@^n@^p@^p@`@n@^n@^p@`@p@^n@`@`B~@d@XJFpC~Ap@^n@`@p@^n@^p@`@n@^p@^n@`@p@^n@^p@`@n@^p@^n@`@p@^p@^n@^p@\\p@\\p@\\p@\\p@Zr@Zp@Zr@Xp@Vr@Vr@Vr@Tr@Vr@Tt@Tr@Tr@Vr@Tr@Tr@Tr@Vr@Tr@Tr@Tt@Vr@Rr@Vr@Tr@Vr@Rr@Vr@Tr@Tt@Tr@Vp@Tt@Tr@Tr@Vr@Tr@Tr@Tr@Vt@Rp@Vt@Tr@Vr@Tr@Tr@Tr@Tr@Vt@Tp@Tr@Tt@Vr@Tr@Tr@Tr@Vr@Tr@Vr@Vp@Zp@\\p@\\p@^n@`@n@`@n@d@n@`@n@b@n@`@n@b@l@b@p@b@n@`@l@b@n@b@n@b@n@`@n@b@n@d@j@f@l@f@h@l@h@n@d@r@d@r@`@x@^x@`@x@^x@^x@\\z@^x@^z@^x@^z@^x@`@x@^z@^x@^z@\\x@^z@^x@^x@^x@^z@^x@^z@^z@^x@^x@^x@^z@^x@^z@^x@^z@^x@^x@^x@^z@`@x@^v@b@v@d@r@d@r@f@p@h@l@j@l@j@h@l@f@l@f@l@b@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@`@n@b@p@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@`@p@^p@^n@\\r@\\p@Zp@Zp@\\p@Zr@\\p@Xp@\\p@Zr@Zp@\\p@Zp@\\p@Xr@\\p@Zp@Zp@Zr@\\p@Zp@Zp@\\r@Zp@Zp@Zp@\\p@Zr@Zp@\\p@Xp@\\r@Zp@Zp@\\p@Zr@Zp@Zp@\\p@Zp@Zr@Zp@Zp@\\r@Xp@\\p@Zp@Zr@\\p@Xp@\\p@Zp@Zr@\\p@Zp@Zp@Zr@Zp@\\p@Zr@Zp@Zp@Zp@\\r@Zp@Zp@Zp@\\p@Zr@Zp@Zp@Zp@\\r@Xp@\\p@Zp@Zr@\\p@Xp@\\r@Zp@Zp@\\p@Xp@\\r@Zp@Zp@\\p@Xr@\\p@Zp@Zp@\\r@Xp@\\p@Zp@\\p@^n@`@n@`@n@d@l@f@j@h@j@j@h@l@h@l@f@p@d@r@d@r@d@r@b@v@b@r@b@x@`@t@b@v@`@t@b@v@b@v@`@t@b@v@b@v@`@t@b@v@b@t@`@x@b@t@b@v@`@v@b@t@b@v@`@t@b@v@b@v@b@t@`@v@b@t@b@v@`@v@b@t@b@v@`@v@b@v@b@t@b@t@b@v@b@t@d@r@b@r@f@r@f@p@f@p@f@n@h@n@f@n@h@j@j@l@h@j@j@l@j@h@l@h@j@h@l@f@l@f@l@d@f@~@p@^p@\\n@`@n@`@p@^n@`@n@b@n@`@n@b@n@`@n@`@p@^p@\\n@^p@b@l@`@n@f@h@j@h@n@d@r@b@t@^x@\\z@Z~@V~@X~@V~@X`AV~@V~@X~@V~@X`AV~@X~@Z|@b@v@d@p@j@j@l@d@n@d@n@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@p@`@n@b@n@`@l@b@n@`@n@b@n@`@n@b@n@`@p@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@^n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@`@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@p@b@n@b@n@`@n@b@n@^l@b@n@b@n@`@n@b@n@`@n@b@n@`@p@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@`@n@b@n@b@n@`@n@b@n@`@n@`@n@`@n@b@n@b@n@`@n@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@n@d@l@b@n@b@l@d@n@d@n@b@l@b@n@d@n@b@l@d@n@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@l@d@n@b@n@b@l@d@n@d@n@b@l@b@n@d@l@b@n@d@"
+      ],
+      "mode": "mnr",
+      "stops": [
+        {
+          "stop_id": "94",
+          "name": "Southeast",
+          "lat": 41.413203,
+          "lon": -73.623787
+        },
+        {
+          "stop_id": "91",
+          "name": "Brewster",
+          "lat": 41.39447,
+          "lon": -73.619802
+        },
+        {
+          "stop_id": "90",
+          "name": "Croton Falls",
+          "lat": 41.347722,
+          "lon": -73.662269
+        },
+        {
+          "stop_id": "89",
+          "name": "Purdy's",
+          "lat": 41.325775,
+          "lon": -73.659061
+        },
+        {
+          "stop_id": "88",
+          "name": "Goldens Bridge",
+          "lat": 41.294338,
+          "lon": -73.677655
+        },
+        {
+          "stop_id": "86",
+          "name": "Katonah",
+          "lat": 41.259552,
+          "lon": -73.684155
+        },
+        {
+          "stop_id": "85",
+          "name": "Bedford Hills",
+          "lat": 41.237316,
+          "lon": -73.699936
+        },
+        {
+          "stop_id": "84",
+          "name": "Mt Kisco",
+          "lat": 41.208242,
+          "lon": -73.729778
+        },
+        {
+          "stop_id": "83",
+          "name": "Chappaqua",
+          "lat": 41.158015,
+          "lon": -73.774885
+        },
+        {
+          "stop_id": "81",
+          "name": "Pleasantville",
+          "lat": 41.135222,
+          "lon": -73.792661
+        },
+        {
+          "stop_id": "80",
+          "name": "Hawthorne",
+          "lat": 41.108581,
+          "lon": -73.79625
+        },
+        {
+          "stop_id": "78",
+          "name": "Valhalla",
+          "lat": 41.072819,
+          "lon": -73.772599
+        },
+        {
+          "stop_id": "76",
+          "name": "North White Plains",
+          "lat": 41.049806,
+          "lon": -73.773142
+        },
+        {
+          "stop_id": "74",
+          "name": "White Plains",
+          "lat": 41.032589,
+          "lon": -73.775208
+        },
+        {
+          "stop_id": "72",
+          "name": "Hartsdale",
+          "lat": 41.010333,
+          "lon": -73.796407
+        },
+        {
+          "stop_id": "71",
+          "name": "Scarsdale",
+          "lat": 40.989168,
+          "lon": -73.808634
+        },
+        {
+          "stop_id": "68",
+          "name": "Crestwood",
+          "lat": 40.958997,
+          "lon": -73.820564
+        },
+        {
+          "stop_id": "66",
+          "name": "Tuckahoe",
+          "lat": 40.949393,
+          "lon": -73.830166
+        },
+        {
+          "stop_id": "65",
+          "name": "Bronxville",
+          "lat": 40.93978,
+          "lon": -73.835208
+        },
+        {
+          "stop_id": "64",
+          "name": "Fleetwood",
+          "lat": 40.92699,
+          "lon": -73.83948
+        },
+        {
+          "stop_id": "62",
+          "name": "Mt Vernon West",
+          "lat": 40.912142,
+          "lon": -73.851129
+        },
+        {
+          "stop_id": "56",
+          "name": "Fordham",
+          "lat": 40.8615,
+          "lon": -73.89058
+        },
+        {
+          "stop_id": "4",
+          "name": "Harlem-125 St",
+          "lat": 40.805157,
+          "lon": -73.939149
+        },
+        {
+          "stop_id": "1",
+          "name": "Grand Central",
+          "lat": 40.752998,
+          "lon": -73.977056
+        }
+      ]
+    }
+  ]
+}

@@ -1334,6 +1334,14 @@ struct HomeView: View {
             var consecutiveErrors = 0
             let selectedRouteIdAtStart = viewModel.selectedRouteId
             Task { @MainActor in
+                // Hold the first live refresh until the sheet's open
+                // animation has a clear frame budget. Kicking it off
+                // synchronously (or even on the next runloop tick) caused
+                // visible jank because `refresh*Vehicles()` writes to many
+                // @Observable properties, each invalidating SwiftUI views
+                // mid-transition.
+                try? await Task.sleep(for: .milliseconds(380))
+                guard viewModel.selectedRouteId == selectedRouteIdAtStart else { return }
                 await refreshSelectedRouteLiveData(
                     isBus: isBus,
                     isCommuterRail: isCommuterRail
