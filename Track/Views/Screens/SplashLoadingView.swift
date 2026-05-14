@@ -1,12 +1,20 @@
 // Branded launch loading screen shown while restoring the user session.
+//
+// Motion budget — only the train under "Track" animates.
+//
+// The background route mesh (curved colored lines) is drawn ONCE into
+// a static Canvas using a deterministic seed; nothing else moves.
+// The halo, icon, and labels are static. The only animated layer is
+// the subway train under the loading label, which slides left→right
+// across a rail and fully clears the frame before the next loop —
+// same behavior as a train pulling out of a station and the next one
+// arriving.
 
 import SwiftUI
 
 struct SplashLoadingView: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("appTheme") private var appTheme = "system"
-    @State private var appeared = true
-    @State private var pulse = false
 
     private var resolvedColorScheme: ColorScheme {
         switch appTheme {
@@ -18,51 +26,70 @@ struct SplashLoadingView: View {
 
     private var palette: SplashPalette { .resolve(resolvedColorScheme) }
 
-    private let routeColors: [Color] = [
+    /// Subway-line palette used for the static background polylines.
+    /// Each color paints one of the routes drawn behind the splash so
+    /// the backdrop reads as a stylized transit map.
+    private let routePalette: [Color] = [
         AppTheme.SubwayColors.color(for: "1"),
         AppTheme.SubwayColors.color(for: "4"),
         AppTheme.SubwayColors.color(for: "A"),
         AppTheme.SubwayColors.color(for: "B"),
+        AppTheme.SubwayColors.color(for: "7"),
+        AppTheme.SubwayColors.color(for: "N"),
+        AppTheme.SubwayColors.color(for: "L"),
+        AppTheme.SubwayColors.color(for: "G"),
     ]
 
     var body: some View {
         ZStack {
-            AuthBackground(haloOffset: CGSize(width: -36, height: -250))
+            // Base background.
+            palette.background
+                .ignoresSafeArea()
 
-            LoadingRouteMesh(palette: palette)
-                .opacity(appeared ? 1 : 0.72)
-                .scaleEffect(appeared ? 1 : 0.98)
+            // STATIC transit-map polylines — drawn once into a Canvas.
+            // Authored paths (not random curves) so the mesh reads like
+            // a real subway map. Nothing here animates.
+            RouteMeshBackground(
+                palette: routePalette,
+                lineOpacity: palette.routeMeshOpacity,
+                casingColor: palette.background
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+
+            // STATIC accent halo behind the icon for depth.
+            RadialGradient(
+                colors: [
+                    palette.accent.opacity(palette.pulseHighOpacity),
+                    palette.accent.opacity(palette.pulseLowOpacity * 0.4),
+                    Color.clear,
+                ],
+                center: .center,
+                startRadius: 0,
+                endRadius: 260
+            )
+            .blur(radius: 30)
+            .frame(maxHeight: .infinity)
+            .offset(y: -80)
+            .allowsHitTesting(false)
 
             VStack(spacing: 22) {
                 Spacer()
 
                 iconLockup
-                    .offset(y: appeared ? 0 : 16)
 
                 loadingIndicator
-                    .offset(y: appeared ? 0 : 10)
 
                 Spacer()
                 Spacer(minLength: 54)
             }
             .padding(.horizontal, 28)
         }
-        .background(palette.background.ignoresSafeArea())
-        .onAppear(perform: animateIn)
     }
 
     private var iconLockup: some View {
         VStack(spacing: 14) {
             ZStack {
-                Circle()
-                    .fill(
-                        palette.accent.opacity(
-                            pulse ? palette.pulseHighOpacity : palette.pulseLowOpacity
-                        )
-                    )
-                    .frame(width: 168, height: 168)
-                    .blur(radius: pulse ? 34 : 24)
-
                 RoundedRectangle(cornerRadius: 30, style: .continuous)
                     .fill(palette.card.opacity(palette.cardOpacity))
                     .frame(width: 106, height: 106)
@@ -77,7 +104,7 @@ struct SplashLoadingView: View {
                                 lineWidth: 0.9
                             )
                     )
-                            .shadow(color: palette.cardShadow, radius: 22, y: 12)
+                    .shadow(color: palette.cardShadow, radius: 22, y: 12)
 
                 Image("AppIconImage")
                     .resizable()
@@ -86,7 +113,6 @@ struct SplashLoadingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .accessibilityHidden(true)
             }
-            .scaleEffect(pulse ? 1.02 : 0.98)
 
             VStack(spacing: 4) {
                 Text("Track")
@@ -104,8 +130,15 @@ struct SplashLoadingView: View {
 
     private var loadingIndicator: some View {
         VStack(spacing: 10) {
-            LoadingProgressRail(colors: routeColors, palette: palette)
-                .frame(width: 148, height: 24)
+            // The ONLY animated element on the screen — a small subway
+            // train sliding along a rail, painted in the app's purple
+            // accent so it feels like a Track-branded train.
+            TrainLoader(
+                bulletColor: AppTheme.Colors.accent,
+                bulletLetter: "T",
+                palette: palette
+            )
+            .frame(width: 200, height: 36)
 
             Text("Loading")
                 .font(.system(size: 11, weight: .heavy, design: .rounded))
@@ -114,16 +147,6 @@ struct SplashLoadingView: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Loading Track")
-    }
-
-    private func animateIn() {
-        appeared = false
-        withAnimation(.spring(response: 0.7, dampingFraction: 0.78)) {
-            appeared = true
-        }
-        withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) {
-            pulse = true
-        }
     }
 }
 
@@ -142,6 +165,16 @@ private struct SplashPalette {
     let cardOpacity: Double
     let pulseLowOpacity: Double
     let pulseHighOpacity: Double
+    /// Stroke opacity applied to every line in the static route mesh.
+    /// Kept low so the mesh reads as ambient depth, not foreground noise.
+    let routeMeshOpacity: Double
+    /// Body fill for each subway car (silver/stainless on real R-series cars).
+    let carBodyTop: Color
+    let carBodyBottom: Color
+    /// Color used for the under-frame band and roof equipment line.
+    let carTrim: Color
+    /// Color used for the dark window strip + door splits.
+    let carWindowFill: Color
 
     static func resolve(_ scheme: ColorScheme) -> SplashPalette {
         switch scheme {
@@ -160,7 +193,12 @@ private struct SplashPalette {
                 cardShadow: Color(red: 0.070, green: 0.078, blue: 0.145).opacity(0.16),
                 cardOpacity: 0.90,
                 pulseLowOpacity: 0.12,
-                pulseHighOpacity: 0.22
+                pulseHighOpacity: 0.22,
+                routeMeshOpacity: 0.28,
+                carBodyTop: Color(red: 0.92, green: 0.94, blue: 0.96),
+                carBodyBottom: Color(red: 0.74, green: 0.78, blue: 0.83),
+                carTrim: Color(red: 0.20, green: 0.23, blue: 0.30),
+                carWindowFill: Color(red: 0.06, green: 0.08, blue: 0.13)
             )
         default:
             SplashPalette(
@@ -177,243 +215,503 @@ private struct SplashPalette {
                 cardShadow: Color.black.opacity(0.42),
                 cardOpacity: 0.82,
                 pulseLowOpacity: 0.18,
-                pulseHighOpacity: 0.30
+                pulseHighOpacity: 0.30,
+                routeMeshOpacity: 0.32,
+                carBodyTop: Color(red: 0.86, green: 0.89, blue: 0.93),
+                carBodyBottom: Color(red: 0.55, green: 0.60, blue: 0.68),
+                carTrim: Color(red: 0.10, green: 0.12, blue: 0.18),
+                carWindowFill: Color(red: 0.02, green: 0.03, blue: 0.06)
             )
         }
     }
 }
 
-private struct LoadingRouteMesh: View {
-    let palette: SplashPalette
+// MARK: - Static Route Mesh
+
+/// Stylized transit-map polylines rendered ONCE behind the splash.
+///
+/// Each route is a hand-authored path expressed in normalized 0–1
+/// coordinates so it scales to any screen size. Lines run mostly
+/// horizontally / vertically with rounded corners (45° turns) so the
+/// mesh reads like a real subway diagram — not a chaotic curve field.
+/// Each colored route is drawn over a slightly-wider casing of the
+/// background color so adjacent lines stay visually separated, exactly
+/// the same trick the app's MapLibre style uses for trunk polylines.
+private struct RouteMeshBackground: View {
+    let palette: [Color]
+    let lineOpacity: Double
+    let casingColor: Color
+
+    /// One route in the mesh: a list of normalized waypoints and the
+    /// color used to paint it. Waypoints are connected with straight
+    /// segments and rounded corners (small quadratic arc at every
+    /// vertex), exactly how transit-map polylines are drawn.
+    private struct Route {
+        let colorIndex: Int
+        let points: [CGPoint]
+    }
+
+    /// Authored "transit lines" laid out as a stylized subway diagram.
+    /// Coordinates are normalized to the view's bounds.
+    private static let routes: [Route] = [
+        // Long express running from bottom-left up to top-right.
+        Route(colorIndex: 0, points: [
+            CGPoint(x: -0.05, y: 1.05),
+            CGPoint(x: 0.20, y: 0.78),
+            CGPoint(x: 0.20, y: 0.45),
+            CGPoint(x: 0.55, y: 0.18),
+            CGPoint(x: 1.05, y: 0.18),
+        ]),
+        // Crosstown that bends through the middle.
+        Route(colorIndex: 1, points: [
+            CGPoint(x: -0.05, y: 0.30),
+            CGPoint(x: 0.35, y: 0.30),
+            CGPoint(x: 0.55, y: 0.50),
+            CGPoint(x: 0.55, y: 0.85),
+            CGPoint(x: 1.05, y: 1.10),
+        ]),
+        // Trunk line down the right edge.
+        Route(colorIndex: 2, points: [
+            CGPoint(x: 0.78, y: -0.05),
+            CGPoint(x: 0.78, y: 0.40),
+            CGPoint(x: 0.92, y: 0.55),
+            CGPoint(x: 0.92, y: 1.05),
+        ]),
+        // Curved branch sweeping bottom-right to upper-middle.
+        Route(colorIndex: 3, points: [
+            CGPoint(x: 1.05, y: 0.92),
+            CGPoint(x: 0.65, y: 0.92),
+            CGPoint(x: 0.40, y: 0.65),
+            CGPoint(x: 0.10, y: 0.65),
+            CGPoint(x: -0.05, y: 0.55),
+        ]),
+        // Short shuttle up top.
+        Route(colorIndex: 4, points: [
+            CGPoint(x: -0.05, y: 0.10),
+            CGPoint(x: 0.30, y: 0.10),
+            CGPoint(x: 0.45, y: 0.05),
+        ]),
+        // Diagonal local through the lower half.
+        Route(colorIndex: 5, points: [
+            CGPoint(x: -0.05, y: 0.85),
+            CGPoint(x: 0.30, y: 0.85),
+            CGPoint(x: 0.45, y: 0.72),
+            CGPoint(x: 0.85, y: 0.72),
+            CGPoint(x: 1.05, y: 0.62),
+        ]),
+    ]
 
     var body: some View {
-        GeometryReader { proxy in
-            TimelineView(.periodic(from: Date(), by: SplashMotion.frameInterval)) { context in
-                Canvas { canvas, size in
-                    drawLocalStreets(in: &canvas, size: size)
-                    drawExpressRoutes(in: &canvas, size: size, date: context.date)
-                    drawStationPulses(in: &canvas, size: size, date: context.date)
-                }
-                .frame(width: proxy.size.width, height: proxy.size.height)
+        Canvas { canvas, size in
+            // Trunk-line widths roughly proportional to screen width
+            // so the mesh always looks bold but never overpowering.
+            let trunkWidth: CGFloat = max(6, min(10, size.width * 0.018))
+            let casingWidth: CGFloat = trunkWidth + 3
+
+            for route in Self.routes {
+                let color = palette[route.colorIndex % palette.count]
+                let path = Self.makePath(for: route.points, in: size)
+
+                // Casing first — wider stroke in the background color
+                // so adjacent routes don't visually bleed into each other.
+                canvas.stroke(
+                    path,
+                    with: .color(casingColor),
+                    style: StrokeStyle(
+                        lineWidth: casingWidth,
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
+                // Colored route on top.
+                canvas.stroke(
+                    path,
+                    with: .color(color.opacity(lineOpacity)),
+                    style: StrokeStyle(
+                        lineWidth: trunkWidth,
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
             }
         }
-        .allowsHitTesting(false)
-        .mask(
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.00),
-                    .init(color: .black, location: 0.10),
-                    .init(color: .black, location: 0.88),
-                    .init(color: .clear, location: 1.00),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
     }
 
-    private func drawLocalStreets(in canvas: inout GraphicsContext, size: CGSize) {
-        let stroke = StrokeStyle(lineWidth: 0.55, lineCap: .round)
-        let spacing: CGFloat = 34
-
-        var y: CGFloat = -40
-        while y < size.height + 40 {
-            var path = Path()
-            path.move(to: CGPoint(x: -36, y: y))
-            path.addLine(to: CGPoint(x: size.width + 36, y: y + size.width * 0.17))
-            canvas.stroke(path, with: .color(palette.streetLine), style: stroke)
-            y += spacing
-        }
-
-        var x: CGFloat = -60
-        while x < size.width + 60 {
-            var path = Path()
-            path.move(to: CGPoint(x: x, y: -20))
-            path.addLine(to: CGPoint(x: x + size.height * 0.12, y: size.height + 20))
-            canvas.stroke(path, with: .color(palette.streetLine.opacity(0.72)), style: stroke)
-            x += spacing + 14
-        }
-    }
-
-    private func drawExpressRoutes(
-        in canvas: inout GraphicsContext,
-        size: CGSize,
-        date: Date
-    ) {
-        let phase = date.timeIntervalSinceReferenceDate
-        let routes: [(Color, CGFloat, CGFloat, CGFloat, Double, CGFloat)] = [
-            (AppTheme.SubwayColors.color(for: "1"), -0.02, 0.30, 0.70, 0.44, -0.18),
-            (AppTheme.SubwayColors.color(for: "4"), 0.12, 0.52, 0.86, 0.38, 0.10),
-            (AppTheme.SubwayColors.color(for: "A"), 0.28, 0.18, 0.62, 0.42, 0.26),
-            (AppTheme.SubwayColors.color(for: "B"), 0.40, 0.72, 1.02, 0.36, -0.06),
-            (AppTheme.SubwayColors.color(for: "N"), 0.54, 0.34, 1.12, 0.34, 0.18),
-            (AppTheme.SubwayColors.color(for: "7"), 0.78, 0.56, 0.12, 0.26, -0.24),
-        ]
-
-        for (index, route) in routes.enumerated() {
-            let path = routePath(
-                size: size,
-                startY: route.1,
-                bend: route.2,
-                endY: route.3,
-                sway: route.5
-            )
-
-            canvas.stroke(
-                path,
-                with: .color(route.0.opacity(route.4 * 0.42)),
-                style: StrokeStyle(lineWidth: 8.5, lineCap: .round, lineJoin: .round)
-            )
-            canvas.stroke(
-                path,
-                with: .color(route.0.opacity(route.4)),
-                style: StrokeStyle(lineWidth: 3.4, lineCap: .round, lineJoin: .round)
-            )
-
-            let trainProgress = (phase * SplashMotion.trainSpeed + Double(index) * 0.17)
-                .truncatingRemainder(dividingBy: 1)
-            let trainPoint = pointOnCurve(
-                progress: trainProgress,
-                p0: CGPoint(x: -42, y: size.height * route.1),
-                p1: CGPoint(x: size.width * 0.28, y: size.height * route.2),
-                p2: CGPoint(x: size.width * 0.70, y: size.height * (route.2 + route.5)),
-                p3: CGPoint(x: size.width + 42, y: size.height * route.3)
-            )
-            let glint = CGRect(x: trainPoint.x - 3, y: trainPoint.y - 3, width: 6, height: 6)
-            canvas.fill(Path(ellipseIn: glint.insetBy(dx: -5, dy: -5)), with: .color(route.0.opacity(0.16)))
-            canvas.fill(Path(ellipseIn: glint), with: .color(Color.white.opacity(0.90)))
-            canvas.stroke(Path(ellipseIn: glint), with: .color(route.0.opacity(0.82)), lineWidth: 1.1)
-        }
-    }
-
-    private func drawStationPulses(
-        in canvas: inout GraphicsContext,
-        size: CGSize,
-        date: Date
-    ) {
-        let phase = date.timeIntervalSinceReferenceDate
-        let stations: [(CGFloat, CGFloat, Color)] = [
-            (0.18, 0.26, AppTheme.SubwayColors.color(for: "1")),
-            (0.34, 0.41, AppTheme.SubwayColors.color(for: "4")),
-            (0.52, 0.50, AppTheme.SubwayColors.color(for: "A")),
-            (0.70, 0.63, AppTheme.SubwayColors.color(for: "B")),
-            (0.82, 0.75, AppTheme.SubwayColors.color(for: "N")),
-            (0.28, 0.78, AppTheme.SubwayColors.color(for: "7")),
-        ]
-
-        for (index, station) in stations.enumerated() {
-            let wave = max(0, sin(phase * SplashMotion.stationPulseSpeed + Double(index) * 0.75))
-            let center = CGPoint(x: size.width * station.0, y: size.height * station.1)
-            let ring = CGRect(
-                x: center.x - 9 - wave * 7,
-                y: center.y - 9 - wave * 7,
-                width: 18 + wave * 14,
-                height: 18 + wave * 14
-            )
-            let dot = CGRect(x: center.x - 3.5, y: center.y - 3.5, width: 7, height: 7)
-
-            canvas.stroke(
-                Path(ellipseIn: ring),
-                with: .color(station.2.opacity(0.16 * (1 - wave))),
-                lineWidth: 1.1
-            )
-            canvas.fill(Path(ellipseIn: dot), with: .color(palette.stationDot))
-            canvas.stroke(
-                Path(ellipseIn: dot),
-                with: .color(station.2.opacity(0.75)),
-                lineWidth: 1
-            )
-        }
-    }
-
-    private func routePath(
-        size: CGSize,
-        startY: CGFloat,
-        bend: CGFloat,
-        endY: CGFloat,
-        sway: CGFloat
+    /// Builds a path that visits every waypoint with rounded corners.
+    /// Uses `addQuadCurve` at each interior vertex so direction changes
+    /// look like the soft 45° bends on a real transit map rather than
+    /// hard angles.
+    private static func makePath(
+        for normalizedPoints: [CGPoint],
+        in size: CGSize
     ) -> Path {
+        guard normalizedPoints.count >= 2 else { return Path() }
+
+        // Map normalized -> view coordinates.
+        let pts = normalizedPoints.map {
+            CGPoint(x: $0.x * size.width, y: $0.y * size.height)
+        }
+
         var path = Path()
-        path.move(to: CGPoint(x: -42, y: size.height * startY))
-        path.addCurve(
-            to: CGPoint(x: size.width + 42, y: size.height * endY),
-            control1: CGPoint(x: size.width * 0.28, y: size.height * bend),
-            control2: CGPoint(x: size.width * 0.70, y: size.height * (bend + sway))
-        )
+        path.move(to: pts[0])
+        // Corner radius scales with the smaller view dimension so the
+        // bends always look proportional.
+        let cornerRadius: CGFloat = min(size.width, size.height) * 0.045
+
+        for i in 1..<(pts.count - 1) {
+            let prev = pts[i - 1]
+            let here = pts[i]
+            let next = pts[i + 1]
+
+            // Distance to back off from the vertex along each leg —
+            // capped at half the leg length so adjacent corners can't
+            // overlap on short segments.
+            let backIn = min(cornerRadius, distance(prev, here) / 2)
+            let backOut = min(cornerRadius, distance(here, next) / 2)
+
+            let inPoint = pointAlong(from: here, toward: prev, by: backIn)
+            let outPoint = pointAlong(from: here, toward: next, by: backOut)
+
+            path.addLine(to: inPoint)
+            path.addQuadCurve(to: outPoint, control: here)
+        }
+        path.addLine(to: pts.last!)
         return path
     }
 
-    private func pointOnCurve(
-        progress: Double,
-        p0: CGPoint,
-        p1: CGPoint,
-        p2: CGPoint,
-        p3: CGPoint
-    ) -> CGPoint {
-        let inverseProgress = 1 - progress
-        let progressSquared = progress * progress
-        let inverseSquared = inverseProgress * inverseProgress
-        let inverseCubed = inverseSquared * inverseProgress
-        let progressCubed = progressSquared * progress
+    private static func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        hypot(a.x - b.x, a.y - b.y)
+    }
 
-        let x = inverseCubed * p0.x
-            + 3 * inverseSquared * progress * p1.x
-            + 3 * inverseProgress * progressSquared * p2.x
-            + progressCubed * p3.x
-        let y = inverseCubed * p0.y
-            + 3 * inverseSquared * progress * p1.y
-            + 3 * inverseProgress * progressSquared * p2.y
-            + progressCubed * p3.y
-        return CGPoint(x: x, y: y)
+    private static func pointAlong(
+        from origin: CGPoint,
+        toward target: CGPoint,
+        by length: CGFloat
+    ) -> CGPoint {
+        let dx = target.x - origin.x
+        let dy = target.y - origin.y
+        let mag = hypot(dx, dy)
+        guard mag > 0 else { return origin }
+        let t = length / mag
+        return CGPoint(x: origin.x + dx * t, y: origin.y + dy * t)
     }
 }
 
-private struct LoadingProgressRail: View {
-    let colors: [Color]
+private struct TrainLoader: View {
+    let bulletColor: Color
+    let bulletLetter: String
     let palette: SplashPalette
 
     var body: some View {
-        TimelineView(.periodic(from: Date(), by: SplashMotion.frameInterval)) { context in
+        // `.animation` ticks at the display refresh rate (up to ProMotion
+        // 120 Hz). No `minimumInterval` \u2014 we want every available frame
+        // so the slide reads as smooth, not stepped.
+        //
+        // No `.drawingGroup()` here \u2014 it forces an offscreen render every
+        // tick which is what was making the train feel laggy. Canvas is
+        // already GPU-backed.
+        TimelineView(.animation) { context in
             let phase = context.date.timeIntervalSinceReferenceDate
             Canvas { canvas, size in
-                let midY = size.height / 2
-                let rail = Path { path in
-                    path.move(to: CGPoint(x: 5, y: midY))
-                    path.addLine(to: CGPoint(x: size.width - 5, y: midY))
-                }
-
-                canvas.stroke(
-                    rail,
-                    with: .color(palette.textTertiary.opacity(0.20)),
-                    style: StrokeStyle(lineWidth: 4, lineCap: .round)
-                )
-
-                for (index, color) in colors.enumerated() {
-                    let progress = (phase * SplashMotion.loaderSpeed + Double(index) * 0.18)
-                        .truncatingRemainder(dividingBy: 1)
-                    let x = 8 + (size.width - 16) * progress
-                    let pulse = 0.74 + max(0, sin(phase * SplashMotion.loaderPulseSpeed + Double(index))) * 0.26
-                    let dot = CGRect(x: x - 4.5, y: midY - 4.5, width: 9, height: 9)
-
-                    canvas.fill(
-                        Path(ellipseIn: dot.insetBy(dx: -5, dy: -5)),
-                        with: .color(color.opacity(0.10 * pulse))
-                    )
-                    canvas.fill(Path(ellipseIn: dot), with: .color(color.opacity(0.96)))
-                    canvas.stroke(Path(ellipseIn: dot), with: .color(.white.opacity(0.45)), lineWidth: 1)
-                }
+                drawRail(in: &canvas, size: size)
+                drawTrain(in: &canvas, size: size, phase: phase)
             }
         }
         .accessibilityHidden(true)
     }
+
+    // MARK: - Rail
+
+    /// A subtle horizontal track with a station dot at each end. No
+    /// animation — anchors the train and gives it somewhere to depart
+    /// from / arrive at.
+    private func drawRail(in canvas: inout GraphicsContext, size: CGSize) {
+        let midY = size.height / 2
+        let inset: CGFloat = 6
+
+        let rail = Path { path in
+            path.move(to: CGPoint(x: inset, y: midY))
+            path.addLine(to: CGPoint(x: size.width - inset, y: midY))
+        }
+
+        canvas.stroke(
+            rail,
+            with: .color(palette.textTertiary.opacity(0.22)),
+            style: StrokeStyle(lineWidth: 3, lineCap: .round)
+        )
+
+        for x in [inset + 1, size.width - inset - 1] {
+            let dot = CGRect(x: x - 2.5, y: midY - 2.5, width: 5, height: 5)
+            canvas.fill(Path(ellipseIn: dot), with: .color(palette.stationDot))
+            canvas.stroke(
+                Path(ellipseIn: dot),
+                with: .color(palette.textTertiary.opacity(0.55)),
+                lineWidth: 0.8
+            )
+        }
+    }
+
+    // MARK: - Train
+
+    /// Renders a 3-car NYC-style stainless-steel subway consist:
+    /// silver body with a darker under-frame band, a continuous dark
+    /// window strip with individual windows, a center door split, and
+    /// a route bullet on the locomotive's flat front. Loops continuously
+    /// — the entire train fully clears the right edge before the
+    /// locomotive re-emerges from off-screen left, with a brief
+    /// dwell to simulate the gap between trains.
+    private func drawTrain(
+        in canvas: inout GraphicsContext,
+        size: CGSize,
+        phase: TimeInterval
+    ) {
+        let midY = size.height / 2
+
+        // Geometry — sized for a 200×36 frame.
+        let carCount: Int = 3
+        let carWidth: CGFloat = 38
+        let carHeight: CGFloat = 17
+        let carGap: CGFloat = 1.5
+        let trainWidth = CGFloat(carCount) * carWidth
+            + CGFloat(carCount - 1) * carGap
+
+        // Off-screen padding so the train fully exits / fully arrives.
+        let edgePad: CGFloat = 18
+        let travelStart = -trainWidth - edgePad
+        let travelEnd = size.width + edgePad
+        let travelSpan = travelEnd - travelStart
+
+        // Loop timing — `cycleDuration` is one full pass + dwell. The
+        // train moves linearly across `travelSpan` for the first
+        // `motionFraction` of the cycle, then sits off-screen for the
+        // remainder so the next "train" feels like it's arriving from
+        // the next station rather than teleporting.
+        let cycleDuration = SplashMotion.cycleDurationSeconds
+        let motionFraction = SplashMotion.motionFraction
+        let cycle = (phase / cycleDuration)
+            .truncatingRemainder(dividingBy: 1)
+        let progress = min(1, cycle / motionFraction)
+        // Locomotive (right-most car) front edge x-coordinate.
+        let frontX = travelStart + trainWidth + travelSpan * CGFloat(progress)
+
+        // Headlight glow — soft halo just ahead of the locomotive.
+        let headlightCenter = CGPoint(x: frontX + 7, y: midY)
+        let headlight = CGRect(
+            x: headlightCenter.x - 14,
+            y: headlightCenter.y - 14,
+            width: 28,
+            height: 28
+        )
+        canvas.fill(
+            Path(ellipseIn: headlight),
+            with: .radialGradient(
+                Gradient(colors: [
+                    Color.white.opacity(0.55),
+                    Color.white.opacity(0.12),
+                    Color.clear,
+                ]),
+                center: headlightCenter,
+                startRadius: 0,
+                endRadius: 20
+            )
+        )
+
+        // Cars are drawn from the locomotive (right) leftward.
+        for index in 0..<carCount {
+            let isLocomotive = index == 0
+            let bodyMaxX = frontX - CGFloat(index) * (carWidth + carGap)
+            let body = CGRect(
+                x: bodyMaxX - carWidth,
+                y: midY - carHeight / 2,
+                width: carWidth,
+                height: carHeight
+            )
+            drawCar(
+                in: &canvas,
+                rect: body,
+                isLocomotive: isLocomotive,
+                bulletColor: bulletColor,
+                bulletLetter: bulletLetter
+            )
+
+            // Coupling between cars.
+            if !isLocomotive {
+                let coupling = CGRect(
+                    x: body.maxX,
+                    y: midY - 0.75,
+                    width: carGap,
+                    height: 1.5
+                )
+                canvas.fill(
+                    Path(coupling),
+                    with: .color(palette.carTrim.opacity(0.85))
+                )
+            }
+        }
+    }
+
+    /// Renders a single subway car. Layered (back-to-front):
+    /// drop shadow → silver body gradient → roof equipment line →
+    /// dark window band → individual windows + center door split →
+    /// under-frame band → optional route bullet (locomotive only).
+    private func drawCar(
+        in canvas: inout GraphicsContext,
+        rect body: CGRect,
+        isLocomotive: Bool,
+        bulletColor: Color,
+        bulletLetter: String
+    ) {
+        let cornerRadius: CGFloat = 3
+        let bodyPath = Path(
+            roundedRect: body,
+            cornerRadius: cornerRadius,
+            style: .continuous
+        )
+
+        // Drop shadow — soft, non-animated, sits below the rail line.
+        let shadowRect = body.offsetBy(dx: 0, dy: 2.0)
+        canvas.fill(
+            Path(
+                roundedRect: shadowRect,
+                cornerRadius: cornerRadius,
+                style: .continuous
+            ),
+            with: .color(Color.black.opacity(0.22))
+        )
+
+        // Stainless-steel body gradient.
+        canvas.fill(
+            bodyPath,
+            with: .linearGradient(
+                Gradient(colors: [
+                    palette.carBodyTop,
+                    palette.carBodyBottom,
+                ]),
+                startPoint: CGPoint(x: body.minX, y: body.minY),
+                endPoint: CGPoint(x: body.minX, y: body.maxY)
+            )
+        )
+
+        // Roof equipment line — thin trim along the very top of the car.
+        let roof = CGRect(
+            x: body.minX + 1,
+            y: body.minY + 1.4,
+            width: body.width - 2,
+            height: 1.0
+        )
+        canvas.fill(
+            Path(roundedRect: roof, cornerRadius: 0.5, style: .continuous),
+            with: .color(palette.carTrim.opacity(0.55))
+        )
+
+        // Dark window band — runs the length of the car at the upper
+        // third, with the front-most segment reserved for the cab on
+        // the locomotive.
+        let windowBand = CGRect(
+            x: body.minX + 2,
+            y: body.minY + body.height * 0.28,
+            width: body.width - 4,
+            height: body.height * 0.34
+        )
+        canvas.fill(
+            Path(
+                roundedRect: windowBand,
+                cornerRadius: 1,
+                style: .continuous
+            ),
+            with: .color(palette.carWindowFill)
+        )
+
+        // Individual windows — 4 evenly-spaced bright slits inside the
+        // band so the band reads as windows rather than a solid stripe.
+        // The locomotive gets one window (the cab) at the front.
+        let windowCount = isLocomotive ? 3 : 4
+        let windowSpacing: CGFloat = 1.2
+        let windowsTotalWidth = windowBand.width
+            - windowSpacing * CGFloat(windowCount + 1)
+        let windowWidth = windowsTotalWidth / CGFloat(windowCount)
+        for w in 0..<windowCount {
+            let wx = windowBand.minX
+                + windowSpacing
+                + (windowWidth + windowSpacing) * CGFloat(w)
+            let win = CGRect(
+                x: wx,
+                y: windowBand.minY + 0.8,
+                width: windowWidth,
+                height: windowBand.height - 1.6
+            )
+            canvas.fill(
+                Path(roundedRect: win, cornerRadius: 0.6, style: .continuous),
+                with: .color(Color.white.opacity(0.78))
+            )
+        }
+
+        // Door split — vertical thin line dividing the car in half
+        // through the under-frame.
+        if !isLocomotive {
+            let door = CGRect(
+                x: body.midX - 0.4,
+                y: body.minY + body.height * 0.62,
+                width: 0.8,
+                height: body.height * 0.34
+            )
+            canvas.fill(
+                Path(door),
+                with: .color(palette.carTrim.opacity(0.85))
+            )
+        }
+
+        // Under-frame band — darker stripe at the very bottom, the
+        // visual weight that grounds the car on the rail.
+        let underframe = CGRect(
+            x: body.minX + 1,
+            y: body.maxY - 2.4,
+            width: body.width - 2,
+            height: 1.6
+        )
+        canvas.fill(
+            Path(
+                roundedRect: underframe,
+                cornerRadius: 0.6,
+                style: .continuous
+            ),
+            with: .color(palette.carTrim.opacity(0.85))
+        )
+
+        // Route bullet on the locomotive's flat front face.
+        if isLocomotive {
+            let bulletDiameter: CGFloat = body.height * 0.55
+            let bullet = CGRect(
+                x: body.maxX - bulletDiameter - 3,
+                y: body.midY - bulletDiameter / 2,
+                width: bulletDiameter,
+                height: bulletDiameter
+            )
+            canvas.fill(Path(ellipseIn: bullet), with: .color(bulletColor))
+            // Letter inside the bullet.
+            let text = Text(bulletLetter)
+                .font(.system(size: bulletDiameter * 0.78, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+            let resolved = canvas.resolve(text)
+            canvas.draw(
+                resolved,
+                at: CGPoint(x: bullet.midX, y: bullet.midY),
+                anchor: .center
+            )
+        }
+    }
 }
 
 private enum SplashMotion {
-    static let frameInterval = 1.0 / 30.0
-    static let trainSpeed = 0.42
-    static let stationPulseSpeed = 3.4
-    static let loaderSpeed = 1.24
-    static let loaderPulseSpeed = 6.0
+    /// 60 Hz — Canvas re-renders are cheap and the train is the only
+    /// moving thing; no point throttling.
+    static let frameInterval = 1.0 / 60.0
+    /// Total seconds for one full pass-and-dwell cycle.
+    static let cycleDurationSeconds: TimeInterval = 4.4
+    /// Fraction of the cycle spent moving across the frame. The
+    /// remainder is dwell off-screen so the next pass feels like a
+    /// new train arriving from the next station rather than teleporting.
+    static let motionFraction: Double = 0.82
 }
 
 #Preview("Splash Dark") {

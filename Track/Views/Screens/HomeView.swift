@@ -171,8 +171,7 @@ struct HomeView: View {
     /// Split from body to keep each expression under the type-checker limit.
     private var dataObservedContent: some View {
         notificationObservedContent
-            .onChange(of: currentMapCenter?.latitude) { handleMapCenterChange() }
-            .onChange(of: currentMapCenter?.longitude) { handleMapCenterChange() }
+            .onChange(of: mapCenterChangeKey) { handleMapCenterChange() }
             .onChange(of: viewModel.routeShape?.polylines.count) { handleRouteShapeLoaded() }
             .onChange(of: viewModel.nearestStopCoordinate?.latitude) { handleNearestStopChanged() }
             .onChange(of: viewModel.selectedDirectionIndex) { handleDirectionIndexChanged() }
@@ -362,16 +361,35 @@ struct HomeView: View {
                         sheetDetent: $sheetDetent,
                         sheetHeightObserver: sheetHeightObserver,
                         onLiveHeightChange: { h in
-                            // Collapse detection: if the user drags the sheet near 0,
-                            // snap it to hidden and show the peek indicator.
+                            // Collapse-state mirror for the floating tab
+                            // bar grabber. We ONLY flip the boolean here
+                            // — never write `sheetDetent` mid-drag.
+                            //
+                            // Why: the active drag gesture in
+                            // `DashboardView` writes `sheetDetent =
+                            // .height(clamped)` every frame from the
+                            // user's finger. If this callback also wrote
+                            // `.height(0)` (and worse, inside a
+                            // `withAnimation(.spring)`), the two would
+                            // race on the same state every frame —
+                            // causing the visible flicker the user sees
+                            // when slowly dragging the sheet around the
+                            // 80pt boundary. The drag's `.onEnded` is
+                            // already responsible for committing to
+                            // `.height(0)` when the release lands inside
+                            // the vacuum zone, so dropping the write
+                            // here loses no behavior.
+                            //
+                            // Plain assignment (no `withAnimation`) — a
+                            // spring animation on a state value that the
+                            // gesture is also writing per-frame produces
+                            // jitter; the tab-bar morph reads
+                            // `isSheetCollapsed` and animates its own
+                            // contents internally.
                             if h < 80 && !isSheetCollapsed {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    isSheetCollapsed = true
-                                }
-                                sheetDetent = .height(0)
-                                HapticManager.notification(.warning)
+                                isSheetCollapsed = true
+                                HapticManager.impact(.light)
                             } else if h > 120 && isSheetCollapsed {
-                                // User is dragging up from collapsed — un-collapse
                                 isSheetCollapsed = false
                             }
                         },
@@ -802,6 +820,16 @@ struct HomeView: View {
         if let center = currentMapCenter {
             handleMapCameraIdle(center: center)
         }
+    }
+
+    /// Single key for the map-center observer.  Replaces a pair of
+    /// `.onChange(of: currentMapCenter?.latitude / .longitude)` handlers
+    /// that both routed to the same `handleMapCenterChange()` — that
+    /// fired the drag-search debounce reschedule + instant-coordinate
+    /// publish twice on every map pan frame.
+    private var mapCenterChangeKey: String {
+        guard let c = currentMapCenter else { return "" }
+        return "\(c.latitude),\(c.longitude)"
     }
     
     private func handleRouteShapeLoaded() {
@@ -1334,19 +1362,17 @@ struct HomeView: View {
             var consecutiveErrors = 0
             let selectedRouteIdAtStart = viewModel.selectedRouteId
             Task { @MainActor in
-                // Hold the first live refresh until the sheet's open
-                // animation has a clear frame budget. Kicking it off
-                // synchronously (or even on the next runloop tick) caused
-                // visible jank because `refresh*Vehicles()` writes to many
-                // @Observable properties, each invalidating SwiftUI views
-                // mid-transition.
-                try? await Task.sleep(for: .milliseconds(380))
-                guard viewModel.selectedRouteId == selectedRouteIdAtStart else { return }
-                await refreshSelectedRouteLiveData(
-                    isBus: isBus,
-                    isCommuterRail: isCommuterRail
-                )
-
+                // NOTE: Do NOT fire an initial refresh here.
+                // `HomeViewModel.selectGroupedRoute` already kicked off the
+                // first vehicle/arrivals fetch the moment `selectedRouteId`
+                // was assigned. Calling `refreshSelectedRouteLiveData` again
+                // ~380 ms later issued a duplicate network request for the
+                // same route, raced the in-flight one, and could flash the
+                // map if responses arrived out of order.
+                //
+                // The burst below at 2/6/12 s acts as post-open settle
+                // pulses on top of that initial fetch, then the polling
+                // timer takes over.
                 var previousDelay: TimeInterval = 0
                 for delay in LiveTrackingClock.routeDetailBurstDelaysSeconds {
                     try? await Task.sleep(for: .seconds(max(0, delay - previousDelay)))

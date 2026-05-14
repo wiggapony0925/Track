@@ -145,6 +145,36 @@ struct MapLibreTrackMapView: View {
         return AppTheme.Colors.mtaBlue
     }
 
+    /// Single key for the map-center observer.  Without this, splitting on
+    /// `?.latitude` + `?.longitude` made `.onChange` fire twice per pan
+    /// (once for each axis) and triggered `refreshViewportCacheIfNeeded()`
+    /// — an O(stops) viewport scan — twice as often as needed.
+    private var mapCenterChangeKey: String {
+        guard let c = currentMapCenter else { return "" }
+        return "\(c.latitude),\(c.longitude)"
+    }
+
+    /// Composite key for the stop-cache observer.  Collapses what used to
+    /// be 7 separate `.onChange` handlers (`selectedDirectionIndex`,
+    /// `selectedDirectionName`, `selectedShapeDirectionId`,
+    /// `routeShape?.routeId`, `nearestStopCoordinate?.latitude` +
+    /// `?.longitude`, `selectedStopId`) into one.  The first three are
+    /// computed from each other so they always changed together — that
+    /// fired `forceRefreshStopCache()` (an O(stops) scan) up to 7 times
+    /// per direction tap.
+    private var stopCacheChangeKey: String {
+        let nearest: String = {
+            guard let c = viewModel.nearestStopCoordinate else { return "" }
+            return "\(c.latitude),\(c.longitude)"
+        }()
+        return "\(viewModel.selectedDirectionIndex)|"
+            + "\(viewModel.selectedDirectionName ?? "")|"
+            + "\(viewModel.selectedShapeDirectionId ?? -1)|"
+            + "\(viewModel.routeShape?.routeId ?? "")|"
+            + "\(viewModel.selectedStopId ?? "")|"
+            + nearest
+    }
+
     private static func decodeWalkingRoute(_ route: MKRoute?) -> [CLLocationCoordinate2D]? {
         guard let polyline = route?.polyline else { return nil }
         let count = polyline.pointCount
@@ -227,15 +257,8 @@ struct MapLibreTrackMapView: View {
             overlayStack
         }
         .onChange(of: currentMapDistance) { _, _ in refreshViewportCacheIfNeeded() }
-        .onChange(of: currentMapCenter?.latitude) { _, _ in refreshViewportCacheIfNeeded() }
-        .onChange(of: currentMapCenter?.longitude) { _, _ in refreshViewportCacheIfNeeded() }
-        .onChange(of: viewModel.selectedDirectionIndex) { _, _ in forceRefreshStopCache() }
-        .onChange(of: viewModel.selectedDirectionName) { _, _ in forceRefreshStopCache() }
-        .onChange(of: viewModel.selectedShapeDirectionId) { _, _ in forceRefreshStopCache() }
-        .onChange(of: viewModel.routeShape?.routeId) { _, _ in forceRefreshStopCache() }
-        .onChange(of: viewModel.nearestStopCoordinate?.latitude) { _, _ in forceRefreshStopCache() }
-        .onChange(of: viewModel.nearestStopCoordinate?.longitude) { _, _ in forceRefreshStopCache() }
-        .onChange(of: viewModel.selectedStopId) { _, _ in forceRefreshStopCache() }
+        .onChange(of: mapCenterChangeKey) { _, _ in refreshViewportCacheIfNeeded() }
+        .onChange(of: stopCacheChangeKey) { _, _ in forceRefreshStopCache() }
         .onChange(of: viewModel.walkingRoute?.polyline.pointCount) { _, _ in
             cachedWalkingCoords = Self.decodeWalkingRoute(viewModel.walkingRoute)
         }
